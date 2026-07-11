@@ -1,0 +1,142 @@
+---
+// Dark deep-pine masthead. Wordmark left, primary nav + utilities right.
+// The active item is marked in signal amber, per the guide (amber ~5–10%).
+interface Props {
+  active?: string;
+}
+const { active = "Essays" } = Astro.props;
+const items = ["Essays", "Work", "Notes", "Music", "About"];
+---
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <a class="wordmark" href="/">
+      <span class="mark" aria-hidden="true">
+        <!-- connected-line / section-sign leaf mark (favicon language) -->
+        <svg viewBox="0 0 28 28" width="22" height="22" fill="none">
+          <path
+            d="M14 25c0-6 0-10 0-14M14 11c0-4 3-7 8-8-1 5-4 8-8 8Zm0 4c0-4-3-7-8-8 1 5 4 8 8 8Zm0 3c0-3 2.5-5.5 6.5-6.5-1 4-3.5 6.5-6.5 6.5Z"
+            stroke="currentColor"
+            stroke-width="1.3"
+            stroke-linecap="round"
+            stroke-linejoin="round"></path>
+        </svg>
+      </span>
+      <span class="wordmark-text">EVGENY TEREKHOV</span>
+    </a>
+
+    <nav class="primary" aria-label="Primary">
+      {
+        items.map((item) => (
+          <a
+            href={item === "Essays" ? "/" : "#"}
+            class:list={["nav-link", { active: item === active }]}
+          >
+            {item}
+          </a>
+        ))
+      }
+    </nav>
+
+    <div class="utilities">
+      <a class="util search" href="#" aria-label="Search">
+        <svg viewBox="0 0 20 20" width="16" height="16" fill="none" aria-hidden="true">
+          <circle cx="9" cy="9" r="6" stroke="currentColor" stroke-width="1.5"></circle>
+          <path d="m14 14 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+        </svg>
+        <span>Search</span>
+      </a>
+      <a class="util lang" href="#">RU / EN</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .masthead {
+    background: var(--shell);
+    color: #e9e5da;
+  }
+  .masthead-inner {
+    max-width: var(--shell-max);
+    margin: 0 auto;
+    padding: 0 32px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    gap: 40px;
+  }
+  .wordmark {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: #e9e5da;
+    flex: 0 0 auto;
+  }
+  .wordmark:hover {
+    text-decoration: none;
+  }
+  .mark {
+    color: var(--accent);
+    display: inline-flex;
+  }
+  .wordmark-text {
+    font-family: var(--font-serif);
+    font-size: 20px;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .primary {
+    display: flex;
+    align-items: center;
+    gap: 30px;
+    margin-left: auto;
+  }
+  .nav-link {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    color: #d9dcd4;
+    letter-spacing: 0.01em;
+    padding-bottom: 3px;
+  }
+  .nav-link:hover {
+    color: #fff;
+    text-decoration: none;
+  }
+  .nav-link.active {
+    color: var(--accent);
+    border-bottom: 2px solid var(--accent);
+  }
+  .utilities {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding-left: 8px;
+    flex: 0 0 auto;
+  }
+  .util {
+    font-family: var(--font-sans);
+    font-size: 15px;
+    color: #d9dcd4;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .util:hover {
+    color: #fff;
+    text-decoration: none;
+  }
+  .util.lang {
+    letter-spacing: 0.03em;
+  }
+
+  @media (max-width: 900px) {
+    .masthead-inner {
+      padding: 0 20px;
+      gap: 20px;
+    }
+    .primary,
+    .utilities .search span {
+      display: none;
+    }
+  }
+</style>

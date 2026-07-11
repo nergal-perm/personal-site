@@ -1,0 +1,108 @@
+/* ============================================================================
+   Quiet Systems / Living Signal — design tokens & base typography
+   Palette and type scale come straight from the visual-style guide:
+   warm book reading surface inside a dark, precise technical shell.
+   ========================================================================= */
+
+:root {
+  /* Light theme (default reading surface) */
+  --warm-paper: #f2efe7;
+  --paper-panel: #eeeade; /* faint raised panel on paper */
+  --ink: #17201d;
+  --muted-ink: #68716d;
+  --deep-pine: #17372f;
+  --signal-amber: #d2a04a;
+  --sea-glass: #739795;
+  --rule: #d7d2c7;
+  --rule-strong: #cbc5b7;
+
+  /* Roles */
+  --bg: var(--warm-paper);
+  --panel: var(--paper-panel);
+  --text: var(--ink);
+  --text-muted: var(--muted-ink);
+  --shell: var(--deep-pine);
+  --accent: var(--signal-amber);
+  --link: #1f4a3f;
+
+  /* Type families */
+  --font-serif: "Source Serif 4", Georgia, "Times New Roman", serif;
+  --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* Layout */
+  --shell-max: 1280px;
+  --reading-measure: 70ch;
+
+  color-scheme: light;
+}
+
+/* Dark "evening mode" is opt-in (data-theme="dark"), not auto-flipped on the
+   system preference — the warm-paper surface is the guide's canonical default. */
+:root[data-theme="dark"] {
+  --warm-paper: #0e1514; /* Night */
+  --paper-panel: #17211f; /* Workshop surface */
+  --ink: #e9e5da; /* Warm white */
+  --muted-ink: #a9b0aa; /* Muted light */
+  --rule: #26302d;
+  --rule-strong: #313d39;
+  --accent: #e0b15e; /* Warm signal */
+  --link: #a9c8bf;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-size: 19px;
+  line-height: 1.65;
+  font-feature-settings: "kern" 1, "liga" 1;
+}
+
+a {
+  color: var(--link);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Shared label style — mono, uppercase, tracked, quiet */
+.eyebrow {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+  font-weight: 500;
+}
+
+.rule {
+  border: 0;
+  border-top: 1px solid var(--rule);
+  margin: 0;
+}
+
+/* Reduced motion — the guide asks us to respect it */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
