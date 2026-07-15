@@ -3,7 +3,7 @@
   "type": "map",
   "searchable": false,
   "topics": ["systems", "software", "ai-work", "thinking", "reading", "music"],
-  "links": ["essay-ai-process", "case-observable-publishing", "note-recovery-path", "album-spaces", "book-thinking-in-systems", "concept-working-artifacts"],
+  "links": ["essay-ai-process", "case-observable-publishing", "note-recovery-path", "album-suite-to-be-you-and-me", "book-thinking-in-systems", "concept-working-artifacts"],
   "title": "Карта",
   "summary": "Шесть именованных областей и реальные редакционные связи между ними. Карта помогает выбрать маршрут, но не заменяет списки.",
   "eyebrow": "Кураторский атлас",
@@ -13,7 +13,7 @@
     { "id": "essay-ai-process", "label": "ИИ как процесс", "relation": "объясняет переходы" },
     { "id": "case-observable-publishing", "label": "Публикация", "relation": "показывает систему" },
     { "id": "note-recovery-path", "label": "Восстановление", "relation": "проверяет устойчивость" },
-    { "id": "album-spaces", "label": "Музыка", "relation": "возвращает материал" },
+    { "id": "album-suite-to-be-you-and-me", "label": "Музыка", "relation": "возвращает материал" },
     { "id": "book-thinking-in-systems", "label": "Системное мышление", "relation": "дает язык" }
   ],
   "legend": "Каждая линия означает указанное редакционное отношение; случайных связей здесь нет."

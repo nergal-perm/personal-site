@@ -1,5 +1,5 @@
 ---
-id: 'album-spaces'
+id: 'album-suite-to-be-you-and-me'
 title: "Suite to Be You and Me — I Think You're Awesome & Taïga String Quartet"
 publish: true
 reviewType: album

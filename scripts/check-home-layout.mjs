@@ -7,8 +7,8 @@ const musicIndex = await readFile(new URL('../src/views/MusicIndex.astro', impor
 const albumPage = await readFile(new URL('../src/views/AlbumPage.astro', import.meta.url), 'utf8');
 const bandcampPlayer = await readFile(new URL('../src/components/BandcampPlayer.astro', import.meta.url), 'utf8').catch(() => '');
 const schema = await readFile(new URL('../src/content.config.ts', import.meta.url), 'utf8');
-const russianAlbum = await readFile(new URL('../src/content/music/ru/album-spaces.md', import.meta.url), 'utf8');
-const englishAlbum = await readFile(new URL('../src/content/music/en/album-spaces.md', import.meta.url), 'utf8');
+const russianAlbum = await readFile(new URL('../src/content/music/ru/album-suite-to-be-you-and-me.md', import.meta.url), 'utf8');
+const englishAlbum = await readFile(new URL('../src/content/music/en/album-suite-to-be-you-and-me.md', import.meta.url), 'utf8');
 
 assert.match(css, /body\[data-page-kind="home"\] \.home-overview \{[\s\S]*?height: auto;/, 'desktop homepage must allow the reference-led editorial composition to extend beyond one viewport');
 assert.match(css, /\.home-overview__hero-grid::before/, 'hero must include the reference-inspired coordinate grid');

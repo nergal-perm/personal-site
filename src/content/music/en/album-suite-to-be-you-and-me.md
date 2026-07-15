@@ -1,5 +1,5 @@
 ---
-id: 'album-spaces'
+id: 'album-suite-to-be-you-and-me'
 title: "Suite to Be You and Me — I Think You're Awesome & Taïga String Quartet"
 publish: true
 reviewType: album
@@ -13,7 +13,7 @@ foundational: false
 readTime: 7
 language: en
 sourceLanguage: ru
-translationOf: "album-spaces"
+translationOf: "album-suite-to-be-you-and-me"
 sourceHash: "bandcamp-suite-to-be-you-and-me-2020"
 translationStatus: reviewed
 translatedAt: 2026-07-13

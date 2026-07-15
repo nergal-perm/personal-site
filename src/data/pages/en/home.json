@@ -3,7 +3,7 @@
   "type": "home",
   "searchable": false,
   "topics": ["systems", "software", "ai-work", "thinking", "reading", "music"],
-  "links": ["map", "work", "essay-ai-process", "note-recovery-path", "album-spaces", "about"],
+  "links": ["map", "work", "essay-ai-process", "note-recovery-path", "album-suite-to-be-you-and-me", "about"],
   "title": "Quiet systems, living signal",
   "summary": "Maps, tools, and writing about complex systems, software craft, AI-assisted work, reading, and music.",
   "eyebrow": "Systems · software · writing · music",
@@ -29,8 +29,8 @@
   "selectedTitle": "Selected materials",
   "selected": ["essay-ai-process", "note-recovery-path", "concept-working-artifacts"],
   "listeningLabel": "From the listening room",
-  "listeningTitle": "Spaces — Nils Frahm",
+  "listeningTitle": "Suite to Be You and Me — I Think You're Awesome & Taïga String Quartet",
   "listeningText": "A live recording as an example of structure that remains open to improvisation.",
   "listeningAction": "More music",
-  "albumCoverAlt": "Abstract cover for the album Spaces"
+  "albumCoverAlt": "Album cover for Suite to Be You and Me"
 }

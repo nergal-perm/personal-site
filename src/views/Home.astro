@@ -14,7 +14,7 @@ const labels = UI[language];
 const page = (await getEntry(language, 'home')).data;
 const selected = await resolveLinks(language, page.selected);
 const featuredCase = await getEntry(language, 'case-observable-publishing');
-const album = await getEntry(language, 'album-spaces');
+const album = await getEntry(language, 'album-suite-to-be-you-and-me');
 const routeUrl = async (id: string) => (await getEntry(language, id)).url;
 const paths = await Promise.all(
   page.paths.map(async (path: any) => ({ ...path, url: await routeUrl(path.route) })),

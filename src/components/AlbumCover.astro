@@ -1,5 +1,5 @@
 ---
-// Абстрактная обложка Spaces из прототипа (renderMusicIndex/renderAlbum).
+// Запасная типографическая обложка альбома (renderMusicIndex/renderAlbum).
 interface Props {
   size?: 'default' | 'large' | 'xl';
   alt: string;
@@ -9,6 +9,6 @@ const { size = 'default', alt } = Astro.props;
 const sizeClass = size === 'large' ? 'album-cover--large' : size === 'xl' ? 'album-cover--xl' : '';
 ---
 
-<div class:list={['album-cover', 'album-cover--spaces', sizeClass]} role="img" aria-label={alt}>
-  <span>SPACES</span><i></i>
+<div class:list={['album-cover', 'album-cover--suite', sizeClass]} role="img" aria-label={alt}>
+  <span>SUITE</span><i></i>
 </div>

@@ -13,7 +13,7 @@ const { language } = Astro.props;
 const page = (await getEntry(language, 'now')).data;
 
 const essayEntry = await getEntry(language, 'essay-ai-process');
-const albumEntry = await getEntry(language, 'album-spaces');
+const albumEntry = await getEntry(language, 'album-suite-to-be-you-and-me');
 ---
 
 <Base language={language} title={page.title} description={page.summary} active="now" pageKind="now">

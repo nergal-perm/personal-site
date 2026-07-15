@@ -3,7 +3,7 @@
   "type": "home",
   "searchable": false,
   "topics": ["systems", "software", "ai-work", "thinking", "reading", "music"],
-  "links": ["map", "work", "essay-ai-process", "note-recovery-path", "album-spaces", "about"],
+  "links": ["map", "work", "essay-ai-process", "note-recovery-path", "album-suite-to-be-you-and-me", "about"],
   "title": "Тихие системы, живой сигнал",
   "summary": "Карты, инструменты и тексты о сложных системах, инженерии, работе с ИИ, чтении и музыке.",
   "eyebrow": "Системы · инженерия · письмо · музыка",
@@ -29,8 +29,8 @@
   "selectedTitle": "Выбранные материалы",
   "selected": ["essay-ai-process", "note-recovery-path", "concept-working-artifacts"],
   "listeningLabel": "Из комнаты прослушивания",
-  "listeningTitle": "Spaces — Nils Frahm",
+  "listeningTitle": "Suite to Be You and Me — I Think You're Awesome & Taïga String Quartet",
   "listeningText": "Живая запись как пример структуры, которая остается открытой импровизации.",
   "listeningAction": "Больше музыки",
-  "albumCoverAlt": "Абстрактная обложка альбома Spaces"
+  "albumCoverAlt": "Обложка альбома Suite to Be You and Me"
 }
