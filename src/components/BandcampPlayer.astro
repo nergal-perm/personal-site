@@ -1,0 +1,41 @@
+---
+interface Props {
+  url: string;
+  title: string;
+  className?: string;
+}
+
+const { url, title, className } = Astro.props;
+---
+
+<iframe
+  class:list={['bandcamp-player', className]}
+  src={url}
+  title={title}
+  loading="lazy"
+  sandbox="allow-scripts allow-same-origin allow-popups"
+  seamless
+>
+  <a href={url}>{title}</a>
+</iframe>
+
+<style>
+  .bandcamp-player {
+    display: block;
+    inline-size: auto;
+    block-size: 100%;
+    max-inline-size: 100%;
+    aspect-ratio: 1;
+    border: 0;
+  }
+
+  .bandcamp-player--large {
+    inline-size: min(100%, 330px);
+    block-size: auto;
+  }
+
+  .bandcamp-player--xl {
+    inline-size: min(100%, 430px);
+    block-size: auto;
+  }
+</style>

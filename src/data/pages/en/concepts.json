@@ -1,0 +1,15 @@
+{
+  "id": "concepts",
+  "type": "index",
+  "searchable": false,
+  "topics": ["thinking", "systems", "ai-work"],
+  "links": ["concept-working-artifacts", "map", "notes"],
+  "title": "Concepts",
+  "summary": "The connective layer of the site: compact definitions, explainable relationships, and paths to material where a concept changes something.",
+  "eyebrow": "Definitions · relations · use",
+  "primaryLabel": "Foundational concept",
+  "primary": "concept-working-artifacts",
+  "mapRuleLabel": "Map rule",
+  "mapHint": "The graph remains a secondary view; a normal list is always available.",
+  "mapAction": "View the local map"
+}

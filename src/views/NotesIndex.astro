@@ -1,0 +1,40 @@
+---
+// renderNotesIndex() прототипа: три типа заметок + переходы в библиотеку и концепты.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import ArticleRow from '../components/ArticleRow.astro';
+import { type Language } from '../lib/site';
+import { getEntry, resolveLinks } from '../lib/registry';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const page = (await getEntry(language, 'notes')).data;
+const items = await resolveLinks(language, page.items);
+const library = await getEntry(language, 'library');
+const concepts = await getEntry(language, 'concepts');
+---
+
+<Base language={language} title={page.title} description={page.summary} active="notes" pageKind="notes-index">
+  <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
+  <section class="section shell">
+    <div class="section-heading">
+      <span>02</span>
+      <div>
+        <h2>{page.heading}</h2>
+        <p>{page.groups.join(' · ')}</p>
+      </div>
+    </div>
+    <div class="article-list">
+      {items.map((entry) => (
+        <ArticleRow language={language} entry={entry} />
+      ))}
+    </div>
+  </section>
+  <div class="shell collection-links">
+    <a href={library.url}>{page.libraryAction} →</a>
+    <a href={concepts.url}>{page.conceptsAction} →</a>
+  </div>
+</Base>

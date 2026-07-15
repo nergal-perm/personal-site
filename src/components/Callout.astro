@@ -1,0 +1,15 @@
+---
+// renderCallout() прототипа.
+interface Props {
+  kind: string;
+  label: string;
+  text: string;
+}
+
+const { kind, label, text } = Astro.props;
+---
+
+<aside class={`callout callout--${kind}`} data-component="callout">
+  <strong>{label}</strong>
+  <p>{text}</p>
+</aside>

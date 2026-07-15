@@ -1,0 +1,20 @@
+---
+import { getCollection } from 'astro:content';
+import { getEntry } from '../../../lib/registry';
+import EssayPage from '../../../views/EssayPage.astro';
+
+export async function getStaticPaths() {
+  const blog = await getCollection('blog');
+  const essays = blog.filter((entry) => entry.data.language === 'en' && entry.data.contentType === 'essay');
+  return essays.map((entry) => {
+    const slug = entry.id.replace(/^en\//, '');
+    return {
+      params: { id: slug },
+    };
+  });
+}
+
+const { id } = Astro.params;
+const entry = await getEntry('en', id);
+---
+<EssayPage language="en" entry={entry} />

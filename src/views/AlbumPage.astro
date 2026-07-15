@@ -1,0 +1,74 @@
+---
+// renderAlbum() прототипа: hero с обложкой, контекст, личная связь, «что слушать».
+import Base from '../layouts/Base.astro';
+import MetaStrip from '../components/MetaStrip.astro';
+import AlbumCover from '../components/AlbumCover.astro';
+import BandcampPlayer from '../components/BandcampPlayer.astro';
+import RelatedStrip from '../components/RelatedStrip.astro';
+import { UI, formatDate, type Language } from '../lib/site';
+import { type SiteEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  entry: SiteEntry;
+}
+
+const { language, entry } = Astro.props;
+const labels = UI[language];
+const data = entry.data;
+const label = `${entry.typeLabel} · ${language === 'ru' ? 'Комната прослушивания' : 'Listening room'}`;
+---
+
+<Base language={language} title={entry.title} description={entry.summary} active="music" pageKind="album">
+  <article class="album-page">
+    <header class="album-hero">
+      <div class="shell album-hero__grid">
+        {data.bandcampEmbedUrl ? (
+          <BandcampPlayer
+            url={data.bandcampEmbedUrl}
+            title={`${data.artist} — ${data.work}`}
+            className="bandcamp-player--xl"
+          />
+        ) : (
+          <AlbumCover size="xl" alt={language === 'ru' ? 'Абстрактная обложка альбома Spaces' : 'Abstract cover for Spaces'} />
+        )}
+        <div>
+          <div class="eyebrow">{label}</div>
+          <h1 id="page-title" tabindex="-1">{entry.title}</h1>
+          <p>{entry.summary}</p>
+          <MetaStrip language={language} date={entry.date} readTime={entry.readTime} />
+          <dl>
+            <div><dt>{language === 'ru' ? 'Исполнитель' : 'Artist'}</dt><dd>{data.artist}</dd></div>
+            {data.releaseDate && (
+              <div>
+                <dt>{language === 'ru' ? 'Релиз' : 'Released'}</dt>
+                <dd><time datetime={data.releaseDate.toISOString()}>{formatDate(data.releaseDate, language)}</time></dd>
+              </div>
+            )}
+            <div><dt>{language === 'ru' ? 'Формат' : 'Format'}</dt><dd>{data.format}</dd></div>
+          </dl>
+        </div>
+      </div>
+    </header>
+    <div class="shell album-body">
+      <section><span>01</span><div><h2>{labels.listeningContext}</h2><p>{data.context}</p></div></section>
+      <section><span>02</span><div><h2>{labels.association}</h2><p>{data.association}</p></div></section>
+      <section>
+        <span>03</span>
+        <div>
+          <h2>{labels.listenFor}</h2>
+          <ol>
+            {data.listenFor.map((item: string) => (
+              <li>{item}</li>
+            ))}
+          </ol>
+        </div>
+      </section>
+      <aside class="music-care" data-component="music-note">
+        <strong>{labels.recommendation}</strong>
+        <p>{data.care}</p>
+      </aside>
+    </div>
+    <RelatedStrip language={language} links={entry.links} />
+  </article>
+</Base>

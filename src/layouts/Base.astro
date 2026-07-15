@@ -1,0 +1,198 @@
+---
+// Оболочка сайта: masthead, навигация, footer, поисковый диалог.
+// Перенос index.html + renderNavigation() кликабельного прототипа.
+import '@fontsource/source-serif-4/400.css';
+import '@fontsource/source-serif-4/600.css';
+import '@fontsource/source-serif-4/700.css';
+import '@fontsource/ibm-plex-sans/400.css';
+import '@fontsource/ibm-plex-sans/500.css';
+import '@fontsource/ibm-plex-sans/600.css';
+import '@fontsource/ibm-plex-sans/700.css';
+import '@fontsource/ibm-plex-mono/400.css';
+import '@fontsource/ibm-plex-mono/500.css';
+import '../styles/global.css';
+import { PRIMARY_NAV, UTILITY_NAV, UI, otherLanguage, type Language } from '../lib/site';
+
+interface Props {
+  language: Language;
+  title: string;
+  description: string;
+  active?: string; // id активного раздела навигации
+  pageKind: string;
+}
+
+const { language, title, description, active = '', pageKind } = Astro.props;
+const labels = UI[language];
+const other = otherLanguage(language);
+const pathname = Astro.url.pathname;
+const pairedUrl = `/${other}${pathname.replace(/^\/(ru|en)/, '')}` || `/${other}/`;
+const href = (id: string) => (id === 'home' ? `/${language}/` : `/${language}/${id}/`);
+---
+
+<!doctype html>
+<html lang={language} data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content={description} />
+    <title>{title} — EVGENII TEREKHOV</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="alternate" hreflang={other} href={pairedUrl} />
+    <link rel="alternate" hreflang={language} href={pathname} />
+    <script is:inline>
+      (function () {
+        try {
+          var theme = localStorage.getItem('quiet-theme');
+          if (!theme) {
+            theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+          }
+          document.documentElement.dataset.theme = theme === 'dark' ? 'dark' : 'light';
+        } catch (_error) {}
+      })();
+    </script>
+  </head>
+  <body data-page-kind={pageKind} data-language={language} data-search-index={`/${language}/search-index.json`}>
+    <a class="skip-link" href="#app">{language === 'ru' ? 'Перейти к содержанию' : 'Skip to content'}</a>
+
+    <div id="reading-progress" class="reading-progress" aria-hidden="true"><span></span></div>
+
+    <header id="site-header" class="site-header" data-component="masthead">
+      <div class="shell site-header__inner">
+        <a class="wordmark" data-component="wordmark" href={href('home')} aria-label="EVGENII TEREKHOV — home">
+          EVGENII TEREKHOV<span class="signal-mark" aria-hidden="true"><i></i><i></i><i></i></span>
+        </a>
+
+        <nav id="primary-nav" class="primary-nav" data-component="primary-nav" aria-label={labels.primaryNav}>
+          {PRIMARY_NAV.map((item) => (
+            <a href={href(item.id)} aria-current={active === item.id ? 'page' : undefined}>
+              {item.label[language]}
+            </a>
+          ))}
+        </nav>
+
+        <div class="site-utilities" aria-label={labels.utilityNav}>
+          <nav id="utility-nav" class="utility-nav" aria-label={labels.utilityNav}>
+            {UTILITY_NAV.map((item) =>
+              item.id === 'search' ? (
+                <button
+                  type="button"
+                  data-action="open-search"
+                  data-search-fallback={href('search')}
+                  class={active === item.id ? 'is-active' : undefined}
+                >
+                  {item.label[language]}
+                </button>
+              ) : (
+                <a href={href(item.id)} aria-current={active === item.id ? 'page' : undefined}>
+                  {item.label[language]}
+                </a>
+              ),
+            )}
+          </nav>
+          <a id="language-toggle" class="utility-button language-toggle" href={pairedUrl} data-action="language" aria-label={labels.switchLanguage}>
+            <span data-language="ru" class={language === 'ru' ? 'is-active' : undefined}>RU</span><b aria-hidden="true">/</b><span data-language="en" class={language === 'en' ? 'is-active' : undefined}>EN</span>
+          </a>
+          <button id="theme-toggle" class="utility-button" type="button" data-action="theme" aria-label={language === 'ru' ? 'Переключить светлую и темную тему' : 'Toggle light and dark theme'}>
+            {labels.theme}
+          </button>
+          <button id="menu-toggle" class="menu-toggle" type="button" data-action="menu" aria-expanded="false" aria-controls="mobile-nav">
+            <span>{labels.menu}</span><i aria-hidden="true"></i>
+          </button>
+        </div>
+      </div>
+
+      <nav id="mobile-nav" class="mobile-nav" aria-label={labels.menu} hidden>
+        <div class="mobile-nav__primary">
+          {PRIMARY_NAV.map((item) => (
+            <a href={href(item.id)} aria-current={active === item.id ? 'page' : undefined}>
+              {item.label[language]}
+            </a>
+          ))}
+        </div>
+        <div class="mobile-nav__utilities">
+          {UTILITY_NAV.map((item) =>
+            item.id === 'search' ? (
+              <button type="button" data-action="open-search" data-search-fallback={href('search')}>
+                {item.label[language]}
+              </button>
+            ) : (
+              <a href={href(item.id)} aria-current={active === item.id ? 'page' : undefined}>
+                {item.label[language]}
+              </a>
+            ),
+          )}
+          <a href={href('library')}>{labels.library}</a>
+          <a href={href('concepts')}>{labels.concepts}</a>
+        </div>
+      </nav>
+    </header>
+
+    <main id="app" tabindex="-1">
+      <slot />
+    </main>
+
+    <footer id="site-footer" class="site-footer">
+      <div class="shell site-footer__inner">
+        <div>
+          <strong>Quiet Systems / Living Signal</strong>
+          <p data-footer-note>{labels.footer}</p>
+        </div>
+        <nav id="footer-nav" aria-label={language === 'ru' ? 'Навигация в подвале' : 'Footer navigation'}>
+          <a href={href('map')}>{UTILITY_NAV[0].label[language]}</a>
+          <a href={href('library')}>{labels.library}</a>
+          <a href={href('concepts')}>{labels.concepts}</a>
+          <a href={href('now')}>{UTILITY_NAV[1].label[language]}</a>
+          <a href={href('about')}>{PRIMARY_NAV[4].label[language]}</a>
+        </nav>
+        <p class="site-footer__meta">Astro · 2026<br />Source-aware · statically rendered</p>
+      </div>
+    </footer>
+
+    <dialog id="search-dialog" class="search-dialog" aria-labelledby="search-dialog-title">
+      <form method="dialog" class="search-dialog__frame">
+        <div class="search-dialog__head">
+          <div>
+            <span class="eyebrow">{language === 'ru' ? 'Поиск по публичному слою' : 'Search the public layer'}</span>
+            <h2 id="search-dialog-title">{language === 'ru' ? 'Найти материал' : 'Find a material'}</h2>
+          </div>
+          <button class="dialog-close" type="submit" data-action="close-search" aria-label={labels.close}>
+            {labels.close}
+          </button>
+        </div>
+
+        <div class="search-controls" data-component="search">
+          <label class="search-field">
+            <span>{language === 'ru' ? 'Запрос' : 'Query'}</span>
+            <input
+              type="search"
+              id="global-search-input"
+              autocomplete="off"
+              placeholder={language === 'ru' ? 'Процесс, восстановление, музыка…' : 'Process, recovery, music…'}
+            />
+          </label>
+          <label>
+            <span>{language === 'ru' ? 'Тип' : 'Type'}</span>
+            <select id="global-search-type">
+              <option value="all">{labels.allTypes}</option>
+              <option value="essay">{language === 'ru' ? 'Эссе' : 'Essays'}</option>
+              <option value="case">{language === 'ru' ? 'Кейсы' : 'Cases'}</option>
+              <option value="note">{language === 'ru' ? 'Заметки' : 'Notes'}</option>
+              <option value="album">{language === 'ru' ? 'Музыка' : 'Music'}</option>
+              <option value="book">{language === 'ru' ? 'Книги' : 'Books'}</option>
+              <option value="concept">{language === 'ru' ? 'Концепты' : 'Concepts'}</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="global-search-results" class="search-results" aria-live="polite">
+          <p class="empty-state">{labels.emptySearch}</p>
+        </div>
+      </form>
+    </dialog>
+
+    <script>
+      import '../scripts/site.js';
+    </script>
+  </body>
+</html>

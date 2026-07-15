@@ -1,0 +1,55 @@
+---
+// renderBook() прототипа: библиография, центральная идея, пересказ, граница.
+import Base from '../layouts/Base.astro';
+import BookCover from '../components/BookCover.astro';
+import Callout from '../components/Callout.astro';
+import RelatedStrip from '../components/RelatedStrip.astro';
+import { UI, type Language } from '../lib/site';
+import { type SiteEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  entry: SiteEntry;
+}
+
+const { language, entry } = Astro.props;
+const labels = UI[language];
+const data = entry.data;
+const label = `${entry.typeLabel} · ${language === 'ru' ? 'Системное мышление' : 'Systems thinking'}`;
+const quoteLabel =
+  data.selectedQuote?.kind === 'quote' ? labels.selectedIdeaQuote : labels.selectedIdea;
+---
+
+<Base language={language} title={entry.title} description={entry.summary} active="notes" pageKind="book">
+  <article class="book-page">
+    <header class="shell book-hero">
+      <BookCover size="large" />
+      <div>
+        <div class="eyebrow">{label}</div>
+        <h1 id="page-title" tabindex="-1">{entry.title}</h1>
+        <p>{entry.summary}</p>
+        <dl>
+          <div><dt>{language === 'ru' ? 'Автор' : 'Author'}</dt><dd>{data.authors.join(', ')}</dd></div>
+          <div><dt>{language === 'ru' ? 'Издание' : 'Publication'}</dt><dd>{data.publication}</dd></div>
+          <div><dt>{language === 'ru' ? 'Статус' : 'Status'}</dt><dd>{data.readingStatus}</dd></div>
+        </dl>
+      </div>
+    </header>
+    <div class="shell book-body">
+      <section><span>01</span><div><h2>{labels.centralIdea}</h2><p>{data.centralIdea}</p></div></section>
+      {data.selectedQuote && (
+        <blockquote>
+          <strong>{quoteLabel}</strong>
+          <p>
+            {data.selectedQuote.kind === 'paraphrase'
+              ? `${language === 'ru' ? 'Пересказ' : 'Paraphrase'}: ${data.selectedQuote.text}`
+              : data.selectedQuote.text}
+          </p>
+        </blockquote>
+      )}
+      <section><span>02</span><div><h2>{labels.use}</h2><p>{data.use}</p></div></section>
+      <Callout kind="boundary" label={labels.boundary} text={data.boundary} />
+    </div>
+    <RelatedStrip language={language} links={entry.links} />
+  </article>
+</Base>

@@ -1,0 +1,14 @@
+---
+// Типографская обложка книги из прототипа (renderLibraryIndex/renderBook).
+interface Props {
+  size?: 'default' | 'large';
+}
+
+const { size = 'default' } = Astro.props;
+---
+
+<span class:list={['book-cover', { 'book-cover--large': size === 'large' }]}>
+  <small>DONELLA<br />MEADOWS</small>
+  <strong>THINKING<br />IN SYSTEMS</strong>
+  <i></i>
+</span>

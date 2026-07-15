@@ -1,0 +1,28 @@
+---
+// renderMetadata() прототипа: даты, время чтения, языковой штамп.
+import { UI, formatDate, type Language } from '../lib/site';
+
+interface Props {
+  language: Language;
+  date?: string;
+  updated?: string;
+  readTime?: number;
+}
+
+const { language, date, updated, readTime } = Astro.props;
+const labels = UI[language];
+---
+
+<div class="meta-strip" data-component="revision-metadata">
+  {date && (
+    <span>{labels.published} <time datetime={date}>{formatDate(date, language)}</time></span>
+  )}
+  {date && (updated || readTime) && <i aria-hidden="true"></i>}
+  {updated && (
+    <span>{labels.updated} <time datetime={updated}>{formatDate(updated, language)}</time></span>
+  )}
+  {updated && readTime && <i aria-hidden="true"></i>}
+  {readTime && <span>{readTime} min {labels.read}</span>}
+  <i aria-hidden="true"></i>
+  <span>{language === 'ru' ? labels.source : labels.translation}</span>
+</div>

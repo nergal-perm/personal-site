@@ -1,0 +1,52 @@
+---
+// renderWorkIndex() + renderCaseRow() прототипа.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import MiniSystemDiagram from '../components/MiniSystemDiagram.astro';
+import { UI, type Language } from '../lib/site';
+import { getEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const labels = UI[language];
+const page = (await getEntry(language, 'work')).data;
+const caseEntry = await getEntry(language, 'case-observable-publishing');
+const fields = Object.entries(caseEntry.data.fields as Record<string, string>).slice(0, 6);
+---
+
+<Base language={language} title={page.title} description={page.summary} active="work" pageKind="work-index">
+  <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
+  <section class="shell page-thesis">
+    <span>01 / {language === 'ru' ? 'МЕТОД' : 'METHOD'}</span>
+    <p>{page.thesis}</p>
+  </section>
+  <section class="shell case-list">
+    <article class="case-row" data-component="case-study">
+      <div class="case-row__number">01</div>
+      <div class="case-row__diagram"><MiniSystemDiagram language={language} /></div>
+      <div class="case-row__body">
+        <div class="labels">
+          <span class="label">{caseEntry.typeLabel}</span>
+          {caseEntry.topicLabels.map((label) => (
+            <span data-component="label" class="label label--topic">{label}</span>
+          ))}
+        </div>
+        <h2><a href={caseEntry.url}>{caseEntry.title}</a></h2>
+        <p>{caseEntry.summary}</p>
+        <dl>
+          {fields.map(([key, value]) => (
+            <div><dt>{key}</dt><dd>{value}</dd></div>
+          ))}
+        </dl>
+        <a class="text-link" href={caseEntry.url}>{labels.caseAction} <span aria-hidden="true">→</span></a>
+      </div>
+    </article>
+  </section>
+  <section class="shell status-note" data-component="callout">
+    <strong>{page.currentLabel}</strong>
+    <p>{page.currentText}</p>
+  </section>
+</Base>

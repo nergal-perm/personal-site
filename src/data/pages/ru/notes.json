@@ -1,0 +1,15 @@
+{
+  "id": "notes",
+  "type": "index",
+  "searchable": false,
+  "topics": ["personal-systems", "thinking", "reading"],
+  "links": ["note-recovery-path", "concept-working-artifacts", "library"],
+  "title": "Заметки",
+  "summary": "Более короткие наблюдения, рабочие модели и связующие концепты — с видимым статусом и датой существенного изменения.",
+  "eyebrow": "Наблюдения · модели · связи",
+  "heading": "Три типа заметок",
+  "groups": ["Рабочие заметки", "Концепты", "Книги и модели"],
+  "items": ["note-recovery-path", "concept-working-artifacts", "book-thinking-in-systems"],
+  "libraryAction": "Открыть библиотеку",
+  "conceptsAction": "Открыть концепты"
+}

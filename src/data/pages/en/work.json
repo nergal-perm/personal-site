@@ -1,0 +1,13 @@
+{
+  "id": "work",
+  "type": "index",
+  "searchable": false,
+  "topics": ["systems", "software", "ai-work"],
+  "links": ["case-observable-publishing"],
+  "title": "Work",
+  "summary": "Cases of system change: situation, constraint, intervention, artifact, evidence, and the remaining boundary.",
+  "eyebrow": "Cases of system change",
+  "thesis": "The primary story is not a technology list but what changed in the target system and how that change can be inspected.",
+  "currentLabel": "Collection status",
+  "currentText": "Cases evolve with their systems; a polished artifact does not hide unresolved questions."
+}

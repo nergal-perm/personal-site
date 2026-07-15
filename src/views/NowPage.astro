@@ -1,0 +1,36 @@
+---
+// renderNow() прототипа: текущие фокусы внимания и ссылки на текущие материалы.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import { type Language } from '../lib/site';
+import { getEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const page = (await getEntry(language, 'now')).data;
+
+const essayEntry = await getEntry(language, 'essay-ai-process');
+const albumEntry = await getEntry(language, 'album-spaces');
+---
+
+<Base language={language} title={page.title} description={page.summary} active="now" pageKind="now">
+  <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
+  <div class="shell now-stamp">{page.updatedLabel}</div>
+  <section class="shell now-grid">
+    {page.sections.map((section: any, index: number) => (
+      <article>
+        <span>{String(index + 1).padStart(2, '0')}</span>
+        <div class="eyebrow">{section.label}</div>
+        <h2>{section.title}</h2>
+        <p>{section.text}</p>
+      </article>
+    ))}
+  </section>
+  <div class="shell collection-links">
+    <a href={essayEntry.url}>{page.questionAction} →</a>
+    <a href={albumEntry.url}>{page.listeningAction} →</a>
+  </div>
+</Base>

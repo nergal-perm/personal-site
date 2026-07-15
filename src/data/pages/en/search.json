@@ -1,0 +1,13 @@
+{
+  "id": "search",
+  "type": "search",
+  "searchable": false,
+  "topics": [],
+  "links": ["essays", "work", "notes", "music", "library", "concepts"],
+  "title": "Search",
+  "summary": "Search by title, thesis, topic, or content type. Results remain within the current language tree.",
+  "eyebrow": "Orientation across the public layer",
+  "placeholder": "For example: process, recovery, music…",
+  "empty": "Enter a word or choose a content type.",
+  "noResults": "Nothing found. Try a broader query."
+}

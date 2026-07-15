@@ -1,0 +1,20 @@
+{
+  "id": "essays",
+  "type": "index",
+  "searchable": false,
+  "topics": ["systems", "software", "ai-work", "thinking", "personal-systems"],
+  "links": ["essay-ai-process", "note-recovery-path", "concept-working-artifacts", "album-spaces"],
+  "title": "Essays",
+  "summary": "Writing on software craft, systems, AI-assisted work, and thinking practice. A route first, then the archive.",
+  "eyebrow": "Writing · models · practice",
+  "startTitle": "Start here",
+  "startText": "Three foundational pieces provide language for the rest of the site.",
+  "routes": [
+    { "title": "Systems and software", "text": "Boundaries, architecture, and feedback.", "route": "concept-working-artifacts" },
+    { "title": "AI as a working process", "text": "Handoffs, critique, and evidence.", "route": "essay-ai-process" },
+    { "title": "Systems under load", "text": "Recovery as part of design.", "route": "note-recovery-path" }
+  ],
+  "listPrincipleTitle": "List principle",
+  "listPrincipleText": "A description states the actual idea instead of marketing the click.",
+  "searchPlaceholder": "Search by idea, not only by keyword…"
+}

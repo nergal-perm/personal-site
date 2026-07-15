@@ -1,0 +1,13 @@
+{
+  "id": "library",
+  "type": "index",
+  "searchable": false,
+  "topics": ["reading", "thinking", "systems"],
+  "links": ["book-thinking-in-systems", "concept-working-artifacts", "notes"],
+  "title": "Library",
+  "summary": "Books as working models: bibliography, reading status, one selected idea, and links to essays, cases, and concepts.",
+  "eyebrow": "Reading · models · connections",
+  "quotePolicyLabel": "Quotation policy",
+  "quotePolicy": "Excerpts remain brief and attributed; this site uses a paraphrase rather than a long source passage.",
+  "items": ["book-thinking-in-systems"]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "about",
+  "type": "about",
+  "searchable": true,
+  "topics": ["systems", "software", "ai-work", "thinking", "reading", "music"],
+  "links": ["work", "essays", "music", "now"],
+  "title": "About",
+  "summary": "I design information-working systems and create artifacts that make complexity available for inspection and coordinated action.",
+  "eyebrow": "Systems · writing · culture",
+  "lead": "I am interested in the point where engineering precision meets written thinking, learning, and cultural attention.",
+  "principles": [
+    ["Evidence before ornament", "Source, artifact, and claim boundary come first; visual expression follows."],
+    ["Systems must survive load", "Recovery and degradation are designed alongside normal operation."],
+    ["Culture is not a remainder", "Music, books, and place change the quality of technical attention."]
+  ],
+  "colophon": "This site is built with Astro as a static artifact following the clickable prototype's contract. Its content is illustrative and does not publish the private vault."
+}

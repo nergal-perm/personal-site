@@ -1,0 +1,61 @@
+---
+// renderNote() прототипа: наблюдение, модель, граница, эксперимент.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import Callout from '../components/Callout.astro';
+import RelatedStrip from '../components/RelatedStrip.astro';
+import { UI, type Language } from '../lib/site';
+import { type SiteEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  entry: SiteEntry;
+}
+
+const { language, entry } = Astro.props;
+const labels = UI[language];
+const data = entry.data;
+const label = `${entry.typeLabel} · ${entry.topicLabels[0]}`;
+const blocks: [string, string, string, string][] = [
+  ['01', language === 'ru' ? 'Наблюдение' : 'Observation', data.observation, 'observation'],
+  ['02', language === 'ru' ? 'Модель' : 'Model', data.model, 'model'],
+  ['03', labels.boundary, data.boundary, 'boundary'],
+  ['04', labels.next, data.experiment, 'experiment'],
+];
+---
+
+<Base language={language} title={entry.title} description={entry.summary} active="notes" pageKind="note">
+  <article class="note-page">
+    <PageHeader
+      language={language}
+      eyebrow={label}
+      title={entry.title}
+      lead={entry.summary}
+      date={entry.date}
+      updated={entry.updated}
+      readTime={entry.readTime}
+    />
+    <div class="shell note-grid">
+      <aside>
+        <div class="revision-stamp">WORKING NOTE<br />{entry.updated}</div>
+        <p>
+          {language === 'ru'
+            ? 'Статус описывает зрелость текста, а не его ценность.'
+            : 'Status describes the maturity of the text, not its value.'}
+        </p>
+      </aside>
+      <div>
+        {blocks.map(([number, title, text, kind]) => (
+          <section>
+            <div class="numbered-heading"><span>{number}</span><h2>{title}</h2></div>
+            <p>{text}</p>
+            {(kind === 'boundary' || kind === 'experiment') && (
+              <Callout kind={kind} label={title} text={text} />
+            )}
+          </section>
+        ))}
+      </div>
+    </div>
+    <RelatedStrip language={language} links={entry.links} />
+  </article>
+</Base>

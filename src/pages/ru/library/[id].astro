@@ -1,0 +1,20 @@
+---
+import { getCollection } from 'astro:content';
+import { getEntry } from '../../../lib/registry';
+import BookPage from '../../../views/BookPage.astro';
+
+export async function getStaticPaths() {
+  const bibliography = await getCollection('bibliography');
+  const books = bibliography.filter((entry) => entry.data.language === 'ru');
+  return books.map((entry) => {
+    const slug = entry.id.replace(/^ru\//, '');
+    return {
+      params: { id: slug },
+    };
+  });
+}
+
+const { id } = Astro.params;
+const entry = await getEntry('ru', id);
+---
+<BookPage language="ru" entry={entry} />

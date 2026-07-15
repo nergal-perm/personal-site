@@ -1,0 +1,29 @@
+---
+// renderRelated() прототипа — полоса «Связанные материалы»,
+// карточки достраиваются из реестра по id из frontmatter-поля links.
+import { UI, type Language } from '../lib/site';
+import { resolveLinks } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  links: string[];
+}
+
+const { language, links } = Astro.props;
+const related = await resolveLinks(language, links);
+---
+
+<section class="related-strip">
+  <div class="shell">
+    <div class="eyebrow">{UI[language].related}</div>
+    <div class="related-grid">
+      {related.map((entry) => (
+        <a href={entry.url}>
+          <span>{entry.typeLabel}</span>
+          <strong>{entry.title}</strong>
+          <small>{entry.summary}</small>
+        </a>
+      ))}
+    </div>
+  </div>
+</section>

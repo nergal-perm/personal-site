@@ -1,0 +1,20 @@
+{
+  "id": "essays",
+  "type": "index",
+  "searchable": false,
+  "topics": ["systems", "software", "ai-work", "thinking", "personal-systems"],
+  "links": ["essay-ai-process", "note-recovery-path", "concept-working-artifacts", "album-spaces"],
+  "title": "Эссе",
+  "summary": "Тексты об инженерии, системах, работе с ИИ и практике мышления. Сначала — маршрут, затем — архив.",
+  "eyebrow": "Письмо · модели · практика",
+  "startTitle": "Начать здесь",
+  "startText": "Три базовых текста дают язык для остальных материалов.",
+  "routes": [
+    { "title": "Системы и инженерия", "text": "Границы, архитектура и обратные связи.", "route": "concept-working-artifacts" },
+    { "title": "ИИ как рабочий процесс", "text": "Handoff, критика и свидетельства.", "route": "essay-ai-process" },
+    { "title": "Системы под нагрузкой", "text": "Восстановление как часть дизайна.", "route": "note-recovery-path" }
+  ],
+  "listPrincipleTitle": "Принцип списка",
+  "listPrincipleText": "Описание формулирует реальную идею, а не рекламирует клик.",
+  "searchPlaceholder": "Искать по идее, а не по ключевому слову…"
+}

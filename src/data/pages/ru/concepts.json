@@ -1,0 +1,15 @@
+{
+  "id": "concepts",
+  "type": "index",
+  "searchable": false,
+  "topics": ["thinking", "systems", "ai-work"],
+  "links": ["concept-working-artifacts", "map", "notes"],
+  "title": "Концепты",
+  "summary": "Связующий слой сайта: компактные определения, объяснимые отношения и пути к материалам, где концепт что-то меняет.",
+  "eyebrow": "Определения · отношения · применение",
+  "primaryLabel": "Базовый концепт",
+  "primary": "concept-working-artifacts",
+  "mapRuleLabel": "Правило карты",
+  "mapHint": "Граф остается вторичным представлением; обычный список всегда доступен.",
+  "mapAction": "Смотреть локальную карту"
+}

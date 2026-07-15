@@ -1,0 +1,59 @@
+---
+// renderMusicIndex() прототипа.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import AlbumCover from '../components/AlbumCover.astro';
+import BandcampPlayer from '../components/BandcampPlayer.astro';
+import { UI, formatDate, type Language } from '../lib/site';
+import { getEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const labels = UI[language];
+const page = (await getEntry(language, 'music')).data;
+const album = await getEntry(language, page.featured);
+---
+
+<Base language={language} title={page.title} description={page.summary} active="music" pageKind="music-index">
+  <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
+  <section class="shell page-thesis">
+    <span>01 / {language === 'ru' ? 'ПОДХОД' : 'APPROACH'}</span>
+    <p>{page.intro}</p>
+  </section>
+  <section class="section shell music-feature">
+    {album.data.bandcampEmbedUrl ? (
+      <BandcampPlayer
+        url={album.data.bandcampEmbedUrl}
+        title={`${album.data.artist} — ${album.data.work}`}
+        className="bandcamp-player--large"
+      />
+    ) : (
+      <AlbumCover size="large" alt={language === 'ru' ? 'Абстрактная обложка альбома Spaces' : 'Abstract cover for the album Spaces'} />
+    )}
+    <div>
+      <div class="eyebrow">{album.typeLabel} · {page.eyebrow}</div>
+      <h2><a href={album.url}>{album.title}</a></h2>
+      <p>{album.summary}</p>
+      <dl>
+        <div><dt>{page.formatLabel}</dt><dd>{album.data.format}</dd></div>
+        {album.data.releaseDate && (
+          <div>
+            <dt>{language === 'ru' ? 'Релиз' : 'Released'}</dt>
+            <dd><time datetime={album.data.releaseDate.toISOString()}>{formatDate(album.data.releaseDate, language)}</time></dd>
+          </div>
+        )}
+        {album.date && (
+          <div>
+            <dt>{language === 'ru' ? 'На сайте' : 'On site'}</dt>
+            <dd><time datetime={album.date}>{formatDate(album.date, language)}</time></dd>
+          </div>
+        )}
+        <div><dt>{page.focusLabel}</dt><dd>{page.focusText}</dd></div>
+      </dl>
+      <a class="text-link" href={album.url}>{labels.view} <span aria-hidden="true">→</span></a>
+    </div>
+  </section>
+</Base>

@@ -1,0 +1,13 @@
+{
+  "id": "library",
+  "type": "index",
+  "searchable": false,
+  "topics": ["reading", "thinking", "systems"],
+  "links": ["book-thinking-in-systems", "concept-working-artifacts", "notes"],
+  "title": "Библиотека",
+  "summary": "Книги как рабочие модели: библиография, статус чтения, выбранная мысль и связи с эссе, кейсами и концептами.",
+  "eyebrow": "Чтение · модели · связи",
+  "quotePolicyLabel": "Политика цитат",
+  "quotePolicy": "Цитаты показаны кратко и с атрибуцией; в прототипе используется пересказ, а не большой фрагмент источника.",
+  "items": ["book-thinking-in-systems"]
+}

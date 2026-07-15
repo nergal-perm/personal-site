@@ -1,0 +1,20 @@
+---
+// 404.astro: страница ошибки 404 (Not found).
+import Base from '../layouts/Base.astro';
+---
+
+<Base language="ru" title="Страница не найдена / Page not found" description="404 - Страница не найдена / Page not found" active="" pageKind="not-found">
+  <section class="not-found shell">
+    <span>404 / ROUTE</span>
+    <h1 id="page-title" tabindex="-1">Страница не найдена / Page not found</h1>
+    <p>
+      В прототипе нет такого маршрута. Можно вернуться на главную, открыть карту или воспользоваться поиском.
+      <br /><br />
+      This route does not exist in the prototype. Return home, open the map, or use search.
+    </p>
+    <div class="button-row">
+      <a class="button button--primary" href="/ru/">Вернуться на главную / Return home</a>
+      <a class="button button--secondary" href="/ru/map/">Открыть карту / Open map</a>
+    </div>
+  </section>
+</Base>

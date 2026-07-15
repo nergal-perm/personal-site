@@ -1,0 +1,15 @@
+{
+  "id": "notes",
+  "type": "index",
+  "searchable": false,
+  "topics": ["personal-systems", "thinking", "reading"],
+  "links": ["note-recovery-path", "concept-working-artifacts", "library"],
+  "title": "Notes",
+  "summary": "Shorter observations, working models, and connective concepts—with visible status and substantive update dates.",
+  "eyebrow": "Observations · models · connections",
+  "heading": "Three kinds of notes",
+  "groups": ["Working notes", "Concepts", "Books and models"],
+  "items": ["note-recovery-path", "concept-working-artifacts", "book-thinking-in-systems"],
+  "libraryAction": "Open the library",
+  "conceptsAction": "Open concepts"
+}

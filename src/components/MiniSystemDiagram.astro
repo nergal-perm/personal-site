@@ -1,0 +1,27 @@
+---
+// renderMiniSystemDiagram() прототипа.
+import type { Language } from '../lib/site';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const labels =
+  language === 'ru'
+    ? ['Источник', 'Проверка', 'Артефакт', 'Review', 'Публикация']
+    : ['Source', 'Validate', 'Artifact', 'Review', 'Publish'];
+const ariaLabel =
+  language === 'ru'
+    ? 'Пять стадий наблюдаемого конвейера публикации'
+    : 'Five stages of an observable publishing pipeline';
+---
+
+<div class="mini-system" data-component="system-diagram" role="img" aria-label={ariaLabel}>
+  {labels.map((label, index) => (
+    <span class:list={['mini-system__node', { 'is-signal': index === labels.length - 1 }]}>
+      <b>{String(index + 1).padStart(2, '0')}</b>
+      {label}
+    </span>
+  ))}
+</div>

@@ -1,0 +1,20 @@
+---
+import { getCollection } from 'astro:content';
+import { getEntry } from '../../../lib/registry';
+import NotePage from '../../../views/NotePage.astro';
+
+export async function getStaticPaths() {
+  const blog = await getCollection('blog');
+  const notes = blog.filter((entry) => entry.data.language === 'ru' && entry.data.contentType === 'note');
+  return notes.map((entry) => {
+    const slug = entry.id.replace(/^ru\//, '');
+    return {
+      params: { id: slug },
+    };
+  });
+}
+
+const { id } = Astro.params;
+const entry = await getEntry('ru', id);
+---
+<NotePage language="ru" entry={entry} />

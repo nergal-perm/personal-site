@@ -1,0 +1,15 @@
+{
+  "id": "music",
+  "type": "index",
+  "searchable": false,
+  "topics": ["music"],
+  "links": ["album-spaces", "essays", "about"],
+  "title": "Music",
+  "summary": "Records, context, and attentive listening. A music note carries the same editorial dignity as a technical essay.",
+  "eyebrow": "Listening room",
+  "intro": "Not a ranking or a novelty feed: one recording, its context, a personal connection, and what to listen for.",
+  "featured": "album-spaces",
+  "formatLabel": "Format",
+  "focusLabel": "Focus",
+  "focusText": "Material, room, attention"
+}

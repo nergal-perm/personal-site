@@ -1,0 +1,26 @@
+---
+// renderPageHeader() прототипа.
+import MetaStrip from './MetaStrip.astro';
+import type { Language } from '../lib/site';
+
+interface Props {
+  language: Language;
+  eyebrow: string;
+  title: string;
+  lead: string;
+  date?: string;
+  updated?: string;
+  readTime?: number;
+}
+
+const { language, eyebrow, title, lead, date, updated, readTime } = Astro.props;
+---
+
+<header class="page-header shell">
+  <div class="eyebrow">{eyebrow}</div>
+  <h1 id="page-title" tabindex="-1">{title}</h1>
+  <p class="page-lead">{lead}</p>
+  {(date || updated) && (
+    <MetaStrip language={language} date={date} updated={updated} readTime={readTime} />
+  )}
+</header>
