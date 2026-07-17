@@ -4,8 +4,8 @@ claimKinds:
 - normative
 contentType: claim
 date: '2026-07-10'
-description: Мнение пользователей — один из источников данных о продукте и видении,
-  а не приказ к исполнению
+description: User opinions are one source of data about the product and vision, not
+  instructions to follow.
 id: users-opinion-is-just-data
 language: en
 links: []
@@ -40,17 +40,18 @@ sources:
   locator:
   - kind: text
     value: 'Synopsis: the product manager''s role, Discovery phase'
-statement: Мнение пользователей — один из источников данных о продукте и видении,
-  а не приказ к исполнению
+statement: User opinions are one source of data about the product and vision, not
+  instructions to follow.
 supports:
 - label: A startup exists to learn how to build a sustainable business
   target: startup-goal-is-to-learn
 tags: []
-title: Мнение пользователей — данные, а не приказы
+title: User opinions are one source of data about the product and vision, not instructions
+  to follow
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: users-opinion-is-just-data
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

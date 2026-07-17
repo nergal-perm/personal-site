@@ -8,8 +8,8 @@ claimKinds:
 - causal
 contentType: claim
 date: '2026-07-10'
-description: Если прогресс инноваций — проверенное знание, ему нужен собственный учёт
-  — традиционная отчётность его не регистрирует
+description: If innovation's progress is validated learning, it needs its own accounting;
+  conventional reporting does not record it.
 id: innovations-need-special-accounting
 language: en
 links: []
@@ -45,14 +45,14 @@ sources:
   locator:
   - kind: text
     value: The connection between Balanced Scorecard and KPI
-statement: Если прогресс инноваций — проверенное знание, ему нужен собственный учёт
-  — традиционная отчётность его не регистрирует
+statement: If innovation's progress is validated learning, it needs its own accounting;
+  conventional reporting does not record it.
 tags: []
-title: Инновациям нужен собственный учёт прогресса
+title: Innovation needs its own accounting of progress
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: innovations-need-special-accounting
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

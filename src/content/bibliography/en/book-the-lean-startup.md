@@ -5,9 +5,10 @@ authors:
 - Eric Ries
 cover: https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSpSgdBf6DMMNKigaopdgjYhze-PTCmLGK4TVedJElHdvnZ6i9Q
 date: '2025-02-05'
-description: 'Книга формулирует метод Lean Startup: строить продукт как серию проверяемых
-  гипотез, сокращать цикл build-measure-learn, использовать MVP и validated learning,
-  а решения о продолжении или pivot принимать по данным о поведении реальных пользователей.'
+description: 'The book articulates the Lean Startup method: build a product as a series
+  of testable hypotheses, shorten the build-measure-learn cycle, use an MVP and validated
+  learning, and make decisions about whether to continue or pivot based on data about
+  the behavior of real users.'
 end: '2025-02-04'
 id: book-the-lean-startup
 language: en
@@ -22,9 +23,9 @@ status: 👁️‍🗨️
 tags: []
 title: The Lean Startup
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: book-the-lean-startup
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

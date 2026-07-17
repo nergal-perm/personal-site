@@ -6,7 +6,8 @@ claimKinds:
 - predictive
 contentType: claim
 date: '2026-07-09'
-description: Успех стартапа конструируем - правильному процессу можно научиться
+description: Startup success can be engineered by following the right process, which
+  can be learned and taught.
 id: learnable-startup-process
 language: en
 links: []
@@ -27,17 +28,18 @@ sources:
   locator:
   - kind: text
     value: Introduction, before Origins of the Lean Startup
-statement: Успех стартапа конструируем - правильному процессу можно научиться
+statement: Startup success can be engineered by following the right process, which
+  can be learned and taught.
 supports:
 - label: Following an explicit method improves the chances of success compared with
     acting on a myth
   target: following-method-vs-following-myth
 tags: []
-title: Успех стартапа конструируем - правильному процессу можно научиться
+title: 'Startup success can be engineered: the right process can be learned'
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: learnable-startup-process
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

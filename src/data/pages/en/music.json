@@ -20,14 +20,14 @@
   ],
   "sourceHash": "08535f5cb8a5b8b412a8d196ac28739a183d850976547ed3fcc797fe87d1dd19",
   "sourceLanguage": "ru",
-  "summary": "Записи, контекст и внимательное слушание. Музыкальная заметка здесь имеет то же редакционное достоинство, что техническое эссе.",
-  "title": "Музыка",
+  "summary": "Records, context, and attentive listening. A music note carries the same editorial dignity as a technical essay.",
+  "title": "Music",
   "topics": [
     "music"
   ],
-  "translatedAt": "2026-07-18",
+  "translatedAt": "2026-07-15",
   "translationOf": "music",
-  "translationProfile": "codex-agent-v1",
+  "translationProfile": "codex-manual-v1",
   "translationStatus": "generated",
   "type": "index"
 }

@@ -5,8 +5,8 @@ claimKinds:
 - factual
 contentType: claim
 date: '2026-07-10'
-description: Рыночный провал инстинктивно лечат инженерными средствами — и это умножает
-  провал
+description: Market failure is instinctively treated with engineering remedies, which
+  compounds the failure.
 id: engineering-fix-to-market-failure
 language: en
 links: []
@@ -28,17 +28,18 @@ sources:
   locator:
   - kind: text
     value: Introduction, Origins of the Lean Startup
-statement: Рыночный провал инстинктивно лечат инженерными средствами — и это умножает
-  провал
+statement: Market failure is instinctively treated with engineering remedies, which
+  compounds the failure.
 supports:
 - label: A startup rejects predictable-domain management, not management itself
   target: startup-management-uncertainty
 tags: []
-title: Рыночный провал инстинктивно лечат инженерными средствами
+title: Market failure is instinctively treated with engineering remedies, which compounds
+  the failure
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: engineering-fix-to-market-failure
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

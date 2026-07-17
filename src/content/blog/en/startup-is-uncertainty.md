@@ -4,8 +4,8 @@ claimKinds:
 - definitional
 contentType: claim
 date: '2026-07-10'
-description: Стартап определяется условием — экстремальной неопределённостью, — а
-  не размером, возрастом, отраслью или гаражом
+description: A startup is defined by extreme uncertainty, not by size, age, industry,
+  or a garage.
 id: startup-is-uncertainty
 language: en
 links: []
@@ -41,17 +41,18 @@ sources:
   locator:
   - kind: text
     value: Cynefin domains
-statement: Стартап определяется условием — экстремальной неопределённостью, — а не
-  размером, возрастом, отраслью или гаражом
+statement: A startup is defined by extreme uncertainty, not by size, age, industry,
+  or a garage.
 supports:
 - label: A startup rejects predictable-domain management, not management itself
   target: startup-management-uncertainty
 tags: []
-title: Стартап определяется неопределённостью, а не размером
+title: A startup is defined by extreme uncertainty, not by size, age, industry, or
+  a garage
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: startup-is-uncertainty
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

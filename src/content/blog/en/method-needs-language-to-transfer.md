@@ -5,8 +5,8 @@ claimKinds:
 - factual
 contentType: claim
 date: '2026-07-10'
-description: Работающая практика без общего языка и явных принципов не передаётся
-  — и не улучшается
+description: A working practice cannot be transferred or improved without a shared
+  language and explicit principles.
 id: method-needs-language-to-transfer
 language: en
 links: []
@@ -43,17 +43,18 @@ sources:
   locator:
   - kind: text
     value: '@why-ddd'
-statement: Работающая практика без общего языка и явных принципов не передаётся —
-  и не улучшается
+statement: A working practice cannot be transferred or improved without a shared language
+  and explicit principles.
 supports:
 - label: 'Startup success can be engineered: the right process can be learned'
   target: learnable-startup-process
 tags: []
-title: Работающая практика без общего языка не передаётся
+title: A working practice cannot be transferred or improved without a shared language
+  and explicit principles
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: method-needs-language-to-transfer
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

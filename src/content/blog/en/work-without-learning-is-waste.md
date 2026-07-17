@@ -4,8 +4,7 @@ claimKinds:
 - definitional
 contentType: claim
 date: '2026-07-10'
-description: Растрата в инновационной работе — это работа, не производящая проверенного
-  знания
+description: Waste in innovation work is work that produces no validated learning.
 id: work-without-learning-is-waste
 language: en
 links: []
@@ -40,17 +39,16 @@ sources:
   locator:
   - kind: text
     value: The Toyota Way
-statement: Растрата в инновационной работе — это работа, не производящая проверенного
-  знания
+statement: Waste in innovation work is work that produces no validated learning.
 supports:
 - label: A startup exists to learn how to build a sustainable business
   target: startup-goal-is-to-learn
 tags: []
-title: Растрата в инновациях — работа, не производящая знания
+title: Waste in innovation work is work that produces no validated learning
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-17'
 translationOf: work-without-learning-is-waste
-translationProfile: codex-agent-v1
+translationProfile: codex-manual-v1
 translationStatus: generated
 ---
 

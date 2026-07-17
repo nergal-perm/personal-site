@@ -11,16 +11,16 @@
   "showcase": [],
   "sourceHash": "ac8c6fccda33d40c83cb1540567f9c619402f3d0efe2bb582116a97c1638bcfe",
   "sourceLanguage": "ru",
-  "summary": "Связующий слой сайта: компактные определения, объяснимые отношения и пути к материалам, где концепт что-то меняет.",
-  "title": "Концепты",
+  "summary": "The connective layer of the site: compact definitions, explainable relationships, and paths to material where a concept changes something.",
+  "title": "Concepts",
   "topics": [
     "thinking",
     "systems",
     "ai-work"
   ],
-  "translatedAt": "2026-07-18",
+  "translatedAt": "2026-07-15",
   "translationOf": "concepts",
-  "translationProfile": "codex-agent-v1",
+  "translationProfile": "codex-manual-v1",
   "translationStatus": "generated",
   "type": "index"
 }
