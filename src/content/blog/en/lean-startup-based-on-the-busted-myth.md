@@ -4,9 +4,8 @@ claimKinds:
 - factual
 contentType: claim
 date: '2026-07-10'
-description: The introduction's key evidence for the method, IMVU's success story,
-  belongs to the success-story genre the book dismisses as a product of selection
-  bias.
+description: Ключевое свидетельство метода во введении — история успеха IMVU — принадлежит
+  жанру историй успеха, который книга разоблачает как продукт ошибки выборки
 id: lean-startup-based-on-the-busted-myth
 language: en
 links: []
@@ -35,14 +34,14 @@ sources:
   - kind: text
     value: 'Introduction: debunking before Origins; evidence in Origins of the Lean
       Startup'
-statement: The introduction's key evidence for the method, IMVU's success story, belongs
-  to the success-story genre the book dismisses as a product of selection bias.
+statement: Ключевое свидетельство метода во введении — история успеха IMVU — принадлежит
+  жанру историй успеха, который книга разоблачает как продукт ошибки выборки
 tags: []
-title: Lean Startup's case rests on the genre it debunks
+title: Lean Startup обоснован жанром, который сам разоблачает
 topics: []
-translatedAt: '2026-07-17'
+translatedAt: '2026-07-18'
 translationOf: lean-startup-based-on-the-busted-myth
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 

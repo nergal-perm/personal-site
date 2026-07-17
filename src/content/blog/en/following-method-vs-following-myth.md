@@ -5,8 +5,8 @@ claimKinds:
 - predictive
 contentType: claim
 date: '2026-07-09'
-description: Following an explicit method improves the chances of success compared
-  with acting on a myth.
+description: Следование явному методу повышает шансы на успех по сравнению с действием
+  по мифу
 id: following-method-vs-following-myth
 language: en
 links: []
@@ -40,15 +40,15 @@ sources:
   locator:
   - kind: text
     value: Dreyfus Model of Skill Acquisition
-statement: Following an explicit method improves the chances of success compared with
-  acting on a myth.
+statement: Следование явному методу повышает шансы на успех по сравнению с действием
+  по мифу
 tags: []
-title: Following an explicit method improves the chances of success compared with
-  acting on a myth
+title: Следование явному методу повышает шансы на успех по сравнению с действием по
+  мифу
 topics: []
-translatedAt: '2026-07-17'
+translatedAt: '2026-07-18'
 translationOf: following-method-vs-following-myth
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 

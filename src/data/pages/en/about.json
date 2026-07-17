@@ -26,8 +26,8 @@
   "searchable": true,
   "sourceHash": "af62f2ebbcbd1d9ee31e7aa5fc0760c41d47f17b07c9e34d40ad7d6f6d112db9",
   "sourceLanguage": "ru",
-  "summary": "I design systems for working with information and create artifacts that make complexity available for inspection and coordinated action.",
-  "title": "About",
+  "summary": "Я проектирую системы работы с информацией и создаю артефакты, которые делают сложность доступной для проверки и совместного действия.",
+  "title": "Обо мне",
   "topics": [
     "systems",
     "software",
@@ -36,9 +36,9 @@
     "reading",
     "music"
   ],
-  "translatedAt": "2026-07-15",
+  "translatedAt": "2026-07-18",
   "translationOf": "about",
-  "translationProfile": "codex-manual-v1",
+  "translationProfile": "codex-agent-v1",
   "translationStatus": "generated",
   "type": "about"
 }

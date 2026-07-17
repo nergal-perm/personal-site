@@ -5,8 +5,8 @@ claimKinds:
 - normative
 contentType: claim
 date: '2026-07-10'
-description: A startup exists not merely to make products, earn money, or serve customers,
-  but to learn how to build a sustainable business.
+description: Стартап существует не для того, чтобы делать продукт, зарабатывать или
+  обслуживать клиентов, — а чтобы научиться строить устойчивый бизнес
 id: startup-goal-is-to-learn
 language: en
 links: []
@@ -40,17 +40,17 @@ sources:
   locator:
   - kind: text
     value: The five disciplines
-statement: A startup exists not merely to make products, earn money, or serve customers,
-  but to learn how to build a sustainable business.
+statement: Стартап существует не для того, чтобы делать продукт, зарабатывать или
+  обслуживать клиентов, — а чтобы научиться строить устойчивый бизнес
 supports:
 - label: 'Startup success can be engineered: the right process can be learned'
   target: learnable-startup-process
 tags: []
-title: A startup exists to learn how to build a sustainable business
+title: Стартап существует, чтобы научиться строить устойчивый бизнес
 topics: []
-translatedAt: '2026-07-17'
+translatedAt: '2026-07-18'
 translationOf: startup-goal-is-to-learn
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 

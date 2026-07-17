@@ -6,8 +6,8 @@ claimKinds:
 - normative
 contentType: claim
 date: '2026-07-09'
-description: A startup rejects predictable-domain management, not management itself;
-  uncertainty is managed experimentally.
+description: Стартап отменяет не менеджмент, а менеджмент предсказуемого — неопределённостью
+  управляют экспериментально
 id: startup-management-uncertainty
 language: en
 links: []
@@ -41,20 +41,20 @@ sources:
   locator:
   - kind: text
     value: Cynefin domains
-statement: A startup rejects predictable-domain management, not management itself;
-  uncertainty is managed experimentally.
+statement: Стартап отменяет не менеджмент, а менеджмент предсказуемого — неопределённостью
+  управляют экспериментально
 supports:
 - label: 'Startup success can be engineered: the right process can be learned'
   target: learnable-startup-process
 tags: []
-title: A startup rejects predictable-domain management, not management itself
+title: Стартап отменяет не менеджмент, а менеджмент предсказуемого
 topics:
 - systems
 - thinking
 - reading
-translatedAt: '2026-07-17'
+translatedAt: '2026-07-18'
 translationOf: startup-management-uncertainty
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 

@@ -1,19 +1,21 @@
 ---
 aliases: []
 artist: I Think You're Awesome & Taïga String Quartet
-association: 'I return to it when I want to hear relationships not as a smooth story
-  but as a process of tuning together: several voices leave room for one another and
-  yet do not fall apart.'
+association: 'Возвращаюсь к ней, когда хочется услышать отношения не как гладкую историю,
+  а как совместную настройку: несколько голосов оставляют друг другу пространство
+  и всё же не распадаются.'
 bandcampEmbedUrl: https://bandcamp.com/EmbeddedPlayer/album=845622344/size=large/bgcol=ffffff/linkcol=e99708/minimal=true/transparent=true/
-care: 'This recommendation is an invitation to listen to relationships as a practice
-  of attention: not to erase differences, but to find a rhythm in which they can coexist.'
-context: In this 2020 recording, Danish ensemble I Think You're Awesome meets Berlin-based
-  Taïga String Quartet. Seven parts—from The Distance to The Wedding—form a suite
-  about how relationships hold joy, doubt, anxiety, and care together.
+care: 'Эта рекомендация — приглашение слушать отношения как практику внимания: не
+  стирать различия, а находить ритм, в котором они могут сосуществовать.'
+context: В записи 2020 года датский ансамбль I Think You're Awesome встречается с
+  берлинским Taïga String Quartet. Семь частей — от The Distance до The Wedding —
+  складываются в сюиту о том, как отношения удерживают вместе радость, сомнение, тревогу
+  и заботу.
 cover: https://f4.bcbits.com/img/a2928617789_10.jpg
-description: In this 2020 recording, Danish ensemble I Think You're Awesome meets
-  Berlin-based Taïga String Quartet. Seven parts—from The Distance to The Wedding—form
-  a suite about how relationships hold joy, doubt, anxiety, and care together.
+description: В записи 2020 года датский ансамбль I Think You're Awesome встречается
+  с берлинским Taïga String Quartet. Семь частей — от The Distance до The Wedding
+  — складываются в сюиту о том, как отношения удерживают вместе радость, сомнение,
+  тревогу и заботу.
 format: Seven-part indie-jazz suite
 foundational: false
 genreTags: []
@@ -39,9 +41,33 @@ topics:
 - music
 - thinking
 - systems
-translatedAt: '2026-07-15'
+translatedAt: '2026-07-18'
 translationOf: album-suite-to-be-you-and-me
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 work: Suite to Be You and Me
 ---
+
+# `=this.artist` — `=this.albumTitle`
+
+<img src="https://f4.bcbits.com/img/a2928617789_10.jpg">
+
+`=dateformat(this.releaseDate, "d MMMM yyyy")` · `=this.format`
+
+## Контекст записи
+
+В записи 2020 года датский ансамбль I Think You're Awesome встречается с берлинским Taïga String Quartet. Семь частей — от The Distance до The Wedding — складываются в сюиту о том, как отношения удерживают вместе радость, сомнение, тревогу и заботу.
+
+## Личная связь
+
+Возвращаюсь к ней, когда хочется услышать отношения не как гладкую историю, а как совместную настройку: несколько голосов оставляют друг другу пространство и всё же не распадаются.
+
+## Что слушать
+
+- как струнный квартет не украшает ансамбль, а ведёт с ним разговор;
+- как семь частей собираются в один путь без поспешного разрешения;
+- как радость, сомнение и тревога могут звучать в одной бережной форме.
+
+## Рекомендация как забота
+
+Эта рекомендация — приглашение слушать отношения как практику внимания: не стирать различия, а находить ритм, в котором они могут сосуществовать.

@@ -15,8 +15,8 @@
   ],
   "sourceHash": "2c7cfa9b2bc22a747ffe25cc7ec20f95efece46734941d3e1f3a4d76f49f3904",
   "sourceLanguage": "ru",
-  "summary": "Small argument clusters around one central idea: statement, grounds, relations, and boundaries of use.",
-  "title": "Claims",
+  "summary": "Короткие аргументные кластеры вокруг одной центральной идеи: формулировка, основание, связи и границы применимости.",
+  "title": "Тезисы",
   "topics": [
     "systems",
     "software",
@@ -24,9 +24,9 @@
     "thinking",
     "reading"
   ],
-  "translatedAt": "2026-07-16",
+  "translatedAt": "2026-07-18",
   "translationOf": "claims",
-  "translationProfile": "codex-manual-v1",
+  "translationProfile": "codex-agent-v1",
   "translationStatus": "generated",
   "type": "index"
 }

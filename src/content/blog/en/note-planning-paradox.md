@@ -2,8 +2,8 @@
 aliases: []
 contentType: note
 date: '2023-01-26'
-description: An observation about the self-reinforcing attempt to replace uncertainty
-  with more detailed plans, and the search for a more reliable foundation for work.
+description: Наблюдение о самоусиливающейся попытке заменить неопределенность более
+  подробными планами и о поиске более надежного фундамента работы.
 id: note-planning-paradox
 language: en
 links: []
@@ -11,14 +11,14 @@ publish: true
 sourceHash: acaae47dc1a9a4ba1ac99ed698af3126e3662a01de8bf8e1f1f742ac86c9cb64
 sourceLanguage: ru
 tags: []
-title: Want to Make God Laugh...
+title: Хочешь рассмешить Бога...
 topics:
 - systems
 - thinking
 - personal-systems
-translatedAt: '2026-07-15'
+translatedAt: '2026-07-18'
 translationOf: note-planning-paradox
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 

@@ -2,8 +2,8 @@
 aliases: []
 contentType: essay
 date: '2023-05-18'
-description: An attempt to derive from TDD scale-free principles of the smallest verifiable
-  change, preparing a system for change, and subsequent refactoring.
+description: Попытка вывести из TDD безмасштабные принципы минимального проверяемого
+  изменения, подготовки системы к изменению и последующего рефакторинга.
 id: essay-tdd-fractality
 language: en
 links: []
@@ -11,14 +11,14 @@ publish: true
 sourceHash: d4e3fb69e77136b8871bbaa450cbb7049f54e4c9d2cb522bd609da784a0e3349
 sourceLanguage: ru
 tags: []
-title: The Fractality of TDD
+title: Фрактальность TDD
 topics:
 - software
 - systems
 - thinking
-translatedAt: '2026-07-15'
+translatedAt: '2026-07-18'
 translationOf: essay-tdd-fractality
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 

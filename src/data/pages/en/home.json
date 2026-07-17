@@ -48,8 +48,8 @@
   "searchable": false,
   "sourceHash": "4ee15ee2d694c2884e1f1733449a4ecc90799f9f50f0ac6404aa764358a894a7",
   "sourceLanguage": "ru",
-  "summary": "Maps, tools, and writing about complex systems, engineering, AI-assisted work, reading, and music.",
-  "title": "Quiet systems, living signal",
+  "summary": "Карты, инструменты и тексты о сложных системах, инженерии, работе с ИИ, чтении и музыке.",
+  "title": "Тихие системы, живой сигнал",
   "topics": [
     "systems",
     "software",
@@ -58,9 +58,9 @@
     "reading",
     "music"
   ],
-  "translatedAt": "2026-07-17",
+  "translatedAt": "2026-07-18",
   "translationOf": "home",
-  "translationProfile": "codex-manual-v1",
+  "translationProfile": "codex-agent-v1",
   "translationStatus": "generated",
   "type": "home"
 }
