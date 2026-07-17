@@ -1,14 +1,17 @@
 ---
-// Типографская обложка книги из прототипа (renderLibraryIndex/renderBook).
+// Data-driven typographic cover used by the library index and book page.
 interface Props {
+  title: string;
+  authors: string[];
   size?: 'default' | 'large';
 }
 
-const { size = 'default' } = Astro.props;
+const { title, authors, size = 'default' } = Astro.props;
+const authorLine = authors.join(' · ');
 ---
 
 <span class:list={['book-cover', { 'book-cover--large': size === 'large' }]}>
-  <small>DONELLA<br />MEADOWS</small>
-  <strong>THINKING<br />IN SYSTEMS</strong>
+  <small>{authorLine}</small>
+  <strong>{title}</strong>
   <i></i>
 </span>

@@ -10,9 +10,11 @@ import { type SiteEntry } from '../lib/registry';
 interface Props {
   language: Language;
   entry: SiteEntry;
+  Content: any;
+  hasBody: boolean;
 }
 
-const { language, entry } = Astro.props;
+const { language, entry, Content, hasBody } = Astro.props;
 const labels = UI[language];
 const data = entry.data;
 const label = `${entry.typeLabel} · ${entry.topicLabels[0]}`;
@@ -21,7 +23,7 @@ const blocks: [string, string, string, string][] = [
   ['02', language === 'ru' ? 'Модель' : 'Model', data.model, 'model'],
   ['03', labels.boundary, data.boundary, 'boundary'],
   ['04', labels.next, data.experiment, 'experiment'],
-];
+].filter(([, , text]) => Boolean(text));
 ---
 
 <Base language={language} title={entry.title} description={entry.summary} active="notes" pageKind="note">
@@ -44,16 +46,20 @@ const blocks: [string, string, string, string][] = [
             : 'Status describes the maturity of the text, not its value.'}
         </p>
       </aside>
-      <div>
-        {blocks.map(([number, title, text, kind]) => (
-          <section>
-            <div class="numbered-heading"><span>{number}</span><h2>{title}</h2></div>
-            <p>{text}</p>
-            {(kind === 'boundary' || kind === 'experiment') && (
-              <Callout kind={kind} label={title} text={text} />
-            )}
-          </section>
-        ))}
+      <div class:list={{ 'markdown-content': hasBody }}>
+        {hasBody ? (
+          <Content />
+        ) : (
+          blocks.map(([number, title, text, kind]) => (
+            <section>
+              <div class="numbered-heading"><span>{number}</span><h2>{title}</h2></div>
+              <p>{text}</p>
+              {(kind === 'boundary' || kind === 'experiment') && (
+                <Callout kind={kind} label={title} text={text} />
+              )}
+            </section>
+          ))
+        )}
       </div>
     </div>
     <RelatedStrip language={language} links={entry.links} />

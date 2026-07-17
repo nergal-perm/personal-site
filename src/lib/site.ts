@@ -24,18 +24,17 @@ export const TOPICS: Record<TopicKey, Record<Language, string>> = {
   'personal-systems': { ru: 'Личные системы', en: 'Personal systems' },
 };
 
-export type ContentType = 'essay' | 'case' | 'note' | 'album' | 'book' | 'concept';
+export type ContentType = 'essay' | 'claim' | 'note' | 'album' | 'book' | 'concept';
 
 export const TYPE_LABELS: Record<string, Record<Language, string>> = {
   home: { ru: 'Главная', en: 'Home' },
   index: { ru: 'Коллекция', en: 'Collection' },
   essay: { ru: 'Эссе', en: 'Essay' },
-  case: { ru: 'Кейс', en: 'Case study' },
+  claim: { ru: 'Тезис', en: 'Claim' },
   note: { ru: 'Рабочая заметка', en: 'Working note' },
   album: { ru: 'Альбом', en: 'Album' },
   book: { ru: 'Книга', en: 'Book' },
   concept: { ru: 'Концепт', en: 'Concept' },
-  map: { ru: 'Карта', en: 'Map' },
   now: { ru: 'Сейчас', en: 'Now' },
   about: { ru: 'Обо мне', en: 'About' },
   search: { ru: 'Поиск', en: 'Search' },
@@ -46,7 +45,7 @@ export const TYPE_LABELS: Record<string, Record<Language, string>> = {
 // Раздел сайта (URL-слаг) для каждого типа детальной страницы.
 export const SECTION_BY_TYPE: Record<ContentType, string> = {
   essay: 'essays',
-  case: 'work',
+  claim: 'claims',
   note: 'notes',
   album: 'music',
   book: 'library',
@@ -55,15 +54,13 @@ export const SECTION_BY_TYPE: Record<ContentType, string> = {
 
 export const PRIMARY_NAV = [
   { id: 'essays', label: { ru: 'Эссе', en: 'Essays' } },
-  { id: 'work', label: { ru: 'Работы', en: 'Work' } },
+  { id: 'claims', label: { ru: 'Тезисы', en: 'Claims' } },
   { id: 'notes', label: { ru: 'Заметки', en: 'Notes' } },
   { id: 'music', label: { ru: 'Музыка', en: 'Music' } },
   { id: 'about', label: { ru: 'Обо мне', en: 'About' } },
 ] as const;
 
 export const UTILITY_NAV = [
-  { id: 'map', label: { ru: 'Карта', en: 'Map' } },
-  { id: 'now', label: { ru: 'Сейчас', en: 'Now' } },
   { id: 'search', label: { ru: 'Поиск', en: 'Search' } },
 ] as const;
 
@@ -90,7 +87,7 @@ export const UI = {
     sources: 'Источники и provenance',
     onPage: 'На этой странице',
     view: 'Открыть материал',
-    caseAction: 'Открыть кейс',
+    claimAction: 'Открыть тезис',
     allEssays: 'Все материалы',
     whatChanged: 'Что изменилось',
     limits: 'Где модель может не сработать',
@@ -105,7 +102,6 @@ export const UI = {
     association: 'Личная связь',
     listenFor: 'Что слушать',
     recommendation: 'Рекомендация как забота',
-    centralIdea: 'Центральная идея',
     selectedIdea: 'Мысль из книги · пересказ',
     selectedIdeaQuote: 'Цитата из книги',
     use: 'Как использую',
@@ -115,7 +111,6 @@ export const UI = {
     results: 'Результаты',
     footer: 'Спокойная системная редакция с живым культурным сигналом.',
     filters: 'Фильтры материалов',
-    mapLegend: 'Легенда карты',
     backHome: 'Вернуться на главную',
     library: 'Библиотека',
     concepts: 'Концепты',
@@ -143,7 +138,7 @@ export const UI = {
     sources: 'Sources and provenance',
     onPage: 'On this page',
     view: 'Open material',
-    caseAction: 'Open case',
+    claimAction: 'Open claim',
     allEssays: 'All materials',
     whatChanged: 'What changed',
     limits: 'Where the model may fail',
@@ -158,7 +153,6 @@ export const UI = {
     association: 'Personal association',
     listenFor: 'What to listen for',
     recommendation: 'Recommendation as care',
-    centralIdea: 'Central idea',
     selectedIdea: 'Idea from the book · paraphrase',
     selectedIdeaQuote: 'Quote from the book',
     use: 'How I use it',
@@ -168,7 +162,6 @@ export const UI = {
     results: 'Results',
     footer: 'A quiet systems journal with a living cultural signal.',
     filters: 'Material filters',
-    mapLegend: 'Map legend',
     backHome: 'Return home',
     library: 'Library',
     concepts: 'Concepts',

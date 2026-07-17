@@ -6,14 +6,15 @@ import type { SiteEntry } from '../lib/registry';
 interface Props {
   language: Language;
   entry: SiteEntry;
+  showType?: boolean;
 }
 
-const { language, entry } = Astro.props;
+const { language, entry, showType = true } = Astro.props;
 const labels = UI[language];
 ---
 
-<a class="article-row" data-component="article-row" href={entry.url}>
-  <span class="article-row__type">{entry.typeLabel}</span>
+<a class:list={['article-row', { 'article-row--no-type': !showType }]} data-component="article-row" href={entry.url}>
+  {showType && <span class="article-row__type">{entry.typeLabel}</span>}
   <span class="article-row__main">
     <strong>{entry.title}</strong>
     <span>{entry.summary}</span>

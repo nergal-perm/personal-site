@@ -1,0 +1,17 @@
+---
+import { tryGetEntry } from '../lib/registry';
+import { isRichTextValue, type RichTextValue } from '../lib/rich-text';
+import type { Language } from '../lib/site';
+
+interface Props { language: Language; value: RichTextValue | undefined; }
+const { language, value } = Astro.props;
+const tokens = isRichTextValue(value) ? value : null;
+const resolved = tokens ? await Promise.all(tokens.map(async (token) => ({
+  token,
+  entry: token.kind === 'reference' ? await tryGetEntry(language, token.target) : undefined,
+}))) : [];
+---
+
+{tokens ? resolved.map(({ token, entry }) => token.kind === 'reference' && entry
+  ? <a href={entry.url}>{entry.title}</a>
+  : token.kind === 'text' ? token.value : '') : value}

@@ -139,10 +139,8 @@ const href = (id: string) => (id === 'home' ? `/${language}/` : `/${language}/${
           <p data-footer-note>{labels.footer}</p>
         </div>
         <nav id="footer-nav" aria-label={language === 'ru' ? 'Навигация в подвале' : 'Footer navigation'}>
-          <a href={href('map')}>{UTILITY_NAV[0].label[language]}</a>
           <a href={href('library')}>{labels.library}</a>
           <a href={href('concepts')}>{labels.concepts}</a>
-          <a href={href('now')}>{UTILITY_NAV[1].label[language]}</a>
           <a href={href('about')}>{PRIMARY_NAV[4].label[language]}</a>
         </nav>
         <p class="site-footer__meta">Astro · 2026<br />Source-aware · statically rendered</p>
@@ -176,7 +174,7 @@ const href = (id: string) => (id === 'home' ? `/${language}/` : `/${language}/${
             <select id="global-search-type">
               <option value="all">{labels.allTypes}</option>
               <option value="essay">{language === 'ru' ? 'Эссе' : 'Essays'}</option>
-              <option value="case">{language === 'ru' ? 'Кейсы' : 'Cases'}</option>
+              <option value="claim">{language === 'ru' ? 'Тезисы' : 'Claims'}</option>
               <option value="note">{language === 'ru' ? 'Заметки' : 'Notes'}</option>
               <option value="album">{language === 'ru' ? 'Музыка' : 'Music'}</option>
               <option value="book">{language === 'ru' ? 'Книги' : 'Books'}</option>

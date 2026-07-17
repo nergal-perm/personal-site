@@ -1,15 +1,33 @@
 {
-  "id": "music",
-  "type": "index",
-  "searchable": false,
-  "topics": ["music"],
-  "links": ["album-suite-to-be-you-and-me", "essays", "about"],
-  "title": "Music",
-  "summary": "Records, context, and attentive listening. A music note carries the same editorial dignity as a technical essay.",
   "eyebrow": "Listening room",
+  "id": "music",
   "intro": "Not a ranking or a novelty feed: one recording, its context, a personal connection, and what to listen for.",
-  "featured": "album-suite-to-be-you-and-me",
-  "formatLabel": "Format",
-  "focusLabel": "Focus",
-  "focusText": "Material, room, attention"
+  "language": "en",
+  "links": [
+    "album-suite-to-be-you-and-me",
+    "essays",
+    "about"
+  ],
+  "pinned": [
+    "album-suite-to-be-you-and-me"
+  ],
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "album-suite-to-be-you-and-me",
+      "text": "`Suite to Be You and Me` is a quiet, attentive record whose chamber form opens up space for unhurried listening."
+    }
+  ],
+  "sourceHash": "08535f5cb8a5b8b412a8d196ac28739a183d850976547ed3fcc797fe87d1dd19",
+  "sourceLanguage": "ru",
+  "summary": "Records, context, and attentive listening. A music note carries the same editorial dignity as a technical essay.",
+  "title": "Music",
+  "topics": [
+    "music"
+  ],
+  "translatedAt": "2026-07-15",
+  "translationOf": "music",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "index"
 }

@@ -1,5 +1,5 @@
 ---
-import { getCollection } from 'astro:content';
+import { getCollection, render, type CollectionEntry } from 'astro:content';
 import { getEntry } from '../../../lib/registry';
 import NotePage from '../../../views/NotePage.astro';
 
@@ -10,11 +10,19 @@ export async function getStaticPaths() {
     const slug = entry.id.replace(/^ru\//, '');
     return {
       params: { id: slug },
+      props: { contentEntry: entry },
     };
   });
 }
 
+interface Props {
+  contentEntry: CollectionEntry<'blog'>;
+}
+
 const { id } = Astro.params;
+const { contentEntry } = Astro.props;
 const entry = await getEntry('ru', id);
+const { Content } = await render(contentEntry);
+const hasBody = Boolean(contentEntry.body?.trim());
 ---
-<NotePage language="ru" entry={entry} />
+<NotePage language="ru" entry={entry} Content={Content} hasBody={hasBody} />

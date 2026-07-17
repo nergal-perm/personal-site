@@ -3,7 +3,7 @@
   "type": "search",
   "searchable": false,
   "topics": [],
-  "links": ["essays", "work", "notes", "music", "library", "concepts"],
+  "links": ["essays", "claims", "notes", "music", "library", "concepts"],
   "title": "Search",
   "summary": "Search by title, thesis, topic, or content type. Results remain within the current language tree.",
   "eyebrow": "Orientation across the public layer",

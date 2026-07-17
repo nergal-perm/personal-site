@@ -1,36 +1,63 @@
 {
-  "id": "home",
-  "type": "home",
-  "searchable": false,
-  "topics": ["systems", "software", "ai-work", "thinking", "reading", "music"],
-  "links": ["map", "work", "essay-ai-process", "note-recovery-path", "album-suite-to-be-you-and-me", "about"],
-  "title": "Тихие системы, живой сигнал",
-  "summary": "Карты, инструменты и тексты о сложных системах, инженерии, работе с ИИ, чтении и музыке.",
-  "eyebrow": "Системы · инженерия · письмо · музыка",
-  "heroTitle": "Превращаю сложные системы в карты, инструменты и артефакты.",
-  "lead": "Пишу об инженерии ПО, работе с ИИ, личных системах, медленном чтении и музыке — без шума, обещаний трансформации и декоративной сложности.",
-  "heroImageAlt": "Спокойный морской горизонт в мягком утреннем свете, прибрежная трава и скалы",
-  "focusLabel": "Текущий вопрос",
-  "focusTitle": "Как сделать работу с ИИ наблюдаемой и проверяемой?",
-  "focusText": "Исследую handoff, обратные связи и артефакты, которые позволяют разбирать процесс, а не верить впечатлению от результата.",
-  "focusAction": "Текущая работа",
-  "pathsLabel": "Идеи в связях",
-  "pathsTitle": "Три маршрута по сайту",
-  "paths": [
-    { "number": "01", "title": "Системы и инженерия", "text": "Архитектура, семантика, обратные связи и поставка.", "route": "essays" },
-    { "number": "02", "title": "ИИ и рабочая практика", "text": "Агенты, инструменты, review loops и личная инфраструктура.", "route": "essay-ai-process" },
-    { "number": "03", "title": "Мышление, чтение и культура", "text": "Модели, книги, музыка и прожитые эксперименты.", "route": "library" }
+  "current": [
+    {
+      "key": "studying",
+      "label": "Изучаю",
+      "layout": "text",
+      "text": "Как сохранять достаточно следов для хорошего review, не превращая каждую задачу в отчетность.",
+      "title": "Наблюдаемая работа с ИИ"
+    },
+    {
+      "key": "building",
+      "label": "Создаю",
+      "layout": "text",
+      "text": "Меньше внутренней сложности, яснее происхождение материалов, обычные маршруты для читателя.",
+      "title": "Публичная поверхность связанного архива"
+    },
+    {
+      "key": "reading",
+      "label": "Читаю",
+      "layout": "book",
+      "target": "book-the-lean-startup",
+      "text": "Инновационный менеджмент, быстрый цикл Build-Measure-Learn и применение к процессам моей команды.",
+      "title": "The Lean Startup"
+    },
+    {
+      "key": "listening",
+      "label": "Слушаю",
+      "layout": "album",
+      "target": "album-suite-to-be-you-and-me",
+      "text": "Музыка как напоминание о связи, дистанции, нежности и поддержке.",
+      "title": "Suite to Be You and Me"
+    }
   ],
-  "mapAction": "Открыть карту",
-  "featuredLabel": "Избранный кейс",
-  "featuredTitle": "Наблюдаемый конвейер публикации",
-  "featuredText": "Как превратить цепочку между заметкой и публичным артефактом в проверяемую систему с явными границами.",
-  "featuredTraceAlt": "Источник, артефакт и review",
-  "selectedTitle": "Выбранные материалы",
-  "selected": ["essay-ai-process", "note-recovery-path", "concept-working-artifacts"],
-  "listeningLabel": "Из комнаты прослушивания",
-  "listeningTitle": "Suite to Be You and Me — I Think You're Awesome & Taïga String Quartet",
-  "listeningText": "Живая запись как пример структуры, которая остается открытой импровизации.",
-  "listeningAction": "Больше музыки",
-  "albumCoverAlt": "Обложка альбома Suite to Be You and Me"
+  "currentTitle": "Сейчас",
+  "eyebrow": "Системы · инженерия · письмо · музыка",
+  "heroImageAlt": "Спокойный морской горизонт в мягком утреннем свете, прибрежная трава и скалы",
+  "heroTitle": "Превращаю сложные системы в карты, инструменты и артефакты.",
+  "id": "home",
+  "language": "ru",
+  "lead": "Пишу об инженерии ПО, работе с ИИ, личных системах, медленном чтении и музыке — без шума, обещаний трансформации и декоративной сложности.",
+  "links": [
+    "concepts",
+    "essays",
+    "book-the-lean-startup",
+    "album-suite-to-be-you-and-me",
+    "about"
+  ],
+  "searchable": false,
+  "sourceHash": "4ee15ee2d694c2884e1f1733449a4ecc90799f9f50f0ac6404aa764358a894a7",
+  "sourceLanguage": "ru",
+  "summary": "Карты, инструменты и тексты о сложных системах, инженерии, работе с ИИ, чтении и музыке.",
+  "title": "Тихие системы, живой сигнал",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "reading",
+    "music"
+  ],
+  "translationStatus": "source",
+  "type": "home"
 }

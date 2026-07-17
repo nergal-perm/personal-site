@@ -13,10 +13,11 @@ import {
   type Language,
   type TopicKey,
 } from './site';
+import { plainText } from './rich-text';
 
 export interface SiteEntry {
   id: string; // слаг без языкового префикса: essay-ai-process, now, essays…
-  type: string; // essay | case | note | album | book | concept | home | index | map | now | about | search
+  type: string; // essay | claim | note | album | book | concept | home | index | now | about | search
   url: string;
   language: Language;
   title: string;
@@ -32,6 +33,21 @@ export interface SiteEntry {
   searchable: boolean;
   links: string[];
   data: Record<string, any>;
+}
+
+export const CLAIM_RELATION_FIELDS = [
+  'supports',
+  'opposes',
+  'assumes',
+  'refines',
+  'contradicts',
+] as const;
+
+export type ClaimRelationField = (typeof CLAIM_RELATION_FIELDS)[number];
+
+export interface ClaimBacklink {
+  relation: ClaimRelationField;
+  entry: SiteEntry;
 }
 
 const pageModules = import.meta.glob('../data/pages/*/*.json', { eager: true }) as Record<
@@ -63,8 +79,8 @@ function fromContent(
     type,
     url: entryUrl(language, type, slug),
     language,
-    title: data.title,
-    summary: data.description,
+    title: plainText(data.title),
+    summary: plainText(data.description),
     topics: (data.topics ?? []) as TopicKey[],
     topicLabels: topicLabels((data.topics ?? []) as TopicKey[], language),
     typeLabel: TYPE_LABELS[type][language],
@@ -86,8 +102,8 @@ function fromPage(language: Language, data: Record<string, any>): SiteEntry {
     type,
     url: pageUrl(language, data.id),
     language,
-    title: data.title,
-    summary: data.summary,
+    title: plainText(data.title),
+    summary: plainText(data.summary),
     topics: (data.topics ?? []) as TopicKey[],
     topicLabels: topicLabels((data.topics ?? []) as TopicKey[], language),
     typeLabel: TYPE_LABELS[type]?.[language] ?? TYPE_LABELS.index[language],
@@ -159,6 +175,82 @@ export async function getEntry(language: Language, id: string): Promise<SiteEntr
   return entry;
 }
 
+export async function tryGetEntry(
+  language: Language,
+  id: string | undefined | null,
+): Promise<SiteEntry | undefined> {
+  if (!id) return undefined;
+  const registry = await getRegistry(language);
+  return registry.get(id);
+}
+
+export async function getEntriesByType(
+  language: Language,
+  type: string,
+): Promise<SiteEntry[]> {
+  const registry = await getRegistry(language);
+  return [...registry.values()].filter((entry) => entry.type === type);
+}
+
+export async function getClaimBacklinks(
+  language: Language,
+  targetId: string,
+): Promise<ClaimBacklink[]> {
+  const claims = await getEntriesByType(language, 'claim');
+  const backlinks: ClaimBacklink[] = [];
+
+  for (const entry of claims) {
+    for (const relation of CLAIM_RELATION_FIELDS) {
+      const references = entry.data[relation];
+      if (
+        Array.isArray(references)
+        && references.some((reference) => reference?.target === targetId)
+      ) {
+        backlinks.push({ relation, entry });
+      }
+    }
+  }
+
+  return backlinks.sort((left, right) =>
+    CLAIM_RELATION_FIELDS.indexOf(left.relation) - CLAIM_RELATION_FIELDS.indexOf(right.relation)
+    || String(right.entry.date ?? '').localeCompare(String(left.entry.date ?? ''))
+    || left.entry.title.localeCompare(right.entry.title, language)
+    || left.entry.id.localeCompare(right.entry.id),
+  );
+}
+
+export async function getCollectionEntries(
+  language: Language, type: ContentType, pinned: string[] = [], omitted: string[] = [],
+): Promise<SiteEntry[]> {
+  const registry = await getRegistry(language);
+  const omittedIds = new Set(omitted);
+  const seenPins = new Set<string>();
+  const pins: SiteEntry[] = [];
+  for (const id of pinned) {
+    if (seenPins.has(id)) {
+      throw new Error(`Collection pin "${id}" is duplicated`);
+    }
+    seenPins.add(id);
+    const entry = registry.get(id);
+    if (!entry) {
+      throw new Error(`Collection pin "${id}" is unknown for locale "${language}"`);
+    }
+    if (entry.type !== type) {
+      throw new Error(`Collection pin "${id}" must be type "${type}", found "${entry.type}"`);
+    }
+    if (!omittedIds.has(entry.id)) pins.push(entry);
+  }
+  const pinnedIds = new Set(pins.map((entry) => entry.id));
+  const remainder = [...registry.values()]
+    .filter((entry) => entry.type === type && !pinnedIds.has(entry.id) && !omittedIds.has(entry.id))
+    .sort((left, right) =>
+      String(right.date ?? '').localeCompare(String(left.date ?? '')) ||
+      left.title.localeCompare(right.title, language) ||
+      left.id.localeCompare(right.id),
+    );
+  return [...pins, ...remainder];
+}
+
 export async function resolveLinks(language: Language, ids: string[]): Promise<SiteEntry[]> {
   const registry = await getRegistry(language);
   return ids.map((id) => {
@@ -196,7 +288,42 @@ export interface SearchRow {
   readTime: number | null;
   foundational: boolean;
   dateLabel: string;
+  cover: string;
+  mediaCoverLabel: string;
+  mediaCreator: string;
+  mediaDetail: string;
   text: string;
+}
+
+function mediaFields(entry: SiteEntry): Pick<SearchRow, 'cover' | 'mediaCoverLabel' | 'mediaCreator' | 'mediaDetail'> {
+  const cover = typeof entry.data.cover === 'string' ? entry.data.cover : '';
+
+  if (entry.type === 'book') {
+    const authors = Array.isArray(entry.data.authors) ? entry.data.authors.join(' · ') : '';
+    return {
+      cover,
+      mediaCoverLabel: authors,
+      mediaCreator: authors,
+      mediaDetail: entry.data.publication ?? entry.data.readingStatus ?? entry.date ?? '',
+    };
+  }
+
+  if (entry.type === 'album') {
+    const released = formatDate(isoDate(entry.data.releaseDate), entry.language);
+    return {
+      cover,
+      mediaCoverLabel: entry.data.work ?? entry.title,
+      mediaCreator: entry.data.artist ?? '',
+      mediaDetail: [released, entry.data.format].filter(Boolean).join(' · '),
+    };
+  }
+
+  return {
+    cover,
+    mediaCoverLabel: '',
+    mediaCreator: '',
+    mediaDetail: '',
+  };
 }
 
 export function toSearchRow(entry: SiteEntry): SearchRow {
@@ -214,6 +341,7 @@ export function toSearchRow(entry: SiteEntry): SearchRow {
     readTime: entry.readTime ?? null,
     foundational: entry.foundational,
     dateLabel: entry.date ? formatDate(entry.date, entry.language) : '',
+    ...mediaFields(entry),
     text: normalizeText(
       `${JSON.stringify(entry.data)} ${entry.topicLabels.join(' ')} ${entry.type}`,
     ),

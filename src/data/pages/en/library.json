@@ -1,13 +1,32 @@
 {
-  "id": "library",
-  "type": "index",
-  "searchable": false,
-  "topics": ["reading", "thinking", "systems"],
-  "links": ["book-thinking-in-systems", "concept-working-artifacts", "notes"],
-  "title": "Library",
-  "summary": "Books as working models: bibliography, reading status, one selected idea, and links to essays, cases, and concepts.",
   "eyebrow": "Reading · models · connections",
-  "quotePolicyLabel": "Quotation policy",
-  "quotePolicy": "Excerpts remain brief and attributed; this site uses a paraphrase rather than a long source passage.",
-  "items": ["book-thinking-in-systems"]
+  "id": "library",
+  "language": "en",
+  "links": [
+    "notes"
+  ],
+  "pinned": [
+    "book-the-lean-startup"
+  ],
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "book-the-lean-startup",
+      "text": "A practical place to begin: it turns uncertainty into testable hypotheses, short cycles, and observable results."
+    }
+  ],
+  "sourceHash": "d876d893fbec8276037893d265a51e2594f83a19c1fc04324ccbfe7e14d188d0",
+  "sourceLanguage": "ru",
+  "summary": "Books as working models: bibliography, reading status, one selected idea, and links to essays, cases, and concepts.",
+  "title": "Library",
+  "topics": [
+    "reading",
+    "thinking",
+    "systems"
+  ],
+  "translatedAt": "2026-07-15",
+  "translationOf": "library",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "index"
 }

@@ -1,0 +1,132 @@
+---
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import RelatedStrip from '../components/RelatedStrip.astro';
+import RichText from '../components/RichText.astro';
+import { type Language } from '../lib/site';
+import {
+  CLAIM_RELATION_FIELDS,
+  getClaimBacklinks,
+  tryGetEntry,
+  type SiteEntry,
+} from '../lib/registry';
+
+interface Props {
+  language: Language;
+  entry: SiteEntry;
+  Content: any;
+  hasBody: boolean;
+}
+
+const { language, entry, Content, hasBody } = Astro.props;
+const data = entry.data;
+const label = `${entry.typeLabel} · ${entry.topicLabels[0] ?? ''}`;
+const relationRows = [
+  [language === 'ru' ? 'Поддерживает' : 'Supports', data.supports],
+  [language === 'ru' ? 'Противостоит' : 'Opposes', data.opposes],
+  [language === 'ru' ? 'Предполагает' : 'Assumes', data.assumes],
+  [language === 'ru' ? 'Уточняет' : 'Refines', data.refines],
+  [language === 'ru' ? 'Противоречит' : 'Contradicts', data.contradicts],
+].filter(([, values]) => Array.isArray(values) && values.length > 0);
+const inverseRelationLabels = {
+  supports: language === 'ru' ? 'Поддерживается' : 'Supported by',
+  opposes: language === 'ru' ? 'Оспаривается' : 'Opposed by',
+  assumes: language === 'ru' ? 'Предполагается' : 'Assumed by',
+  refines: language === 'ru' ? 'Уточняется' : 'Refined by',
+  contradicts: language === 'ru' ? 'Опровергается' : 'Contradicted by',
+};
+const sources = Array.isArray(data.sources) ? data.sources : [];
+const resolvedOutgoingRelationRows = await Promise.all(relationRows.map(async ([label, values]) => ({
+  label,
+  values: await Promise.all(values.map(async (value: any) => ({
+    value,
+    entry: await tryGetEntry(language, value.target),
+  }))),
+})));
+const backlinks = await getClaimBacklinks(language, entry.id);
+const resolvedIncomingRelationRows = CLAIM_RELATION_FIELDS.map((relation) => {
+  const values = backlinks
+    .filter((backlink) => backlink.relation === relation)
+    .map(({ entry: source }) => ({ value: { label: source.title }, entry: source }));
+  return { label: inverseRelationLabels[relation], values };
+}).filter(({ values }) => values.length > 0);
+const resolvedRelationRows = [
+  ...resolvedOutgoingRelationRows,
+  ...resolvedIncomingRelationRows,
+];
+const resolvedSources = await Promise.all(sources.map(async (source: any) => ({
+  source,
+  entry: await tryGetEntry(language, source.link?.target),
+})));
+const revisionStampLines = [
+  data.claimKinds?.join(' · '),
+  entry.updated || entry.date,
+].filter(Boolean);
+---
+
+<Base language={language} title={entry.title} description={entry.summary} active="claims" pageKind="claim">
+  <article class="claim-page">
+    <PageHeader
+      language={language}
+      eyebrow={label}
+      title={entry.title}
+      lead={data.statement ?? entry.summary}
+      date={entry.date}
+      updated={entry.updated}
+      readTime={entry.readTime}
+    />
+    <div class="shell post-layout">
+      <aside class="post-rail post-rail--left">
+        {resolvedRelationRows.map(({ label, values }) => (
+          <div class="post-rail__on-page">
+            <strong>{label}</strong>
+            <ol>
+              {values.map(({ value, entry }, index) => (
+              <li>
+                {entry ? (
+                  <a href={entry.url}><span>{String(index + 1).padStart(2, '0')}</span>{value.label}</a>
+                ) : (
+                  <span class="post-rail__item"><span>{String(index + 1).padStart(2, '0')}</span>{value.label}</span>
+                )}
+              </li>
+              ))}
+            </ol>
+          </div>
+        ))}
+      </aside>
+      <div class:list={['post-body', { 'markdown-content': hasBody }]}>
+        {hasBody ? <Content /> : <p>{entry.summary}</p>}
+      </div>
+      <aside class="post-rail post-rail--right">
+        <div class="revision-stamp">{revisionStampLines.map((line, index) => (
+          <>{index > 0 && <br />}{line}</>
+        ))}</div>
+        {sources.length > 0 && <div class="post-rail__on-page">
+          <strong>{language === 'ru' ? 'Источники' : 'Sources'}</strong>
+          <ol>
+            {resolvedSources.map(({ source, entry }, index) => (
+              <li>
+                <div class="post-rail__source">
+                  {source.link && entry ? (
+                    <a class="post-rail__source-title" href={entry.url}><span>{String(index + 1).padStart(2, '0')}</span>{source.link.label}</a>
+                  ) : source.link ? (
+                    <span class="post-rail__source-title post-rail__item"><span>{String(index + 1).padStart(2, '0')}</span>{source.link.label}</span>
+                  ) : null}
+                  {(source.locator || source.confidence) && (
+                    <div class="post-rail__source-meta">
+                      {source.locator && <RichText language={language} value={source.locator} />}
+                      {source.locator && source.confidence && ' · '}
+                      {source.confidence}
+                    </div>
+                  )}
+                  {source.evidence && <p><RichText language={language} value={source.evidence} /></p>}
+                </div>
+              </li>
+            ))}
+          </ol>
+        </div>}
+      </aside>
+    </div>
+    <RelatedStrip language={language} links={entry.links} />
+  </article>
+</Base>

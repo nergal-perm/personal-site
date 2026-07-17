@@ -1,13 +1,29 @@
 {
-  "id": "library",
-  "type": "index",
-  "searchable": false,
-  "topics": ["reading", "thinking", "systems"],
-  "links": ["book-thinking-in-systems", "concept-working-artifacts", "notes"],
-  "title": "Библиотека",
-  "summary": "Книги как рабочие модели: библиография, статус чтения, выбранная мысль и связи с эссе, кейсами и концептами.",
   "eyebrow": "Чтение · модели · связи",
-  "quotePolicyLabel": "Политика цитат",
-  "quotePolicy": "Цитаты показаны кратко и с атрибуцией; в прототипе используется пересказ, а не большой фрагмент источника.",
-  "items": ["book-thinking-in-systems"]
+  "id": "library",
+  "language": "ru",
+  "links": [
+    "notes"
+  ],
+  "pinned": [
+    "book-the-lean-startup"
+  ],
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "book-the-lean-startup",
+      "text": "Книга, с которой удобно начать: она превращает неопределённость в проверяемые гипотезы, короткие циклы и наблюдаемые результаты."
+    }
+  ],
+  "sourceHash": "d876d893fbec8276037893d265a51e2594f83a19c1fc04324ccbfe7e14d188d0",
+  "sourceLanguage": "ru",
+  "summary": "Книги как рабочие модели: библиография, статус чтения, выбранная мысль и связи с эссе, кейсами и концептами.",
+  "title": "Библиотека",
+  "topics": [
+    "reading",
+    "thinking",
+    "systems"
+  ],
+  "translationStatus": "source",
+  "type": "index"
 }

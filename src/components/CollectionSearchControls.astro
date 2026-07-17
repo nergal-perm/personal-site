@@ -1,0 +1,48 @@
+---
+import { plainText, type RichTextValue } from '../lib/rich-text';
+import { TOPICS, UI, type ContentType, type Language } from '../lib/site';
+
+interface Props {
+  language: Language;
+  collectionType: ContentType;
+  placeholder: RichTextValue;
+  resultsId: string;
+}
+
+const { language, collectionType, placeholder, resultsId } = Astro.props;
+const labels = UI[language];
+const filterPrefix = resultsId;
+---
+
+<div
+  class="search-controls index-controls"
+  data-component="collection-search"
+  data-collection-type={collectionType}
+  data-results-id={resultsId}
+  aria-label={labels.filters}
+>
+  <label class="search-field">
+    <span>{labels.search}</span>
+    <input
+      type="search"
+      data-filter={`${filterPrefix}-query`}
+      placeholder={plainText(placeholder)}
+    />
+  </label>
+  <label>
+    <span>{language === 'ru' ? 'Тема' : 'Topic'}</span>
+    <select data-filter={`${filterPrefix}-topic`}>
+      <option value="all">{labels.allTopics}</option>
+      {Object.entries(TOPICS).map(([id, label]) => (
+        <option value={id}>{label[language]}</option>
+      ))}
+    </select>
+  </label>
+  <label>
+    <span>{language === 'ru' ? 'Порядок' : 'Order'}</span>
+    <select data-filter={`${filterPrefix}-sort`}>
+      <option value="latest">{labels.latest}</option>
+      <option value="foundational">{labels.foundational}</option>
+    </select>
+  </label>
+</div>

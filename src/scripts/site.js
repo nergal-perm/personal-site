@@ -89,6 +89,70 @@ function renderArticleRowHtml(row, language) {
   `;
 }
 
+function renderCollectionArticleRowHtml(row, language) {
+  const readLabel = UI_LABELS[language].read;
+  const readTimeHtml = row.readTime ? `<small>${row.readTime} min ${readLabel}</small>` : '';
+  const dateLabel = row.dateLabel || '';
+  return `
+    <a class="article-row article-row--no-type" data-component="article-row" href="${row.url}">
+      <span class="article-row__main">
+        <strong>${escapeHtml(row.title)}</strong>
+        <span>${escapeHtml(row.summary)}</span>
+      </span>
+      <span class="article-row__topic">${escapeHtml(row.topicLabels[0] || '')}</span>
+      <span class="article-row__date">${dateLabel}${readTimeHtml}</span>
+    </a>
+  `;
+}
+
+function renderMediaCoverHtml(row) {
+  if (row.cover && row.type === 'book') {
+    return `<img class="book-cover book-cover--image" src="${escapeHtml(row.cover)}" alt="Cover of ${escapeHtml(row.title)}" loading="lazy" decoding="async">`;
+  }
+
+  if (row.type === 'book') {
+    return `
+      <span class="book-cover">
+        <small>${escapeHtml(row.mediaCoverLabel)}</small>
+        <strong>${escapeHtml(row.title)}</strong>
+        <i></i>
+      </span>
+    `;
+  }
+
+  if (row.cover) {
+    return `<img class="album-cover album-cover--suite album-cover--image" src="${escapeHtml(row.cover)}" alt="${escapeHtml(row.mediaCoverLabel || row.title)}" loading="lazy" decoding="async">`;
+  }
+
+  return `
+    <div class="album-cover album-cover--suite" role="img" aria-label="${escapeHtml(row.title)}">
+      <span>SUITE</span><i></i>
+    </div>
+  `;
+}
+
+function renderMediaArticleRowHtml(row) {
+  return `
+    <a class="article-row article-row--media" data-component="article-row" href="${row.url}">
+      <span class="article-row__cover">${renderMediaCoverHtml(row)}</span>
+      <span class="article-row__main">
+        <strong>${escapeHtml(row.title)}</strong>
+        <span>${escapeHtml(row.summary)}</span>
+      </span>
+      <span class="article-row__meta">
+        <b>${escapeHtml(row.mediaCreator || row.typeLabel)}</b>
+        <small>${escapeHtml(row.mediaDetail || row.dateLabel || '')}</small>
+      </span>
+    </a>
+  `;
+}
+
+function renderCollectionRowHtml(row, language) {
+  return row.type === 'book' || row.type === 'album'
+    ? renderMediaArticleRowHtml(row)
+    : renderCollectionArticleRowHtml(row, language);
+}
+
 function initTheme() {
   const themeToggle = document.getElementById('theme-toggle') || document.querySelector('[data-action="theme"]');
   if (!themeToggle) return;
@@ -239,36 +303,37 @@ function initSearchDialog() {
   globalSearchType?.addEventListener('change', handleSearch);
 }
 
-function initEssaysIndexFilters() {
-  const queryInput = document.querySelector('[data-filter="essay-query"]');
-  const topicSelect = document.querySelector('[data-filter="essay-topic"]');
-  const typeSelect = document.querySelector('[data-filter="essay-type"]');
-  const sortSelect = document.querySelector('[data-filter="essay-sort"]');
-  const resultsContainer = document.getElementById('essay-results');
-
-  if (!resultsContainer) return;
-
+function initCollectionIndexFilters() {
   const language = document.body.dataset.language || 'ru';
+  document.querySelectorAll('[data-component="collection-search"]').forEach((container) => {
+    const resultsId = container.dataset.resultsId;
+    const resultsContainer = resultsId ? document.getElementById(resultsId) : null;
+    const collectionType = container.dataset.collectionType;
+    if (!resultsContainer || !collectionType) return;
 
-  async function updateResults() {
-    const query = queryInput ? queryInput.value : '';
-    const topic = topicSelect ? topicSelect.value : 'all';
-    const type = typeSelect ? typeSelect.value : 'all';
-    const sort = sortSelect ? sortSelect.value : 'latest';
+    const queryInput = container.querySelector('[data-filter$="-query"]');
+    const topicSelect = container.querySelector('[data-filter$="-topic"]');
+    const sortSelect = container.querySelector('[data-filter$="-sort"]');
 
-    const index = await ensureSearchIndex(language);
-    const results = searchContent(index, { query, type, topic, sort, language });
+    async function updateResults() {
+      const index = await ensureSearchIndex(language);
+      const results = searchContent(index, {
+        query: queryInput ? queryInput.value : '',
+        type: container.dataset.collectionType,
+        topic: topicSelect ? topicSelect.value : 'all',
+        sort: sortSelect ? sortSelect.value : 'latest',
+        language,
+      });
+      const labels = UI_LABELS[language];
+      resultsContainer.innerHTML = results.length
+        ? results.map((row) => renderCollectionRowHtml(row, language)).join('')
+        : `<p class="empty-state">${labels.noResults}</p>`;
+    }
 
-    const labels = UI_LABELS[language];
-    resultsContainer.innerHTML = results.length
-      ? results.map((row) => renderArticleRowHtml(row, language)).join('')
-      : `<p class="empty-state">${labels.noResults}</p>`;
-  }
-
-  if (queryInput) queryInput.addEventListener('input', updateResults);
-  if (topicSelect) topicSelect.addEventListener('change', updateResults);
-  if (typeSelect) typeSelect.addEventListener('change', updateResults);
-  if (sortSelect) sortSelect.addEventListener('change', updateResults);
+    queryInput?.addEventListener('input', updateResults);
+    topicSelect?.addEventListener('change', updateResults);
+    sortSelect?.addEventListener('change', updateResults);
+  });
 }
 
 function initSearchPage() {
@@ -315,7 +380,7 @@ function initReadingProgress() {
   if (!progressBarSpan) return;
 
   function updateReadingProgress() {
-    const article = document.querySelector('.post-body, .note-grid, .case-sections, .album-body, .book-body, .concept-body');
+    const article = document.querySelector('.post-body, .note-grid, .album-body, .book-body, .concept-body');
     if (!article) {
       progressBarSpan.style.width = '0%';
       return;
@@ -336,7 +401,7 @@ function initAll() {
   initMobileMenu();
   initLanguageToggle();
   initSearchDialog();
-  initEssaysIndexFilters();
+  initCollectionIndexFilters();
   initSearchPage();
   initReadingProgress();
 }

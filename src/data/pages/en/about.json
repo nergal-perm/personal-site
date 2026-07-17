@@ -1,17 +1,44 @@
 {
-  "id": "about",
-  "type": "about",
-  "searchable": true,
-  "topics": ["systems", "software", "ai-work", "thinking", "reading", "music"],
-  "links": ["work", "essays", "music", "now"],
-  "title": "About",
-  "summary": "I design information-working systems and create artifacts that make complexity available for inspection and coordinated action.",
+  "colophon": "This site is built with Astro as a static artifact following the clickable prototype contract. The data is illustrative and does not publish the private vault.",
   "eyebrow": "Systems · writing · culture",
+  "id": "about",
+  "language": "en",
   "lead": "I am interested in the point where engineering precision meets written thinking, learning, and cultural attention.",
-  "principles": [
-    ["Evidence before ornament", "Source, artifact, and claim boundary come first; visual expression follows."],
-    ["Systems must survive load", "Recovery and degradation are designed alongside normal operation."],
-    ["Culture is not a remainder", "Music, books, and place change the quality of technical attention."]
+  "links": [
+    "claims",
+    "essays",
+    "music"
   ],
-  "colophon": "This site is built with Astro as a static artifact following the clickable prototype's contract. Its content is illustrative and does not publish the private vault."
+  "principles": [
+    [
+      "Evidence before ornament",
+      "Source, artifact, and claim boundary come first; visual expression follows."
+    ],
+    [
+      "Systems must survive load",
+      "Recovery and degradation are designed alongside normal operation."
+    ],
+    [
+      "Culture is not a remainder",
+      "Music, books, and place change the quality of technical attention."
+    ]
+  ],
+  "searchable": true,
+  "sourceHash": "af62f2ebbcbd1d9ee31e7aa5fc0760c41d47f17b07c9e34d40ad7d6f6d112db9",
+  "sourceLanguage": "ru",
+  "summary": "I design systems for working with information and create artifacts that make complexity available for inspection and coordinated action.",
+  "title": "About",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "reading",
+    "music"
+  ],
+  "translatedAt": "2026-07-15",
+  "translationOf": "about",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "about"
 }

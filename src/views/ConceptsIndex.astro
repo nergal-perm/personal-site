@@ -2,31 +2,33 @@
 // renderConceptsIndex() прототипа.
 import Base from '../layouts/Base.astro';
 import PageHeader from '../components/PageHeader.astro';
-import { type Language } from '../lib/site';
-import { getEntry } from '../lib/registry';
+import ArticleRow from '../components/ArticleRow.astro';
+import ShowcaseSidebar from '../components/ShowcaseSidebar.astro';
+import CollectionSearchControls from '../components/CollectionSearchControls.astro';
+import { plainText } from '../lib/rich-text';
+import { UI, type Language } from '../lib/site';
+import { getCollectionEntries, getEntry } from '../lib/registry';
 
 interface Props {
   language: Language;
 }
 
 const { language } = Astro.props;
+const labels = UI[language];
 const page = (await getEntry(language, 'concepts')).data;
-const primary = await getEntry(language, page.primary);
-const map = await getEntry(language, 'map');
+const concepts = await getCollectionEntries(language, 'concept', page.pinned ?? []);
+const showcase = Array.isArray(page.showcase) ? page.showcase : [];
 ---
 
-<Base language={language} title={page.title} description={page.summary} active="concepts" pageKind="concepts-index">
+<Base language={language} title={plainText(page.title)} description={plainText(page.summary)} active="concepts" pageKind="concepts-index">
   <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
-  <section class="shell concept-index">
-    <a href={primary.url} class="concept-index__primary">
-      <span>01 / {page.primaryLabel.toUpperCase()}</span>
-      <h2>{primary.title}</h2>
-      <p>{primary.summary}</p>
-    </a>
-    <aside>
-      <strong>{page.mapRuleLabel}</strong>
-      <p>{page.mapHint}</p>
-      <a class="text-link" href={map.url}>{page.mapAction} <span aria-hidden="true">→</span></a>
-    </aside>
-  </section>
+  <div class:list={['shell', 'index-layout', { 'index-layout--single': showcase.length === 0 }]}>
+    <ShowcaseSidebar language={language} title={page.showcaseTitle ?? labels.startHere} items={showcase} />
+    <section class="index-main" aria-label={plainText(page.title)}>
+      <CollectionSearchControls language={language} collectionType="concept" placeholder={page.searchPlaceholder ?? ''} resultsId="concepts-results" />
+      <section id="concepts-results" class="section article-list" aria-live="polite">
+        {concepts.map((entry) => <ArticleRow language={language} entry={entry} showType={false} />)}
+      </section>
+    </section>
+  </div>
 </Base>

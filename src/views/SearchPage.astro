@@ -14,7 +14,7 @@ const { language } = Astro.props;
 const labels = UI[language];
 const page = (await getEntry(language, 'search')).data;
 
-const typeOptions = ['essay', 'case', 'note', 'album', 'book', 'concept', 'now', 'about'];
+const typeOptions = ['essay', 'claim', 'note', 'album', 'book', 'concept', 'now', 'about'];
 ---
 
 <Base language={language} title={page.title} description={page.summary} active="search" pageKind="search">

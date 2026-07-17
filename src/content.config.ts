@@ -56,14 +56,21 @@ function withLanguageInvariant<T extends z.ZodRawShape>(shape: T) {
   return z.object(shape).refine(...languageInvariant);
 }
 
-// ---- blog: эссе, кейсы, рабочие заметки — три тела, discriminated union ----
+// ---- blog: эссе, тезисы, рабочие заметки — три тела, discriminated union ----
 const blogShared = { ...publicBaseFields, ...translationFields, ...editorialFields };
+
+const richTextToken = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('text'), value: z.string() }),
+  z.object({ kind: z.literal('reference'), target: z.string() }),
+]);
+
+const richTextValue = z.union([z.string(), z.array(richTextToken)]);
 
 const blogEssay = z.object({
   ...blogShared,
   contentType: z.literal('essay'),
-  abstract: z.string(),
-  why: z.string(),
+  abstract: z.string().optional(),
+  why: z.string().optional(),
   sections: z.array(
     z.object({
       id: z.string(),
@@ -80,32 +87,56 @@ const blogEssay = z.object({
         })
         .optional(),
     }),
-  ),
-  closing: z.object({ changed: z.string(), limits: z.string(), next: z.string() }),
+  ).default([]),
+  closing: z
+    .object({
+      changed: z.string().optional(),
+      limits: z.string().optional(),
+      next: z.string().optional(),
+    })
+    .optional(),
   sources: z.array(z.string()).default([]),
 });
 
-const blogCase = z.object({
+const claimReference = z.object({
+  label: z.string(),
+  target: z.string().optional(),
+});
+
+const claimSource = z.object({
+  link: claimReference.optional(),
+  attestation: z.string().optional(),
+  evidence: richTextValue.optional(),
+  locator: richTextValue.optional(),
+  confidence: z.string().optional(),
+});
+
+const blogClaim = z.object({
   ...blogShared,
-  contentType: z.literal('case'),
-  fields: z.record(z.string()),
-  sections: z.array(z.object({ number: z.string(), title: z.string(), text: z.string() })),
-  unresolved: z.string(),
+  contentType: z.literal('claim'),
+  statement: z.string(),
+  claimKinds: z.array(z.string()).default([]),
+  supports: z.array(claimReference).default([]),
+  opposes: z.array(claimReference).default([]),
+  assumes: z.array(claimReference).default([]),
+  refines: z.array(claimReference).default([]),
+  contradicts: z.array(claimReference).default([]),
+  sources: z.array(claimSource).default([]),
 });
 
 const blogNote = z.object({
   ...blogShared,
   contentType: z.literal('note'),
-  observation: z.string(),
-  model: z.string(),
-  boundary: z.string(),
-  experiment: z.string(),
+  observation: z.string().optional(),
+  model: z.string().optional(),
+  boundary: z.string().optional(),
+  experiment: z.string().optional(),
 });
 
 const blog = defineCollection({
   loader: glob({ pattern: '{ru,en}/**/*.md', base: './src/content/blog' }),
   schema: z
-    .discriminatedUnion('contentType', [blogEssay, blogCase, blogNote])
+    .discriminatedUnion('contentType', [blogEssay, blogClaim, blogNote])
     .refine(...languageInvariant),
 });
 
@@ -122,7 +153,6 @@ const bibliography = defineCollection({
     start: z.coerce.date().optional(),
     end: z.coerce.date().optional(),
     readingStatus: z.string().optional(),
-    centralIdea: z.string(),
     use: z.string().optional(),
     boundary: z.string().optional(),
     selectedQuote: z

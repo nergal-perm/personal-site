@@ -3,7 +3,7 @@
   "type": "search",
   "searchable": false,
   "topics": [],
-  "links": ["essays", "work", "notes", "music", "library", "concepts"],
+  "links": ["essays", "claims", "notes", "music", "library", "concepts"],
   "title": "Поиск",
   "summary": "Ищите по названию, тезису, теме или типу материала. Результаты остаются в текущем языковом дереве.",
   "eyebrow": "Ориентация по публичному слою",

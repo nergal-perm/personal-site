@@ -1,36 +1,66 @@
 {
-  "id": "home",
-  "type": "home",
-  "searchable": false,
-  "topics": ["systems", "software", "ai-work", "thinking", "reading", "music"],
-  "links": ["map", "work", "essay-ai-process", "note-recovery-path", "album-suite-to-be-you-and-me", "about"],
-  "title": "Quiet systems, living signal",
-  "summary": "Maps, tools, and writing about complex systems, software craft, AI-assisted work, reading, and music.",
-  "eyebrow": "Systems · software · writing · music",
-  "heroTitle": "I turn complex systems into maps, tools, and working artifacts.",
-  "lead": "I write about software craft, AI-assisted work, personal systems, slow reading, and music—without hype, transformation promises, or decorative complexity.",
-  "heroImageAlt": "A quiet sea horizon in soft morning light, with coastal grass and cliffs",
-  "focusLabel": "Current question",
-  "focusTitle": "How can AI-assisted work become observable and reviewable?",
-  "focusText": "I study handoffs, feedback loops, and artifacts that let us inspect the process instead of trusting the impression left by an output.",
-  "focusAction": "Current work",
-  "pathsLabel": "Ideas in relation",
-  "pathsTitle": "Three paths through the site",
-  "paths": [
-    { "number": "01", "title": "Systems and software", "text": "Architecture, semantics, feedback, and delivery.", "route": "essays" },
-    { "number": "02", "title": "AI and working practice", "text": "Agents, tools, review loops, and personal infrastructure.", "route": "essay-ai-process" },
-    { "number": "03", "title": "Thinking, reading, and culture", "text": "Models, books, music, and lived experiments.", "route": "library" }
+  "current": [
+    {
+      "key": "studying",
+      "label": "Studying",
+      "layout": "text",
+      "text": "How to preserve enough traces for good review without turning every task into reporting.",
+      "title": "Observable AI-assisted work"
+    },
+    {
+      "key": "building",
+      "label": "Building",
+      "layout": "text",
+      "text": "Less internal complexity, clearer provenance for materials, and ordinary routes for readers.",
+      "title": "A public surface for a connected archive"
+    },
+    {
+      "key": "reading",
+      "label": "Reading",
+      "layout": "book",
+      "target": "book-the-lean-startup",
+      "text": "Innovation management, a fast Build-Measure-Learn cycle, and how it applies to my team's processes.",
+      "title": "The Lean Startup"
+    },
+    {
+      "key": "listening",
+      "label": "Listening",
+      "layout": "album",
+      "target": "album-suite-to-be-you-and-me",
+      "text": "Music as a reminder of connection, distance, tenderness, and support.",
+      "title": "Suite to Be You and Me"
+    }
   ],
-  "mapAction": "Open the map",
-  "featuredLabel": "Featured case",
-  "featuredTitle": "Observable publishing pipeline",
-  "featuredText": "Turning the path from a note to a public artifact into a reviewable system with explicit boundaries.",
-  "featuredTraceAlt": "Source, artifact, and review",
-  "selectedTitle": "Selected materials",
-  "selected": ["essay-ai-process", "note-recovery-path", "concept-working-artifacts"],
-  "listeningLabel": "From the listening room",
-  "listeningTitle": "Suite to Be You and Me — I Think You're Awesome & Taïga String Quartet",
-  "listeningText": "A live recording as an example of structure that remains open to improvisation.",
-  "listeningAction": "More music",
-  "albumCoverAlt": "Album cover for Suite to Be You and Me"
+  "currentTitle": "Now",
+  "eyebrow": "Systems · engineering · writing · music",
+  "heroImageAlt": "A calm sea horizon in soft morning light, coastal grass, and rocks",
+  "heroTitle": "I turn complex systems into maps, tools, and artifacts.",
+  "id": "home",
+  "language": "en",
+  "lead": "I write about software engineering, AI-assisted work, personal systems, slow reading, and music—without hype, promises of transformation, or decorative complexity.",
+  "links": [
+    "concepts",
+    "essays",
+    "book-the-lean-startup",
+    "album-suite-to-be-you-and-me",
+    "about"
+  ],
+  "searchable": false,
+  "sourceHash": "4ee15ee2d694c2884e1f1733449a4ecc90799f9f50f0ac6404aa764358a894a7",
+  "sourceLanguage": "ru",
+  "summary": "Maps, tools, and writing about complex systems, engineering, AI-assisted work, reading, and music.",
+  "title": "Quiet systems, living signal",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "reading",
+    "music"
+  ],
+  "translatedAt": "2026-07-17",
+  "translationOf": "home",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "home"
 }

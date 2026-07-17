@@ -7,8 +7,9 @@
   "scripts": {
     "dev": "astro dev",
     "start": "astro dev",
+    "test:body-first": "node --test tests/body-first-build.test.mjs",
     "check": "node scripts/check-content.mjs",
-    "build": "node scripts/check-content.mjs && astro build",
+    "build": "node scripts/check-content.mjs && astro build --force",
     "preview": "astro preview",
     "astro": "astro"
   },

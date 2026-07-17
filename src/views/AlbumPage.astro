@@ -30,7 +30,7 @@ const label = `${entry.typeLabel} · ${language === 'ru' ? 'Комната пр�
             className="bandcamp-player--xl"
           />
         ) : (
-          <AlbumCover size="xl" alt={language === 'ru' ? 'Обложка альбома Suite to Be You and Me' : 'Album cover for Suite to Be You and Me'} />
+          <AlbumCover size="xl" alt={`${entry.data.work} — ${entry.data.artist}`} />
         )}
         <div>
           <div class="eyebrow">{label}</div>

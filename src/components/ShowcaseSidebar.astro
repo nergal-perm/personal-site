@@ -1,0 +1,36 @@
+---
+import RichText from '../components/RichText.astro';
+import { tryGetEntry, type SiteEntry } from '../lib/registry';
+import type { RichTextValue } from '../lib/rich-text';
+import type { Language } from '../lib/site';
+
+type ShowcaseItem = { target: string; text: RichTextValue };
+
+interface Props {
+  language: Language;
+  title: RichTextValue;
+  items: ShowcaseItem[];
+}
+
+const { language, title, items } = Astro.props;
+const resolved = await Promise.all(items.map(async (item) => {
+  const entry = await tryGetEntry(language, item.target);
+  return entry ? { item, entry } : undefined;
+}));
+const validItems = resolved.filter((item): item is { item: ShowcaseItem; entry: SiteEntry } => Boolean(item));
+---
+
+{validItems.length > 0 && <aside class="index-sidebar" data-component="showcase">
+  <div class="eyebrow"><RichText language={language} value={title} /></div>
+  <ol>
+    {validItems.map(({ item, entry }, index) => (
+      <li>
+        <span>{String(index + 1).padStart(2, '0')}</span>
+        <a href={entry.url}>
+          <strong>{entry.title}</strong>
+          <small><RichText language={language} value={item.text} /></small>
+        </a>
+      </li>
+    ))}
+  </ol>
+</aside>}

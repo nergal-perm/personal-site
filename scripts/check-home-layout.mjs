@@ -13,7 +13,6 @@ const englishAlbum = await readFile(new URL('../src/content/music/en/album-suite
 assert.match(css, /body\[data-page-kind="home"\] \.home-overview \{[\s\S]*?height: auto;/, 'desktop homepage must allow the reference-led editorial composition to extend beyond one viewport');
 assert.match(css, /\.home-overview__hero-grid::before/, 'hero must include the reference-inspired coordinate grid');
 assert.match(css, /\.home-overview__hero-grid::after/, 'hero must include the reference-inspired topographic detail');
-assert.match(css, /\.home-overview__lower \{[\s\S]*?min-height: clamp\(260px, 24vw, 360px\)/, 'relationship map needs a generous visible band');
 assert.doesNotMatch(css, /body\[data-page-kind="home"\] \.site-header__inner/, 'home must inherit the shared masthead shell geometry');
 assert.doesNotMatch(css, /body\[data-page-kind="home"\] \.primary-nav/, 'home must inherit shared primary navigation spacing');
 assert.doesNotMatch(css, /body\[data-page-kind="home"\] \.site-utilities/, 'home must inherit shared utility navigation spacing');

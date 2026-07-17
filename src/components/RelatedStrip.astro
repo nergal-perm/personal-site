@@ -13,7 +13,7 @@ const { language, links } = Astro.props;
 const related = await resolveLinks(language, links);
 ---
 
-<section class="related-strip">
+{related.length > 0 && <section class="related-strip">
   <div class="shell">
     <div class="eyebrow">{UI[language].related}</div>
     <div class="related-grid">
@@ -26,4 +26,4 @@ const related = await resolveLinks(language, links);
       ))}
     </div>
   </div>
-</section>
+</section>}
