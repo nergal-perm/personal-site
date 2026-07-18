@@ -51,6 +51,13 @@ function parseResponse(stdout, command, exitCode) {
     );
   }
 
+  const isDiagnostic = (diagnostic) =>
+    diagnostic !== null &&
+    typeof diagnostic === "object" &&
+    !Array.isArray(diagnostic) &&
+    typeof diagnostic.field === "string" &&
+    typeof diagnostic.message === "string" &&
+    typeof diagnostic.blocking === "boolean";
   const validObject =
     payload !== null &&
     typeof payload === "object" &&
@@ -59,7 +66,9 @@ function parseResponse(stdout, command, exitCode) {
     payload.command === command &&
     typeof payload.ok === "boolean" &&
     Array.isArray(payload.diagnostics) &&
-    Array.isArray(payload.workspaceHealth);
+    payload.diagnostics.every(isDiagnostic) &&
+    Array.isArray(payload.workspaceHealth) &&
+    payload.workspaceHealth.every(isDiagnostic);
   if (!validObject) {
     throw new BridgeClientError(
       "invalid_json",

@@ -227,6 +227,32 @@ test("malformed or multiple JSON values become a local diagnostic", async () => 
   }
 });
 
+test("malformed diagnostic entries are rejected at the bridge boundary", async () => {
+  const { BridgeClientError } = bridgeExports();
+  for (const overrides of [
+    { diagnostics: [null] },
+    { workspaceHealth: [{ field: "other", message: 42, blocking: true }] },
+  ]) {
+    const fake = fakeSpawnResult({
+      stdout: JSON.stringify(response("prepare", overrides)),
+    });
+    const client = clientWith(fake);
+    await assert.rejects(
+      client.run("prepare", "concepts/Boundary; note.md"),
+      (error) => {
+        assert.ok(error instanceof BridgeClientError);
+        assert.equal(error.code, "invalid_json");
+        assert.deepEqual(error.diagnostic, {
+          field: "bridge",
+          message: "Exporter вернул некорректный JSON-ответ.",
+          blocking: true,
+        });
+        return true;
+      },
+    );
+  }
+});
+
 test("note commands reject absolute, traversal and non-Markdown paths before spawn", async () => {
   const fake = fakeSpawnResult({ stdout: JSON.stringify(response("prepare")) });
   const client = clientWith(fake);
