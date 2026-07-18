@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const Module = require("node:module");
 const path = require("node:path");
 const test = require("node:test");
+const vm = require("node:vm");
 
 let bridgeModule = null;
 try {
@@ -460,6 +461,52 @@ function command(plugin, id) {
   assert.ok(registered, `command ${id} must be registered`);
   return registered;
 }
+
+function loadShippedMainWithHostRequire() {
+  const relativeRequests = [];
+  const mainPath = path.resolve(__dirname, "../main.js");
+  const hostRequire = (request) => {
+    if (request.startsWith(".")) {
+      relativeRequests.push(request);
+      throw new Error(`Host require cannot resolve ${request}`);
+    }
+    const externals = {
+      "node:path": path,
+      "node:child_process": { spawn() {} },
+      electron: { shell: { async openPath() { return ""; } } },
+      obsidian: {
+        Modal: class {},
+        Notice: class {},
+        Plugin: class {},
+        PluginSettingTab: class {},
+        Setting: class {},
+        TFile: class {},
+      },
+    };
+    if (!Object.hasOwn(externals, request)) {
+      throw new Error(`Unexpected host dependency: ${request}`);
+    }
+    return externals[request];
+  };
+  const pluginModule = { exports: {} };
+  vm.runInNewContext(
+    fs.readFileSync(mainPath, "utf8"),
+    {
+      module: pluginModule,
+      exports: pluginModule.exports,
+      require: hostRequire,
+    },
+    { filename: mainPath },
+  );
+  return { pluginModule, relativeRequests };
+}
+
+test("shipped main loads when the Obsidian host rejects plugin-relative require", () => {
+  const loaded = loadShippedMainWithHostRequire();
+
+  assert.equal(typeof loaded.pluginModule.exports, "function");
+  assert.deepEqual(loaded.relativeRequests, []);
+});
 
 test("desktop manifest, four Russian command labels and local defaults are registered", async () => {
   const manifest = JSON.parse(
