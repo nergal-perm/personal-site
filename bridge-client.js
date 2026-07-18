@@ -21,6 +21,11 @@ class BridgeClientError extends Error {
   }
 }
 
+function spawnFailureMessage(uvExecutable) {
+  return "Не удалось запустить exporter через " +
+    `${uvExecutable}. Проверьте путь к uv и каталог exporter-а.`;
+}
+
 function validateNotePath(notePath) {
   const valid =
     typeof notePath === "string" &&
@@ -136,7 +141,7 @@ function createBridgeClient({
           reject(
             new BridgeClientError(
               "spawn_failed",
-              "Не удалось запустить exporter. Проверьте путь к uv и каталог exporter-а.",
+              spawnFailureMessage(uvExecutable),
             ),
           );
           return;
@@ -157,7 +162,7 @@ function createBridgeClient({
           reject(
             new BridgeClientError(
               "spawn_failed",
-              "Не удалось запустить exporter. Проверьте путь к uv и каталог exporter-а.",
+              spawnFailureMessage(uvExecutable),
             ),
           );
         });

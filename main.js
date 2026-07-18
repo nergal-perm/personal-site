@@ -1,4 +1,6 @@
 const path = require("node:path");
+const fs = require("node:fs");
+const os = require("node:os");
 
 // Obsidian evaluates a plugin's main.js through a host-level require, not a
 // module loader rooted at this plugin directory. Keep local dependencies in
@@ -25,6 +27,11 @@ const { createBridgeClient } = (() => {
         blocking: true,
       };
     }
+  }
+
+  function spawnFailureMessage(uvExecutable) {
+    return "Не удалось запустить exporter через " +
+      `${uvExecutable}. Проверьте путь к uv и каталог exporter-а.`;
   }
 
   function validateNotePath(notePath) {
@@ -142,7 +149,7 @@ const { createBridgeClient } = (() => {
             reject(
               new BridgeClientError(
                 "spawn_failed",
-                "Не удалось запустить exporter. Проверьте путь к uv и каталог exporter-а.",
+                spawnFailureMessage(uvExecutable),
               ),
             );
             return;
@@ -163,7 +170,7 @@ const { createBridgeClient } = (() => {
             reject(
               new BridgeClientError(
                 "spawn_failed",
-                "Не удалось запустить exporter. Проверьте путь к uv и каталог exporter-а.",
+                spawnFailureMessage(uvExecutable),
               ),
             );
           });
@@ -225,6 +232,15 @@ const COMMANDS = [
     callback: "refreshPublicationQueue",
   },
 ];
+
+function defaultUvExecutable() {
+  try {
+    const userLocalUv = path.join(os.homedir(), ".local", "bin", "uv");
+    return fs.existsSync(userLocalUv) ? userLocalUv : "uv";
+  } catch (_error) {
+    return "uv";
+  }
+}
 
 function localDiagnostic(message) {
   return { field: "bridge", message, blocking: true };
@@ -320,7 +336,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
     const saved = (await this.loadData()) || {};
     this.settings = {
       exporterRoot: saved.exporterRoot || path.resolve(vaultPath, "../tools/astro-export"),
-      uvExecutable: saved.uvExecutable || "uv",
+      uvExecutable: saved.uvExecutable || defaultUvExecutable(),
     };
     this.vaultPath = vaultPath;
     this.resetBridgeClient();

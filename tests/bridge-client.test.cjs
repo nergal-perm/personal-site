@@ -2,6 +2,7 @@ const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const fs = require("node:fs");
 const Module = require("node:module");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
 const vm = require("node:vm");
@@ -198,6 +199,7 @@ test("a spawn failure becomes a local diagnostic", async () => {
       assert.equal(error.code, "spawn_failed");
       assert.equal(error.diagnostic.field, "bridge");
       assert.match(error.diagnostic.message, /не удалось запустить exporter/i);
+      assert.match(error.diagnostic.message, /\/opt\/homebrew\/bin\/uv/);
       return true;
     },
   );
@@ -269,7 +271,11 @@ test("note commands reject absolute, traversal and non-Markdown paths before spa
   assert.equal(fake.calls.length, 0);
 });
 
-function loadPluginHarness() {
+function loadPluginHarness({
+  savedData = null,
+  existsSync = fs.existsSync,
+  homeDirectory = os.homedir(),
+} = {}) {
   const notices = [];
   const modals = [];
   const openedPaths = [];
@@ -381,7 +387,7 @@ function loadPluginHarness() {
       this.app = app;
       this.commands = [];
       this.settingTabs = [];
-      this.savedData = null;
+      this.savedData = savedData;
     }
 
     async loadData() {
@@ -437,6 +443,8 @@ function loadPluginHarness() {
   Module._load = function(request, parent, isMain) {
     if (request === "obsidian") return fakeObsidian;
     if (request === "electron") return fakeElectron;
+    if (request === "node:fs") return { existsSync };
+    if (request === "node:os") return { homedir: () => homeDirectory };
     return originalLoad.call(this, request, parent, isMain);
   };
   let PluginClass;
@@ -473,6 +481,8 @@ function loadShippedMainWithHostRequire() {
     const externals = {
       "node:path": path,
       "node:child_process": { spawn() {} },
+      "node:fs": fs,
+      "node:os": os,
       electron: { shell: { async openPath() { return ""; } } },
       obsidian: {
         Modal: class {},
@@ -515,7 +525,7 @@ test("desktop manifest, four Russian command labels and local defaults are regis
   assert.equal(manifest.id, "astro-publication-workflow");
   assert.equal(manifest.isDesktopOnly, true);
 
-  const harness = loadPluginHarness();
+  const harness = loadPluginHarness({ existsSync: () => false });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
 
@@ -545,6 +555,34 @@ test("desktop manifest, four Russian command labels and local defaults are regis
     uvExecutable: "uv",
   });
   assert.equal(plugin.settingTabs.length, 1);
+});
+
+test("default uv uses the standard user-local binary without overriding saved settings", async () => {
+  const localUv = "/Users/example/.local/bin/uv";
+  const localHarness = loadPluginHarness({
+    homeDirectory: "/Users/example",
+    existsSync: (candidate) => candidate === localUv,
+  });
+  const localPlugin = new localHarness.PluginClass(localHarness.app);
+  await localPlugin.onload();
+  assert.equal(localPlugin.settings.uvExecutable, localUv);
+
+  const explicitHarness = loadPluginHarness({
+    savedData: { uvExecutable: "/custom/tools/uv" },
+    homeDirectory: "/Users/example",
+    existsSync: () => true,
+  });
+  const explicitPlugin = new explicitHarness.PluginClass(explicitHarness.app);
+  await explicitPlugin.onload();
+  assert.equal(explicitPlugin.settings.uvExecutable, "/custom/tools/uv");
+
+  const fallbackHarness = loadPluginHarness({
+    homeDirectory: "/Users/example",
+    existsSync: () => false,
+  });
+  const fallbackPlugin = new fallbackHarness.PluginClass(fallbackHarness.app);
+  await fallbackPlugin.onload();
+  assert.equal(fallbackPlugin.settings.uvExecutable, "uv");
 });
 
 test("note commands accept only the active Markdown TFile", async () => {
