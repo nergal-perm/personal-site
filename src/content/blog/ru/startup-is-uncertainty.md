@@ -10,7 +10,7 @@ id: startup-is-uncertainty
 language: ru
 links: []
 publish: true
-sourceHash: 9ea9b6e3881605e1016c6d0f795114498f0026f3608791f59231ba8a7f54dada
+sourceHash: df05079bd663b2b0b3518e0d306948e5932b2857ffee1bf382e4c9fd5c07d878
 sourceLanguage: ru
 sources:
 - attestation: explicit
@@ -69,7 +69,7 @@ translationStatus: source
   менеджментах сразу (см. [Стартап отменяет не менеджмент, а менеджмент предсказуемого](/ru/claims/startup-management-uncertainty/)).
 - Тренд: «as the world becomes more uncertain, it gets harder and harder
   to predict the future» — доля стартапной деятельности растёт даже в старых
-  организациях; мост к Организация 3.0 и AI-native повестке.
+  организациях; мост к [Организация 3.0](/ru/concepts/org-3-0/) и AI-native повестке.
 
 Оговорка: во введении этот расширенный охват заявлен, а не доказан —
 единственное свидетельство применимости за пределами софтверных стартапов

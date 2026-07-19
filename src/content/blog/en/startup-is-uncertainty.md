@@ -10,7 +10,7 @@ id: startup-is-uncertainty
 language: en
 links: []
 publish: true
-sourceHash: 9ea9b6e3881605e1016c6d0f795114498f0026f3608791f59231ba8a7f54dada
+sourceHash: df05079bd663b2b0b3518e0d306948e5932b2857ffee1bf382e4c9fd5c07d878
 sourceLanguage: ru
 sources:
 - attestation: explicit
@@ -50,9 +50,9 @@ tags: []
 title: A startup is defined by extreme uncertainty, not by size, age, industry, or
   a garage
 topics: []
-translatedAt: '2026-07-17'
+translatedAt: '2026-07-18'
 translationOf: startup-is-uncertainty
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 

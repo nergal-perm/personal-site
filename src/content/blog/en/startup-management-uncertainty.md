@@ -12,7 +12,7 @@ id: startup-management-uncertainty
 language: en
 links: []
 publish: true
-sourceHash: 5be3937e1053f2290d42823982134ca3b6cdc7a747ff91de1fe4cff2afde9523
+sourceHash: 7c754f581d872b626190fae35e6bedeb7124b058569bb355d6bbd8f16d9f087e
 sourceLanguage: ru
 sources:
 - attestation: explicit
@@ -52,9 +52,9 @@ topics:
 - systems
 - thinking
 - reading
-translatedAt: '2026-07-17'
+translatedAt: '2026-07-18'
 translationOf: startup-management-uncertainty
-translationProfile: codex-manual-v1
+translationProfile: codex-agent-v1
 translationStatus: generated
 ---
 
