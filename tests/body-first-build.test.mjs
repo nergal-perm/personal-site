@@ -72,7 +72,7 @@ const fixtures = [
     language: 'ru',
     contentType: 'concept',
     marker: 'ASTRO_BODY_FIRST_RU_CONCEPT_MARKER_7F4C',
-    heading: 'ASTRO BODY FIRST RU CONCEPT DEFINITION 7F4C',
+    heading: 'Определение',
     title: 'Регрессионный concept с телом Markdown 7F4C',
     description: 'Проверка определения concept из тела Markdown.',
     translationStatus: 'source',
@@ -81,7 +81,7 @@ const fixtures = [
     language: 'en',
     contentType: 'concept',
     marker: 'ASTRO_BODY_FIRST_EN_CONCEPT_MARKER_7F4C',
-    heading: 'ASTRO BODY FIRST EN CONCEPT DEFINITION 7F4C',
+    heading: 'Definition',
     title: 'Markdown body regression concept 7F4C',
     description: 'Checks concept definition rendering from the Markdown body.',
     translationStatus: 'generated',
@@ -239,7 +239,15 @@ test('build renders body-first RU/EN essays, notes, books, and concepts without 
 
       const conceptHtml = pages.get(`${language}-concept`);
       const concept = fixtures.find((fixture) => fixture.language === language && fixture.contentType === 'concept');
-      assert.ok(conceptHtml.includes(concept.description), `${language} concept must retain description as its page lead`);
+      assert.ok(
+        conceptHtml.includes(`<p class="page-lead">${concept.description}</p>`),
+        `${language} concept must retain description as its page lead`,
+      );
+      assert.match(
+        conceptHtml,
+        new RegExp(`<h2 id="[^"]+">${concept.heading}</h2>`),
+        `${language} concept definition heading must render as an H2`,
+      );
       assert.equal((conceptHtml.match(/<h1\b/g) ?? []).length, 1, `${language} concept must have only the page H1`);
       assert.ok(!conceptHtml.includes('class="concept-definition"'), `${language} concept must not render the legacy definition panel`);
     }
