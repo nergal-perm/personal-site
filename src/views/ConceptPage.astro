@@ -10,9 +10,11 @@ import { type SiteEntry } from '../lib/registry';
 interface Props {
   language: Language;
   entry: SiteEntry;
+  Content: any;
+  hasBody: boolean;
 }
 
-const { language, entry } = Astro.props;
+const { language, entry, Content, hasBody } = Astro.props;
 const labels = UI[language];
 const data = entry.data;
 const label = `${entry.typeLabel} · ${language === 'ru' ? 'Практика работы' : 'Working practice'}`;
@@ -29,10 +31,7 @@ const label = `${entry.typeLabel} · ${language === 'ru' ? 'Практика р�
       updated={entry.updated}
     />
     <div class="shell concept-body">
-      <section class="concept-definition">
-        <span>01</span>
-        <div><h2>{labels.definition}</h2><p>{data.definition}</p></div>
-      </section>
+      {hasBody && <div class="concept-markdown markdown-content"><Content /></div>}
       {data.notThis && <Callout kind="boundary" label={labels.notThis} text={data.notThis} />}
       <section>
         <div class="numbered-heading"><span>02</span><h2>{labels.relations}</h2></div>

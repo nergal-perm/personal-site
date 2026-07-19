@@ -2524,8 +2524,7 @@ while
 
 .album-body > section > span,
 .book-body > section > span,
-.principles-list article > span,
-.concept-definition > span {
+.principles-list article > span {
   color: var(--sea-glass);
   font-family: var(--mono);
   font-size: 10px;
@@ -2681,26 +2680,89 @@ while
   gap: 52px;
 }
 
-.concept-definition {
-  display: grid;
-  grid-template-columns: 70px minmax(0, 760px);
-  gap: 30px;
-  padding: 38px 0;
-  border-block: 1px solid var(--text);
+.concept-markdown {
+  max-width: 70ch;
+  font-family: var(--serif);
+  font-size: 19px;
+  line-height: 1.66;
 }
 
-.concept-definition h2 {
-  margin-bottom: 18px;
+.concept-markdown h2 {
+  scroll-margin-top: calc(var(--header-height) + 36px);
+  margin: 2.1em 0 0.7em;
   font-family: var(--serif);
   font-size: 34px;
-  font-weight: 520;
+  font-weight: 540;
+  line-height: 1.15;
 }
 
-.concept-definition p {
-  margin: 0;
+.concept-markdown h3 {
+  scroll-margin-top: calc(var(--header-height) + 36px);
+  margin: 1.8em 0 0.65em;
   font-family: var(--serif);
-  font-size: 23px;
+  font-size: 25px;
+  font-weight: 540;
+  line-height: 1.25;
+}
+
+.concept-markdown > :first-child {
+  margin-top: 0;
+}
+
+.concept-markdown p,
+.concept-markdown ul,
+.concept-markdown ol {
+  margin-block: 0 1.15em;
+}
+
+.concept-markdown ul,
+.concept-markdown ol {
+  padding-left: 1.4em;
+}
+
+.concept-markdown li + li {
+  margin-top: 0.35em;
+}
+
+.concept-markdown blockquote {
+  margin: 1.6em 0;
+  padding: 0.25em 0 0.25em 1.15em;
+  border-left: 3px solid var(--sea-glass);
+  color: var(--muted);
+}
+
+.concept-markdown blockquote > :last-child {
+  margin-bottom: 0;
+}
+
+.concept-markdown :not(pre) > code {
+  padding: 0.12em 0.32em;
+  background: var(--surface-bg);
+  font-family: var(--mono);
+  font-size: 0.82em;
+}
+
+.concept-markdown pre {
+  overflow-x: auto;
+  margin: 1.6em 0;
+  padding: 18px 20px;
+  background: var(--surface-bg);
+  font-family: var(--mono);
+  font-size: 0.78em;
   line-height: 1.55;
+}
+
+.concept-markdown img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 1.8em 0;
+}
+
+.concept-markdown a {
+  color: var(--pine);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.16em;
 }
 
 .relation-list {
@@ -3712,8 +3774,7 @@ while
 
   .album-body > section,
 .book-body > section,
-.principles-list article,
-.concept-definition {
+.principles-list article {
     grid-template-columns: 36px minmax(0, 1fr);
     gap: 14px;
   }

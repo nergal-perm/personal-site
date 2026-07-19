@@ -194,7 +194,6 @@ const concepts = defineCollection({
     ...publicBaseFields,
     ...translationFields,
     ...editorialFields,
-    definition: z.string(),
     notThis: z.string().optional(),
     relations: z.array(z.object({ name: z.string(), relation: z.string() })).default([]),
     examples: z.array(z.string()).default([]),

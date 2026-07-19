@@ -9,6 +9,7 @@ const execFileAsync = promisify(execFile);
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const contentRoot = path.join(projectRoot, 'src/content/blog');
 const bibliographyRoot = path.join(projectRoot, 'src/content/bibliography');
+const conceptsRoot = path.join(projectRoot, 'src/content/concepts');
 const distRoot = path.join(projectRoot, 'dist');
 
 const fixtureSlug = 'body-first-regression-7f4c';
@@ -67,6 +68,24 @@ const fixtures = [
     description: 'Checks rendering for a book synopsis in the Markdown body.',
     translationStatus: 'generated',
   },
+  {
+    language: 'ru',
+    contentType: 'concept',
+    marker: 'ASTRO_BODY_FIRST_RU_CONCEPT_MARKER_7F4C',
+    heading: 'ASTRO BODY FIRST RU CONCEPT DEFINITION 7F4C',
+    title: 'Регрессионный concept с телом Markdown 7F4C',
+    description: 'Проверка определения concept из тела Markdown.',
+    translationStatus: 'source',
+  },
+  {
+    language: 'en',
+    contentType: 'concept',
+    marker: 'ASTRO_BODY_FIRST_EN_CONCEPT_MARKER_7F4C',
+    heading: 'ASTRO BODY FIRST EN CONCEPT DEFINITION 7F4C',
+    title: 'Markdown body regression concept 7F4C',
+    description: 'Checks concept definition rendering from the Markdown body.',
+    translationStatus: 'generated',
+  },
 ];
 
 function fixtureSource(fixture) {
@@ -94,6 +113,31 @@ ${fixture.marker}
 ### ${fixture.heading}
 
 Body-first regression synopsis for ${fixture.language}.
+`;
+  }
+  if (fixture.contentType === 'concept') {
+    return `---
+id: "${fixtureSlug}-${fixture.contentType}"
+title: "${fixture.title}"
+publish: true
+description: "${fixture.description}"
+topics: []
+tags: []
+aliases: []
+links: []
+language: ${fixture.language}
+sourceLanguage: ru
+${translationOf}sourceHash: "body-first-regression-7f4c"
+translationStatus: ${fixture.translationStatus}
+relations: []
+examples: []
+---
+
+${fixture.marker}
+
+## ${fixture.heading}
+
+Body-first regression definition for ${fixture.language}.
 `;
   }
   return `---
@@ -134,16 +178,26 @@ async function runBuild() {
 }
 
 function fixturePath(fixture) {
-  const root = fixture.contentType === 'book' ? bibliographyRoot : contentRoot;
+  const root = fixture.contentType === 'book'
+    ? bibliographyRoot
+    : fixture.contentType === 'concept'
+      ? conceptsRoot
+      : contentRoot;
   return path.join(root, fixture.language, `${fixtureSlug}-${fixture.contentType}.md`);
 }
 
 function outputPath(fixture) {
-  const section = fixture.contentType === 'essay' ? 'essays' : fixture.contentType === 'book' ? 'library' : 'notes';
+  const section = fixture.contentType === 'essay'
+    ? 'essays'
+    : fixture.contentType === 'book'
+      ? 'library'
+      : fixture.contentType === 'concept'
+        ? 'concepts'
+        : 'notes';
   return path.join(distRoot, fixture.language, section, `${fixtureSlug}-${fixture.contentType}`, 'index.html');
 }
 
-test('build renders body-first RU/EN essays, notes, and books without invented semantic sections', { timeout: 120_000 }, async () => {
+test('build renders body-first RU/EN essays, notes, books, and concepts without invented semantic sections', { timeout: 120_000 }, async () => {
   const createdFiles = [];
 
   try {
@@ -182,6 +236,12 @@ test('build renders body-first RU/EN essays, notes, and books without invented s
       assert.ok(headingMatch, `${language} book synopsis heading must render as an H3`);
       assert.ok(bookHtml.includes(`href="#${headingMatch[1]}"`), `${language} book synopsis heading must appear in the left rail`);
       assert.ok(!bookHtml.includes(language === 'ru' ? 'Центральная идея' : 'Central idea'), `${language} book must not render a central idea panel`);
+
+      const conceptHtml = pages.get(`${language}-concept`);
+      const concept = fixtures.find((fixture) => fixture.language === language && fixture.contentType === 'concept');
+      assert.ok(conceptHtml.includes(concept.description), `${language} concept must retain description as its page lead`);
+      assert.equal((conceptHtml.match(/<h1\b/g) ?? []).length, 1, `${language} concept must have only the page H1`);
+      assert.ok(!conceptHtml.includes('class="concept-definition"'), `${language} concept must not render the legacy definition panel`);
     }
   } finally {
     await Promise.all(createdFiles.map((sourcePath) => rm(sourcePath, { force: true })));
