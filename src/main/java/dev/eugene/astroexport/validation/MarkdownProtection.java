@@ -11,6 +11,7 @@ final class MarkdownProtection {
   private static final Pattern RAW_HTML_PRE_OPEN = Pattern.compile("(?im)^ {0,3}<pre(?=[\\t\\r\\n />])");
   private static final Pattern RAW_HTML_PRE_CLOSE = Pattern.compile("(?i)</pre\\s*>");
   private static final Pattern INLINE_CODE = Pattern.compile("(?s)(?<!\\\\)(`+)(?!`).*?\\1(?!`)");
+  private static final Pattern ESCAPED_WIKILINK = Pattern.compile("\\\\!?\\[\\[[^\\]\\n]*\\]\\]");
 
   private MarkdownProtection() { }
 
@@ -44,7 +45,8 @@ final class MarkdownProtection {
 
   private static Range nextRange(String body, int cursor) {
     Range candidate = earliest(fencedRange(body, cursor), patternRange(HTML_COMMENT, body, cursor),
-        rawHtmlPreRange(body, cursor), patternRange(INLINE_CODE, body, cursor));
+        rawHtmlPreRange(body, cursor), patternRange(INLINE_CODE, body, cursor),
+        patternRange(ESCAPED_WIKILINK, body, cursor));
     int obsidianStart = body.indexOf("%%", cursor);
     if (obsidianStart >= 0 && (candidate == null || obsidianStart < candidate.start())) {
       int closing = body.indexOf("%%", obsidianStart + 2);

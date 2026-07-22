@@ -183,6 +183,28 @@ final class PreflightTest {
   }
 
   @Test
+  void ignoresEscapedTransclusionsAndPreservesPublicHeadingFragments() throws Exception {
+    Path escapedVault = Files.createTempDirectory("astro-export-vault");
+    String escaped = "\\![[private/Source]]\n";
+    makeNote(escapedVault, "blog/Active.md", publicNote("active"), escaped);
+    makeNote(escapedVault, "private/Source.md", "id: private");
+
+    var escapedResult = preflight.preflight(escapedVault, "blog/Active.md");
+
+    assertTrue(escapedResult.ready());
+    assertEquals(escaped, escapedResult.entry().orElseThrow().body());
+
+    Path fragmentVault = Files.createTempDirectory("astro-export-vault");
+    makeNote(fragmentVault, "blog/Active.md", publicNote("active"), "Read [[Peer#A section]].");
+    makeNote(fragmentVault, "blog/Peer.md", publicNote("peer"));
+
+    var fragmentResult = preflight.preflight(fragmentVault, "blog/Active.md");
+
+    assertTrue(fragmentResult.ready());
+    assertEquals("Read [Peer](/ru/notes/peer/#a-section).", fragmentResult.entry().orElseThrow().body());
+  }
+
+  @Test
   void resolvesUniqueAliasesAndRejectsAmbiguousDescriptiveTargets() throws Exception {
     Path uniqueVault = Files.createTempDirectory("astro-export-vault");
     makeNote(uniqueVault, "blog/Active.md", publicNote("active"), "Read [[Alternate]].");

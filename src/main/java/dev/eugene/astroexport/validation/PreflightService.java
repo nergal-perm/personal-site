@@ -14,11 +14,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 public final class PreflightService {
   private static final Pattern PUBLISH_TRUE_LINE = Pattern.compile("(?m)^publish:[ \\t]+true[ \\t]*$");
-  private static final Pattern WIKILINK = Pattern.compile("(?<embed>!?)\\[\\[(?<target>[^\\]|#]+)(?:#[^\\]|]*)?(?:\\|(?<label>[^\\]]+))?\\]\\]");
+  private static final Pattern WIKILINK = Pattern.compile("(?<embed>!?)\\[\\[(?<target>[^\\]|#]+)(?<heading>#[^\\]|]*)?(?:\\|(?<label>[^\\]]+))?\\]\\]");
   private static final Pattern SHOWCASE_SECTION = Pattern.compile(
       "(?ms)^##[ \\t]+Витрина[ \\t]*(?:\\r?\\n|\\z)(.*?)(?=^##[ \\t]+[^\\r\\n]*(?:\\r?\\n|\\z)|\\z)");
   private static final Pattern SHOWCASE_ITEM = Pattern.compile(
@@ -138,7 +139,7 @@ public final class PreflightService {
       } else if (matcher.group("embed").equals("!")) {
         matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(matcher.group()));
       } else {
-        matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement("[" + label(matcher, target) + "](" + link.route() + ")"));
+        matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement("[" + label(matcher, target) + "](" + link.route() + headingFragment(matcher.group("heading")) + ")"));
       }
     }
     matcher.appendTail(result);
@@ -284,6 +285,12 @@ public final class PreflightService {
   }
   private static List<String> aliases(Object value) { return strings(value); }
   private static String label(java.util.regex.Matcher matcher, String target) { return matcher.group("label") == null ? target.substring(target.lastIndexOf('/') + 1).strip() : matcher.group("label").strip(); }
+  private static String headingFragment(String heading) {
+    if (heading == null || heading.isBlank()) return "";
+    String value = heading.substring(1).strip().toLowerCase(Locale.ROOT).replaceAll("[^\\w\\s-]", "")
+        .replaceAll("[\\s_-]+", "-").replaceAll("^-+|-+$", "");
+    return value.isEmpty() ? "" : "#" + value;
+  }
   private static List<PublicationDiagnostic> prefixed(String path, List<PublicationDiagnostic> diagnostics) { return diagnostics.stream().map(item -> new PublicationDiagnostic(item.field(), path + ": " + item.message(), item.blocking())).toList(); }
   private static boolean containsTraversal(Path path) { for (Path part : path) if (part.toString().equals("..")) return true; return false; }
   private static Result failure(Error error) { return new Result(null, Optional.empty(), List.of(new PublicationDiagnostic(error.field(), error.message())), List.of()); }
