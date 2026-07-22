@@ -76,7 +76,7 @@ public final class PreflightService {
           List<PublicationDiagnostic> diagnostics = validator.validate(candidate);
           if (diagnostics.isEmpty()) candidates.add(candidate);
           else diagnostics.forEach(item -> exclusions.add(new Exclusion(vaultPath, item.field(), item.message())));
-        } catch (IllegalArgumentException exception) {
+        } catch (RuntimeException exception) {
           exclusions.add(new Exclusion(vaultPath, "frontmatter", "invalid frontmatter: " + exception.getMessage()));
         }
       }
@@ -95,7 +95,7 @@ public final class PreflightService {
   }
 
   private ManifestEntry buildEntry(Note note, List<Note> publicNotes) {
-    Map<String, PublicLink> links = publicIndex(publicNotes);
+    Map<String, LinkResolution> links = publicIndex(publicNotes);
     List<String> topics = strings(note.frontmatter().get("topics"));
     List<String> unsupported = topics.stream().filter(topic -> !TOPICS.contains(topic)).sorted().toList();
     if (!unsupported.isEmpty()) throw new ManifestFailure("topics", "contains unsupported values: " + String.join(", ", unsupported));
@@ -118,12 +118,18 @@ public final class PreflightService {
     return new ManifestEntry(note.vaultPath(), targetPath(note), route(note), metadata, body);
   }
 
-  private static String resolveBody(Note note, Map<String, PublicLink> links) {
+  private static String resolveBody(Note note, Map<String, LinkResolution> links) {
     var matcher = WIKILINK.matcher(note.body());
     StringBuffer result = new StringBuffer();
     while (matcher.find()) {
+      if (MarkdownProtection.contains(note.body(), matcher.start())) {
+        matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(matcher.group()));
+        continue;
+      }
       String target = matcher.group("target").strip();
-      PublicLink link = links.get(target);
+      LinkResolution resolution = links.get(target);
+      if (resolution != null && resolution.ambiguous()) throw new ManifestFailure("link", "public link " + target + " is ambiguous");
+      PublicLink link = resolution == null ? null : resolution.link();
       if (matcher.group("embed").equals("!") && link == null) {
         throw new ManifestFailure("transclusion", "unpublished transclusion " + target);
       }
@@ -139,7 +145,7 @@ public final class PreflightService {
     return result.toString();
   }
 
-  private static List<Map<String, String>> resolveClaimReferences(Object value, Map<String, PublicLink> links) {
+  private static List<Map<String, String>> resolveClaimReferences(Object value, Map<String, LinkResolution> links) {
     List<Map<String, String>> result = new ArrayList<>();
     for (String item : strings(value)) {
       var match = WIKILINK.matcher(item.trim());
@@ -147,7 +153,9 @@ public final class PreflightService {
         String target = match.group("target").strip();
         Map<String, String> reference = new LinkedHashMap<>();
         reference.put("label", label(match, target));
-        PublicLink link = links.get(target);
+        LinkResolution resolution = links.get(target);
+        if (resolution != null && resolution.ambiguous()) throw new ManifestFailure("link", "public link " + target + " is ambiguous");
+        PublicLink link = resolution == null ? null : resolution.link();
         if (link != null) reference.put("target", link.publicId());
         result.add(reference);
       } else result.add(Map.of("label", item));
@@ -155,7 +163,7 @@ public final class PreflightService {
     return List.copyOf(result);
   }
 
-  private static void addEssaysShowcase(Map<String, Object> metadata, String body, Map<String, PublicLink> links) {
+  private static void addEssaysShowcase(Map<String, Object> metadata, String body, Map<String, LinkResolution> links) {
     var section = SHOWCASE_SECTION.matcher(body);
     if (!section.find()) return;
     var items = SHOWCASE_ITEM.matcher(section.group(1));
@@ -163,7 +171,9 @@ public final class PreflightService {
     List<Map<String, Object>> showcase = new ArrayList<>();
     while (items.find()) {
       String target = items.group("target").strip();
-      PublicLink link = links.get(target);
+      LinkResolution resolution = links.get(target);
+      if (resolution != null && resolution.ambiguous()) throw new ManifestFailure("link", "public link " + target + " is ambiguous");
+      PublicLink link = resolution == null ? null : resolution.link();
       if (link == null) throw new ManifestFailure("showcase", "must reference a published entry");
       pinned.add(link.publicId());
       showcase.add(Map.of("target", link.publicId(), "text", editorialTokens(items.group("text").strip(), links)));
@@ -172,13 +182,15 @@ public final class PreflightService {
     metadata.put("showcase", List.copyOf(showcase));
   }
 
-  private static List<Map<String, String>> editorialTokens(String text, Map<String, PublicLink> links) {
+  private static List<Map<String, String>> editorialTokens(String text, Map<String, LinkResolution> links) {
     List<Map<String, String>> tokens = new ArrayList<>();
     var matcher = WIKILINK.matcher(text);
     int cursor = 0;
     while (matcher.find()) {
       appendText(tokens, text.substring(cursor, matcher.start()));
-      PublicLink link = links.get(matcher.group("target").strip());
+      LinkResolution resolution = links.get(matcher.group("target").strip());
+      if (resolution != null && resolution.ambiguous()) throw new ManifestFailure("link", "public link " + matcher.group("target").strip() + " is ambiguous");
+      PublicLink link = resolution == null ? null : resolution.link();
       if (link == null) appendText(tokens, label(matcher, matcher.group("target").strip()));
       else tokens.add(Map.of("kind", "reference", "target", link.publicId()));
       cursor = matcher.end();
@@ -196,15 +208,32 @@ public final class PreflightService {
     } else tokens.add(Map.of("kind", "text", "value", value));
   }
 
-  private static Map<String, PublicLink> publicIndex(List<Note> notes) {
-    Map<String, PublicLink> index = new LinkedHashMap<>();
+  private static Map<String, LinkResolution> publicIndex(List<Note> notes) {
+    Map<String, PublicLink> exact = new LinkedHashMap<>();
+    Map<String, Map<String, PublicLink>> descriptive = new LinkedHashMap<>();
     for (Note note : notes) {
       PublicLink link = new PublicLink(note.publicId(), route(note));
-      index.put(note.publicId(), link);
-      index.put(note.title(), link);
-      index.put(note.vaultPath().replaceFirst("\\.md$", ""), link);
+      exact.put(note.publicId(), link);
+      exact.put(note.vaultPath().replaceFirst("\\.md$", ""), link);
+      for (String key : descriptiveKeys(note)) {
+        if (!key.isEmpty()) descriptive.computeIfAbsent(key, ignored -> new LinkedHashMap<>()).put(link.publicId(), link);
+      }
     }
+    Map<String, LinkResolution> index = new LinkedHashMap<>();
+    exact.forEach((key, link) -> index.put(key, new LinkResolution(link, false)));
+    descriptive.forEach((key, candidates) -> {
+      if (!index.containsKey(key)) index.put(key, new LinkResolution(candidates.size() == 1 ? candidates.values().iterator().next() : null,
+          candidates.size() > 1));
+    });
     return index;
+  }
+
+  private static List<String> descriptiveKeys(Note note) {
+    List<String> keys = new ArrayList<>();
+    keys.add(note.title());
+    keys.add(string(note.frontmatter().get("title"), ""));
+    keys.addAll(note.aliases());
+    return keys;
   }
 
   private static String targetPath(Note note) {
@@ -233,7 +262,7 @@ public final class PreflightService {
       if (!candidate.toRealPath().startsWith(resolvedVault.toRealPath())) return Loaded.error("path", notePath + ": must be a vault-relative .md path");
       return Loaded.note(note(candidate, notePath, FrontmatterDocument.parse(candidate, notePath, Files.readString(candidate, StandardCharsets.UTF_8))));
     } catch (IOException exception) { return Loaded.error("path", notePath + ": " + exception.getMessage());
-    } catch (IllegalArgumentException exception) { return Loaded.error("frontmatter", notePath + ": invalid frontmatter: " + exception.getMessage()); }
+    } catch (RuntimeException exception) { return Loaded.error("frontmatter", notePath + ": invalid frontmatter: " + exception.getMessage()); }
   }
 
   private static Note note(Path path, String vaultPath, FrontmatterDocument document) {
@@ -243,7 +272,7 @@ public final class PreflightService {
       else if (value.equals("False")) metadata.put("publish", false);
     }
     return new Note(path, vaultPath, path.getFileName().toString().replaceFirst("\\.md$", ""), metadata, document.body(),
-        Boolean.TRUE.equals(metadata.get("publish")), string(metadata.get("publicId"), ""), string(metadata.get("publicCollection"), ""), string(metadata.get("publicContentType"), ""), List.of());
+        Boolean.TRUE.equals(metadata.get("publish")), string(metadata.get("publicId"), ""), string(metadata.get("publicCollection"), ""), string(metadata.get("publicContentType"), ""), aliases(metadata.get("aliases")));
   }
 
   private static String string(Object value, String fallback) { return value instanceof String text && !text.strip().isEmpty() ? text.strip() : fallback; }
@@ -253,6 +282,7 @@ public final class PreflightService {
     if (value instanceof List<?> values) return values.stream().filter(String.class::isInstance).map(String.class::cast).map(String::strip).filter(item -> !item.isEmpty()).toList();
     return List.of();
   }
+  private static List<String> aliases(Object value) { return strings(value); }
   private static String label(java.util.regex.Matcher matcher, String target) { return matcher.group("label") == null ? target.substring(target.lastIndexOf('/') + 1).strip() : matcher.group("label").strip(); }
   private static List<PublicationDiagnostic> prefixed(String path, List<PublicationDiagnostic> diagnostics) { return diagnostics.stream().map(item -> new PublicationDiagnostic(item.field(), path + ": " + item.message(), item.blocking())).toList(); }
   private static boolean containsTraversal(Path path) { for (Path part : path) if (part.toString().equals("..")) return true; return false; }
@@ -265,6 +295,7 @@ public final class PreflightService {
   private record Selection(List<Note> included, List<Exclusion> exclusions) { }
   private record Exclusion(String vaultPath, String field, String reason) { }
   private record PublicLink(String publicId, String route) { }
+  private record LinkResolution(PublicLink link, boolean ambiguous) { }
   private static final class ManifestFailure extends RuntimeException {
     private final String field;
     private final String reason;

@@ -87,6 +87,33 @@ final class PreflightTest {
   }
 
   @Test
+  void reportsAbsentPublishAsTheOnlyActiveNoteContractDiagnostic() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    makeNote(vault, "blog/Active.md", "id: active\npublicId: active\npublicCollection: blog\npublicContentType: note");
+
+    assertEquals(List.of(new PublicationDiagnostic("publish", "blog/Active.md: must be true; allowed value: true")),
+        preflight.preflight(vault, "blog/Active.md").diagnostics());
+  }
+
+  @Test
+  void convertsMalformedActiveAndPeerFrontmatterToDiagnostics() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    FixtureFiles.write(vault, "blog/Broken.md", "---\npublish: true\ninvalid: [\n---\nBody\n");
+
+    var active = preflight.preflight(vault, "blog/Broken.md");
+
+    assertEquals("frontmatter", active.diagnostics().getFirst().field());
+    assertTrue(active.diagnostics().getFirst().message().startsWith("blog/Broken.md: invalid frontmatter: "));
+
+    makeNote(vault, "blog/Active.md", publicNote("active"));
+    var withBrokenPeer = preflight.preflight(vault, "blog/Active.md");
+
+    assertTrue(withBrokenPeer.ready());
+    assertEquals("frontmatter", withBrokenPeer.workspaceHealth().getFirst().field());
+    assertTrue(withBrokenPeer.workspaceHealth().getFirst().message().startsWith("blog/Broken.md: invalid frontmatter: "));
+  }
+
+  @Test
   void validActiveNoteIsNotBlockedByAnUnrelatedInvalidPublicPeer() throws Exception {
     Path vault = Files.createTempDirectory("astro-export-vault");
     makeNote(vault, "blog/Active.md", publicNote("active"));
@@ -134,6 +161,48 @@ final class PreflightTest {
     assertFalse(transclusion.ready());
     assertEquals(List.of(new PublicationDiagnostic("transclusion",
         "blog/Transclusion.md: unpublished transclusion private/Source")), transclusion.diagnostics());
+  }
+
+  @Test
+  void ignoresLinksAndTransclusionsInsideProtectedMarkdownContexts() throws Exception {
+    for (String body : List.of(
+        "```markdown\n![[private/Source]] [[Peer]]\n```\n",
+        "`![[private/Source]] [[Peer]]`\n",
+        "<pre>\n![[private/Source]] [[Peer]]\n</pre>\n",
+        "<!-- ![[private/Source]] [[Peer]] -->\n",
+        "%% ![[private/Source]] [[Peer]] %%\n")) {
+      Path vault = Files.createTempDirectory("astro-export-vault");
+      makeNote(vault, "blog/Active.md", publicNote("active"), body);
+      makeNote(vault, "private/Source.md", "id: private");
+
+      var result = preflight.preflight(vault, "blog/Active.md");
+
+      assertTrue(result.ready(), body);
+      assertEquals(body, result.entry().orElseThrow().body(), body);
+    }
+  }
+
+  @Test
+  void resolvesUniqueAliasesAndRejectsAmbiguousDescriptiveTargets() throws Exception {
+    Path uniqueVault = Files.createTempDirectory("astro-export-vault");
+    makeNote(uniqueVault, "blog/Active.md", publicNote("active"), "Read [[Alternate]].");
+    makeNote(uniqueVault, "blog/Peer.md", publicNote("peer") + "\naliases:\n  - Alternate");
+
+    var unique = preflight.preflight(uniqueVault, "blog/Active.md");
+
+    assertTrue(unique.ready());
+    assertEquals("Read [Alternate](/ru/notes/peer/).", unique.entry().orElseThrow().body());
+
+    Path ambiguousVault = Files.createTempDirectory("astro-export-vault");
+    makeNote(ambiguousVault, "blog/Active.md", publicNote("active"), "Read [[Shared]].");
+    makeNote(ambiguousVault, "blog/One.md", publicNote("one") + "\naliases:\n  - Shared");
+    makeNote(ambiguousVault, "blog/Two.md", publicNote("two") + "\naliases:\n  - Shared");
+
+    var ambiguous = preflight.preflight(ambiguousVault, "blog/Active.md");
+
+    assertFalse(ambiguous.ready());
+    assertEquals(List.of(new PublicationDiagnostic("link", "blog/Active.md: public link Shared is ambiguous")),
+        ambiguous.diagnostics());
   }
 
   @Test
