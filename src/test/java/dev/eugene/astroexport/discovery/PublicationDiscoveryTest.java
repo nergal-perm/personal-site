@@ -43,6 +43,15 @@ final class PublicationDiscoveryTest {
   }
 
   @Test
+  void removesOnlyTheLeadingCurrentDirectoryPrefix() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    RecordingProcessRunner runner = new RecordingProcessRunner(
+        new PublicationDiscovery.ProcessResult(0, "./notes/Public.md\u0000", ""));
+
+    assertEquals(List.of("notes/Public.md"), new PublicationDiscovery(runner).findCandidates(vault));
+  }
+
+  @Test
   void preservesLiteralBackslashesInRawPaths() throws Exception {
     Path vault = Files.createTempDirectory("astro-export-vault");
     String rawPath = "notes\\literal-backslash.md";

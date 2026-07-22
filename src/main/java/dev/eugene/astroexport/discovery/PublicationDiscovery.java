@@ -41,6 +41,7 @@ public final class PublicationDiscovery {
 
     return Arrays.stream(result.stdout().split("\u0000"))
         .filter(path -> !path.isEmpty())
+        .map(path -> path.startsWith("./") ? path.substring(2) : path)
         .sorted()
         .toList();
   }
