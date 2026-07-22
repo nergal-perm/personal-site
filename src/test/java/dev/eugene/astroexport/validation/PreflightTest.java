@@ -8,14 +8,13 @@ import dev.eugene.astroexport.testsupport.FixtureFiles;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 
 final class PreflightTest {
   private final PreflightService preflight = new PreflightService();
 
   @Test
-  void reportsAllActiveConceptViolationsWithoutScanningTheVault() throws Exception {
+  void reportsAllActiveConceptViolationsBeforeManifest() throws Exception {
     Path vault = Files.createTempDirectory("astro-export-vault");
     FixtureFiles.write(vault, "concepts/Organisation.md", "---\n"
         + "publish: true\npublicId: organisation\npublicCollection: concepts\npublicContentType: concept\n"
@@ -87,33 +86,136 @@ final class PreflightTest {
         preflight.preflight(vault, "blog/Active.md").diagnostics());
   }
 
-  @Disabled("Pending manifest and selected-peer model from later tasks")
   @Test
-  void reportsWorkspaceHealthForAnUnrelatedInvalidPublicPeer() {
-    // Port of Python test_preflight_valid_active_note_is_not_blocked_by_unrelated_invalid_public_note.
+  void validActiveNoteIsNotBlockedByAnUnrelatedInvalidPublicPeer() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    makeNote(vault, "blog/Active.md", publicNote("active"));
+    makeNote(vault, "blog/Unrelated.md", "id: unrelated\npublish: true\npublicId: unrelated\n"
+        + "publicCollection: blog\npublicContentType: case");
+
+    var result = preflight.preflight(vault, "blog/Active.md");
+
+    assertTrue(result.ready());
+    assertTrue(result.entry().isPresent());
+    assertEquals(List.of(), result.diagnostics());
+    assertEquals(List.of(new PublicationDiagnostic("publicContentType",
+        "blog/Unrelated.md: must be one of: claim, essay, note")), result.workspaceHealth());
   }
 
-  @Disabled("Pending manifest builder from later tasks")
   @Test
-  void reportsManifestValidationErrorsForTheActiveNote() {
-    // Port of Python test_preflight_reports_manifest_error_on_active_note_not_a_valid_peer.
+  void reportsManifestValidationErrorsForUnsupportedActiveTopics() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    makeNote(vault, "blog/Active.md", publicNote("active") + "\ntopics:\n  - unsupported-topic");
+    makeNote(vault, "blog/Peer.md", publicNote("peer"));
+
+    var result = preflight.preflight(vault, "blog/Active.md");
+
+    assertFalse(result.ready());
+    assertTrue(result.entry().isEmpty());
+    assertEquals(List.of(new PublicationDiagnostic("topics",
+        "blog/Active.md: contains unsupported values: unsupported-topic")), result.diagnostics());
   }
 
-  @Disabled("Pending manifest link rendering and transclusion support from later tasks")
   @Test
-  void resolvesSelectedPeerLinksAndReportsUnpublishedTransclusions() {
-    // Ports Python peer-wikilink and unpublished-transclusion preflight tests.
+  void convertsWikilinksToSelectedPublicPeerRoutesAndRejectsPrivateTransclusions() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    makeNote(vault, "blog/Active.md", publicNote("active"), "Read [[Peer Note]].");
+    makeNote(vault, "blog/Peer Note.md", publicNote("peer"));
+
+    var linked = preflight.preflight(vault, "blog/Active.md");
+
+    assertTrue(linked.ready());
+    assertEquals("Read [Peer Note](/ru/notes/peer/).", linked.entry().orElseThrow().body());
+
+    makeNote(vault, "blog/Transclusion.md", publicNote("transclusion"), "![[private/Source]]");
+    makeNote(vault, "private/Source.md", "id: private");
+    var transclusion = preflight.preflight(vault, "blog/Transclusion.md");
+
+    assertFalse(transclusion.ready());
+    assertEquals(List.of(new PublicationDiagnostic("transclusion",
+        "blog/Transclusion.md: unpublished transclusion private/Source")), transclusion.diagnostics());
   }
 
-  @Disabled("Pending selection integration; Task 4 confinement intentionally does not scan the vault")
   @Test
-  void requiresTheActiveNoteToBeSelectedBeforeManifestGeneration() {
-    // Port of Python test_preflight_requires_active_note_to_be_in_selector_included.
+  void requiresExactPublishTrueLineForSelectorInclusion() throws Exception {
+    for (String publishLine : List.of("publish: True", "publish: true # comment")) {
+      Path vault = Files.createTempDirectory("astro-export-vault");
+      makeNote(vault, "blog/Active.md", "id: active\n" + publishLine + "\n"
+          + "publicId: active\npublicCollection: blog\npublicContentType: note");
+
+      var result = preflight.preflight(vault, "blog/Active.md");
+
+      assertFalse(result.ready());
+      assertTrue(result.entry().isEmpty());
+      assertEquals(List.of(new PublicationDiagnostic("selection",
+          "blog/Active.md: must be selected for publication")), result.diagnostics());
+    }
   }
 
-  @Disabled("Pending manifest relation and editorial showcase support from later tasks")
   @Test
-  void resolvesClaimRelationsAndEditorialShowcaseReferencesAgainstSelectedPeers() {
-    // Ports the final two Python preflight tests.
+  void resolvesClaimRelationsAndEditorialShowcaseReferencesAgainstSelectedPeers() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    makeNote(vault, "claims/Active Claim.md", publicNote("active-claim", "claim")
+        + "\nstatement: Active claim.\nsupports:\n  - \"[[Peer Claim]]\"\nrefines:\n  - \"[[peer-claim]]\"");
+    makeNote(vault, "claims/Peer Claim.md", publicNote("peer-claim", "claim") + "\nstatement: Peer claim.");
+
+    var claim = preflight.preflight(vault, "claims/Active Claim.md");
+
+    assertTrue(claim.ready());
+    assertEquals(List.of(java.util.Map.of("label", "Peer Claim", "target", "peer-claim")),
+        claim.entry().orElseThrow().metadata().get("supports"));
+    assertEquals(List.of(java.util.Map.of("label", "peer-claim", "target", "peer-claim")),
+        claim.entry().orElseThrow().metadata().get("refines"));
+
+    makeNote(vault, "blog/editorial/essays.md", "id: essays\npublish: true\npublicId: essays\n"
+        + "publicCollection: editorial\npublicContentType: curated_page\neditorialPage: essays", """
+        ## Кратко
+
+        Эссе.
+
+        ## Eyebrow
+
+        Тексты
+
+        ## Принцип списка
+
+        Полный список.
+
+        Подсказка поиска:: Искать
+
+        ## Витрина
+
+        ### [[Peer Essay]]
+
+        Начать с [[Peer Essay]].
+        """);
+    makeNote(vault, "blog/Peer Essay.md", publicNote("peer-essay", "essay"));
+
+    var editorial = preflight.preflight(vault, "blog/editorial/essays.md");
+
+    assertTrue(editorial.ready());
+    assertEquals(List.of("peer-essay"), editorial.entry().orElseThrow().metadata().get("pinned"));
+    assertEquals(List.of(java.util.Map.of("target", "peer-essay", "text", List.of(
+        java.util.Map.of("kind", "text", "value", "Начать с "),
+        java.util.Map.of("kind", "reference", "target", "peer-essay"),
+        java.util.Map.of("kind", "text", "value", ".")))),
+        editorial.entry().orElseThrow().metadata().get("showcase"));
+  }
+
+  private static void makeNote(Path vault, String name, String frontmatter) throws Exception {
+    makeNote(vault, name, frontmatter, "Body");
+  }
+
+  private static void makeNote(Path vault, String name, String frontmatter, String body) throws Exception {
+    FixtureFiles.write(vault, name, "---\n" + frontmatter + "\n---\n" + body);
+  }
+
+  private static String publicNote(String publicId) {
+    return publicNote(publicId, "note");
+  }
+
+  private static String publicNote(String publicId, String contentType) {
+    return "id: " + publicId + "\npublish: true\npublicId: " + publicId + "\n"
+        + "publicCollection: blog\npublicContentType: " + contentType;
   }
 }
