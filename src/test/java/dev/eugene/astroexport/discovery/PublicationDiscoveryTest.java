@@ -43,6 +43,25 @@ final class PublicationDiscoveryTest {
   }
 
   @Test
+  void preservesLiteralBackslashesInRawPaths() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    String rawPath = "notes\\literal-backslash.md";
+    RecordingProcessRunner runner = new RecordingProcessRunner(
+        new PublicationDiscovery.ProcessResult(0, rawPath + "\u0000", ""));
+
+    assertEquals(List.of(rawPath), new PublicationDiscovery(runner).findCandidates(vault));
+  }
+
+  @Test
+  void retainsWhitespaceOnlyRawPathSegments() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    RecordingProcessRunner runner = new RecordingProcessRunner(
+        new PublicationDiscovery.ProcessResult(0, "   \u0000", ""));
+
+    assertEquals(List.of("   "), new PublicationDiscovery(runner).findCandidates(vault));
+  }
+
+  @Test
   void drainsBothProcessStreamsBeforeWaitingForExit() {
     BlockingProcess process = new BlockingProcess("stdout", "stderr");
 

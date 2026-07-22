@@ -40,8 +40,7 @@ public final class PublicationDiscovery {
     }
 
     return Arrays.stream(result.stdout().split("\u0000"))
-        .map(path -> path.replace('\\', '/'))
-        .filter(path -> !path.isBlank())
+        .filter(path -> !path.isEmpty())
         .sorted()
         .toList();
   }
