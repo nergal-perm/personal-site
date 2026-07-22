@@ -17,5 +17,8 @@ public record PublicationRequirement(
     if (fields.stream().distinct().count() != fields.size()) {
       throw new IllegalArgumentException("publication requirement fields must be unique");
     }
+    if (source.equals("frontmatter") && fields.stream().anyMatch(field -> field.contains(" or "))) {
+      throw new IllegalArgumentException("alternative frontmatter fields must be separate schema entries");
+    }
   }
 }

@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.eugene.astroexport.model.PublicationKind;
+import dev.eugene.astroexport.model.PublicationRequirement;
+import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -46,5 +48,14 @@ final class PublicationContractTest {
         requirements.get(requirements.size() - 2).validator());
     assertEquals("Определение", requirements.getLast().fields().getFirst());
     assertEquals(RequirementValidator.BODY_SECTION, requirements.getLast().validator());
+  }
+
+  @Test
+  void rejectsAlternativeFrontmatterFieldNamesEncodedAsText() {
+    var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+        () -> new PublicationRequirement(List.of("authors or author"), "expectation", "author expectation",
+            "frontmatter", RequirementValidator.ONE_NON_EMPTY_STRING));
+
+    assertEquals("alternative frontmatter fields must be separate schema entries", error.getMessage());
   }
 }
