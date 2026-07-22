@@ -4,17 +4,19 @@ import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
 public final class PublicationDiscovery {
   private static final List<String> RG_COMMAND = List.of(
-      "rg", "--files-with-matches", "--glob", "*.md", "--glob", "!.*", "--glob", "!**/.*",
-      "^publish:[ \\t]+true[ \\t]*$");
+      "rg", "--files-with-matches", "--null", "--no-ignore", "--glob", "*.md",
+      "^publish:[ \\t]+true[ \\t]*$", ".");
 
   private final ProcessRunner processRunner;
 
@@ -37,10 +39,10 @@ public final class PublicationDiscovery {
           : result.stderr().strip());
     }
 
-    return result.stdout().lines()
+    return Arrays.stream(result.stdout().split("\u0000"))
         .map(path -> path.replace('\\', '/'))
         .filter(path -> !path.isBlank())
-        .filter(path -> !isHiddenPath(path))
+        .sorted()
         .toList();
   }
 
@@ -88,15 +90,6 @@ public final class PublicationDiscovery {
     return new SelectionResult(List.copyOf(included), List.copyOf(unqualified), candidates.size(), confirmed);
   }
 
-  private static boolean isHiddenPath(String path) {
-    for (String part : path.split("/")) {
-      if (part.startsWith(".")) {
-        return true;
-      }
-    }
-    return false;
-  }
-
   private static String stringValue(Object value) {
     return value instanceof String text ? text.strip() : "";
   }
@@ -118,16 +111,59 @@ public final class PublicationDiscovery {
   private static ProcessResult runProcess(List<String> command, Path workingDirectory) {
     try {
       Process process = new ProcessBuilder(command).directory(workingDirectory.toFile()).start();
-      int exitCode = process.waitFor();
-      return new ProcessResult(
-          exitCode,
-          new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8),
-          new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
+      return drainProcess(process);
     } catch (IOException exception) {
       throw new IllegalStateException("ripgrep (`rg`) is required for publication discovery", exception);
+    }
+  }
+
+  static ProcessResult drainProcess(Process process) {
+    StreamDrainer stdout = new StreamDrainer(process.getInputStream());
+    StreamDrainer stderr = new StreamDrainer(process.getErrorStream());
+    stdout.start();
+    stderr.start();
+    try {
+      int exitCode = process.waitFor();
+      stdout.await();
+      stderr.await();
+      return new ProcessResult(exitCode, stdout.content(), stderr.content());
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException("rg interrupted", exception);
+    } catch (IOException exception) {
+      throw new IllegalStateException("could not read rg output", exception);
+    }
+  }
+
+  private static final class StreamDrainer {
+    private final InputStream stream;
+    private Thread thread;
+    private byte[] bytes;
+    private IOException failure;
+
+    private StreamDrainer(InputStream stream) {
+      this.stream = stream;
+    }
+
+    private void start() {
+      thread = Thread.ofVirtual().start(() -> {
+        try (stream) {
+          bytes = stream.readAllBytes();
+        } catch (IOException exception) {
+          failure = exception;
+        }
+      });
+    }
+
+    private void await() throws InterruptedException {
+      thread.join();
+    }
+
+    private String content() throws IOException {
+      if (failure != null) {
+        throw failure;
+      }
+      return new String(bytes, StandardCharsets.UTF_8);
     }
   }
 

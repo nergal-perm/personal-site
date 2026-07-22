@@ -50,7 +50,7 @@ final class PublicationSelectionTest {
   }
 
   private static PublicationDiscovery discoveryReturning(String... paths) {
-    String stdout = String.join("\n", paths) + "\n";
+    String stdout = String.join("\u0000", paths) + "\u0000";
     return new PublicationDiscovery((command, workingDirectory) ->
         new PublicationDiscovery.ProcessResult(0, stdout, ""));
   }
