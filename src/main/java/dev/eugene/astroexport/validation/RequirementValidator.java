@@ -1,0 +1,14 @@
+package dev.eugene.astroexport.validation;
+
+public enum RequirementValidator {
+  REQUIRED_TRUE,
+  ROUTE_SLUG,
+  COLLECTION,
+  CONTENT_TYPE,
+  NON_EMPTY_STRING,
+  ONE_NON_EMPTY_STRING,
+  ONE_NON_EMPTY_STRING_OR_LIST,
+  EDITORIAL_PAGE,
+  BODY_SECTION,
+  EDITORIAL_BODY
+}
