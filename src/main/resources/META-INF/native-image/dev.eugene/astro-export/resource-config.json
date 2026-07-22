@@ -1,0 +1,8 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "templates/pages/ru/search\\.json" },
+      { "pattern": "templates/pages/en/search\\.json" }
+    ]
+  }
+}
