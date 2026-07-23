@@ -443,7 +443,7 @@ public final class PrepareWorkflow {
         runnerError = error;
       }
 
-      Fresh fresh = fresh(vault, notePath, sourceHash);
+      Fresh fresh = fresh(vault, notePath, source, sourceHash);
       if (fresh.staleMessage() != null) {
         return terminal(
             "stale",
@@ -533,7 +533,7 @@ public final class PrepareWorkflow {
             now);
       }
 
-      Fresh finalFresh = fresh(vault, notePath, sourceHash);
+      Fresh finalFresh = fresh(vault, notePath, source, sourceHash);
       if (finalFresh.staleMessage() != null) {
         return terminal(
             "stale",
@@ -563,7 +563,7 @@ public final class PrepareWorkflow {
 
       byte[] finalSource;
       try {
-        finalSource = Files.readAllBytes(source);
+        finalSource = finalFresh.sourceSnapshot();
         journal.transition("running", "prepare.commit_pending", sha256(generated));
         List<WorkflowStateService.SnapshotGuard> guards = new ArrayList<>();
         guards.add(new WorkflowStateService.SnapshotGuard(source, finalSource));
@@ -604,7 +604,7 @@ public final class PrepareWorkflow {
             now);
       }
 
-      Fresh committed = fresh(vault, notePath, sourceHash);
+      Fresh committed = fresh(vault, notePath, source, sourceHash);
       if (committed.staleMessage() != null) {
         return terminal(
             "stale",
@@ -618,10 +618,13 @@ public final class PrepareWorkflow {
             previousStatus,
             now);
       }
-      byte[] committedSource;
       try {
-        committedSource = Files.readAllBytes(source);
-        installEnglish(durableEn, generated, previousEn, source, committedSource);
+        installEnglish(
+            durableEn,
+            generated,
+            previousEn,
+            source,
+            committed.sourceSnapshot());
       } catch (WorkflowStateService.ConcurrentFileUpdateException error) {
         return terminal(
             "stale",
@@ -760,29 +763,59 @@ public final class PrepareWorkflow {
     return manifest.entries().getFirst();
   }
 
-  private Fresh fresh(Path vault, String notePath, String expectedHash) {
-    PreflightService.Result result = preflight.preflight(vault, notePath);
-    if (!result.ready() || result.note() == null) {
-      return new Fresh(
-          null,
-          "Source changed during translation and no longer passes preflight; "
-              + "fix the note and run prepare again.");
-    }
-    ManifestEntry freshEntry;
+  private Fresh fresh(
+      Path vault,
+      String notePath,
+      Path source,
+      String expectedHash) {
+    byte[] before;
     try {
-      freshEntry = entry(result);
-    } catch (RuntimeException error) {
+      before = Files.readAllBytes(source);
+    } catch (IOException error) {
       return new Fresh(
           null,
-          "Source changed during translation and no longer passes preflight; "
-              + "fix the note and run prepare again.");
+          "Source could not be read while translation state was being validated; "
+              + "inspect the note and run prepare again.",
+          null);
     }
-    if (!expectedHash.equals(requiredHash(freshEntry))) {
+    PreflightService.Result result = preflight.preflight(vault, notePath);
+    ManifestEntry freshEntry = null;
+    String staleMessage = null;
+    if (!result.ready() || result.note() == null) {
+      staleMessage =
+          "Source changed during translation and no longer passes preflight; "
+              + "fix the note and run prepare again.";
+    } else {
+      try {
+        freshEntry = entry(result);
+      } catch (RuntimeException error) {
+        staleMessage =
+            "Source changed during translation and no longer passes preflight; "
+                + "fix the note and run prepare again.";
+      }
+      if (freshEntry != null && !expectedHash.equals(requiredHash(freshEntry))) {
+        staleMessage =
+            "Source changed during translation; discard this candidate and run prepare again.";
+      }
+    }
+
+    byte[] after;
+    try {
+      ioHooks.afterFreshPreflight(source);
+      after = Files.readAllBytes(source);
+    } catch (IOException error) {
       return new Fresh(
           freshEntry,
-          "Source changed during translation; discard this candidate and run prepare again.");
+          "Source could not be read while translation state was being validated; "
+              + "inspect the note and run prepare again.",
+          null);
     }
-    return new Fresh(freshEntry, null);
+    if (!Arrays.equals(before, after)) {
+      staleMessage =
+          "Source changed while translation state was being validated; "
+              + "inspect the note and run prepare again.";
+    }
+    return new Fresh(freshEntry, staleMessage, after);
   }
 
   private static String prompt(String normalizedRu, String sourceHash) {
@@ -886,7 +919,28 @@ public final class PrepareWorkflow {
       validateExistingEnglishLeaf(target);
       assertSnapshot(target, expected, "guarded English review changed");
       atomicExchange.exchange(target, temporary);
-      byte[] displaced = Files.readAllBytes(temporary);
+      byte[] displaced;
+      try {
+        displaced = ioHooks.readDisplacedEnglish(temporary);
+      } catch (IOException readError) {
+        Path preserved;
+        try {
+          preserved = preserveEnglishRecovery(
+              temporary,
+              target,
+              true,
+              "displaced English review could not be verified after atomic exchange");
+        } catch (WorkflowStateService.ConcurrentFileUpdateException preservationError) {
+          preservationError.addSuppressed(readError);
+          throw preservationError;
+        }
+        preserveTemporary = temporary.equals(preserved);
+        throw new WorkflowStateService.ConcurrentFileUpdateException(
+            "displaced English review could not be verified after atomic exchange",
+            true,
+            preserved,
+            readError);
+      }
       if (!Arrays.equals(displaced, expected) || !matches(source, expectedSource)) {
         Path preserved = rollbackEnglish(target, temporary, payload);
         preserveTemporary = temporary.equals(preserved);
@@ -1514,6 +1568,12 @@ public final class PrepareWorkflow {
   interface IoHooks {
     default void beforeJobInputWrite(Path path) throws IOException { }
 
+    default void afterFreshPreflight(Path source) throws IOException { }
+
+    default byte[] readDisplacedEnglish(Path path) throws IOException {
+      return Files.readAllBytes(path);
+    }
+
     default void writeJournal(Path path, Map<String, Object> payload) throws IOException {
       JobJournal.atomicJson(path, payload);
     }
@@ -1538,7 +1598,10 @@ public final class PrepareWorkflow {
 
   private record Target(String collection, String publicId) { }
 
-  private record Fresh(ManifestEntry entry, String staleMessage) { }
+  private record Fresh(
+      ManifestEntry entry,
+      String staleMessage,
+      byte[] sourceSnapshot) { }
 
   private static final class LockBusyException extends Exception { }
 

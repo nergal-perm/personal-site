@@ -125,6 +125,42 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void sourceEditAfterCommittedPreflightCannotBecomeEnglishInstallGuard() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] previous = Files.readAllBytes(prior);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    AtomicInteger freshPreflights = new AtomicInteger();
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public void afterFreshPreflight(Path source) throws IOException {
+        if (freshPreflights.incrementAndGet() == 3) {
+          Files.writeString(
+              source,
+              Files.readString(source).replace(
+                  "Russian body.", "Concurrent body after committed preflight."));
+        }
+      }
+    };
+
+    PrepareWorkflow.PrepareResult result = workflow(runner, new JnaAtomicExchange(), ioHooks)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("stale", result.status());
+    assertEquals(3, freshPreflights.get());
+    assertArrayEquals(previous, Files.readAllBytes(prior));
+    assertTrue(Files.readString(fixture.source()).contains(
+        "Concurrent body after committed preflight."));
+    assertEquals("stale", journal(fixture, result).get("state"));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.message().contains(
+            "changed while translation state was being validated")));
+  }
+
+  @Test
   void onlyOneAgentRunsPerPublication() throws Exception {
     Fixture fixture = fixture();
     CountDownLatch entered = new CountDownLatch(1);
@@ -745,6 +781,50 @@ final class PrepareWorkflowTest {
     assertArrayEquals(secondEdit, Files.readAllBytes(recoveryTemporary[0]));
     assertTrue(result.diagnostics().stream()
         .anyMatch(item -> item.message().contains(recoveryTemporary[0].toString())));
+  }
+
+  @Test
+  void displacedEnglishReadFailurePreservesPriorBytesAfterExchange() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] previous = Files.readAllBytes(prior);
+    Path preserved = temp.resolve("preserved-prior-en.md");
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    PrepareWorkflow.RecoveryFilePreserver preserver = (temporary, target) -> {
+      Files.move(temporary, preserved);
+      return preserved;
+    };
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public byte[] readDisplacedEnglish(Path path) throws IOException {
+        throw new IOException("simulated displaced English read failure");
+      }
+    };
+    PrepareWorkflow workflow = new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        new JnaAtomicExchange(),
+        path -> { },
+        preserver,
+        path -> { },
+        (target, temporary) -> { },
+        ioHooks);
+
+    PrepareWorkflow.PrepareResult result = workflow.prepare(
+        fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("stale", result.status());
+    assertTrue(Files.readString(prior).contains("Fresh English body."));
+    assertTrue(Files.exists(preserved));
+    assertArrayEquals(previous, Files.readAllBytes(preserved));
+    assertEquals("stale", journal(fixture, result).get("state"));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.message().contains("replacement may already be live")
+            && item.message().contains(preserved.toString())));
   }
 
   @Test
