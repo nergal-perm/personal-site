@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.astroexport.discovery.PublicationDiscovery;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.fs.SiteWriter;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
@@ -279,6 +280,62 @@ final class AstroExportCommandTest {
         "--vault", vault.toString(),
         "--json"));
     assertTrue(refresh.getMessage().contains("selection invariant"));
+  }
+
+  @Test
+  void prepareBridgeReportsExpectedDiscoveryFailureFromIdentityFallbackAsJson() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    CommandServices services = CommandServices.defaults()
+        .withPrepareAction((actualVault, note, review, jobs) -> new PrepareWorkflow.PrepareResult(
+            "metadata_blocked", null, List.of(), List.of(), null, null))
+        .withSelectionAction(actualVault -> {
+          throw new PublicationDiscovery.PublicationSearchException("expected discovery failure");
+        });
+
+    CommandFixture.Result result = run(new AstroExportCommand(services),
+        "prepare",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--json");
+
+    assertNonRefreshBridgeIoFailure(result, "prepare", "translation_failed", "anywhere/Essay.md");
+  }
+
+  @Test
+  void inspectBridgeReportsExpectedDiscoveryFailureAsJson() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    CommandServices services = CommandServices.defaults()
+        .withSelectionAction(actualVault -> {
+          throw new PublicationDiscovery.PublicationSearchException("expected discovery failure");
+        });
+
+    CommandFixture.Result result = run(new AstroExportCommand(services),
+        "inspect-publication",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--json");
+
+    assertNonRefreshBridgeIoFailure(result, "inspect-publication", "metadata_blocked", "anywhere/Essay.md");
+  }
+
+  @Test
+  void markReviewedBridgeReportsExpectedDiscoveryFailureAsJson() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    CommandServices services = CommandServices.defaults()
+        .withSelectionAction(actualVault -> {
+          throw new PublicationDiscovery.PublicationSearchException("expected discovery failure");
+        });
+
+    CommandFixture.Result result = run(new AstroExportCommand(services),
+        "mark-reviewed",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--json");
+
+    assertNonRefreshBridgeIoFailure(result, "mark-reviewed", "stale", "anywhere/Essay.md");
   }
 
   @Test
@@ -564,6 +621,39 @@ final class AstroExportCommandTest {
     String stripped = stdout.strip();
     assertFalse(stripped.contains("\n"), "bridge stdout must be one JSON object");
     return JSON.readValue(stripped, new TypeReference<LinkedHashMap<String, Object>>() { });
+  }
+
+  private static void assertNonRefreshBridgeIoFailure(
+      CommandFixture.Result result,
+      String command,
+      String status,
+      String note) throws Exception {
+    assertEquals(1, result.exitCode());
+    assertEquals(1, result.stdout().lines().count());
+    assertFalse(result.stdout().contains("Traceback"));
+    assertFalse(result.stderr().contains("Traceback"));
+    Map<String, Object> payload = json(result.stdout());
+    assertIterableEquals(BRIDGE_KEYS, payload.keySet());
+    assertEquals(1, payload.get("schemaVersion"));
+    assertEquals(command, payload.get("command"));
+    assertEquals(false, payload.get("ok"));
+    assertEquals(status, payload.get("status"));
+    assertEquals(note, payload.get("note"));
+    assertEquals(null, payload.get("collection"));
+    assertEquals(null, payload.get("publicId"));
+    assertEquals(null, payload.get("reviewDirectory"));
+    assertEquals(null, payload.get("pairFreshness"));
+    assertEquals(null, payload.get("translationStatus"));
+    assertEquals(List.of(Map.of(
+        "field", "io",
+        "message", "Could not read publication files: PublicationSearchException.",
+        "blocking", true)), payload.get("diagnostics"));
+    assertEquals(List.of(), payload.get("workspaceHealth"));
+    assertEquals(null, payload.get("jobId"));
+    assertEquals(null, payload.get("summary"));
+    assertEquals(null, payload.get("updated"));
+    assertEquals(null, payload.get("unchanged"));
+    assertEquals(null, payload.get("uncertain"));
   }
 
   private static Path writeBlogNote(Path vault) throws Exception {

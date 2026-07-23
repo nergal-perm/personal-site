@@ -782,14 +782,31 @@ public final class AstroExportCommand implements Callable<Integer> {
   }
 
   private int refreshBridgeIoFailure(RuntimeException error) {
-    emitJson(bridge("refresh-publication-queue", false, "refresh_failed")
+    return bridgeIoFailure("refresh-publication-queue", "refresh_failed", null, error, true);
+  }
+
+  private int bridgeIoFailure(String command, String status, String note, RuntimeException error) {
+    return bridgeIoFailure(command, status, note, error, false);
+  }
+
+  private int bridgeIoFailure(
+      String command,
+      String status,
+      String note,
+      RuntimeException error,
+      boolean refreshSummary) {
+    BridgeResponse.Builder response = bridge(command, false, status)
+        .note(note)
         .diagnostics(List.of(new PublicationDiagnostic(
-            "io", "Could not read publication files: " + error.getClass().getSimpleName() + ".")))
-        .summary(emptySummary())
-        .updated(0)
-        .unchanged(0)
-        .uncertain(0)
-        .build());
+            "io", "Could not read publication files: " + error.getClass().getSimpleName() + ".")));
+    if (refreshSummary) {
+      response
+          .summary(emptySummary())
+          .updated(0)
+          .unchanged(0)
+          .uncertain(0);
+    }
+    emitJson(response.build());
     return 1;
   }
 
@@ -1300,22 +1317,26 @@ public final class AstroExportCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-      PrepareWorkflow.PrepareResult result = parent.services.prepare(vault, note, review, jobs);
-      PublicationIdentity identity = result.entry() == null
-          ? parent.identityFromPreflight(parent.services.preflight(vault, note), review)
-          : parent.identityFromEntry(result.entry(), review);
-      boolean ready = "ready_for_review".equals(result.status());
-      boolean ok = ready && result.diagnostics().stream().noneMatch(PublicationDiagnostic::blocking);
-      parent.emitJson(parent.bridge("prepare", ok, result.status())
-          .note(note)
-          .identity(identity)
-          .diagnostics(result.diagnostics())
-          .workspaceHealth(result.workspaceHealth())
-          .jobId(result.jobId())
-          .pairFreshness(ready ? "fresh" : null)
-          .translationStatus(ready ? "generated" : null)
-          .build());
-      return ok ? 0 : 1;
+      try {
+        PrepareWorkflow.PrepareResult result = parent.services.prepare(vault, note, review, jobs);
+        PublicationIdentity identity = result.entry() == null
+            ? parent.identityFromPreflight(parent.services.preflight(vault, note), review)
+            : parent.identityFromEntry(result.entry(), review);
+        boolean ready = "ready_for_review".equals(result.status());
+        boolean ok = ready && result.diagnostics().stream().noneMatch(PublicationDiagnostic::blocking);
+        parent.emitJson(parent.bridge("prepare", ok, result.status())
+            .note(note)
+            .identity(identity)
+            .diagnostics(result.diagnostics())
+            .workspaceHealth(result.workspaceHealth())
+            .jobId(result.jobId())
+            .pairFreshness(ready ? "fresh" : null)
+            .translationStatus(ready ? "generated" : null)
+            .build());
+        return ok ? 0 : 1;
+      } catch (PublicationDiscovery.PublicationSearchException | java.io.UncheckedIOException error) {
+        return parent.bridgeIoFailure("prepare", "translation_failed", note, error);
+      }
     }
   }
 
@@ -1329,7 +1350,11 @@ public final class AstroExportCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-      return parent.inspect(vault, note, review);
+      try {
+        return parent.inspect(vault, note, review);
+      } catch (PublicationDiscovery.PublicationSearchException | java.io.UncheckedIOException error) {
+        return parent.bridgeIoFailure("inspect-publication", "metadata_blocked", note, error);
+      }
     }
   }
 
@@ -1344,7 +1369,11 @@ public final class AstroExportCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-      return parent.markReviewed(vault, note, review, jobs);
+      try {
+        return parent.markReviewed(vault, note, review, jobs);
+      } catch (PublicationDiscovery.PublicationSearchException | java.io.UncheckedIOException error) {
+        return parent.bridgeIoFailure("mark-reviewed", "stale", note, error);
+      }
     }
   }
 
@@ -1358,7 +1387,11 @@ public final class AstroExportCommand implements Callable<Integer> {
 
     @Override
     public Integer call() {
-      return parent.refresh(vault, review, jobs);
+      try {
+        return parent.refresh(vault, review, jobs);
+      } catch (PublicationDiscovery.PublicationSearchException | java.io.UncheckedIOException error) {
+        return parent.refreshBridgeIoFailure(error);
+      }
     }
   }
 
