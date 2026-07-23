@@ -88,6 +88,87 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void conceptCandidateTemplatePreservesDefinitionBodyAndDraftControls() throws Exception {
+    Fixture fixture = conceptFixture();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "## Definition\n\nEnglish definition.\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(
+            fixture.vault(),
+            "concepts/Organisation.md",
+            fixture.review(),
+            fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    Path job = fixture.jobs().resolve("concepts/organisation").resolve(result.jobId());
+    FrontmatterDocument normalizedRu = FrontmatterDocument.parse(
+        job.resolve("ru.md"), "ru.md", Files.readString(job.resolve("ru.md")));
+    assertFalse(normalizedRu.metadata().containsKey("definition"));
+    assertTrue(normalizedRu.body().contains("## Определение\n\nРусское определение."));
+
+    String template = runner.prompt
+        .substring(
+            runner.prompt.indexOf("<candidate-template>")
+                + "<candidate-template>".length(),
+            runner.prompt.indexOf("</candidate-template>"))
+        .strip();
+    FrontmatterDocument candidateTemplate = FrontmatterDocument.parse(
+        Path.of("candidate.en.md"), "candidate.en.md", template);
+    Map<String, Object> jobRecord = JSON.readValue(
+        Files.readString(job.resolve("job.json")), new TypeReference<>() { });
+    assertEquals("generated", candidateTemplate.metadata().get("translationStatus"));
+    assertEquals("2026-07-18", candidateTemplate.metadata().get("translatedAt").toString());
+    assertEquals("codex-agent-v1", candidateTemplate.metadata().get("translationProfile"));
+    assertEquals(
+        jobRecord.get("sourceHash"),
+        candidateTemplate.metadata().get("sourceHash"));
+    assertFalse(candidateTemplate.metadata().containsKey("publish"));
+    assertTrue(candidateTemplate.body().contains(
+        "## Определение\n\nРусское определение."));
+    assertTrue(runner.prompt.contains(
+        "complete\ntranslated body required by the template"));
+  }
+
+  @Test
+  void pathBearingGeneratedCandidateTemplateIsRejectedBeforeJobCreation() throws Exception {
+    Fixture fixture = fixture();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public String candidateTemplate(
+          dev.eugene.astroexport.model.ManifestEntry entry,
+          Instant now) {
+        return """
+            ---
+            sourceHash: %s
+            translationStatus: generated
+            translatedAt: 2026-07-18
+            translationProfile: codex-agent-v1
+            title: Russian title
+            ---
+            Read /Users/private/notes.md before translating.
+            """.formatted(entry.translationSourceHash());
+      }
+    };
+
+    PrepareWorkflow.PrepareResult result = workflow(runner, new JnaAtomicExchange(), ioHooks)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertNull(result.jobId());
+    assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.field().equals("input")
+            && item.message().contains("filesystem path")));
+  }
+
+  @Test
   void runnerFailurePreservesPriorEnglishAndRecordsFailure() throws Exception {
     Fixture fixture = fixture();
     Path prior = priorEnglish(fixture);
@@ -1183,6 +1264,27 @@ final class PrepareWorkflowTest {
     return new Fixture(vault, source, temp.resolve("review"), temp.resolve("jobs"));
   }
 
+  private Fixture conceptFixture() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = vault.resolve("concepts/Organisation.md");
+    Files.createDirectories(source.getParent());
+    Files.writeString(source, """
+        ---
+        id: organisation
+        title: Organisation
+        publish: true
+        publicId: organisation
+        publicCollection: concepts
+        publicContentType: concept
+        description: Русское описание.
+        ---
+        ## Определение
+
+        Русское определение.
+        """);
+    return new Fixture(vault, source, temp.resolve("review"), temp.resolve("jobs"));
+  }
+
   private Path priorEnglish(Fixture fixture) throws Exception {
     Path path = fixture.review().resolve("blog/essay/en.md");
     Files.createDirectories(path.getParent());
@@ -1201,6 +1303,13 @@ final class PrepareWorkflowTest {
   }
 
   private static void writeCandidate(Path job, String sourceHash) throws Exception {
+    writeCandidate(job, sourceHash, "Fresh English body.\n");
+  }
+
+  private static void writeCandidate(
+      Path job,
+      String sourceHash,
+      String body) throws Exception {
     Map<String, Object> payload = JSON.readValue(
         Files.readString(job.resolve("job.json")), new TypeReference<>() { });
     String hash = sourceHash == null ? String.valueOf(payload.get("sourceHash")) : sourceHash;
@@ -1213,8 +1322,8 @@ final class PrepareWorkflowTest {
         title: Fresh English title
         description: Fresh English description.
         ---
-        Fresh English body.
-        """.formatted(hash));
+        %s
+        """.formatted(hash, body.stripTrailing()));
   }
 
   private static Map<String, Object> journal(
