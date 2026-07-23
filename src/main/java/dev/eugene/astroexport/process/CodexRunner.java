@@ -11,12 +11,23 @@ import java.util.concurrent.TimeUnit;
 
 /** Executes a bounded command without a shell and captures its result. */
 public final class CodexRunner {
+  public Run run(Path workdir, String prompt, Duration timeout)
+      throws IOException, InterruptedException {
+    Path resolved = resolvedDirectory(workdir);
+    return runResolved(resolved, defaultCommandForResolved(resolved, prompt), timeout);
+  }
+
   public Run run(Path workdir, List<String> args, Duration timeout)
       throws IOException, InterruptedException {
-    if (!Files.isDirectory(workdir)) {
-      throw new IllegalArgumentException("Codex job directory must be a directory");
-    }
-    Path resolved = workdir.toRealPath();
+    return runResolved(resolvedDirectory(workdir), args, timeout);
+  }
+
+  static List<String> defaultCommand(Path workdir, String prompt) throws IOException {
+    return defaultCommandForResolved(resolvedDirectory(workdir), prompt);
+  }
+
+  private Run runResolved(Path resolved, List<String> args, Duration timeout)
+      throws IOException, InterruptedException {
     if (args.isEmpty()) {
       throw new IllegalArgumentException("Codex command must not be empty");
     }
@@ -36,6 +47,28 @@ public final class CodexRunner {
       return new Run(-1, stdout.join(), stderr.join(), true);
     }
     return new Run(process.exitValue(), stdout.join(), stderr.join(), false);
+  }
+
+  private static Path resolvedDirectory(Path workdir) throws IOException {
+    if (!Files.isDirectory(workdir)) {
+      throw new IllegalArgumentException("Codex job directory must be a directory");
+    }
+    return workdir.toRealPath();
+  }
+
+  private static List<String> defaultCommandForResolved(Path resolved, String prompt) {
+    return List.of(
+        "codex",
+        "exec",
+        "--ephemeral",
+        "--sandbox",
+        "workspace-write",
+        "--skip-git-repo-check",
+        "-C",
+        resolved.toString(),
+        "--output-last-message",
+        resolved.resolve("agent-message.txt").toString(),
+        prompt);
   }
 
   private static CompletableFuture<String> read(java.io.InputStream stream) {

@@ -16,6 +16,29 @@ final class CodexRunnerTest {
   Path temp;
 
   @Test
+  void buildsDefaultCodexCommandWithResolvedJobAndOutputPaths() throws Exception {
+    Path job = temp.resolve("job");
+    Files.createDirectory(job);
+    Path relativeJob = Path.of("").toAbsolutePath().relativize(job.toAbsolutePath());
+
+    List<String> command = CodexRunner.defaultCommand(relativeJob, "bounded prompt");
+
+    Path resolved = job.toRealPath();
+    assertEquals(List.of(
+        "codex",
+        "exec",
+        "--ephemeral",
+        "--sandbox",
+        "workspace-write",
+        "--skip-git-repo-check",
+        "-C",
+        resolved.toString(),
+        "--output-last-message",
+        resolved.resolve("agent-message.txt").toString(),
+        "bounded prompt"), command);
+  }
+
+  @Test
   void runsBoundedArgumentArrayInResolvedWorkDirectory() throws Exception {
     Path job = temp.resolve("job");
     Files.createDirectory(job);

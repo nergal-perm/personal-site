@@ -346,6 +346,56 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void invalidUtf8PriorEnglishFailsBeforeJobCreation() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    Files.write(
+        prior,
+        new byte[] {(byte) 0xc3, (byte) 0x28},
+        java.nio.file.StandardOpenOption.APPEND);
+    byte[] invalidPrior = Files.readAllBytes(prior);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertArrayEquals(invalidPrior, Files.readAllBytes(prior));
+    assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
+    assertTrue(result.diagnostics().stream().anyMatch(item ->
+        item.field().equals("review") && item.message().contains("UTF-8")));
+  }
+
+  @Test
+  void pathBearingPriorEnglishMetadataKeysAreRedactedRecursively() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    Files.writeString(
+        prior,
+        Files.readString(prior).replaceFirst(
+            "---\\n",
+            "---\n\"notes/private.md\": top-level context\n"
+                + "nested:\n  \"archive/private/Plan.md\": nested context\n"));
+    RecordingRunner runner = new RecordingRunner(job -> {
+      String jobPrior = Files.readString(job.resolve("en.md"));
+      assertFalse(jobPrior.contains("notes/private.md"));
+      assertFalse(jobPrior.contains("archive/private/Plan.md"));
+      assertTrue(jobPrior.contains("[publication path removed]"));
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertEquals(1, runner.calls.get());
+  }
+
+  @Test
   void unparseablePriorEnglishIsOmittedFromJob() throws Exception {
     Fixture fixture = fixture();
     Path prior = priorEnglish(fixture);

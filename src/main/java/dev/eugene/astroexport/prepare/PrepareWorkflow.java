@@ -19,6 +19,8 @@ import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -276,8 +278,25 @@ public final class PrepareWorkflow {
             null,
             now);
       }
-      String previousStatus = previousTranslationStatus(previousEn);
-      byte[] jobPreviousEn = sanitizePrior(previousEn);
+      String previousEnText;
+      try {
+        previousEnText = decodeUtf8(previousEn);
+      } catch (CharacterCodingException error) {
+        return terminal(
+            "translation_failed",
+            "review",
+            "Existing en.md could not be read as UTF-8: "
+                + error.getClass().getSimpleName() + ".",
+            source,
+            entry,
+            reviewDirectory,
+            null,
+            null,
+            null,
+            now);
+      }
+      String previousStatus = previousTranslationStatus(previousEnText);
+      byte[] jobPreviousEn = sanitizePrior(previousEnText);
 
       if (!bounded(reviewRoot, reviewDirectory)) {
         return terminal(
@@ -1152,12 +1171,22 @@ public final class PrepareWorkflow {
     return LOCAL_PATH.matcher(maskAllowedPathText(value)).find();
   }
 
-  private static byte[] sanitizePrior(byte[] content) {
+  private static String decodeUtf8(byte[] content) throws CharacterCodingException {
     if (content == null) {
       return null;
     }
+    return StandardCharsets.UTF_8.newDecoder()
+        .onMalformedInput(CodingErrorAction.REPORT)
+        .onUnmappableCharacter(CodingErrorAction.REPORT)
+        .decode(ByteBuffer.wrap(content))
+        .toString();
+  }
+
+  private static byte[] sanitizePrior(String value) {
+    if (value == null) {
+      return null;
+    }
     try {
-      String value = new String(content, StandardCharsets.UTF_8);
       FrontmatterDocument parsed = FrontmatterDocument.parse(
           Path.of("en.md"), "en.md", value);
       if (parsed.metadata().isEmpty() && value.startsWith("---")) {
@@ -1166,7 +1195,11 @@ public final class PrepareWorkflow {
       Map<String, Object> metadata = sanitizeMap(parsed.metadata());
       String body = redactPaths(parsed.body());
       String dumped = YAML.dumpToString(metadata);
-      return ("---\n" + dumped + "---\n" + body).getBytes(StandardCharsets.UTF_8);
+      String sanitized = "---\n" + dumped + "---\n" + body;
+      if (containsPrivatePath(sanitized)) {
+        return null;
+      }
+      return sanitized.getBytes(StandardCharsets.UTF_8);
     } catch (RuntimeException error) {
       return null;
     }
@@ -1180,7 +1213,7 @@ public final class PrepareWorkflow {
       if (normalized.equals("path") || normalized.endsWith("path")) {
         continue;
       }
-      result.put(entry.getKey(), sanitizeValue(entry.getValue()));
+      result.put(redactPaths(entry.getKey()), sanitizeValue(entry.getValue()));
     }
     return result;
   }
@@ -1226,13 +1259,13 @@ public final class PrepareWorkflow {
     return new String(masked);
   }
 
-  private static String previousTranslationStatus(byte[] content) {
+  private static String previousTranslationStatus(String content) {
     if (content == null) {
       return null;
     }
     try {
       FrontmatterDocument parsed = FrontmatterDocument.parse(
-          Path.of("en.md"), "en.md", new String(content, StandardCharsets.UTF_8));
+          Path.of("en.md"), "en.md", content);
       Object status = parsed.metadata().get("translationStatus");
       return status instanceof String value && Set.of("generated", "reviewed").contains(value)
           ? value
@@ -1267,21 +1300,7 @@ public final class PrepareWorkflow {
 
   private static TranslationRunner defaultRunner() {
     CodexRunner process = new CodexRunner();
-    return (workdir, prompt, timeout) -> process.run(
-        workdir,
-        List.of(
-            "codex",
-            "exec",
-            "--ephemeral",
-            "--sandbox",
-            "workspace-write",
-            "--skip-git-repo-check",
-            "-C",
-            workdir.toRealPath().toString(),
-            "--output-last-message",
-            workdir.resolve("agent-message.txt").toRealPath().toString(),
-            prompt),
-        timeout);
+    return process::run;
   }
 
   private static void writeDurably(Path path, byte[] payload) throws IOException {
