@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.model.ManifestLink;
-import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -82,6 +81,18 @@ final class ManifestBuilderTest {
     assertEquals("Artist", musicMetadata.get("artist"));
     assertEquals(List.of("Автор"), bookMetadata.get("authors"));
     assertEquals("Press · 2020", bookMetadata.get("publication"));
+  }
+
+  @Test
+  void decodesBookDescriptionHtmlEntitiesBeforeMetadataHashing() {
+    String body = "<div class=\"book-description\"><p>Books &amp; Notes&nbsp;&#65;&#x42;</p></div>";
+    Note encoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор"), body);
+    Note decoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор", "description", "Books & Notes AB"), "");
+
+    var encodedEntry = only(builder.buildRussianManifest(selection(encoded)));
+    var decodedEntry = only(builder.buildRussianManifest(selection(decoded)));
+    assertEquals("Books & Notes AB", encodedEntry.metadata().get("description"));
+    assertEquals(decodedEntry.metadata().get("sourceHash"), encodedEntry.metadata().get("sourceHash"));
   }
 
   @Test
@@ -278,27 +289,26 @@ final class ManifestBuilderTest {
   }
 
   @Test
-  void keepsEditorialReferenceFieldsStructuralUntilEditorialFiltering() {
+  void keepsConceptPrimaryReferencesStructuralUntilEditorialFiltering() {
+    Note concepts = note("editorial/Concepts.md", "Концепты", "concepts", "editorial", "curated_page", Map.of("editorialPage", "concepts"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nКонцепты.\n\n## Базовый концепт\n\nМетка:: Базовый\nМатериал:: [[private-id]]");
+
+    var result = builder.buildRussianManifest(selection(concepts));
+    assertEquals(List.of(new ManifestLink("editorial/Concepts.md", "[[private-id]]", "editorial")), result.strippedLinks());
+    assertFalse(result.strippedLinks().stream().anyMatch(link -> link.kind().equals("editorial-text")));
+  }
+
+  @Test
+  void rejectsShowcaseItemsWithUnexpectedKeys() {
     Map<String, Object> metadata = new LinkedHashMap<>();
-    metadata.put("id", "home");
-    metadata.put("title", "Главная");
-    metadata.put("featured", "[[public-id]]");
-    metadata.put("primary", "[[private-id]]");
-    metadata.put("selected", List.of("[[public-id]]", "[[private-id]]"));
-    List<ManifestLink> retained = new java.util.ArrayList<>();
-    List<ManifestLink> stripped = new java.util.ArrayList<>();
+    metadata.put("id", "library");
+    metadata.put("showcase", List.of(Map.of("target", "book", "text", "Текст.", "route", "book")));
+    metadata.put("pinned", List.of("book"));
 
-    resolveEditorialMetadata(metadata, List.of(referenceNote("public-id")), retained, stripped);
-
-    assertEquals("[[public-id]]", metadata.get("featured"));
-    assertEquals("[[private-id]]", metadata.get("primary"));
-    assertEquals(List.of("[[public-id]]", "[[private-id]]"), metadata.get("selected"));
-    assertEquals(List.of(), retained);
-    assertEquals(List.of(), stripped);
-
-    ManifestBuilder.filterEditorialReferences("editorial/Home.md", metadata, List.of(referenceNote("public-id")), stripped);
-    assertEquals(List.of("[[public-id]]", "[[private-id]]", "[[public-id]]", "[[private-id]]"),
-        stripped.stream().map(ManifestLink::target).toList());
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> ManifestBuilder.resolvePins("editorial/Library.md", metadata, List.of(referenceNote("book"))));
+    assertEquals("showcase[0]", error.fieldName());
+    assertEquals("must contain exactly target and text", error.reason());
   }
 
   @Test
@@ -387,6 +397,29 @@ final class ManifestBuilderTest {
     assertSelectedQuoteError(Map.of("kind", "invalid", "text", "Текст"), "selectedQuote.kind");
     assertSelectedQuoteError(Map.of("kind", "quote", "text", " "), "selectedQuote.text");
     assertSelectedQuoteError(Map.of("text", "Текст", "locator", 42), "selectedQuote.locator");
+  }
+
+  @Test
+  void preservesBibliographyReadingStatusWhitespace() {
+    Map<String, Object> direct = only(builder.buildRussianManifest(selection(
+        note("bibliography/Book.md", "Книга", "book", "bibliography", "book", Map.of("author", "Автор", "readingStatus", "  читаю  "), "")))).metadata();
+    Map<String, Object> fallback = only(builder.buildRussianManifest(selection(
+        note("bibliography/Book.md", "Книга", "book", "bibliography", "book", Map.of("author", "Автор", "status", "  отложено  "), "")))).metadata();
+    assertEquals("  читаю  ", direct.get("readingStatus"));
+    assertEquals("  отложено  ", fallback.get("readingStatus"));
+  }
+
+  @Test
+  void distinguishesNonStringAndMalformedMusicUrlDiagnostics() {
+    ManifestBuilder.ManifestValidationException nonString = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "streamingUrl", 42), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь."))));
+    assertEquals("streamingUrl", nonString.fieldName());
+    assertEquals("must be a URL string", nonString.reason());
+
+    ManifestBuilder.ManifestValidationException malformed = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "streamingUrl", "ftp://invalid"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь."))));
+    assertEquals("streamingUrl", malformed.fieldName());
+    assertEquals("must be an http(s) URL", malformed.reason());
   }
 
   @Test
@@ -499,15 +532,6 @@ final class ManifestBuilderTest {
     return new Note(Path.of(path), path, title, metadata, body, true, id, collection, type, List.of());
   }
   private static Note referenceNote(String id) { return new Note(Path.of(id + ".md"), id + ".md", id, Map.of(), "", true, id, "blog", "note", List.of()); }
-  private void resolveEditorialMetadata(Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) {
-    try {
-      Method method = ManifestBuilder.class.getDeclaredMethod("resolveEditorialMetadata", String.class, Map.class, List.class, List.class, List.class);
-      method.setAccessible(true);
-      method.invoke(builder, "editorial/Home.md", metadata, notes, retained, stripped);
-    } catch (ReflectiveOperationException error) {
-      throw new AssertionError(error);
-    }
-  }
   private static Map<String, Object> nullableMap(Object... values) {
     Map<String, Object> result = new LinkedHashMap<>();
     for (int index = 0; index < values.length; index += 2) {

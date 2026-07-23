@@ -815,7 +815,7 @@ git commit -m "feat: port asset resolution"
 
 - [ ] **Step 1: Port editorial parser tests**
 
-Port every test in `tests/test_editorial.py`, including complete page shapes for `home`, `essays`, `work`, `notes`, `music`, `library`, `concepts`, `now`, and `about`, optional showcase behavior, malformed nested shapes, public-searchable boolean checks, and exact target-field diagnostics.
+Port every test in `tests/test_editorial.py`, including complete page shapes for `home`, `essays`, `claims`, `notes`, `music`, `library`, `concepts`, `now`, and `about`, optional showcase behavior, malformed nested shapes, public-searchable boolean checks, and exact target-field diagnostics.
 
 - [ ] **Step 2: Port manifest tests in behavior groups**
 

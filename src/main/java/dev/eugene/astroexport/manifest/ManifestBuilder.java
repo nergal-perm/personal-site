@@ -40,6 +40,7 @@ public final class ManifestBuilder {
   private static final Pattern SCALAR_EMBED = Pattern.compile("^!\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]$");
   private static final Pattern BOOK_DESCRIPTION = Pattern.compile("(?is)<div\\s+class=[\"']book-description[\"'][^>]*>.*?<p>(.*?)</p>");
   private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
+  private static final Pattern HTML_ENTITY = Pattern.compile("&(?:(amp)|(nbsp)|#([0-9]+)|#[xX]([0-9a-fA-F]+));");
   private static final ObjectMapper HASH_JSON = new ObjectMapper();
   private final PublicationValidator publicationValidator = new PublicationValidator();
   private final LinkProcessor linkProcessor = new LinkProcessor();
@@ -210,9 +211,9 @@ public final class ManifestBuilder {
     }
     Object readingStatus = frontmatter.get("readingStatus");
     if (readingStatus != null) {
-      metadata.put("readingStatus", String.valueOf(readingStatus).strip());
+      metadata.put("readingStatus", String.valueOf(readingStatus));
     } else if (frontmatter.get("status") != null) {
-      metadata.put("readingStatus", String.valueOf(frontmatter.get("status")).strip());
+      metadata.put("readingStatus", String.valueOf(frontmatter.get("status")));
     }
     for (String field : List.of("use", "boundary", "selectedQuote")) {
       Object value = frontmatter.get(field);
@@ -282,7 +283,18 @@ public final class ManifestBuilder {
   private static void requireString(Note note, Map<String, Object> metadata, String field, String reason) { if (!(metadata.get(field) instanceof String value) || value.strip().isEmpty()) throw new ManifestValidationException(note.vaultPath(), field, reason); }
   private static void optionalString(Note note, Map<String, Object> metadata, String field) { if (metadata.containsKey(field) && !(metadata.get(field) instanceof String)) throw new ManifestValidationException(note.vaultPath(), field, "must be a string"); }
   private static void validateDate(Note note, Map<String, Object> metadata, String field) { Object value = metadata.get(field); if (value == null) return; if (!(value instanceof String text)) throw new ManifestValidationException(note.vaultPath(), field, "must be a YYYY-MM-DD string"); try { LocalDate.parse(text); } catch (DateTimeParseException error) { throw new ManifestValidationException(note.vaultPath(), field, "must be a real YYYY-MM-DD date"); } }
-  private static void validateUrl(Note note, Map<String, Object> metadata, String field) { Object value = metadata.get(field); if (value == null) return; if (!(value instanceof String text) || !text.matches("https?://[^/]+(?:/.*)?")) throw new ManifestValidationException(note.vaultPath(), field, "must be an http(s) URL"); }
+  private static void validateUrl(Note note, Map<String, Object> metadata, String field) {
+    Object value = metadata.get(field);
+    if (value == null) {
+      return;
+    }
+    if (!(value instanceof String text)) {
+      throw new ManifestValidationException(note.vaultPath(), field, "must be a URL string");
+    }
+    if (!text.matches("https?://[^/]+(?:/.*)?")) {
+      throw new ManifestValidationException(note.vaultPath(), field, "must be an http(s) URL");
+    }
+  }
 
   private void resolveEditorialMetadata(
       String path,
@@ -396,7 +408,7 @@ public final class ManifestBuilder {
   }
 
   @SuppressWarnings("unchecked")
-  private void resolvePins(String path, Map<String, Object> metadata, List<Note> notes) {
+  static void resolvePins(String path, Map<String, Object> metadata, List<Note> notes) {
     Object raw = metadata.get("showcase");
     if (!(raw instanceof List<?> showcases)) {
       return;
@@ -410,7 +422,8 @@ public final class ManifestBuilder {
         "claims", "claim",
         "concepts", "concept").get(metadata.get("id"));
     for (int index = 0; index < showcases.size(); index++) {
-      if (!(showcases.get(index) instanceof Map<?, ?> rawShowcase) || !rawShowcase.containsKey("target")) {
+      if (!(showcases.get(index) instanceof Map<?, ?> rawShowcase)
+          || !rawShowcase.keySet().equals(Set.of("target", "text"))) {
         throw new ManifestValidationException(path, "showcase[" + index + "]", "must contain exactly target and text");
       }
       Map<String, Object> showcase = (Map<String, Object>) rawShowcase;
@@ -608,7 +621,41 @@ public final class ManifestBuilder {
   private static String normalizeDate(Object value) { if (value == null || value.toString().isBlank()) return null; String text = unwrap(value.toString()); return text; }
   private static String unwrap(String value) { Matcher match = SCALAR_LINK.matcher(value.strip()); return match.matches() ? (match.group(2) == null ? match.group(1).strip() : match.group(2).strip()) : value.strip(); }
   private static String string(Object value) { return value == null ? "" : value.toString().strip(); }
-  private static String bookDescription(String body) { Matcher match = BOOK_DESCRIPTION.matcher(body); return match.find() ? HTML_TAG.matcher(match.group(1)).replaceAll("").replaceAll("\\s+", " ").strip() : ""; }
+  private static String bookDescription(String body) {
+    Matcher match = BOOK_DESCRIPTION.matcher(body);
+    if (!match.find()) {
+      return "";
+    }
+    String text = HTML_TAG.matcher(match.group(1)).replaceAll("");
+    return decodeHtmlEntities(text).replaceAll("[\\s\\u00A0]+", " ").strip();
+  }
+
+  private static String decodeHtmlEntities(String value) {
+    Matcher matcher = HTML_ENTITY.matcher(value);
+    StringBuffer decoded = new StringBuffer();
+    while (matcher.find()) {
+      String replacement;
+      if (matcher.group(1) != null) {
+        replacement = "&";
+      } else if (matcher.group(2) != null) {
+        replacement = "\u00A0";
+      } else {
+        replacement = decodeNumericEntity(matcher.group(3), matcher.group(4), matcher.group());
+      }
+      matcher.appendReplacement(decoded, Matcher.quoteReplacement(replacement));
+    }
+    matcher.appendTail(decoded);
+    return decoded.toString();
+  }
+
+  private static String decodeNumericEntity(String decimal, String hexadecimal, String original) {
+    try {
+      int codePoint = Integer.parseInt(decimal != null ? decimal : hexadecimal, decimal != null ? 10 : 16);
+      return Character.isValidCodePoint(codePoint) ? new String(Character.toChars(codePoint)) : original;
+    } catch (NumberFormatException ignored) {
+      return original;
+    }
+  }
   private static String linkTarget(String message) { return message.replaceFirst("^ambiguous public link: ", ""); }
   static String sourceHash(Map<String, Object> metadata, String body) { LinkedHashMap<String, Object> values = new LinkedHashMap<>(metadata); values.remove("sourceHash"); try { String json = pythonJson(values); MessageDigest digest = MessageDigest.getInstance("SHA-256"); return java.util.HexFormat.of().formatHex(digest.digest((json + "\n" + body).getBytes(StandardCharsets.UTF_8))); } catch (Exception error) { throw new IllegalStateException("cannot hash manifest source", error); } }
   private static String pythonJson(Object value) throws Exception { if (value == null || value instanceof String || value instanceof Character || value instanceof Boolean || value instanceof Number) return HASH_JSON.writeValueAsString(value); if (value instanceof Map<?, ?> map) { List<String> entries = new ArrayList<>(); map.entrySet().stream().sorted(Comparator.comparing(entry -> entry.getKey().toString())).forEach(entry -> { try { entries.add(pythonJson(entry.getKey().toString()) + ": " + pythonJson(entry.getValue())); } catch (Exception error) { throw new JsonEncodingException(error); } }); return "{" + String.join(", ", entries) + "}"; } if (value instanceof List<?> list) { List<String> values = new ArrayList<>(); for (Object item : list) values.add(pythonJson(item)); return "[" + String.join(", ", values) + "]"; } return HASH_JSON.writeValueAsString(value.toString()); }
