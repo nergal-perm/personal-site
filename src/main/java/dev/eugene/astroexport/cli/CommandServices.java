@@ -47,6 +47,7 @@ public final class CommandServices {
   private final WorkflowStateService workflowState;
   private final PublicationValidator publicationValidator;
   private final PreflightService preflightService;
+  private final PreflightObserver preflightObserver;
   private final MigrateOverridesAction migrateOverridesAction;
   private final WriteRuReviewAction writeRuReviewAction;
   private final ReplaceEnglishReviewAction replaceEnglishReviewAction;
@@ -62,6 +63,7 @@ public final class CommandServices {
       WorkflowStateService workflowState,
       PublicationValidator publicationValidator,
       PreflightService preflightService,
+      PreflightObserver preflightObserver,
       MigrateOverridesAction migrateOverridesAction,
       WriteRuReviewAction writeRuReviewAction,
       ReplaceEnglishReviewAction replaceEnglishReviewAction) {
@@ -75,6 +77,7 @@ public final class CommandServices {
     this.workflowState = workflowState;
     this.publicationValidator = publicationValidator;
     this.preflightService = preflightService;
+    this.preflightObserver = preflightObserver;
     this.migrateOverridesAction = migrateOverridesAction;
     this.writeRuReviewAction = writeRuReviewAction;
     this.replaceEnglishReviewAction = replaceEnglishReviewAction;
@@ -94,6 +97,7 @@ public final class CommandServices {
         new WorkflowStateService(),
         new PublicationValidator(),
         new PreflightService(),
+        (vault, note) -> { },
         ReviewWorkspace::migrateOverrides,
         ReviewWorkspace::writeRuReviewFile,
         ReviewWorkspace::replaceEnglishReviewFile);
@@ -124,6 +128,42 @@ public final class CommandServices {
         replacement, gateRunner);
   }
 
+  public CommandServices withPreflightObserver(PreflightObserver replacement) {
+    return new CommandServices(
+        clock,
+        selectionAction,
+        manifestAction,
+        englishManifestAction,
+        prepareAction,
+        writeSiteAction,
+        gateRunner,
+        workflowState,
+        publicationValidator,
+        preflightService,
+        replacement,
+        migrateOverridesAction,
+        writeRuReviewAction,
+        replaceEnglishReviewAction);
+  }
+
+  public CommandServices withReplaceEnglishReviewAction(ReplaceEnglishReviewAction replacement) {
+    return new CommandServices(
+        clock,
+        selectionAction,
+        manifestAction,
+        englishManifestAction,
+        prepareAction,
+        writeSiteAction,
+        gateRunner,
+        workflowState,
+        publicationValidator,
+        preflightService,
+        preflightObserver,
+        migrateOverridesAction,
+        writeRuReviewAction,
+        replacement);
+  }
+
   private CommandServices copy(
       Clock newClock,
       SelectionAction newSelection,
@@ -143,6 +183,7 @@ public final class CommandServices {
         workflowState,
         publicationValidator,
         preflightService,
+        preflightObserver,
         migrateOverridesAction,
         writeRuReviewAction,
         replaceEnglishReviewAction);
@@ -184,8 +225,19 @@ public final class CommandServices {
     return writeRuReviewAction.write(review, entry);
   }
 
-  public Path replaceEnglishReview(Path review, String content, String collection, String publicId, byte[] expected) {
-    return replaceEnglishReviewAction.replace(review, content, collection, publicId, expected);
+  public Path replaceEnglishReview(Path review, String content, String collection, String publicId, byte[] expected)
+      throws IOException {
+    return replaceEnglishReview(review, content, collection, publicId, expected, List.of());
+  }
+
+  public Path replaceEnglishReview(
+      Path review,
+      String content,
+      String collection,
+      String publicId,
+      byte[] expected,
+      List<WorkflowStateService.SnapshotGuard> guards) throws IOException {
+    return replaceEnglishReviewAction.replace(review, content, collection, publicId, expected, guards);
   }
 
   public Consumer<Path> astroGate(Path siteRoot) {
@@ -224,6 +276,11 @@ public final class CommandServices {
   }
 
   public CliPreflight preflight(Path vault, String notePath) {
+    try {
+      preflightObserver.beforePreflight(vault, notePath);
+    } catch (IOException error) {
+      throw new java.io.UncheckedIOException(error);
+    }
     PreflightService.Result loaded = preflightService.preflight(vault, notePath);
     if (!loaded.ready()) {
       return new CliPreflight(loaded.note(), null, loaded.diagnostics(), List.of());
@@ -341,6 +398,11 @@ public final class CommandServices {
   }
 
   @FunctionalInterface
+  public interface PreflightObserver {
+    void beforePreflight(Path vault, String notePath) throws IOException;
+  }
+
+  @FunctionalInterface
   public interface SelectionAction {
     SelectionResult select(Path vault);
   }
@@ -377,7 +439,13 @@ public final class CommandServices {
 
   @FunctionalInterface
   public interface ReplaceEnglishReviewAction {
-    Path replace(Path review, String content, String collection, String publicId, byte[] expected);
+    Path replace(
+        Path review,
+        String content,
+        String collection,
+        String publicId,
+        byte[] expected,
+        List<WorkflowStateService.SnapshotGuard> guards) throws IOException;
   }
 
   public record CliPreflight(

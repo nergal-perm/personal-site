@@ -7,6 +7,7 @@ import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.translation.TranslationPatch;
+import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.channels.FileChannel;
@@ -204,8 +205,18 @@ public final class ReviewWorkspace {
       String collection,
       String publicId,
       byte[] expectedContent) {
+    return replaceEnglishReviewFile(reviewRoot, content, collection, publicId, expectedContent, List.of());
+  }
+
+  public static Path replaceEnglishReviewFile(
+      Path reviewRoot,
+      String content,
+      String collection,
+      String publicId,
+      byte[] expectedContent,
+      List<WorkflowStateService.SnapshotGuard> guards) {
     Path target = reviewRoot.resolve(collection).resolve(publicId).resolve("en.md");
-    replaceAtomically(target, content, expectedContent);
+    replaceAtomically(target, content, expectedContent, guards);
     return target;
   }
 
@@ -510,26 +521,35 @@ public final class ReviewWorkspace {
       Path target,
       String content,
       byte[] expectedContent) {
+    replaceAtomically(target, content, expectedContent, List.of());
+  }
+
+  private static void replaceAtomically(
+      Path target,
+      String content,
+      byte[] expectedContent,
+      List<WorkflowStateService.SnapshotGuard> guards) {
     validateExistingLeaf(target);
     Path temporary = null;
     boolean retainTemporary = false;
     try {
       Files.createDirectories(target.getParent());
       validateExpectedContent(target, expectedContent);
+      validateGuards(guards);
       temporary = Files.createTempFile(
           target.getParent(), "." + target.getFileName() + ".", ".tmp");
       Files.writeString(temporary, content, StandardCharsets.UTF_8);
       try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
         channel.force(true);
       }
-      if (expectedContent == null) {
+      if (expectedContent == null && guards.isEmpty()) {
         Files.move(
             temporary,
             target,
             StandardCopyOption.ATOMIC_MOVE,
             StandardCopyOption.REPLACE_EXISTING);
       } else {
-        guardedExchange(target, temporary, content.getBytes(StandardCharsets.UTF_8), expectedContent);
+        guardedExchange(target, temporary, content.getBytes(StandardCharsets.UTF_8), expectedContent, guards);
       }
     } catch (ConcurrentReviewUpdateException error) {
       retainTemporary = temporary != null && temporary.equals(error.preservedPath());
@@ -551,8 +571,10 @@ public final class ReviewWorkspace {
       Path target,
       Path temporary,
       byte[] payload,
-      byte[] expectedContent) throws IOException {
+      byte[] expectedContent,
+      List<WorkflowStateService.SnapshotGuard> guards) throws IOException {
     validateExpectedContent(target, expectedContent);
+    validateGuards(guards);
     exchangePaths(target, temporary);
     byte[] displaced;
     try {
@@ -562,7 +584,7 @@ public final class ReviewWorkspace {
       throw new ConcurrentReviewUpdateException(
           "displaced review file could not be verified; preserved at " + preserved, true, preserved);
     }
-    if (!Arrays.equals(displaced, expectedContent)) {
+    if (!matchesExpected(displaced, expectedContent) || !snapshotsMatch(guards)) {
       Path preserved = rollbackExchange(target, temporary, payload);
       throw new ConcurrentReviewUpdateException(
           "guarded review file changed at the atomic commit boundary",
@@ -570,14 +592,17 @@ public final class ReviewWorkspace {
           preserved);
     }
     boolean targetIsPayload = Arrays.equals(Files.readAllBytes(target), payload);
-    boolean displacedIsExpected = Arrays.equals(Files.readAllBytes(temporary), expectedContent);
-    if (targetIsPayload && displacedIsExpected) {
+    boolean displacedIsExpected = matchesExpected(Files.readAllBytes(temporary), expectedContent);
+    boolean guardsCurrent = snapshotsMatch(guards);
+    if (targetIsPayload && displacedIsExpected && guardsCurrent) {
       return;
     }
     if (targetIsPayload) {
       Path preserved = rollbackExchange(target, temporary, payload);
       throw new ConcurrentReviewUpdateException(
-          "displaced review file changed before final commit verification",
+          guardsCurrent
+              ? "displaced review file changed before final commit verification"
+              : "guarded file changed before final commit verification",
           false,
           preserved);
     }
@@ -634,6 +659,28 @@ public final class ReviewWorkspace {
     if (!Files.exists(target) || !Arrays.equals(expectedContent, Files.readAllBytes(target))) {
       throw new ConcurrentReviewUpdateException("guarded review file changed: " + target);
     }
+  }
+
+  private static void validateGuards(List<WorkflowStateService.SnapshotGuard> guards)
+      throws IOException {
+    for (WorkflowStateService.SnapshotGuard guard : guards) {
+      validateExpectedContent(guard.path(), guard.expectedContent());
+    }
+  }
+
+  private static boolean snapshotsMatch(List<WorkflowStateService.SnapshotGuard> guards)
+      throws IOException {
+    for (WorkflowStateService.SnapshotGuard guard : guards) {
+      if (!Files.exists(guard.path())
+          || !Arrays.equals(guard.expectedContent(), Files.readAllBytes(guard.path()))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private static boolean matchesExpected(byte[] actual, byte[] expectedContent) {
+    return expectedContent == null || Arrays.equals(actual, expectedContent);
   }
 
   private static void validateExistingLeaf(Path target) {

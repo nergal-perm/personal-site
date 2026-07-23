@@ -1,8 +1,8 @@
 package dev.eugene.astroexport.cli;
 
+import dev.eugene.astroexport.assets.AssetResolver;
 import dev.eugene.astroexport.fs.JnaFileDescriptor;
 import dev.eugene.astroexport.fs.SiteWriter;
-import dev.eugene.astroexport.assets.AssetResolver;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
@@ -26,7 +26,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -35,12 +34,15 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.regex.Pattern;
+import picocli.CommandLine;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.ExecutionException;
 import picocli.CommandLine.Option;
+import picocli.CommandLine.ParameterException;
+import picocli.CommandLine.ParseResult;
 import picocli.CommandLine.Spec;
 import picocli.CommandLine.Model.CommandSpec;
 
@@ -97,6 +99,45 @@ public final class AstroExportCommand implements Callable<Integer> {
 
   public AstroExportCommand(CommandServices services) {
     this.services = services;
+  }
+
+  public static CommandLine commandLine(AstroExportCommand command) {
+    return new PropagatingCommandLine(command);
+  }
+
+  private static final class PropagatingCommandLine extends CommandLine {
+    PropagatingCommandLine(AstroExportCommand command) {
+      super(command);
+    }
+
+    @Override
+    public int execute(String... args) {
+      try {
+        ParseResult parseResult = parseArgs(args);
+        Integer helpExitCode = CommandLine.executeHelpRequest(parseResult);
+        if (helpExitCode != null) {
+          return helpExitCode;
+        }
+        return getExecutionStrategy().execute(parseResult);
+      } catch (ParameterException error) {
+        try {
+          return getParameterExceptionHandler().handleParseException(error, args);
+        } catch (RuntimeException handlerError) {
+          throw handlerError;
+        } catch (Exception handlerError) {
+          throw new ExecutionException(this, handlerError.getMessage(), handlerError);
+        }
+      } catch (ExecutionException error) {
+        Throwable cause = error.getCause();
+        if (cause instanceof RuntimeException runtime) {
+          throw runtime;
+        }
+        if (cause instanceof Error fatal) {
+          throw fatal;
+        }
+        throw error;
+      }
+    }
   }
 
   @Override
@@ -310,7 +351,7 @@ public final class AstroExportCommand implements Callable<Integer> {
           ? "stale"
           : "invalid";
       return new ReviewPairState(freshness, null, reason, null);
-    } catch (IOException | RuntimeException error) {
+    } catch (IOException | IllegalArgumentException error) {
       return new ReviewPairState("invalid", null, "English review is invalid: " + error.getMessage(), null);
     }
   }
@@ -427,7 +468,7 @@ public final class AstroExportCommand implements Callable<Integer> {
           diagnostics = List.of(new PublicationDiagnostic(
               "source",
               "Source changed while metadata state was being recorded; inspect it and retry."));
-        } catch (IOException | RuntimeException error) {
+        } catch (IOException | IllegalArgumentException | java.io.UncheckedIOException error) {
           diagnostics = append(diagnostics, new PublicationDiagnostic(
               "workflow",
               "Could not record metadata_blocked: " + error.getClass().getSimpleName() + "."));
@@ -476,7 +517,7 @@ public final class AstroExportCommand implements Callable<Integer> {
         try {
           setWorkflowIfChanged(stable.preflight(), "stale", null, pair.diagnostic(),
               services.clock().instant(), stable.sourceSnapshot(), List.of());
-        } catch (IOException | RuntimeException ignoredError) {
+        } catch (IOException | IllegalArgumentException | java.io.UncheckedIOException ignoredError) {
           // The stale bridge response below is the durable operator signal.
         }
         emitJson(bridge("mark-reviewed", false, "stale")
@@ -494,7 +535,7 @@ public final class AstroExportCommand implements Callable<Integer> {
       try {
         original = decode(pair.content());
         reviewed = ReviewWorkspace.setReviewedStatusPreservingContent(original);
-      } catch (RuntimeException error) {
+      } catch (IllegalArgumentException error) {
         emitJson(bridge("mark-reviewed", false, "translation_failed")
             .note(note)
             .identity(identity)
@@ -513,10 +554,26 @@ public final class AstroExportCommand implements Callable<Integer> {
           : reviewed.getBytes(StandardCharsets.UTF_8);
       Path english = englishPath(reviewRoot, target);
       try {
-        if (!"reviewed".equals(pair.translationStatus())) {
-          services.replaceEnglishReview(reviewRoot, reviewed, target.collection(), target.publicId(), pair.content());
+        StablePreflight beforeEnglishCommit = stablePreflight(vaultRoot, note, stable.preflight().note().path());
+        if (!beforeEnglishCommit.preflight().ready()
+            || !identity.samePublicIdentity(identityFromPreflight(beforeEnglishCommit.preflight(), reviewRoot))
+            || !Arrays.equals(beforeEnglishCommit.sourceSnapshot(), stable.sourceSnapshot())
+            || !Arrays.equals(readSafeRegularFile(english), pair.content())) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "source or English review changed before reviewed status commit");
         }
-        StablePreflight current = stablePreflight(vaultRoot, note, stable.preflight().note().path());
+        if (!"reviewed".equals(pair.translationStatus())) {
+          services.replaceEnglishReview(
+              reviewRoot,
+              reviewed,
+              target.collection(),
+              target.publicId(),
+              pair.content(),
+              List.of(new WorkflowStateService.SnapshotGuard(
+                  beforeEnglishCommit.preflight().note().path(),
+                  stable.sourceSnapshot())));
+        }
+        StablePreflight current = stablePreflight(vaultRoot, note, beforeEnglishCommit.preflight().note().path());
         if (!current.preflight().ready()
             || !identity.samePublicIdentity(identityFromPreflight(current.preflight(), reviewRoot))
             || !Arrays.equals(current.sourceSnapshot(), stable.sourceSnapshot())
@@ -542,7 +599,7 @@ public final class AstroExportCommand implements Callable<Integer> {
             .translationStatus(durablePair.translationStatus())
             .build());
         return 1;
-      } catch (IOException | RuntimeException error) {
+      } catch (IOException | IllegalArgumentException | java.io.UncheckedIOException error) {
         emitJson(bridge("mark-reviewed", false, "ready_for_review")
             .note(note)
             .identity(identity)
@@ -602,7 +659,7 @@ public final class AstroExportCommand implements Callable<Integer> {
       CommandServices.CliPreflight initial;
       try {
         initial = services.preflight(vaultRoot, path);
-      } catch (RuntimeException error) {
+      } catch (java.io.UncheckedIOException error) {
         increment(summary, "metadata_blocked");
         unchanged++;
         errors.add(new PublicationDiagnostic(
@@ -692,7 +749,7 @@ public final class AstroExportCommand implements Callable<Integer> {
               "source",
               path + ": source or English review changed at the reconciliation boundary; retry refresh."
                   + concurrentWorkflowRecovery(error)));
-        } catch (IOException | RuntimeException error) {
+        } catch (IOException | IllegalArgumentException | java.io.UncheckedIOException error) {
           increment(summary, state.status());
           unchanged++;
           errors.add(new PublicationDiagnostic(
@@ -779,7 +836,7 @@ public final class AstroExportCommand implements Callable<Integer> {
           return state;
         }
       }
-    } catch (IOException | RuntimeException ignored) {
+    } catch (IOException | IllegalArgumentException ignored) {
       return null;
     }
     return null;
@@ -1294,12 +1351,14 @@ public final class AstroExportCommand implements Callable<Integer> {
 
     @Override
     public Integer call() throws Exception {
-      if (out.getParent() != null) {
-        Files.createDirectories(out.getParent());
+      Path destination = out.toAbsolutePath().normalize();
+      Path parentDirectory = destination.getParent();
+      if (parentDirectory != null) {
+        Files.createDirectories(parentDirectory);
       }
-      Path temporary = Files.createTempFile(out.getParent(), "." + out.getFileName(), ".tmp");
+      Path temporary = Files.createTempFile(parentDirectory, "." + destination.getFileName(), ".tmp");
       Files.writeString(temporary, parent.services.renderPublicationContract(), StandardCharsets.UTF_8);
-      Files.move(temporary, out, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
       parent.out().println(out);
       return 0;
     }

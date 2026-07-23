@@ -3,6 +3,7 @@ package dev.eugene.astroexport.cli;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -33,7 +34,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
-import picocli.CommandLine;
 
 final class AstroExportCommandTest {
   private static final ObjectMapper JSON = new ObjectMapper();
@@ -217,6 +217,68 @@ final class AstroExportCommandTest {
     assertEquals(0, refreshPayload.get("updated"));
     assertEquals(1, refreshPayload.get("unchanged"));
     assertEquals(0, refreshPayload.get("uncertain"));
+  }
+
+  @Test
+  void markReviewedDoesNotCommitEnglishWhenSourceChangesBeforeEnglishCommit() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(vault);
+    ManifestEntry entry = currentBlogEntry(vault);
+    Path review = temp.resolve("review");
+    Path en = writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    byte[] enBefore = Files.readAllBytes(en);
+    Path jobs = temp.resolve("jobs");
+    CommandServices defaults = CommandServices.defaults();
+    CommandServices services = defaults.withReplaceEnglishReviewAction(
+        (actualReview, content, collection, publicId, expected, guards) -> {
+          Files.writeString(
+              source,
+              Files.readString(source).replace("Text.", "Source changed before English commit."));
+          return defaults.replaceEnglishReview(actualReview, content, collection, publicId, expected, guards);
+        });
+
+    CommandFixture.Result result = run(new AstroExportCommand(services),
+        "mark-reviewed",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", review.toString(),
+        "--jobs", jobs.toString(),
+        "--json");
+
+    assertEquals(1, result.exitCode());
+    Map<String, Object> payload = json(result.stdout());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("stale", payload.get("status"));
+    assertEquals(ByteBuffer.wrap(enBefore), ByteBuffer.wrap(Files.readAllBytes(en)));
+    assertFalse(Files.readString(en).contains("translationStatus: \"reviewed\""));
+    assertTrue(Files.readString(source).contains("Source changed before English commit."));
+  }
+
+  @Test
+  void bridgeCommandsPropagateProgrammerErrors() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    CommandServices inspectServices = CommandServices.defaults()
+        .withPreflightObserver((actualVault, note) -> {
+          throw new RuntimeException("unexpected inspect invariant failure");
+        });
+    RuntimeException inspect = assertThrows(RuntimeException.class,
+        () -> run(new AstroExportCommand(inspectServices),
+            "inspect-publication",
+            "--vault", vault.toString(),
+            "--note", "anywhere/Essay.md",
+            "--json"));
+    assertTrue(inspect.getMessage().contains("inspect invariant"));
+
+    CommandServices refreshServices = CommandServices.defaults()
+        .withSelectionAction(actualVault -> {
+          throw new AssertionError("unexpected selection invariant failure");
+        });
+    AssertionError refresh = assertThrows(AssertionError.class, () -> run(new AstroExportCommand(refreshServices),
+        "refresh-publication-queue",
+        "--vault", vault.toString(),
+        "--json"));
+    assertTrue(refresh.getMessage().contains("selection invariant"));
   }
 
   @Test
@@ -421,6 +483,23 @@ final class AstroExportCommandTest {
     assertTrue(text.endsWith("\n"));
   }
 
+  @Test
+  void writePublicationContractSupportsParentlessOutputPath() throws Exception {
+    Path destination = Path.of(".astro-export-command-test-publication-contract-"
+        + System.nanoTime() + ".md");
+    try {
+      CommandFixture.Result result = run(command(),
+          "write-publication-contract",
+          "--out", destination.toString());
+
+      assertEquals(0, result.exitCode());
+      assertEquals(destination + "\n", result.stdout());
+      assertTrue(Files.readString(destination).contains("### blog/essay"));
+    } finally {
+      Files.deleteIfExists(destination);
+    }
+  }
+
   private static AstroExportCommand command() {
     return new AstroExportCommand();
   }
@@ -428,7 +507,7 @@ final class AstroExportCommandTest {
   private static CommandFixture.Result run(AstroExportCommand command, String... args) {
     ByteArrayOutputStream out = new ByteArrayOutputStream();
     ByteArrayOutputStream err = new ByteArrayOutputStream();
-    CommandLine commandLine = new CommandLine(command);
+    var commandLine = AstroExportCommand.commandLine(command);
     commandLine.setOut(new PrintWriter(out, true, StandardCharsets.UTF_8));
     commandLine.setErr(new PrintWriter(err, true, StandardCharsets.UTF_8));
     int exitCode = commandLine.execute(args);
