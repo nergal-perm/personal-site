@@ -296,7 +296,9 @@ public final class ManifestBuilder {
     if (!unknown.isEmpty()) throw new ManifestValidationException(note.vaultPath(), "topics", "contains unsupported values: " + String.join(", ", unknown));
     for (String field : List.of("description", "cover", "status")) optionalString(note, metadata, field);
     if (metadata.containsKey("foundational") && !(metadata.get("foundational") instanceof Boolean)) throw new ManifestValidationException(note.vaultPath(), "foundational", "must be a boolean");
-    if (metadata.containsKey("readTime") && (!(metadata.get("readTime") instanceof Integer) || ((Integer) metadata.get("readTime")) <= 0)) throw new ManifestValidationException(note.vaultPath(), "readTime", "must be a positive integer");
+    if (metadata.containsKey("readTime") && !isPositiveIntegral(metadata.get("readTime"))) {
+      throw new ManifestValidationException(note.vaultPath(), "readTime", "must be a positive integer");
+    }
     if (note.publicCollection().equals("music")) validateMusicEntry(note, metadata);
     if (note.publicCollection().equals("bibliography")) validateBibliographyEntry(note, metadata);
     if (note.publicCollection().equals("blog") && "claim".equals(metadata.get("contentType"))) validateClaimEntry(note, metadata);
@@ -354,11 +356,21 @@ public final class ManifestBuilder {
 
   private static boolean parsesDate(String value, DateTimeFormatter formatter) {
     try {
-      LocalDate.parse(value, formatter);
-      return true;
+      LocalDate parsed = LocalDate.parse(value, formatter);
+      return parsed.getYear() >= 1 && parsed.getYear() <= 9999;
     } catch (DateTimeParseException ignored) {
       return false;
     }
+  }
+
+  private static boolean isPositiveIntegral(Object value) {
+    if (value instanceof BigInteger number) {
+      return number.signum() > 0;
+    }
+    if (value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long) {
+      return ((Number) value).longValue() > 0;
+    }
+    return false;
   }
 
   private static void validateUrl(Note note, Map<String, Object> metadata, String field) {
@@ -401,17 +413,21 @@ public final class ManifestBuilder {
       List<Note> notes,
       List<ManifestLink> retained,
       List<ManifestLink> stripped) {
+    resolveCurrentTargets(path, metadata, notes, retained, stripped);
     for (Map.Entry<String, Object> entry : new ArrayList<>(metadata.entrySet())) {
-      if (!entry.getKey().equals("title")) {
+      if (!entry.getKey().equals("title") && !entry.getKey().equals("current")) {
         metadata.put(entry.getKey(), tokenizeEditorial(path, entry.getKey(), entry.getValue(), notes, retained, stripped));
       }
     }
-    resolveCurrentTargets(path, metadata, notes, retained);
   }
 
   @SuppressWarnings("unchecked")
-  private static void resolveCurrentTargets(
-      String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained) {
+  private void resolveCurrentTargets(
+      String path,
+      Map<String, Object> metadata,
+      List<Note> notes,
+      List<ManifestLink> retained,
+      List<ManifestLink> stripped) {
     if (!(metadata.get("current") instanceof List<?> current)) {
       return;
     }
@@ -420,34 +436,35 @@ public final class ManifestBuilder {
         throw new ManifestValidationException(path, "current[" + index + "]", "must be an object");
       }
       Map<String, Object> item = (Map<String, Object>) raw;
-      if (!item.containsKey("target")) {
-        continue;
+      if (item.containsKey("target")) {
+        Object rawTarget = item.get("target");
+        if (!(rawTarget instanceof String target) || target.strip().isEmpty()) {
+          throw new ManifestValidationException(path, "current[" + index + "].target", "must be a non-empty string");
+        }
+        Note resolved;
+        try {
+          resolved = resolveNote(notes, target, path, "current[" + index + "].target");
+        } catch (ManifestValidationException error) {
+          throw new ManifestValidationException(
+              path,
+              "editorial text link " + target,
+              "is ambiguous; use a publicId or vault path");
+        }
+        if (resolved == null) {
+          throw new ManifestValidationException(path, "current[" + index + "].target", "must resolve to exactly one published entry");
+        }
+        Object layout = item.get("layout");
+        if ("book".equals(layout) && !"book".equals(resolved.publicContentType())) {
+          throw new ManifestValidationException(path, "current[" + index + "].target", "must reference a book");
+        }
+        if ("album".equals(layout) && !"album".equals(resolved.publicContentType())) {
+          throw new ManifestValidationException(path, "current[" + index + "].target", "must reference an album");
+        }
+        item.put("target", resolved.publicId());
+        retained.add(new ManifestLink(path, target, "editorial", resolved.publicId(), route(resolved)));
       }
-      Object rawTarget = item.get("target");
-      if (!(rawTarget instanceof String target) || target.strip().isEmpty()) {
-        throw new ManifestValidationException(path, "current[" + index + "].target", "must be a non-empty string");
-      }
-      Note resolved;
-      try {
-        resolved = resolveNote(notes, target, path, "current[" + index + "].target");
-      } catch (ManifestValidationException error) {
-        throw new ManifestValidationException(
-            path,
-            "editorial text link " + target,
-            "is ambiguous; use a publicId or vault path");
-      }
-      if (resolved == null) {
-        throw new ManifestValidationException(path, "current[" + index + "].target", "must resolve to exactly one published entry");
-      }
-      Object layout = item.get("layout");
-      if ("book".equals(layout) && !"book".equals(resolved.publicContentType())) {
-        throw new ManifestValidationException(path, "current[" + index + "].target", "must reference a book");
-      }
-      if ("album".equals(layout) && !"album".equals(resolved.publicContentType())) {
-        throw new ManifestValidationException(path, "current[" + index + "].target", "must reference an album");
-      }
-      item.put("target", resolved.publicId());
-      retained.add(new ManifestLink(path, target, "editorial", resolved.publicId(), route(resolved)));
+      item.put("title", tokenizeEditorial(path, "title", item.get("title"), notes, retained, stripped));
+      item.put("text", tokenizeEditorial(path, "text", item.get("text"), notes, retained, stripped));
     }
   }
 
@@ -956,15 +973,9 @@ public final class ManifestBuilder {
     }
     if (value instanceof Map<?, ?> map) {
       List<String> entries = new ArrayList<>();
-      map.entrySet().stream()
-          .sorted(Comparator.comparing(entry -> entry.getKey().toString(), ManifestBuilder::compareUnicodeCodePoints))
-          .forEach(entry -> {
-            try {
-              entries.add(pythonJson(entry.getKey().toString()) + ": " + pythonJson(entry.getValue()));
-            } catch (Exception error) {
-              throw new JsonEncodingException(error);
-            }
-          });
+      for (Map.Entry<?, ?> entry : sortedPythonJsonEntries(map)) {
+        entries.add(pythonJson(pythonJsonMapKey(entry.getKey())) + ": " + pythonJson(entry.getValue()));
+      }
       return "{" + String.join(", ", entries) + "}";
     }
     if (value instanceof List<?> list) {
@@ -975,6 +986,86 @@ public final class ManifestBuilder {
       return "[" + String.join(", ", values) + "]";
     }
     return HASH_JSON.writeValueAsString(value.toString());
+  }
+
+  private static List<Map.Entry<?, ?>> sortedPythonJsonEntries(Map<?, ?> values) {
+    List<Map.Entry<?, ?>> entries = new ArrayList<>(values.entrySet());
+    if (entries.isEmpty()) {
+      return entries;
+    }
+    PythonJsonMapKeyKind kind = pythonJsonMapKeyKind(entries.getFirst().getKey());
+    for (Map.Entry<?, ?> entry : entries) {
+      if (pythonJsonMapKeyKind(entry.getKey()) != kind) {
+        throw new IllegalArgumentException("Python JSON object keys must be comparable");
+      }
+    }
+    if (kind == PythonJsonMapKeyKind.NULL && entries.size() > 1) {
+      throw new IllegalArgumentException("Python JSON object keys must be comparable");
+    }
+    if (kind == PythonJsonMapKeyKind.STRING) {
+      entries.sort(Comparator.comparing(entry -> pythonJsonMapKey(entry.getKey()), ManifestBuilder::compareUnicodeCodePoints));
+    } else if (kind == PythonJsonMapKeyKind.NUMBER) {
+      entries.sort(Comparator.comparing(entry -> numericJsonMapKey(entry.getKey())));
+    }
+    return entries;
+  }
+
+  private static PythonJsonMapKeyKind pythonJsonMapKeyKind(Object key) {
+    if (key == null) {
+      return PythonJsonMapKeyKind.NULL;
+    }
+    if (key instanceof String || key instanceof Character) {
+      return PythonJsonMapKeyKind.STRING;
+    }
+    if (key instanceof Number || key instanceof Boolean) {
+      return PythonJsonMapKeyKind.NUMBER;
+    }
+    throw new IllegalArgumentException("Python JSON object keys must be strings, numbers, booleans, or null");
+  }
+
+  private static String pythonJsonMapKey(Object key) {
+    if (key == null) {
+      return "null";
+    }
+    if (key instanceof Boolean value) {
+      return value ? "true" : "false";
+    }
+    if (key instanceof Number value) {
+      try {
+        return pythonNumber(value);
+      } catch (Exception error) {
+        throw new IllegalArgumentException("cannot serialize Python JSON map key", error);
+      }
+    }
+    return String.valueOf(key);
+  }
+
+  private static BigDecimal numericJsonMapKey(Object key) {
+    if (key instanceof Boolean value) {
+      return value ? BigDecimal.ONE : BigDecimal.ZERO;
+    }
+    if (key instanceof BigDecimal value) {
+      return value;
+    }
+    if (key instanceof BigInteger value) {
+      return new BigDecimal(value);
+    }
+    if (key instanceof Double value) {
+      if (!Double.isFinite(value)) {
+        throw new IllegalArgumentException("Python JSON object keys must be finite numbers");
+      }
+      return BigDecimal.valueOf(value);
+    }
+    if (key instanceof Float value) {
+      if (!Float.isFinite(value)) {
+        throw new IllegalArgumentException("Python JSON object keys must be finite numbers");
+      }
+      return BigDecimal.valueOf(value.doubleValue());
+    }
+    if (key instanceof Number value) {
+      return BigDecimal.valueOf(value.longValue());
+    }
+    throw new IllegalArgumentException("Python JSON object key is not numeric");
   }
 
   private static String pythonNumber(Number value) throws Exception {
@@ -1037,7 +1128,12 @@ public final class ManifestBuilder {
     }
     return Integer.compare(left.length() - leftOffset, right.length() - rightOffset);
   }
-  private static final class JsonEncodingException extends RuntimeException { JsonEncodingException(Exception cause) { super(cause); } }
+
+  private enum PythonJsonMapKeyKind {
+    STRING,
+    NUMBER,
+    NULL
+  }
 
   public static final class ManifestValidationException extends IllegalArgumentException {
     private final String sourcePath;

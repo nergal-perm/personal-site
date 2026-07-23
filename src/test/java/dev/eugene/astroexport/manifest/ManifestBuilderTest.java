@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.model.ManifestLink;
+import java.math.BigInteger;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.Arrays;
@@ -71,6 +72,23 @@ final class ManifestBuilderTest {
     Note before = note("blog/Essay.md", "Essay", "essay", "blog", "essay", Map.of("description", "Описание."), "Текст.");
     Note after = note("blog/Essay.md", "Essay", "essay", "blog", "essay", Map.of("description", "Описание.", "publicWorkflowStatus", "ready_for_review"), "Текст.");
     assertEquals(only(builder.buildRussianManifest(selection(before))).metadata(), only(builder.buildRussianManifest(selection(after))).metadata());
+  }
+
+  @Test
+  void ignoresWorkflowFrontmatterForEditorialMetadataBodyAndHash() {
+    String body = "## Кратко\n\nЭссе.\n\n## Eyebrow\n\nТексты.\n\n## Принцип списка\n\nПолный список.\n\nПодсказка поиска:: Искать";
+    Note before = note("editorial/Essays.md", "Эссе", "essays", "editorial", "curated_page", Map.of("editorialPage", "essays"), body);
+    Note after = note("editorial/Essays.md", "Эссе", "essays", "editorial", "curated_page", Map.of(
+        "editorialPage", "essays",
+        "publicWorkflowStatus", "ready_for_review",
+        "publicTranslationStatus", "generated",
+        "publicWorkflowUpdated", "2026-07-18T12:00:00+04:00",
+        "publicWorkflowDiagnostic", ""), body);
+
+    var beforeEntry = only(builder.buildRussianManifest(selection(before)));
+    var afterEntry = only(builder.buildRussianManifest(selection(after)));
+    assertEquals(beforeEntry.metadata(), afterEntry.metadata());
+    assertEquals(beforeEntry.body(), afterEntry.body());
   }
 
   @Test
@@ -255,8 +273,23 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void acceptsAnyPositiveIntegralReadTimeAndRejectsOtherNumbers() {
+    for (Number value : List.of(45L, new BigInteger("90"))) {
+      Note note = note("blog/Essay.md", "Essay", "essay", "blog", "essay", Map.of("readTime", value), "");
+      assertEquals(value, only(builder.buildRussianManifest(selection(note))).metadata().get("readTime"));
+    }
+    for (Number value : List.of(0, -1L, 1.5d)) {
+      Note note = note("blog/Invalid.md", "Essay", "invalid", "blog", "essay", Map.of("readTime", value), "");
+      ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+          () -> builder.buildRussianManifest(selection(note)));
+      assertEquals("readTime", error.fieldName());
+      assertEquals("must be a positive integer", error.reason());
+    }
+  }
+
+  @Test
   void acceptsPythonIsoDateFormsWithoutRewritingMetadata() {
-    for (String date : List.of("20260723", "2026-W30-4", "2026W304")) {
+    for (String date : List.of("20260723", "2026-W30-4", "2026W304", "0001-01-01", "00010101", "0001-W01-1")) {
       Note common = note("blog/" + date + ".md", "Дата", "date-" + date.replaceAll("[^0-9]", ""), "blog", "essay", Map.of("date", date), "");
       assertEquals(date, only(builder.buildRussianManifest(selection(common))).metadata().get("date"));
 
@@ -270,10 +303,17 @@ final class ManifestBuilderTest {
     assertEquals("date", invalid.fieldName());
     assertEquals("must be a real YYYY-MM-DD date", invalid.reason());
 
-    for (String malformed : List.of("2026W30-4", "2026-W304")) {
+    for (String malformed : List.of("2026W30-4", "2026-W304", "0000-01-01", "00000101", "0000-W01-1")) {
       ManifestBuilder.ManifestValidationException malformedError = assertThrows(ManifestBuilder.ManifestValidationException.class,
           () -> builder.buildRussianManifest(selection(note("blog/Invalid.md", "Дата", "invalid", "blog", "essay", Map.of("date", malformed), ""))));
       assertEquals("date", malformedError.fieldName());
+    }
+
+    for (String malformed : List.of("0000-01-01", "00000101", "0000-W01-1")) {
+      Note now = note("editorial/Now.md", "Сейчас", "now", "editorial", "curated_page", Map.of(
+          "editorialPage", "now", "date", malformed, "status", "current"), editorialNowBody());
+      assertEquals("date", assertThrows(ManifestBuilder.ManifestValidationException.class,
+          () -> builder.buildRussianManifest(selection(now))).fieldName());
     }
   }
 
@@ -337,6 +377,21 @@ final class ManifestBuilderTest {
     assertEquals("Текущий фокус", current.getFirst().get("title"));
     assertEquals("book", current.get(2).get("layout"));
     assertEquals("album", current.get(3).get("layout"));
+  }
+
+  @Test
+  void recordsHomeCurrentTargetBeforeItsProseLinks() {
+    Note home = note("editorial/Home.md", "Главная", "home", "editorial", "curated_page", Map.of("editorialPage", "home"),
+        homeWithLinkedCurrentCards().replaceFirst("Описание\\.", "См. [[Public note]]."));
+    Note study = note("blog/Study.md", "Study source", "study-target", "blog", "essay", Map.of(), "");
+    Note build = note("concepts/Build.md", "Build source", "build-target", "concepts", "concept", Map.of("description", "Описание."), "## Определение\n\nОпределение.");
+    Note book = note("bibliography/Book.md", "Book source", "book-target", "bibliography", "book", Map.of("author", "Автор"), "");
+    Note album = note("reviews/Album.md", "Album source", "album-target", "music", "album", Map.of("artist", "Автор", "albumTitle", "Альбом"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
+    Note publicNote = note("blog/Public.md", "Public note", "public-note", "blog", "note", Map.of(), "");
+
+    var result = builder.buildRussianManifest(selection(home, study, build, book, album, publicNote));
+    assertEquals(List.of("Study source", "Public note"), result.retainedLinks().subList(0, 2).stream().map(ManifestLink::target).toList());
+    assertEquals(List.of("editorial", "editorial-text"), result.retainedLinks().subList(0, 2).stream().map(ManifestLink::kind).toList());
   }
 
   @Test
@@ -860,6 +915,69 @@ final class ManifestBuilderTest {
     assertEquals("must not duplicate an earlier pin", error.reason());
   }
 
+  @Test
+  void hashesPythonSortedAndCoercedMapKeys() {
+    Map<Object, Object> integers = new LinkedHashMap<>();
+    integers.put(10, "a");
+    integers.put(2, "b");
+    assertEquals("486e4b611acd1acc1016fe6a196abaa8969c0660d7a52b5e88a7debfdc5b6674",
+        sourceHashWithPythonKeys(integers, "Body."));
+
+    Map<Object, Object> numeric = new LinkedHashMap<>();
+    numeric.put(10, "a");
+    numeric.put(2, "b");
+    numeric.put(1.5d, "c");
+    assertEquals("9e5c31212ef36b7d20432ae0eee2a8d0f7e7e30e3b8cff4cc4cea5b1877d3e99",
+        sourceHashWithPythonKeys(numeric, "Body."));
+
+    Map<Object, Object> nullOnly = new LinkedHashMap<>();
+    nullOnly.put(null, "n");
+    assertEquals("8f410064d35a8acef26c509f6d52788b19a23445a8f568cf859486acbc50b52d",
+        sourceHashWithPythonKeys(nullOnly, "Body."));
+
+    Map<Object, Object> mixed = new LinkedHashMap<>();
+    mixed.put(null, "n");
+    mixed.put(2, "b");
+    assertThrows(IllegalStateException.class, () -> sourceHashWithPythonKeys(mixed, "Body."));
+  }
+
+  @Test
+  void sanitizesEditorialAndBookBodiesBeforeMetadataAndHashing() {
+    Note now = note("editorial/Now.md", "Сейчас", "now", "editorial", "curated_page", Map.of(
+        "editorialPage", "now", "date", "2026-07-15", "status", "current"),
+        editorialNowBody().replace("Текст.", "Visible %%PRIVATE_SECTION%% text with `%%INLINE_CODE%%`.\n\n```text\n%%FENCED_CODE%%\n```"));
+    var nowEntry = only(builder.buildRussianManifest(selection(now)));
+    assertSanitizedAndHashed(nowEntry);
+    assertFalse(nowEntry.metadata().toString().contains("PRIVATE_SECTION"));
+    assertTrue(nowEntry.metadata().toString().contains("%%INLINE_CODE%%"));
+    assertTrue(nowEntry.metadata().toString().contains("%%FENCED_CODE%%"));
+
+    Note book = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Author"),
+        "<div class=\"book-description\"><p>Central %%PRIVATE_BOOK%% idea with `%%INLINE_CODE%%`.</p></div>\n\n## Конспект\n\nVisible %%PRIVATE_BODY%% body.\n\n```text\n%%FENCED_CODE%%\n```");
+    var bookEntry = only(builder.buildRussianManifest(selection(book)));
+    assertSanitizedAndHashed(bookEntry);
+    assertEquals("Central idea with `%%INLINE_CODE%%`.", bookEntry.metadata().get("description"));
+    assertFalse(bookEntry.metadata().toString().contains("PRIVATE_BOOK"));
+    assertFalse(bookEntry.body().contains("PRIVATE_BODY"));
+    assertTrue(bookEntry.body().contains("%%FENCED_CODE%%"));
+  }
+
+  @Test
+  void keepsUntypedEssayAndNoteBodiesExceptForPublicSanitationAndLinks() {
+    String body = "## Наблюдение\n\nТекст %%PRIVATE%% с [[Target]].\n\n## Эксперимент\n\nЕщё один раздел.";
+    Note target = note("blog/Target.md", "Target", "target", "blog", "note", Map.of(), "");
+    for (String contentType : List.of("essay", "note")) {
+      Note source = note("blog/Source.md", "Источник", contentType + "-source", "blog", contentType,
+          Map.of("description", "Единственное общее резюме."), body);
+      var entry = byId(builder.buildRussianManifest(selection(source, target)), contentType + "-source");
+      assertEquals("Единственное общее резюме.", entry.metadata().get("description"));
+      assertEquals("## Наблюдение\n\nТекст  с [Target](/ru/notes/target/).\n\n## Эксперимент\n\nЕщё один раздел.", entry.body());
+      for (String field : List.of("abstract", "why", "sections", "closing", "sources", "observation", "model", "boundary", "experiment")) {
+        assertFalse(entry.metadata().containsKey(field));
+      }
+    }
+  }
+
   private static dev.eugene.astroexport.model.ManifestEntry only(dev.eugene.astroexport.model.ManifestResult result) { return result.entries().getFirst(); }
   private static dev.eugene.astroexport.model.ManifestEntry byId(dev.eugene.astroexport.model.ManifestResult result, String id) { return result.entries().stream().filter(entry -> id.equals(entry.metadata().get("id"))).findFirst().orElseThrow(); }
   private static SelectionResult selection(Note... notes) { return new SelectionResult(List.of(notes), List.of(), notes.length, notes.length); }
@@ -874,6 +992,15 @@ final class ManifestBuilderTest {
       result.put((String) values[index], values[index + 1]);
     }
     return result;
+  }
+  @SuppressWarnings({"unchecked", "rawtypes"})
+  private static String sourceHashWithPythonKeys(Map<Object, Object> metadata, String body) {
+    return ManifestBuilder.sourceHash((Map) metadata, body);
+  }
+  private static void assertSanitizedAndHashed(dev.eugene.astroexport.model.ManifestEntry entry) {
+    Map<String, Object> metadata = new LinkedHashMap<>(entry.metadata());
+    Object sourceHash = metadata.remove("sourceHash");
+    assertEquals(ManifestBuilder.sourceHash(metadata, entry.body()), sourceHash);
   }
   private void assertSelectedQuoteError(Object selectedQuote, String field) {
     ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
