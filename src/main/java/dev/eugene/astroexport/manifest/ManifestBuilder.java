@@ -8,6 +8,7 @@ import dev.eugene.astroexport.model.ManifestLink;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
+import dev.eugene.astroexport.translation.TranslationProjection;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.validation.PublicationValidator;
 import dev.eugene.astroexport.markdown.MarkdownScanner;
@@ -101,9 +102,16 @@ public final class ManifestBuilder {
       ManifestEntry entry = entriesByPath.get(note.vaultPath());
       LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(entry.metadata());
       String body = entry.body();
+      boolean refreshEditorialTranslationSource = false;
       if (note.publicCollection().equals("editorial")) {
+        int retainedBefore = retained.size();
+        int strippedBefore = stripped.size();
         resolveEditorialMetadata(entry.sourcePath(), metadata, notes, retained, stripped);
         resolvePins(entry.sourcePath(), metadata, notes);
+        refreshEditorialTranslationSource =
+            retained.size() != retainedBefore
+                || stripped.size() != strippedBefore
+                || metadata.get("pinned") instanceof List<?> pins && !pins.isEmpty();
         filterEditorialReferences(entry.sourcePath(), metadata, notes, stripped);
       } else {
         try {
@@ -130,7 +138,31 @@ public final class ManifestBuilder {
       }
       resolveFrontmatterLinks(entry.sourcePath(), metadata, notes, retained, stripped);
       metadata.put("sourceHash", sourceHash(metadata, body));
-      entriesByPath.put(entry.sourcePath(), new ManifestEntry(entry.sourcePath(), entry.targetPath(), entry.route(), metadata, body));
+      String translationSourceHash = entry.translationSourceHash();
+      Map<String, Object> translationSourceMetadata = entry.translationSourceMetadata();
+      if (refreshEditorialTranslationSource) {
+        translationSourceHash = String.valueOf(metadata.get("sourceHash"));
+        translationSourceMetadata = metadata;
+      }
+      ManifestEntry finalized = new ManifestEntry(
+          entry.sourcePath(),
+          entry.targetPath(),
+          entry.route(),
+          metadata,
+          body,
+          translationSourceHash,
+          translationSourceMetadata);
+      if (!note.publicCollection().equals("editorial")) {
+        finalized = new ManifestEntry(
+            finalized.sourcePath(),
+            finalized.targetPath(),
+            finalized.route(),
+            finalized.metadata(),
+            finalized.body(),
+            TranslationProjection.translationSourceHash(finalized),
+            null);
+      }
+      entriesByPath.put(entry.sourcePath(), finalized);
     }
     return new ManifestResult(
         notes.stream().map(note -> entriesByPath.get(note.vaultPath())).toList(),
@@ -161,6 +193,16 @@ public final class ManifestBuilder {
     }
     String body = publicBody(note);
     validateEntry(note, metadata);
+    if (note.publicCollection().equals("editorial")) {
+      return new ManifestEntry(
+          note.vaultPath(),
+          targetPath(note),
+          route(note),
+          metadata,
+          body,
+          sourceHash(metadata, note.body()),
+          metadata);
+    }
     return new ManifestEntry(note.vaultPath(), targetPath(note), route(note), metadata, body);
   }
 

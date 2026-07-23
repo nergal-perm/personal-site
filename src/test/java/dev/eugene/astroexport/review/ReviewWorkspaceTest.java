@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.translation.TranslationPatch;
-import dev.eugene.astroexport.translation.TranslationProjection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
@@ -57,7 +56,7 @@ final class ReviewWorkspaceTest {
         Observable work
 
         English description.
-        """.formatted(TranslationProjection.translationSourceHash(entry)));
+        """.formatted("a".repeat(64)));
 
     TranslationPatch patch = ReviewWorkspace.loadEnglishPatch(temp.resolve("review"), entry);
 
@@ -68,6 +67,43 @@ final class ReviewWorkspaceTest {
         "title", "Observable work",
         "text", "English description.")), patch.metadata().get("current"));
     assertEquals(Map.of("paths", Map.of()), patch.referenceTranslations());
+  }
+
+  @Test
+  void parsesHomeCurrentCardsAgainstAuthoredSnapshot() throws Exception {
+    ManifestEntry entry = filteredHomeEntry();
+    Path path = temp.resolve("review/editorial/home/en.md");
+    Files.createDirectories(path.getParent());
+    Files.writeString(path, """
+        ---
+        sourceHash: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        translationStatus: reviewed
+        translatedAt: 2026-07-17
+        translationProfile: codex-test-v1
+        title: Home
+        ---
+        ## Сейчас
+
+        ### Studying
+
+        First work
+
+        First description.
+
+        ### Building
+
+        Second work
+
+        Second description.
+        """);
+
+    TranslationPatch patch = ReviewWorkspace.loadEnglishPatch(temp.resolve("review"), entry);
+
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> current =
+        (List<Map<String, Object>>) patch.metadata().get("current");
+    assertEquals(2, current.size());
+    assertEquals("Building", current.get(1).get("label"));
   }
 
   @Test
@@ -188,6 +224,50 @@ final class ReviewWorkspaceTest {
   }
 
   @Test
+  void rejectsMalformedEditorialCurrentMarkdownCases() throws Exception {
+    ManifestEntry entry = editorialEntry();
+    List<List<String>> cases = List.of(
+        List.of("### Studying\n\nWork\n\nDescription.", "## Сейчас section"),
+        List.of("## Сейчас\n\nUnexpected.", "unexpected section content"),
+        List.of("## Сейчас\n\n### Studying\n\nWork", "missing a description"),
+        List.of("""
+            ## Сейчас
+
+            ### Studying
+
+            Work
+
+            Description.
+
+            ### Extra
+
+            Extra work
+
+            Extra description.
+            """, "more current cards"));
+    Path path = temp.resolve("review/editorial/home/en.md");
+    Files.createDirectories(path.getParent());
+    for (List<String> item : cases) {
+      Files.writeString(path, """
+          ---
+          sourceHash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          translationStatus: reviewed
+          translatedAt: 2026-07-17
+          translationProfile: codex-test-v1
+          title: Home
+          ---
+          %s
+          """.formatted(item.getFirst()));
+
+      IllegalArgumentException error = assertThrows(
+          IllegalArgumentException.class,
+          () -> ReviewWorkspace.loadEnglishPatch(temp.resolve("review"), entry));
+
+      assertTrue(error.getMessage().contains(item.get(1)));
+    }
+  }
+
+  @Test
   void rejectsSymlinkAndHardlinkReviewTargets() throws Exception {
     Path target = temp.resolve("review/blog/essay/ru.md");
     Files.createDirectories(target.getParent());
@@ -208,16 +288,23 @@ final class ReviewWorkspaceTest {
   }
 
   @Test
-  void failedAtomicReplacementPreservesPreviousBytes() throws Exception {
-    Path target = temp.resolve("review/blog/essay/ru.md");
+  void publicEnglishReplacementRejectsConcurrentChangesAndPreservesBytes() throws Exception {
+    Path target = temp.resolve("review/blog/essay/en.md");
     Files.createDirectories(target.getParent());
-    Files.writeString(target, "previous\n");
+    Files.writeString(target, "generated\n");
+    byte[] expected = Files.readAllBytes(target);
+    Files.writeString(target, "editor changes\n");
 
     assertThrows(
-        java.nio.file.FileAlreadyExistsException.class,
-        () -> ReviewWorkspace.replaceAtomicallyForTest(target, "replacement\n", target));
+        ReviewWorkspace.ConcurrentReviewUpdateException.class,
+        () -> ReviewWorkspace.replaceEnglishReviewFile(
+            temp.resolve("review"),
+            "reviewed\n",
+            "blog",
+            "essay",
+            expected));
 
-    assertEquals("previous\n", Files.readString(target));
+    assertEquals("editor changes\n", Files.readString(target));
   }
 
   private static ManifestEntry contentEntry() {
@@ -253,5 +340,36 @@ final class ReviewWorkspaceTest {
         "/ru/",
         metadata,
         "");
+  }
+
+  private static ManifestEntry filteredHomeEntry() {
+    LinkedHashMap<String, Object> visible = new LinkedHashMap<>();
+    visible.put("id", "home");
+    visible.put("title", "Главная");
+    visible.put("language", "ru");
+    visible.put("sourceLanguage", "ru");
+    visible.put("sourceHash", "a".repeat(64));
+    visible.put("current", List.of(Map.of(
+        "label", "Изучаю",
+        "title", "Первая работа",
+        "text", "Первое описание.")));
+    LinkedHashMap<String, Object> authored = new LinkedHashMap<>(visible);
+    authored.put("current", List.of(
+        Map.of(
+            "label", "Изучаю",
+            "title", "Первая работа",
+            "text", "Первое описание."),
+        Map.of(
+            "label", "Создаю",
+            "title", "Вторая работа",
+            "text", "Второе описание.")));
+    return new ManifestEntry(
+        "editorial/home.md",
+        "src/data/pages/ru/home.json",
+        "/ru/",
+        visible,
+        "",
+        "b".repeat(64),
+        authored);
   }
 }

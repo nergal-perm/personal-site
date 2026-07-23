@@ -92,6 +92,87 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void populatesAuthoredTranslationStateForRealEditorialEntries() {
+    Note concepts = note(
+        "editorial/Concepts.md",
+        "Концепты",
+        "concepts",
+        "editorial",
+        "curated_page",
+        Map.of("editorialPage", "concepts"),
+        """
+        ## Кратко
+
+        Кратко.
+
+        ## Eyebrow
+
+        Концепты.
+
+        ## Базовый концепт
+
+        Метка:: Базовый
+        Материал:: private-concept
+        """);
+
+    var entry = only(builder.buildRussianManifest(selection(concepts)));
+
+    assertFalse(entry.metadata().containsKey("primary"));
+    assertFalse(entry.metadata().containsKey("primaryLabel"));
+    assertEquals("private-concept", entry.translationSourceMetadata().get("primary"));
+    assertEquals("Базовый", entry.translationSourceMetadata().get("primaryLabel"));
+    assertTrue(entry.translationSourceHash() != null && !entry.translationSourceHash().isBlank());
+  }
+
+  @Test
+  void refreshesAuthoredTranslationStateAfterResolvingEditorialPins() {
+    Note essays = note(
+        "editorial/Essays.md",
+        "Эссе",
+        "essays",
+        "editorial",
+        "curated_page",
+        Map.of("editorialPage", "essays"),
+        """
+        ## Кратко
+
+        Кратко.
+
+        ## Eyebrow
+
+        Эссе.
+
+        ## Принцип списка
+
+        Принцип.
+
+        Подсказка поиска:: Искать
+
+        ## Витрина
+
+        ### [[Essay One]]
+
+        Начать здесь.
+        """);
+    Note target = note(
+        "blog/Essay One.md",
+        "Essay One",
+        "essay-one",
+        "blog",
+        "essay",
+        Map.of(),
+        "");
+
+    var entry = byId(builder.buildRussianManifest(selection(essays, target)), "essays");
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> authoredShowcase =
+        (List<Map<String, Object>>) entry.translationSourceMetadata().get("showcase");
+
+    assertEquals("essay-one", authoredShowcase.getFirst().get("target"));
+    assertEquals(entry.metadata().get("sourceHash"), entry.translationSourceHash());
+  }
+
+  @Test
   void normalizesCollectionSpecificMetadataAndTargets() {
     Note music = note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "genreTags", List.of("jazz")), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
     Note book = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "[[Автор]]", "publisher", "Press", "published", 2020), "<div class=\"book-description\"><p>Описание.</p></div>\n\n## Конспект\n\nПункт.");

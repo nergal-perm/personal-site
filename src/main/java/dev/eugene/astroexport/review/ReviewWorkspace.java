@@ -15,6 +15,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -66,9 +67,12 @@ public final class ReviewWorkspace {
     Map<String, Object> references = map(payload.remove("referenceTranslations"), "referenceTranslations");
     LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(payload);
     CONTROL_FIELDS.forEach(metadata::remove);
+    Map<String, Object> authored = entry.translationSourceMetadata() == null
+        ? entry.metadata()
+        : entry.translationSourceMetadata();
     if (target.editorial()
         && "home".equals(target.publicId())
-        && entry.metadata().get("current") instanceof List<?> sourceCurrent) {
+        && authored.get("current") instanceof List<?> sourceCurrent) {
       metadata.put("current", parseCurrent(entry, target.publicId(), parsed.body(), sourceCurrent.size()));
     }
     return normalizePatch(
@@ -127,17 +131,23 @@ public final class ReviewWorkspace {
     return rewriteTranslationStatus(content, "reviewed");
   }
 
-  static void replaceAtomicallyForTest(Path target, String content, Path occupiedTarget)
-      throws IOException {
-    validateExistingLeaf(target);
-    Files.createDirectories(target.getParent());
-    Path temporary = Files.createTempFile(target.getParent(), "." + target.getFileName() + ".", ".tmp");
-    try {
-      Files.writeString(temporary, content, StandardCharsets.UTF_8);
-      Files.move(temporary, occupiedTarget);
-    } finally {
-      Files.deleteIfExists(temporary);
-    }
+  public static Path replaceEnglishReviewFile(
+      Path reviewRoot,
+      String content,
+      String collection,
+      String publicId,
+      byte[] expectedContent) {
+    Path target = reviewRoot.resolve(collection).resolve(publicId).resolve("en.md");
+    replaceAtomically(target, content, expectedContent);
+    return target;
+  }
+
+  public static Path replaceEnglishReviewFile(
+      Path reviewRoot,
+      String content,
+      String collection,
+      String publicId) {
+    return replaceEnglishReviewFile(reviewRoot, content, collection, publicId, null);
   }
 
   private static Path migrateEditorialJson(Path source, Path reviewRoot) {
@@ -430,13 +440,22 @@ public final class ReviewWorkspace {
   }
 
   private static void replaceAtomically(Path target, String content) {
+    replaceAtomically(target, content, null);
+  }
+
+  private static void replaceAtomically(
+      Path target,
+      String content,
+      byte[] expectedContent) {
     validateExistingLeaf(target);
     try {
       Files.createDirectories(target.getParent());
+      validateExpectedContent(target, expectedContent);
       Path temporary = Files.createTempFile(
           target.getParent(), "." + target.getFileName() + ".", ".tmp");
       try {
         Files.writeString(temporary, content, StandardCharsets.UTF_8);
+        validateExpectedContent(target, expectedContent);
         Files.move(
             temporary,
             target,
@@ -447,6 +466,16 @@ public final class ReviewWorkspace {
       }
     } catch (IOException error) {
       throw new IllegalStateException("cannot replace review file " + target, error);
+    }
+  }
+
+  private static void validateExpectedContent(Path target, byte[] expectedContent)
+      throws IOException {
+    if (expectedContent == null) {
+      return;
+    }
+    if (!Files.exists(target) || !Arrays.equals(expectedContent, Files.readAllBytes(target))) {
+      throw new ConcurrentReviewUpdateException("guarded review file changed: " + target);
     }
   }
 
@@ -562,6 +591,12 @@ public final class ReviewWorkspace {
   private static final class ReviewIoException extends RuntimeException {
     ReviewIoException(Throwable cause) {
       super(cause);
+    }
+  }
+
+  public static final class ConcurrentReviewUpdateException extends IllegalStateException {
+    ConcurrentReviewUpdateException(String message) {
+      super(message);
     }
   }
 }

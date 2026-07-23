@@ -36,9 +36,7 @@ public final class TranslationValidator {
         fail(entry, target.publicId(), error.getMessage());
         throw new AssertionError("unreachable");
       }
-      String requiredHash = entry.translationSourceHash() == null
-          ? TranslationProjection.translationSourceHash(entry)
-          : entry.translationSourceHash();
+      String requiredHash = requiredTranslationSourceHash(entry, target.publicId());
       if (!patch.sourceHash().equals(requiredHash)) {
         fail(entry, target.publicId(), "stale review: sourceHash does not match translation sourceHash");
       }
@@ -346,6 +344,9 @@ public final class TranslationValidator {
       }
       return localizeInherited(source);
     }
+    if (isShowcaseItem(source)) {
+      return mergeShowcaseItem(entry, publicId, (Map<?, ?>) source, translated, path);
+    }
     if (source instanceof Map<?, ?> sourceMap) {
       return mergeMap(
           entry, publicId, stringMap(sourceMap, path), translated, path);
@@ -385,6 +386,34 @@ public final class TranslationValidator {
     return source.getClass().equals(translated.getClass());
   }
 
+  private static boolean isShowcaseItem(Object value) {
+    return value instanceof Map<?, ?> map
+        && map.keySet().equals(Set.of("target", "text"));
+  }
+
+  private static Map<String, Object> mergeShowcaseItem(
+      ManifestEntry entry,
+      String publicId,
+      Map<?, ?> source,
+      Object translated,
+      String path) {
+    if (!(translated instanceof Map<?, ?> translatedMap)
+        || !translatedMap.keySet().equals(Set.of("target", "text"))) {
+      fail(entry, publicId, path + " must contain exactly target and text");
+    }
+    Map<?, ?> translatedMap = (Map<?, ?>) translated;
+    Object target = source.get("target");
+    if (!(target instanceof String) || !Objects.equals(target, translatedMap.get("target"))) {
+      fail(entry, publicId, path + ".target must remain invariant");
+    }
+    LinkedHashMap<String, Object> merged = new LinkedHashMap<>();
+    merged.put("target", localizeInherited(target));
+    merged.put(
+        "text",
+        mergeValue(entry, publicId, source.get("text"), translatedMap.get("text"), path + ".text"));
+    return merged;
+  }
+
   private static boolean containsReferenceToken(Object value) {
     if (TranslationProjection.isReferenceToken(value)) {
       return true;
@@ -400,7 +429,7 @@ public final class TranslationValidator {
 
   private static Object localizeInherited(Object value) {
     if (value instanceof String string) {
-      return string.replace("/ru/", "/en/");
+      return INTERNAL_RU_ROUTE.matcher(string).replaceAll("/en/");
     }
     if (value instanceof Map<?, ?> map) {
       LinkedHashMap<String, Object> localized = new LinkedHashMap<>();
@@ -476,6 +505,20 @@ public final class TranslationValidator {
         fail(entry, publicId, "RU " + field + " must be ru");
       }
     }
+  }
+
+  private static String requiredTranslationSourceHash(
+      ManifestEntry entry,
+      String publicId) {
+    if (entry.translationSourceHash() != null
+        && !entry.translationSourceHash().isBlank()) {
+      return entry.translationSourceHash().strip();
+    }
+    Object sourceHash = entry.metadata().get("sourceHash");
+    if (!(sourceHash instanceof String value) || value.isBlank()) {
+      fail(entry, publicId, "translation sourceHash must be a non-empty string");
+    }
+    return ((String) sourceHash).strip();
   }
 
   private static Target target(ManifestEntry entry) {
