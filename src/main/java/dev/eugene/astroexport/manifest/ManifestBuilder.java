@@ -18,6 +18,10 @@ import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
 import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.format.ResolverStyle;
+import java.time.temporal.ChronoField;
+import java.time.temporal.IsoFields;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -51,6 +55,13 @@ public final class ManifestBuilder {
       "\u02DC", "\u2122", "\u0161", "\u203A", "\u0153", "\u009D", "\u017E", "\u0178"
   };
   private static final ObjectMapper HASH_JSON = new ObjectMapper();
+  private static final DateTimeFormatter COMPACT_ISO_WEEK_DATE = new DateTimeFormatterBuilder()
+      .appendValue(IsoFields.WEEK_BASED_YEAR, 4)
+      .appendLiteral('W')
+      .appendValue(IsoFields.WEEK_OF_WEEK_BASED_YEAR, 2)
+      .appendValue(ChronoField.DAY_OF_WEEK)
+      .toFormatter(Locale.ROOT)
+      .withResolverStyle(ResolverStyle.STRICT);
   private final PublicationValidator publicationValidator = new PublicationValidator();
   private final LinkProcessor linkProcessor = new LinkProcessor();
   private final EditorialParser editorialParser = new EditorialParser();
@@ -58,7 +69,7 @@ public final class ManifestBuilder {
   public ManifestResult buildRussianManifest(SelectionResult selection) {
     List<Note> notes = selection.included().stream()
         .map(this::sanitize)
-        .sorted(Comparator.comparing(Note::vaultPath))
+        .sorted(Comparator.comparing(Note::vaultPath, ManifestBuilder::compareUnicodeCodePoints))
         .toList();
     List<ManifestEntry> entries = new ArrayList<>();
     for (Note note : notes) {
@@ -110,7 +121,7 @@ public final class ManifestBuilder {
         notes.stream().map(note -> entriesByPath.get(note.vaultPath())).toList(),
         retained,
         stripped,
-        assets.stream().sorted().toList());
+        assets.stream().sorted(ManifestBuilder::compareUnicodeCodePoints).toList());
   }
 
   private ManifestEntry normalize(Note note) {
@@ -336,7 +347,8 @@ public final class ManifestBuilder {
   private static boolean isPythonIsoDate(String value) {
     return parsesDate(value, DateTimeFormatter.ISO_LOCAL_DATE)
         || parsesDate(value, DateTimeFormatter.BASIC_ISO_DATE)
-        || parsesDate(value, DateTimeFormatter.ISO_WEEK_DATE);
+        || parsesDate(value, DateTimeFormatter.ISO_WEEK_DATE)
+        || parsesDate(value, COMPACT_ISO_WEEK_DATE);
   }
 
   private static boolean parsesDate(String value, DateTimeFormatter formatter) {
@@ -694,13 +706,20 @@ public final class ManifestBuilder {
         .toList();
     List<Note> candidates = exact.isEmpty()
         ? notes.stream()
-            .filter(note -> target.equals(note.title()) || target.equals(string(note.frontmatter().get("title"))) || note.aliases().contains(target))
+            .filter(note -> target.equals(note.title())
+                || matchesDescriptiveFrontmatterTitle(note, target)
+                || note.aliases().contains(target))
             .toList()
         : exact;
     if (candidates.size() > 1) {
       throw new ManifestValidationException(path, field, "is ambiguous; use a publicId or vault path");
     }
     return candidates.isEmpty() ? null : candidates.getFirst();
+  }
+
+  private static boolean matchesDescriptiveFrontmatterTitle(Note note, String target) {
+    Object title = note.frontmatter().get("title");
+    return pythonTruthy(title) && target.equals(string(title));
   }
 
   private static String dateFromId(Object value) {

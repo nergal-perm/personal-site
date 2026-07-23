@@ -108,7 +108,7 @@ final class EditorialParserTest {
 
   @Test
   void preservesPythonAcceptedNowDateFormsForManifestValidation() {
-    for (String date : List.of("20260723", "2026-W30-4")) {
+    for (String date : List.of("20260723", "2026-W30-4", "2026W304")) {
       Map<String, Object> frontmatter = nowFrontmatter();
       frontmatter.put("date", date);
       assertEquals(date, parser.normalize("editorial/now.md", "now", frontmatter, nowBody(), common()).get("date"));

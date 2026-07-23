@@ -243,7 +243,7 @@ final class ManifestBuilderTest {
 
   @Test
   void acceptsPythonIsoDateFormsWithoutRewritingMetadata() {
-    for (String date : List.of("20260723", "2026-W30-4")) {
+    for (String date : List.of("20260723", "2026-W30-4", "2026W304")) {
       Note common = note("blog/" + date + ".md", "Дата", "date-" + date.replaceAll("[^0-9]", ""), "blog", "essay", Map.of("date", date), "");
       assertEquals(date, only(builder.buildRussianManifest(selection(common))).metadata().get("date"));
 
@@ -256,12 +256,46 @@ final class ManifestBuilderTest {
         () -> builder.buildRussianManifest(selection(note("blog/Ordinal.md", "Дата", "ordinal", "blog", "essay", Map.of("date", "2026-204"), ""))));
     assertEquals("date", invalid.fieldName());
     assertEquals("must be a real YYYY-MM-DD date", invalid.reason());
+
+    for (String malformed : List.of("2026W30-4", "2026-W304")) {
+      ManifestBuilder.ManifestValidationException malformedError = assertThrows(ManifestBuilder.ManifestValidationException.class,
+          () -> builder.buildRussianManifest(selection(note("blog/Invalid.md", "Дата", "invalid", "blog", "essay", Map.of("date", malformed), ""))));
+      assertEquals("date", malformedError.fieldName());
+    }
   }
 
   @Test
   void emitsEntriesInSourcePathOrder() {
     var result = builder.buildRussianManifest(selection(note("z/Second.md", "Second", "second", "blog", "note", Map.of(), ""), note("a/First.md", "First", "first", "blog", "note", Map.of(), "")));
     assertEquals(List.of("a/First.md", "z/Second.md"), result.entries().stream().map(entry -> entry.sourcePath()).toList());
+  }
+
+  @Test
+  void ordersEntryPathsAndAssetsByUnicodeCodePoint() {
+    Note source = note("z/Source.md", "Source", "source", "blog", "note", Map.of(),
+        "![[😀/asset.png]] ![[💡/asset.png]] ![[𐐀/asset.png]] ![[\uE000/asset.png]] ![[a/asset.png]]");
+    Note smile = note("😀/x.md", "Smile", "smile", "blog", "note", Map.of(), "");
+    Note bulb = note("💡/x.md", "Bulb", "bulb", "blog", "note", Map.of(), "");
+    Note deseret = note("𐐀/x.md", "Deseret", "deseret", "blog", "note", Map.of(), "");
+    Note bmp = note("\uE000/x.md", "Bmp", "bmp", "blog", "note", Map.of(), "");
+    Note ascii = note("a/x.md", "Ascii", "ascii", "blog", "note", Map.of(), "");
+
+    var result = builder.buildRussianManifest(selection(source, smile, bulb, deseret, bmp, ascii));
+    assertEquals(List.of("a/x.md", "z/Source.md", "\uE000/x.md", "𐐀/x.md", "💡/x.md", "😀/x.md"),
+        result.entries().stream().map(entry -> entry.sourcePath()).toList());
+    assertEquals(List.of("a/asset.png", "\uE000/asset.png", "𐐀/asset.png", "💡/asset.png", "😀/asset.png"), result.assets());
+  }
+
+  @Test
+  void ignoresFalsyFrontmatterTitlesWhenResolvingDescriptiveReferences() {
+    Note source = note("claims/Source.md", "Source", "source", "blog", "claim", Map.of(
+        "statement", "Тезис.", "supports", List.of("[[False]]", "[[0]]", "[[Actual false]]", "[[zero-id]]")), "");
+    Note falseTitle = note("blog/Target.md", "Actual false", "false-id", "blog", "note", Map.of("title", false), "");
+    Note zeroTitle = note("blog/Other.md", "Actual zero", "zero-id", "blog", "note", Map.of("title", 0), "");
+
+    var result = builder.buildRussianManifest(selection(source, falseTitle, zeroTitle));
+    assertEquals(List.of("False", "0"), result.strippedLinks().stream().map(ManifestLink::target).toList());
+    assertEquals(List.of("Actual false", "zero-id"), result.retainedLinks().stream().map(ManifestLink::target).toList());
   }
 
   @Test
@@ -647,6 +681,52 @@ final class ManifestBuilderTest {
     var explicitEntry = only(builder.buildRussianManifest(selection(explicit)));
     assertEquals("{'text': \"don't\"}", renderedEntry.metadata().get("publication"));
     assertEquals(explicitEntry.metadata().get("sourceHash"), renderedEntry.metadata().get("sourceHash"));
+  }
+
+  @Test
+  void usesValidAlternativeFieldsWhenPrimaryValuesAreMalformed() {
+    Note claim = note("claims/Claim.md", "Claim", "claim", "blog", "claim", Map.of(
+        "statement", 42, "description", "Valid statement."), "");
+    Note book = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of(
+        "authors", List.of(42), "author", "Valid author"), "");
+    Note album = note("reviews/Album.md", "Album", "album", "music", "album", Map.of(
+        "artist", "Artist", "work", 42, "albumTitle", "Valid album"),
+        "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
+
+    var result = builder.buildRussianManifest(selection(claim, book, album));
+    assertEquals("Valid statement.", byId(result, "claim").metadata().get("statement"));
+    assertEquals(List.of("Valid author"), byId(result, "book").metadata().get("authors"));
+    assertEquals("Valid album", byId(result, "album").metadata().get("work"));
+  }
+
+  @Test
+  void blocksInvalidFoundationalAndMissingMusicArtist() {
+    ManifestBuilder.ManifestValidationException foundational = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("blog/Essay.md", "Essay", "essay", "blog", "essay", Map.of("foundational", "yes"), ""))));
+    assertEquals("foundational", foundational.fieldName());
+    assertEquals("must be a boolean", foundational.reason());
+
+    ManifestBuilder.ManifestValidationException artist = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("reviews/Album.md", "Album", "album", "music", "album", Map.of("albumTitle", "Album"),
+            "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь."))));
+    assertEquals("artist", artist.fieldName());
+    assertEquals("must be a non-empty string", artist.reason());
+  }
+
+  @Test
+  void filtersEditorialReferencesBeforeComputingTheFinalSourceHash() {
+    Note concepts = note("editorial/Concepts.md", "Концепты", "concepts", "editorial", "curated_page", Map.of("editorialPage", "concepts"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nКонцепты.\n\n## Базовый концепт\n\nМетка:: База\nМатериал:: prototype-only");
+
+    var result = builder.buildRussianManifest(selection(concepts));
+    var entry = only(result);
+    Map<String, Object> metadataWithoutHash = new LinkedHashMap<>(entry.metadata());
+    Object sourceHash = metadataWithoutHash.remove("sourceHash");
+    assertFalse(entry.metadata().containsKey("primary"));
+    assertFalse(entry.metadata().toString().contains("prototype-only"));
+    assertEquals(ManifestBuilder.sourceHash(metadataWithoutHash, entry.body()), sourceHash);
+    assertEquals(List.of("prototype-only"), result.strippedLinks().stream().map(ManifestLink::target).toList());
+    assertEquals(List.of("editorial"), result.strippedLinks().stream().map(ManifestLink::kind).toList());
   }
 
   @Test
