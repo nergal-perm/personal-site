@@ -94,6 +94,7 @@ public final class PrepareWorkflow {
   private final ExistingEnglishReadHook existingEnglishReadHook;
   private final RecoveryFilePreserver recoveryFilePreserver;
   private final LockAcquisitionHook lockAcquisitionHook;
+  private final FirstDraftInstallHook firstDraftInstallHook;
 
   public PrepareWorkflow() {
     this(
@@ -157,6 +158,26 @@ public final class PrepareWorkflow {
       ExistingEnglishReadHook existingEnglishReadHook,
       RecoveryFilePreserver recoveryFilePreserver,
       LockAcquisitionHook lockAcquisitionHook) {
+    this(
+        runner,
+        clock,
+        workflowState,
+        atomicExchange,
+        existingEnglishReadHook,
+        recoveryFilePreserver,
+        lockAcquisitionHook,
+        (target, temporary) -> { });
+  }
+
+  PrepareWorkflow(
+      TranslationRunner runner,
+      Clock clock,
+      WorkflowStateService workflowState,
+      AtomicExchange atomicExchange,
+      ExistingEnglishReadHook existingEnglishReadHook,
+      RecoveryFilePreserver recoveryFilePreserver,
+      LockAcquisitionHook lockAcquisitionHook,
+      FirstDraftInstallHook firstDraftInstallHook) {
     this.runner = runner;
     this.clock = clock;
     this.workflowState = workflowState;
@@ -164,6 +185,7 @@ public final class PrepareWorkflow {
     this.existingEnglishReadHook = existingEnglishReadHook;
     this.recoveryFilePreserver = recoveryFilePreserver;
     this.lockAcquisitionHook = lockAcquisitionHook;
+    this.firstDraftInstallHook = firstDraftInstallHook;
   }
 
   public PrepareResult prepare(
@@ -806,15 +828,26 @@ public final class PrepareWorkflow {
           throw new WorkflowStateService.ConcurrentFileUpdateException(
               "guarded target appeared at the commit boundary");
         }
-        if (!matches(source, expectedSource) || !matches(target, payload)) {
-          if (Files.isSameFile(target, temporary)) {
-            Files.deleteIfExists(target);
-          }
-          throw new WorkflowStateService.ConcurrentFileUpdateException(
-              "companion file changed immediately after atomic create");
+        firstDraftInstallHook.afterLink(target, temporary);
+        boolean targetIsNew;
+        try {
+          targetIsNew = Files.isSameFile(target, temporary) && matches(target, payload);
+        } catch (IOException error) {
+          targetIsNew = false;
         }
-        forceDirectory(target.getParent());
-        return;
+        boolean sourceIsCurrent = matches(source, expectedSource);
+        if (targetIsNew && sourceIsCurrent) {
+          forceDirectory(target.getParent());
+          return;
+        }
+        if (targetIsNew) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "companion file changed immediately after atomic create",
+              true,
+              null);
+        }
+        throw new WorkflowStateService.ConcurrentFileUpdateException(
+            "target changed immediately after atomic create");
       }
 
       validateExistingEnglishLeaf(target);
@@ -1438,6 +1471,11 @@ public final class PrepareWorkflow {
   @FunctionalInterface
   interface LockAcquisitionHook {
     void afterNoFollowOpen(Path path) throws IOException;
+  }
+
+  @FunctionalInterface
+  interface FirstDraftInstallHook {
+    void afterLink(Path target, Path temporary) throws IOException;
   }
 
   public record PrepareResult(

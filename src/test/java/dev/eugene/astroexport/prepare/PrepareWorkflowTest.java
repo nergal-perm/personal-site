@@ -16,10 +16,13 @@ import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
@@ -739,6 +742,50 @@ final class PrepareWorkflowTest {
     assertArrayEquals(secondEdit, Files.readAllBytes(recoveryTemporary[0]));
     assertTrue(result.diagnostics().stream()
         .anyMatch(item -> item.message().contains(recoveryTemporary[0].toString())));
+  }
+
+  @Test
+  void firstDraftConflictRetainsBytesMutatedThroughLinkedDescriptor() throws Exception {
+    Fixture fixture = fixture();
+    byte[] concurrent = "Concurrent English bytes must remain recoverable.\n"
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    AtomicInteger hookCalls = new AtomicInteger();
+    PrepareWorkflow.FirstDraftInstallHook mutateLinkedInode = (target, temporary) -> {
+      hookCalls.incrementAndGet();
+      assertTrue(Files.isSameFile(target, temporary));
+      try (FileChannel descriptor = FileChannel.open(target, StandardOpenOption.WRITE)) {
+        descriptor.truncate(0);
+        ByteBuffer bytes = ByteBuffer.wrap(concurrent);
+        while (bytes.hasRemaining()) {
+          descriptor.write(bytes);
+        }
+        descriptor.force(true);
+      }
+    };
+    PrepareWorkflow workflow = new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        new JnaAtomicExchange(),
+        path -> { },
+        (temporary, target) -> {
+          throw new AssertionError("recovery preservation must not run");
+        },
+        path -> { },
+        mutateLinkedInode);
+
+    PrepareWorkflow.PrepareResult result = workflow.prepare(
+        fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    Path target = fixture.review().resolve("blog/essay/en.md");
+    assertEquals("stale", result.status());
+    assertEquals(1, hookCalls.get());
+    assertTrue(Files.exists(target));
+    assertArrayEquals(concurrent, Files.readAllBytes(target));
   }
 
   @Test

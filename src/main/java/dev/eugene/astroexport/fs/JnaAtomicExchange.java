@@ -13,8 +13,10 @@ import java.util.Set;
 public final class JnaAtomicExchange implements AtomicExchange {
   private static final int RENAME_EXCHANGE = 0x00000002;
   private static final int AT_FDCWD = -100;
-  private static final Set<Integer> UNSUPPORTED_ERRNOS = Set.of(
-      18, 22, 38, 45, 95);
+  private static final Set<Integer> MACOS_UNSUPPORTED_ERRNOS = Set.of(
+      18, 22, 45, 78, 102);
+  private static final Set<Integer> LINUX_UNSUPPORTED_ERRNOS = Set.of(
+      18, 22, 38, 95);
 
   @Override
   public void exchange(Path first, Path second) throws IOException {
@@ -50,10 +52,17 @@ public final class JnaAtomicExchange implements AtomicExchange {
       return;
     }
     int errorNumber = Native.getLastError();
-    if (UNSUPPORTED_ERRNOS.contains(errorNumber)) {
-      throw new AtomicExchangeUnavailableException(
+    throw exchangeFailure(Platform.isMac(), errorNumber);
+  }
+
+  static IOException exchangeFailure(boolean macOs, int errorNumber) {
+    Set<Integer> unsupported = macOs
+        ? MACOS_UNSUPPORTED_ERRNOS
+        : LINUX_UNSUPPORTED_ERRNOS;
+    if (unsupported.contains(errorNumber)) {
+      return new AtomicExchangeUnavailableException(
           "filesystem does not support atomic path exchange (errno " + errorNumber + ")");
     }
-    throw new IOException("atomic path exchange failed with errno " + errorNumber);
+    return new IOException("atomic path exchange failed with errno " + errorNumber);
   }
 }
