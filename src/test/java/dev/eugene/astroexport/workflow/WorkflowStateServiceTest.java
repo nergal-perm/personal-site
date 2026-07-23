@@ -90,6 +90,73 @@ final class WorkflowStateServiceTest {
   }
 
   @Test
+  void rejectsDuplicateOwnedWorkflowKeysWithoutChangingSource() throws Exception {
+    String original = """
+        ---
+        title: Essay
+        publicWorkflowStatus: "stale"
+        "publicWorkflowStatus" : "translating"
+        ---
+        Body.
+        """;
+    Path source = write("duplicate-workflow.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate(
+                "ready_for_review", "generated", ""),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("duplicate"));
+    assertEquals(original, Files.readString(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void rejectsMalformedYamlWithoutChangingSource() throws Exception {
+    String original = "---\ntitle: [unterminated\n---\n[[Body]]\n";
+    Path source = write("malformed.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate(
+                "metadata_blocked", null, "invalid"),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("invalid YAML frontmatter"));
+    assertEquals(original, Files.readString(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void temporaryWriteFailureLeavesOriginalSourceAndCleansStaging() throws Exception {
+    Path source = write("temp-write.md", richSource());
+    byte[] original = Files.readAllBytes(source);
+    WorkflowStateService.IoHooks failingWrite = new WorkflowStateService.IoHooks() {
+      @Override
+      public void beforeTemporaryWrite(Path temporary) throws IOException {
+        throw new IOException("simulated temp write failure");
+      }
+    };
+
+    IOException error = assertThrows(
+        IOException.class,
+        () -> new WorkflowStateService(new JnaAtomicExchange(), failingWrite)
+            .updateWorkflowState(
+                source,
+                new WorkflowStateService.WorkflowUpdate("translating", null, ""),
+                UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("simulated temp write failure"));
+    assertArrayEquals(original, Files.readAllBytes(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
   void rejectsAliasBasedWorkflowKeyWithoutChangingSource() throws Exception {
     String original = """
         ---
@@ -436,6 +503,65 @@ final class WorkflowStateServiceTest {
     assertNotNull(error.preservedPath());
     assertTrue(Files.exists(error.preservedPath()));
     assertArrayEquals(expected, Files.readAllBytes(error.preservedPath()));
+  }
+
+  @Test
+  void retainsTemporaryRecoveryFileWhenPreservationMoveFails() throws Exception {
+    Path source = write("preservation-move.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    byte[] concurrent = "---\ntitle: Concurrent replacement\n---\nExternal edit.\n"
+        .getBytes(StandardCharsets.UTF_8);
+    AtomicExchange platform = new JnaAtomicExchange();
+    AtomicExchange injecting = (first, second) -> {
+      platform.exchange(first, second);
+      Files.write(first, concurrent);
+    };
+    Path[] retained = new Path[1];
+    WorkflowStateService.IoHooks failingMove = new WorkflowStateService.IoHooks() {
+      @Override
+      public Path preserve(Path temporary, Path target) throws IOException {
+        retained[0] = temporary;
+        assertArrayEquals(expected, Files.readAllBytes(temporary));
+        throw new IOException("simulated preservation move failure");
+      }
+    };
+
+    WorkflowStateService.ConcurrentFileUpdateException error = assertThrows(
+        WorkflowStateService.ConcurrentFileUpdateException.class,
+        () -> new WorkflowStateService(injecting, failingMove).updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate(
+                "ready_for_review", "reviewed", ""),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, expected)));
+
+    assertArrayEquals(concurrent, Files.readAllBytes(source));
+    assertEquals(retained[0], error.preservedPath());
+    assertNotNull(error.preservedPath());
+    assertTrue(Files.exists(error.preservedPath()));
+    assertArrayEquals(expected, Files.readAllBytes(error.preservedPath()));
+  }
+
+  @Test
+  void exchangeFailureLeavesOriginalSourceAndCleansStaging() throws Exception {
+    Path source = write("exchange-failure.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    AtomicExchange failing = (first, second) -> {
+      throw new IOException("simulated exchange failure");
+    };
+
+    IOException error = assertThrows(
+        IOException.class,
+        () -> new WorkflowStateService(failing).updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate(
+                "translation_failed", null, "failed"),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, expected)));
+
+    assertTrue(error.getMessage().contains("simulated exchange failure"));
+    assertArrayEquals(expected, Files.readAllBytes(source));
+    assertNoTemporaryFiles();
   }
 
   @Test

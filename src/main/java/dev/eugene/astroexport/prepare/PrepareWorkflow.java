@@ -95,6 +95,7 @@ public final class PrepareWorkflow {
   private final RecoveryFilePreserver recoveryFilePreserver;
   private final LockAcquisitionHook lockAcquisitionHook;
   private final FirstDraftInstallHook firstDraftInstallHook;
+  private final IoHooks ioHooks;
 
   public PrepareWorkflow() {
     this(
@@ -178,6 +179,28 @@ public final class PrepareWorkflow {
       RecoveryFilePreserver recoveryFilePreserver,
       LockAcquisitionHook lockAcquisitionHook,
       FirstDraftInstallHook firstDraftInstallHook) {
+    this(
+        runner,
+        clock,
+        workflowState,
+        atomicExchange,
+        existingEnglishReadHook,
+        recoveryFilePreserver,
+        lockAcquisitionHook,
+        firstDraftInstallHook,
+        new IoHooks() { });
+  }
+
+  PrepareWorkflow(
+      TranslationRunner runner,
+      Clock clock,
+      WorkflowStateService workflowState,
+      AtomicExchange atomicExchange,
+      ExistingEnglishReadHook existingEnglishReadHook,
+      RecoveryFilePreserver recoveryFilePreserver,
+      LockAcquisitionHook lockAcquisitionHook,
+      FirstDraftInstallHook firstDraftInstallHook,
+      IoHooks ioHooks) {
     this.runner = runner;
     this.clock = clock;
     this.workflowState = workflowState;
@@ -186,6 +209,7 @@ public final class PrepareWorkflow {
     this.recoveryFilePreserver = recoveryFilePreserver;
     this.lockAcquisitionHook = lockAcquisitionHook;
     this.firstDraftInstallHook = firstDraftInstallHook;
+    this.ioHooks = ioHooks;
   }
 
   public PrepareResult prepare(
@@ -372,13 +396,22 @@ public final class PrepareWorkflow {
             target.collection(),
             target.publicId(),
             sourceHash,
-            now);
-        Files.writeString(jobDirectory.resolve("ru.md"), normalizedRu);
+            now,
+            ioHooks);
+        Path ruInput = jobDirectory.resolve("ru.md");
+        ioHooks.beforeJobInputWrite(ruInput);
+        Files.writeString(ruInput, normalizedRu);
         if (jobPreviousEn != null) {
-          Files.write(jobDirectory.resolve("en.md"), jobPreviousEn);
+          Path enInput = jobDirectory.resolve("en.md");
+          ioHooks.beforeJobInputWrite(enInput);
+          Files.write(enInput, jobPreviousEn);
         }
-        Files.writeString(jobDirectory.resolve("instructions.md"), prompt);
-        Files.writeString(jobDirectory.resolve("agent-message.txt"), "");
+        Path instructionsInput = jobDirectory.resolve("instructions.md");
+        ioHooks.beforeJobInputWrite(instructionsInput);
+        Files.writeString(instructionsInput, prompt);
+        Path messageInput = jobDirectory.resolve("agent-message.txt");
+        ioHooks.beforeJobInputWrite(messageInput);
+        Files.writeString(messageInput, "");
         updateSource(
             source,
             "translating",
@@ -892,7 +925,7 @@ public final class PrepareWorkflow {
     } finally {
       if (!preserveTemporary) {
         try {
-          Files.deleteIfExists(temporary);
+          ioHooks.deleteEnglishTemporary(temporary);
         } catch (IOException ignored) {
           // The durable result is already known; stale temporary cleanup is best effort.
         }
@@ -1478,6 +1511,18 @@ public final class PrepareWorkflow {
     void afterLink(Path target, Path temporary) throws IOException;
   }
 
+  interface IoHooks {
+    default void beforeJobInputWrite(Path path) throws IOException { }
+
+    default void writeJournal(Path path, Map<String, Object> payload) throws IOException {
+      JobJournal.atomicJson(path, payload);
+    }
+
+    default void deleteEnglishTemporary(Path path) throws IOException {
+      Files.deleteIfExists(path);
+    }
+  }
+
   public record PrepareResult(
       String status,
       ManifestEntry entry,
@@ -1511,6 +1556,7 @@ public final class PrepareWorkflow {
   private static final class JobJournal {
     private final Path path;
     private final String timestamp;
+    private final IoHooks ioHooks;
     private Map<String, Object> payload;
 
     private JobJournal(
@@ -1519,9 +1565,11 @@ public final class PrepareWorkflow {
         String collection,
         String publicId,
         String sourceHash,
-        Instant now) throws IOException {
+        Instant now,
+        IoHooks ioHooks) throws IOException {
       this.path = path;
       this.timestamp = now.toString();
+      this.ioHooks = ioHooks;
       LinkedHashMap<String, Object> initial = new LinkedHashMap<>();
       initial.put("schemaVersion", 1);
       initial.put("jobId", jobId);
@@ -1559,7 +1607,7 @@ public final class PrepareWorkflow {
           "at", timestamp,
           "diagnostic", diagnostic));
       staged.put("history", history);
-      atomicJson(path, staged);
+      ioHooks.writeJournal(path, staged);
       payload = staged;
     }
 

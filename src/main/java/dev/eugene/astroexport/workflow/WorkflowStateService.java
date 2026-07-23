@@ -31,13 +31,19 @@ public final class WorkflowStateService {
       "stale");
   private static final Set<String> TRANSLATION_STATUSES = Set.of("generated", "reviewed");
   private final AtomicExchange atomicExchange;
+  private final IoHooks ioHooks;
 
   public WorkflowStateService() {
-    this(new JnaAtomicExchange());
+    this(new JnaAtomicExchange(), new IoHooks() { });
   }
 
   public WorkflowStateService(AtomicExchange atomicExchange) {
+    this(atomicExchange, new IoHooks() { });
+  }
+
+  WorkflowStateService(AtomicExchange atomicExchange, IoHooks ioHooks) {
     this.atomicExchange = atomicExchange;
+    this.ioHooks = ioHooks;
   }
 
   public void updateWorkflowState(
@@ -94,6 +100,7 @@ public final class WorkflowStateService {
     boolean retainTemporary = false;
     try {
       copyPermissions(target, temporary);
+      ioHooks.beforeTemporaryWrite(temporary);
       writeDurably(temporary, payload);
       assertSnapshot(target, expected, "source note content changed");
       for (SnapshotGuard guard : companions) {
@@ -104,7 +111,7 @@ public final class WorkflowStateService {
       try {
         displaced = Files.readAllBytes(temporary);
       } catch (IOException error) {
-        Path preserved = preserve(temporary, target);
+        Path preserved = preserveRecovery(temporary, target);
         retainTemporary = preserved.equals(temporary);
         throw new ConcurrentFileUpdateException(
             "displaced target could not be verified after atomic exchange",
@@ -135,7 +142,7 @@ public final class WorkflowStateService {
             : "displaced target changed before final commit boundary verification";
         throw new ConcurrentFileUpdateException(message, false, preserved);
       }
-      Path preserved = preserve(temporary, target);
+      Path preserved = preserveRecovery(temporary, target);
       retainTemporary = preserved.equals(temporary);
       throw new ConcurrentFileUpdateException(
           "target changed immediately after atomic exchange; displaced bytes were preserved",
@@ -160,14 +167,28 @@ public final class WorkflowStateService {
     try {
       atomicExchange.exchange(target, temporary);
     } catch (IOException rollbackError) {
-      Path preserved = preserve(temporary, target);
+      Path preserved = preserveRecovery(temporary, target);
       throw new ConcurrentFileUpdateException(
           "guarded write conflicted and atomic rollback failed",
           true,
           preserved,
           rollbackError);
     }
-    return matches(temporary, payload) ? null : preserve(temporary, target);
+    return matches(temporary, payload) ? null : preserveRecovery(temporary, target);
+  }
+
+  private Path preserveRecovery(Path temporary, Path target) throws IOException {
+    try {
+      return ioHooks.preserve(temporary, target);
+    } catch (ConcurrentFileUpdateException error) {
+      throw error;
+    } catch (IOException error) {
+      throw new ConcurrentFileUpdateException(
+          "conflicting bytes remain in the staged temporary file",
+          true,
+          temporary,
+          error);
+    }
   }
 
   private static Path preserve(Path temporary, Path target) throws IOException {
@@ -279,6 +300,14 @@ public final class WorkflowStateService {
     @Override
     public byte[] expectedContent() {
       return expectedContent.clone();
+    }
+  }
+
+  interface IoHooks {
+    default void beforeTemporaryWrite(Path temporary) throws IOException { }
+
+    default Path preserve(Path temporary, Path target) throws IOException {
+      return WorkflowStateService.preserve(temporary, target);
     }
   }
 

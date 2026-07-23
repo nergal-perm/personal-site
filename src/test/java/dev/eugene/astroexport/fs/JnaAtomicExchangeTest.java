@@ -26,6 +26,17 @@ final class JnaAtomicExchangeTest {
   }
 
   @ParameterizedTest
+  @ValueSource(ints = {18, 22})
+  void sharedUnsupportedErrnosMapToUnavailableOnBothPlatforms(int errorNumber) {
+    assertInstanceOf(
+        AtomicExchangeUnavailableException.class,
+        JnaAtomicExchange.exchangeFailure(true, errorNumber));
+    assertInstanceOf(
+        AtomicExchangeUnavailableException.class,
+        JnaAtomicExchange.exchangeFailure(false, errorNumber));
+  }
+
+  @ParameterizedTest
   @ValueSource(ints = {38, 95})
   void macOsDoesNotUseLinuxOnlyUnsupportedErrnos(int errorNumber) {
     IOException error = JnaAtomicExchange.exchangeFailure(true, errorNumber);

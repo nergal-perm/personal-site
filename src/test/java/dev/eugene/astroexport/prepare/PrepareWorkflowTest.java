@@ -24,14 +24,17 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -848,8 +851,175 @@ final class PrepareWorkflowTest {
         .anyMatch(item -> item.field().equals("lock")));
   }
 
+  @Test
+  void firstJobInputWriteFailurePersistsCreatedThenFailedJournal() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] previous = Files.readAllBytes(prior);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public void beforeJobInputWrite(Path path) throws IOException {
+        if (path.getFileName().toString().equals("ru.md")) {
+          throw new IOException("simulated first job input write failure");
+        }
+      }
+    };
+
+    PrepareWorkflow.PrepareResult result = workflow(runner, new JnaAtomicExchange(), ioHooks)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertArrayEquals(previous, Files.readAllBytes(prior));
+    assertTrue(Files.readString(fixture.source()).contains(
+        "publicWorkflowStatus: \"translation_failed\""));
+    Map<String, Object> journal = journal(fixture, result);
+    assertEquals("failed", journal.get("state"));
+    assertEquals(
+        List.of("created", "failed"),
+        historyStates(journal));
+  }
+
+  @Test
+  void englishReplacementFailureNeverRecordsSucceededAndPreservesPrior() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] previous = Files.readAllBytes(prior);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    AtomicExchange failingExchange = (left, right) -> {
+      throw new IOException("simulated durable EN replacement failure");
+    };
+
+    PrepareWorkflow.PrepareResult result =
+        workflow(runner, failingExchange, new PrepareWorkflow.IoHooks() { })
+            .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertArrayEquals(previous, Files.readAllBytes(prior));
+    assertTrue(Files.readString(fixture.source()).contains(
+        "publicWorkflowStatus: \"translation_failed\""));
+    Map<String, Object> journal = journal(fixture, result);
+    assertEquals("failed", journal.get("state"));
+    assertEquals(
+        List.of("created", "running", "running", "failed"),
+        historyStates(journal));
+  }
+
+  @Test
+  void postCommitJournalFailureReturnsReadyWithPendingEvidence() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] previous = Files.readAllBytes(prior);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public void writeJournal(Path path, Map<String, Object> payload) throws IOException {
+        if ("succeeded".equals(payload.get("state"))) {
+          throw new IOException("simulated post-commit journal failure");
+        }
+        PrepareWorkflow.IoHooks.super.writeJournal(path, payload);
+      }
+    };
+
+    PrepareWorkflow.PrepareResult result = workflow(runner, new JnaAtomicExchange(), ioHooks)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    byte[] committed = Files.readAllBytes(prior);
+    assertFalse(java.util.Arrays.equals(previous, committed));
+    assertTrue(Files.readString(fixture.source()).contains(
+        "publicWorkflowStatus: \"ready_for_review\""));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.message().contains("journal")));
+    Map<String, Object> journal = journal(fixture, result);
+    assertEquals("running", journal.get("state"));
+    assertEquals("prepare.commit_pending", journal.get("diagnostic"));
+    assertEquals(sha256(committed), journal.get("expectedEnSha256"));
+    assertEquals(
+        List.of("created", "running", "running"),
+        historyStates(journal));
+  }
+
+  @Test
+  void failedJournalPersistenceDoesNotCreatePhantomHistory() throws Exception {
+    Fixture fixture = fixture();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+    AtomicBoolean failFirstRunning = new AtomicBoolean(true);
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public void writeJournal(Path path, Map<String, Object> payload) throws IOException {
+        if ("running".equals(payload.get("state"))
+            && failFirstRunning.compareAndSet(true, false)) {
+          throw new IOException("simulated running journal failure");
+        }
+        PrepareWorkflow.IoHooks.super.writeJournal(path, payload);
+      }
+    };
+
+    PrepareWorkflow.PrepareResult result = workflow(runner, new JnaAtomicExchange(), ioHooks)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    Map<String, Object> journal = journal(fixture, result);
+    assertEquals("failed", journal.get("state"));
+    assertEquals(List.of("created", "failed"), historyStates(journal));
+  }
+
+  @Test
+  void postCommitEnglishTemporaryCleanupFailureDoesNotChangeSuccess() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public void deleteEnglishTemporary(Path path) throws IOException {
+        throw new IOException("simulated post-commit temporary cleanup failure");
+      }
+    };
+
+    PrepareWorkflow.PrepareResult result = workflow(runner, new JnaAtomicExchange(), ioHooks)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertTrue(Files.readString(prior).contains("Fresh English body."));
+    assertTrue(Files.readString(fixture.source()).contains(
+        "publicWorkflowStatus: \"ready_for_review\""));
+    assertEquals("succeeded", journal(fixture, result).get("state"));
+  }
+
   private PrepareWorkflow workflow(RecordingRunner runner) {
     return new PrepareWorkflow(runner, Clock.fixed(NOW, ZoneOffset.UTC));
+  }
+
+  private PrepareWorkflow workflow(
+      RecordingRunner runner,
+      AtomicExchange atomicExchange,
+      PrepareWorkflow.IoHooks ioHooks) {
+    return new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        atomicExchange,
+        path -> { },
+        (temporary, target) -> temporary,
+        path -> { },
+        (target, temporary) -> { },
+        ioHooks);
   }
 
   private Fixture fixture() throws Exception {
@@ -914,6 +1084,17 @@ final class PrepareWorkflowTest {
         Files.readString(
             fixture.jobs().resolve("blog/essay").resolve(result.jobId()).resolve("job.json")),
         new TypeReference<>() { });
+  }
+
+  @SuppressWarnings("unchecked")
+  private static List<Object> historyStates(Map<String, Object> journal) {
+    return ((List<Map<String, Object>>) journal.get("history")).stream()
+        .map(event -> event.get("state"))
+        .toList();
+  }
+
+  private static String sha256(byte[] content) throws Exception {
+    return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(content));
   }
 
   private record Fixture(Path vault, Path source, Path review, Path jobs) { }
