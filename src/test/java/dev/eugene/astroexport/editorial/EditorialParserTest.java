@@ -59,6 +59,22 @@ final class EditorialParserTest {
     assertFalse(metadata.containsKey("showcase"));
   }
 
+  @Test
+  void rejectsMalformedShowcaseRowsWithPreciseTargetFields() {
+    EditorialParser.ManifestValidationException error = assertThrows(EditorialParser.ManifestValidationException.class,
+        () -> parser.normalize("editorial/essays.md", "essays", frontmatter("essays"), collectionBody("Принцип списка", "Принцип.\n\nПодсказка поиска:: Искать") + "\n\n## Витрина\n\n### Не ссылка\n\nТекст.", common()));
+    assertEquals("showcase[0].target", error.fieldName());
+  }
+
+  @Test
+  void preservesHomeCurrentWikilinkTargetAndDisplayLabelBeforeManifestResolution() {
+    Map<String, Object> metadata = parser.normalize("editorial/home.md", "home", frontmatter("home"),
+        homeBody().replace("Тема", "[[study-target|Текущий фокус]]"), common());
+    Map<String, Object> current = ((List<Map<String, Object>>) metadata.get("current")).getFirst();
+    assertEquals("study-target", current.get("target"));
+    assertEquals("Текущий фокус", current.get("title"));
+  }
+
   private static Map<String, Object> common() { return new LinkedHashMap<>(Map.of("id", "page", "title", "Страница", "topics", List.of(), "links", List.of())); }
   private static Map<String, Object> frontmatter(String page) { Map<String, Object> map = new LinkedHashMap<>(); map.put("editorialPage", page); return map; }
   private static Map<String, Object> nowFrontmatter() { Map<String, Object> map = frontmatter("now"); map.put("date", "2026-07-15"); map.put("status", "current"); return map; }

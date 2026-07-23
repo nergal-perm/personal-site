@@ -17,7 +17,7 @@ public final class EditorialParser {
   private static final Pattern H3 = Pattern.compile("^###[ \\t]+(.+?)[ \\t]*$");
   private static final Pattern INLINE = Pattern.compile("^[ \\t]*([^:\\n]+?)[ \\t]*::[ \\t]*(.*?)[ \\t]*$");
   private static final Pattern LIST = Pattern.compile("^[ \\t]*-[ \\t]+(.+?)[ \\t]*$");
-  private static final Pattern WIKILINK = Pattern.compile("^(!?)\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|[^\\]]+)?\\]\\]$");
+  private static final Pattern WIKILINK = Pattern.compile("^(!?)\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]$");
 
   public Map<String, Object> normalize(String sourcePath, String publicId, Map<String, Object> frontmatter,
                                        String body, Map<String, Object> common) {
@@ -65,7 +65,7 @@ public final class EditorialParser {
       item.put("key", cards[i][1]); item.put("label", cards[i][0]); item.put("layout", cards[i][2]);
       Matcher link = WIKILINK.matcher(paragraphs.getFirst());
       if (link.matches() && !link.group(1).isEmpty()) fail(path, "current[" + i + "].title", "must not be an embedded wikilink");
-      item.put("title", link.matches() ? link.group(2).strip() : paragraphs.getFirst());
+      item.put("title", link.matches() && link.group(3) != null ? link.group(3).strip() : link.matches() ? link.group(2).strip() : paragraphs.getFirst());
       item.put("text", paragraphs.get(1));
       if (link.matches()) item.put("target", link.group(2).strip());
       values.add(item);
