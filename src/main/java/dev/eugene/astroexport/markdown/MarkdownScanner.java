@@ -110,11 +110,13 @@ public final class MarkdownScanner {
         continue;
       }
       Matcher closing = FENCE_CLOSE.matcher(body);
-      while (closing.find(lineEndingEnd(body, opening.end()))) {
+      int closingAt = lineEndingEnd(body, opening.end());
+      while (closing.find(closingAt)) {
         String closeFence = closing.group(1);
         if (closeFence.charAt(0) == fence.charAt(0) && closeFence.length() >= fence.length()) {
           return new Span(opening.start(), lineEndingEnd(body, closing.end()), Kind.FENCED_CODE);
         }
+        closingAt = lineEndingEnd(body, closing.end());
       }
       return new Span(opening.start(), body.length(), Kind.FENCED_CODE);
     }

@@ -3,7 +3,9 @@ package dev.eugene.astroexport.markdown;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
+import java.time.Duration;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -32,6 +34,26 @@ final class MarkdownNormalizationTest {
 
     assertEquals("Public definition.\n\n```markdown\n## Example heading\n```\n\n"
         + "<!-- ## Hidden boundary -->\n\nStill part.", MarkdownScanner.section(body, "Definition").orElseThrow());
+  }
+
+  @Test
+  void preservesInlineCodeAndPreBlocksInsideARealSectionWithoutEndingIt() {
+    for (String protectedContent : List.of(
+        "`Code sample.\n## Hidden boundary\n\nStill inline code.\n`",
+        "<pre data-kind=\"example\">\n## Hidden boundary\n\nStill raw HTML.\n</pre>")) {
+      String body = "## Definition\n\nPublic definition.\n\n" + protectedContent
+          + "\n\nStill part.\n\n## Context\n\nMore text.\n";
+      assertEquals("Public definition.\n\n" + protectedContent + "\n\nStill part.",
+          MarkdownScanner.section(body, "Definition").orElseThrow());
+    }
+  }
+
+  @Test
+  void skipsTooShortClosingFencesBeforeFindingTheRealCloser() {
+    String body = "## Definition\n\nVisible.\n\n````\n## Hidden boundary\n```\n````\n\nStill part.\n\n## Context\n\nMore text.\n";
+    assertTimeoutPreemptively(Duration.ofSeconds(1), () -> assertEquals(
+        "Visible.\n\n````\n## Hidden boundary\n```\n````\n\nStill part.",
+        MarkdownScanner.section(body, "Definition").orElseThrow()));
   }
 
   @Test
