@@ -126,6 +126,15 @@ final class LinkProcessorTest {
   }
 
   @Test
+  void resolvesAnUnambiguousAliasToThePublicRouteAndRetainedMetadata() {
+    Note aliased = note("Internal title", "notes/Aliased.md", "aliased", "music", "album", "", Map.of(), List.of("Public alias"));
+    ManifestLink result = processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "Listen to [[Public alias|this album]]."), List.of(aliased));
+
+    assertEquals("Listen to [this album](/ru/music/aliased/).", result.body());
+    assertEquals(List.of(new LinkProcessor.ResolvedLink("Public alias", "aliased", "/ru/music/aliased/")), result.retained());
+  }
+
+  @Test
   void rejectsDuplicateFrontmatterTitles() {
     Collection<Note> notes = List.of(note("One", "notes/One.md", "one", "blog", "note", "", Map.of("title", "Duplicate")), note("Two", "notes/Two.md", "two", "blog", "note", "", Map.of("title", "Duplicate")));
     assertThrows(LinkProcessor.ManifestValidationException.class, () -> processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "[[Duplicate]]"), notes));
