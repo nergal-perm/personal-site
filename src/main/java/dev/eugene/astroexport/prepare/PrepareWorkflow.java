@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
+import dev.eugene.astroexport.fs.JnaFileDescriptor;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
@@ -15,12 +16,9 @@ import dev.eugene.astroexport.translation.TranslationValidator;
 import dev.eugene.astroexport.validation.PreflightService;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
@@ -29,6 +27,8 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
@@ -91,6 +91,7 @@ public final class PrepareWorkflow {
   private final AtomicExchange atomicExchange;
   private final ExistingEnglishReadHook existingEnglishReadHook;
   private final RecoveryFilePreserver recoveryFilePreserver;
+  private final LockAcquisitionHook lockAcquisitionHook;
 
   public PrepareWorkflow() {
     this(
@@ -99,7 +100,8 @@ public final class PrepareWorkflow {
         new WorkflowStateService(),
         new JnaAtomicExchange(),
         path -> { },
-        PrepareWorkflow::preserve);
+        PrepareWorkflow::preserve,
+        path -> { });
   }
 
   public PrepareWorkflow(TranslationRunner runner, Clock clock) {
@@ -109,7 +111,8 @@ public final class PrepareWorkflow {
         new WorkflowStateService(),
         new JnaAtomicExchange(),
         path -> { },
-        PrepareWorkflow::preserve);
+        PrepareWorkflow::preserve,
+        path -> { });
   }
 
   public PrepareWorkflow(
@@ -123,7 +126,8 @@ public final class PrepareWorkflow {
         workflowState,
         atomicExchange,
         path -> { },
-        PrepareWorkflow::preserve);
+        PrepareWorkflow::preserve,
+        path -> { });
   }
 
   PrepareWorkflow(
@@ -133,12 +137,31 @@ public final class PrepareWorkflow {
       AtomicExchange atomicExchange,
       ExistingEnglishReadHook existingEnglishReadHook,
       RecoveryFilePreserver recoveryFilePreserver) {
+    this(
+        runner,
+        clock,
+        workflowState,
+        atomicExchange,
+        existingEnglishReadHook,
+        recoveryFilePreserver,
+        path -> { });
+  }
+
+  PrepareWorkflow(
+      TranslationRunner runner,
+      Clock clock,
+      WorkflowStateService workflowState,
+      AtomicExchange atomicExchange,
+      ExistingEnglishReadHook existingEnglishReadHook,
+      RecoveryFilePreserver recoveryFilePreserver,
+      LockAcquisitionHook lockAcquisitionHook) {
     this.runner = runner;
     this.clock = clock;
     this.workflowState = workflowState;
     this.atomicExchange = atomicExchange;
     this.existingEnglishReadHook = existingEnglishReadHook;
     this.recoveryFilePreserver = recoveryFilePreserver;
+    this.lockAcquisitionHook = lockAcquisitionHook;
   }
 
   public PrepareResult prepare(
@@ -863,19 +886,32 @@ public final class PrepareWorkflow {
       return null;
     }
     BasicFileAttributes namedBefore = validateExistingEnglishLeaf(path);
+    JnaFileDescriptor.FileIdentity namedBeforeIdentity =
+        JnaFileDescriptor.pathIdentityNoFollow(path);
     existingEnglishReadHook.beforeNoFollowOpen(path);
 
-    byte[] content;
-    try (FileChannel channel = FileChannel.open(
-        path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
-      ByteArrayOutputStream output = new ByteArrayOutputStream();
-      ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);
-      while (channel.read(buffer) >= 0) {
-        buffer.flip();
-        output.write(buffer.array(), 0, buffer.remaining());
-        buffer.clear();
+    try (JnaFileDescriptor descriptor = JnaFileDescriptor.openReadNoFollow(path)) {
+      existingEnglishReadHook.afterNoFollowOpen(path);
+      JnaFileDescriptor.Snapshot openedBefore = descriptor.snapshot();
+      validateOpenedEnglish(openedBefore);
+      if (!namedBeforeIdentity.equals(openedBefore.identity())) {
+        throw new IllegalArgumentException(
+            "Existing en.md changed before it could be read.");
       }
-      content = output.toByteArray();
+
+      byte[] content = descriptor.readAllBytes();
+      JnaFileDescriptor.Snapshot openedAfter = descriptor.snapshot();
+      validateOpenedEnglish(openedAfter);
+      BasicFileAttributes namedAfter = validateExistingEnglishLeaf(path);
+      JnaFileDescriptor.FileIdentity namedAfterIdentity =
+          JnaFileDescriptor.pathIdentityNoFollow(path);
+      if (!sameFileSnapshot(openedBefore.attributes(), openedAfter.attributes())
+          || !openedAfter.identity().equals(namedAfterIdentity)
+          || !sameFileSnapshot(namedBefore, namedAfter)) {
+        throw new IllegalArgumentException(
+            "Existing en.md changed while it was read.");
+      }
+      return content;
     } catch (IOException error) {
       if (Files.isSymbolicLink(path)) {
         throw new IllegalArgumentException(
@@ -883,13 +919,15 @@ public final class PrepareWorkflow {
       }
       throw error;
     }
+  }
 
-    BasicFileAttributes namedAfter = validateExistingEnglishLeaf(path);
-    if (!sameFileSnapshot(namedBefore, namedAfter)) {
-      throw new IllegalArgumentException(
-          "Existing en.md changed while it was read.");
+  private static void validateOpenedEnglish(JnaFileDescriptor.Snapshot snapshot) {
+    if (!snapshot.attributes().isRegularFile()) {
+      throw new IllegalArgumentException("Existing en.md must be a regular file.");
     }
-    return content;
+    if (snapshot.linkCount() != -1 && snapshot.linkCount() != 1) {
+      throw new IllegalArgumentException("Existing en.md must not have multiple hard links.");
+    }
   }
 
   private static BasicFileAttributes validateExistingEnglishLeaf(Path path)
@@ -1034,42 +1072,58 @@ public final class PrepareWorkflow {
     }
   }
 
-  private static LockHandle openLock(Path path) throws IOException, LockBusyException {
+  private LockHandle openLock(Path path) throws IOException, LockBusyException {
     Files.createDirectories(path.getParent());
+    try {
+      Files.createFile(
+          path,
+          PosixFilePermissions.asFileAttribute(Set.of(
+              PosixFilePermission.OWNER_READ,
+              PosixFilePermission.OWNER_WRITE)));
+    } catch (FileAlreadyExistsException ignored) {
+      // Existing leaves are validated and opened without following links below.
+    } catch (UnsupportedOperationException error) {
+      try {
+        Files.createFile(path);
+      } catch (FileAlreadyExistsException ignored) {
+        // Existing leaves are validated and opened without following links below.
+      }
+    }
     if (Files.isSymbolicLink(path)) {
       throw new IOException("publication lock must not be a symbolic link");
     }
-    FileChannel channel = FileChannel.open(
-        path,
-        StandardOpenOption.CREATE,
-        StandardOpenOption.READ,
-        StandardOpenOption.WRITE);
+    JnaFileDescriptor descriptor = JnaFileDescriptor.openLockNoFollow(path);
     try {
-      BasicFileAttributes before = Files.readAttributes(
+      lockAcquisitionHook.afterNoFollowOpen(path);
+      JnaFileDescriptor.Snapshot opened = descriptor.snapshot();
+      BasicFileAttributes named = Files.readAttributes(
           path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-      if (!before.isRegularFile()) {
+      JnaFileDescriptor.FileIdentity namedIdentity =
+          JnaFileDescriptor.pathIdentityNoFollow(path);
+      if (!opened.attributes().isRegularFile() || !named.isRegularFile()) {
         throw new IOException("publication lock must be a regular file");
       }
-      rejectMultipleLinks(path, "publication lock");
-      FileLock fileLock;
-      try {
-        fileLock = channel.tryLock();
-      } catch (OverlappingFileLockException error) {
-        throw new LockBusyException();
+      if (opened.linkCount() != -1 && opened.linkCount() != 1) {
+        throw new IOException("publication lock must not have multiple hard links");
       }
-      if (fileLock == null) {
+      rejectMultipleLinks(path, "publication lock");
+      if (!opened.identity().equals(namedIdentity)) {
+        throw new IOException("publication lock path changed while it was opened");
+      }
+      if (!descriptor.tryExclusiveLock()) {
         throw new LockBusyException();
       }
       BasicFileAttributes after = Files.readAttributes(
           path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+      JnaFileDescriptor.FileIdentity afterIdentity =
+          JnaFileDescriptor.pathIdentityNoFollow(path);
       if (Files.isSymbolicLink(path)
-          || !java.util.Objects.equals(before.fileKey(), after.fileKey())) {
-        fileLock.release();
+          || !opened.identity().equals(afterIdentity)) {
         throw new IOException("publication lock path changed during acquisition");
       }
-      return new LockHandle(channel, fileLock);
+      return new LockHandle(descriptor);
     } catch (IOException | RuntimeException | LockBusyException error) {
-      channel.close();
+      descriptor.close();
       throw error;
     }
   }
@@ -1353,11 +1407,18 @@ public final class PrepareWorkflow {
   @FunctionalInterface
   interface ExistingEnglishReadHook {
     void beforeNoFollowOpen(Path path) throws IOException;
+
+    default void afterNoFollowOpen(Path path) throws IOException { }
   }
 
   @FunctionalInterface
   interface RecoveryFilePreserver {
     Path preserve(Path temporary, Path target) throws IOException;
+  }
+
+  @FunctionalInterface
+  interface LockAcquisitionHook {
+    void afterNoFollowOpen(Path path) throws IOException;
   }
 
   public record PrepareResult(
@@ -1379,16 +1440,11 @@ public final class PrepareWorkflow {
 
   private static final class LockBusyException extends Exception { }
 
-  private record LockHandle(FileChannel channel, FileLock lock) implements AutoCloseable {
+  private record LockHandle(JnaFileDescriptor descriptor) implements AutoCloseable {
     @Override
     public void close() {
       try {
-        lock.release();
-      } catch (IOException ignored) {
-        // The owning channel close below also releases the process lock.
-      }
-      try {
-        channel.close();
+        descriptor.close();
       } catch (IOException ignored) {
         // Lock lifetime has already ended.
       }

@@ -588,7 +588,54 @@ final class PrepareWorkflowTest {
     assertArrayEquals(priorBytes, Files.readAllBytes(prior));
     assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
     assertTrue(result.diagnostics().stream()
-        .anyMatch(item -> item.message().contains("changed while it was read")));
+        .anyMatch(item -> item.message().contains("changed before it could be read")));
+  }
+
+  @Test
+  void initialEnglishReadRejectsOpenedFileSwapBackBeforePathValidation() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] priorBytes = Files.readAllBytes(prior);
+    Path savedOriginal = temp.resolve("saved-original-en.md");
+    Path savedSubstitute = temp.resolve("saved-substitute-en.md");
+    byte[] substituteBytes = "substituted content must not enter the job\n".getBytes();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+    PrepareWorkflow.ExistingEnglishReadHook swapBack =
+        new PrepareWorkflow.ExistingEnglishReadHook() {
+          @Override
+          public void beforeNoFollowOpen(Path path) throws IOException {
+            Files.move(path, savedOriginal);
+            Files.write(path, substituteBytes);
+          }
+
+          @Override
+          public void afterNoFollowOpen(Path path) throws IOException {
+            Files.move(path, savedSubstitute);
+            Files.move(savedOriginal, path);
+          }
+        };
+    PrepareWorkflow workflow = new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        new JnaAtomicExchange(),
+        swapBack,
+        (temporary, target) -> {
+          throw new AssertionError("recovery preservation must not run");
+        });
+
+    PrepareWorkflow.PrepareResult result = workflow.prepare(
+        fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertArrayEquals(priorBytes, Files.readAllBytes(prior));
+    assertArrayEquals(substituteBytes, Files.readAllBytes(savedSubstitute));
+    assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.message().contains("changed before it could be read")));
   }
 
   @Test
@@ -662,6 +709,44 @@ final class PrepareWorkflowTest {
     assertEquals("translation_failed", result.status());
     assertEquals(0, runner.calls.get());
     assertEquals("do not follow\n", Files.readString(target));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.field().equals("lock")));
+  }
+
+  @Test
+  void lockAcquisitionRejectsNamedFileReplacementAfterDescriptorOpen() throws Exception {
+    Fixture fixture = fixture();
+    Path lockPath = fixture.jobs().resolve("blog/essay.lock");
+    Path openedLock = fixture.jobs().resolve("opened-lock");
+    Path replacement = fixture.jobs().resolve("replacement-lock");
+    Files.createDirectories(lockPath.getParent());
+    Files.writeString(lockPath, "opened lock\n");
+    Files.writeString(replacement, "replacement lock\n");
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+    PrepareWorkflow.LockAcquisitionHook replaceAfterOpen = path -> {
+      Files.move(path, openedLock);
+      Files.move(replacement, path);
+    };
+    PrepareWorkflow workflow = new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        new JnaAtomicExchange(),
+        path -> { },
+        (temporary, target) -> {
+          throw new AssertionError("recovery preservation must not run");
+        },
+        replaceAfterOpen);
+
+    PrepareWorkflow.PrepareResult result = workflow.prepare(
+        fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertEquals("opened lock\n", Files.readString(openedLock));
+    assertEquals("replacement lock\n", Files.readString(lockPath));
     assertTrue(result.diagnostics().stream()
         .anyMatch(item -> item.field().equals("lock")));
   }
