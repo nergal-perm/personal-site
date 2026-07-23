@@ -3,7 +3,7 @@ package dev.eugene.astroexport.manifest;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Generated from Python html.entities.html5 for book-description source parity. */
+/** Generated from Python 3.14 html.entities.html5 (2,231 entries) for book-description source parity. */
 final class Html5Entities {
   private static final String DATA = """
 AElig	C6

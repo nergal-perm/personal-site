@@ -43,6 +43,12 @@ public final class ManifestBuilder {
   private static final Pattern BOOK_DESCRIPTION = Pattern.compile("(?is)<div\\s+class=[\"']book-description[\"'][^>]*>.*?<p>(.*?)</p>");
   private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
   private static final Pattern HTML_ENTITY = Pattern.compile("&(#(?:[xX][0-9a-fA-F]+|[0-9]+);?|[A-Za-z][A-Za-z0-9]*;?)");
+  private static final String[] HTML5_C1_REPLACEMENTS = {
+      "\u20AC", "\u0081", "\u201A", "\u0192", "\u201E", "\u2026", "\u2020", "\u2021",
+      "\u02C6", "\u2030", "\u0160", "\u2039", "\u0152", "\u008D", "\u017D", "\u008F",
+      "\u0090", "\u2018", "\u2019", "\u201C", "\u201D", "\u2022", "\u2013", "\u2014",
+      "\u02DC", "\u2122", "\u0161", "\u203A", "\u0153", "\u009D", "\u017E", "\u0178"
+  };
   private static final ObjectMapper HASH_JSON = new ObjectMapper();
   private final PublicationValidator publicationValidator = new PublicationValidator();
   private final LinkProcessor linkProcessor = new LinkProcessor();
@@ -681,10 +687,33 @@ public final class ManifestBuilder {
       String value = entity.endsWith(";") ? entity.substring(0, entity.length() - 1) : entity;
       boolean hexadecimal = value.startsWith("#x") || value.startsWith("#X");
       int codePoint = Integer.parseInt(value.substring(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
-      return Character.isValidCodePoint(codePoint) ? new String(Character.toChars(codePoint)) : original;
+      return html5NumericReplacement(codePoint);
     } catch (NumberFormatException ignored) {
       return original;
     }
+  }
+
+  private static String html5NumericReplacement(int codePoint) {
+    if (codePoint == 0 || codePoint > Character.MAX_CODE_POINT || (codePoint >= 0xD800 && codePoint <= 0xDFFF)) {
+      return "\uFFFD";
+    }
+    if (codePoint >= 0x80 && codePoint <= 0x9F) {
+      return HTML5_C1_REPLACEMENTS[codePoint - 0x80];
+    }
+    if (isHtml5InvalidCodePoint(codePoint)) {
+      return "";
+    }
+    return new String(Character.toChars(codePoint));
+  }
+
+  private static boolean isHtml5InvalidCodePoint(int codePoint) {
+    return (codePoint >= 1 && codePoint <= 8)
+        || codePoint == 11
+        || (codePoint >= 14 && codePoint <= 31)
+        || codePoint == 127
+        || (codePoint >= 0xFDD0 && codePoint <= 0xFDEF)
+        || (codePoint & 0xFFFF) == 0xFFFE
+        || (codePoint & 0xFFFF) == 0xFFFF;
   }
   private static String linkTarget(String message) { return message.replaceFirst("^ambiguous public link: ", ""); }
   static String sourceHash(Map<String, Object> metadata, String body) {
@@ -756,7 +785,8 @@ public final class ManifestBuilder {
     BigDecimal decimal = BigDecimal.valueOf(value).stripTrailingZeros();
     int exponent = decimal.precision() - decimal.scale() - 1;
     if (exponent >= -4 && exponent < 16) {
-      return decimal.toPlainString();
+      String fixed = decimal.toPlainString();
+      return exponent >= 0 && !fixed.contains(".") ? fixed + ".0" : fixed;
     }
     String digits = decimal.unscaledValue().abs().toString();
     String mantissa = digits.length() == 1 ? digits : digits.charAt(0) + "." + digits.substring(1);

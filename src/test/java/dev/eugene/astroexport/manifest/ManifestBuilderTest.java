@@ -97,6 +97,15 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void appliesHtml5NumericReferenceReplacementRulesInBookDescriptions() {
+    Note book = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор"),
+        "<div class=\"book-description\"><p>&#0;|&#128;|&#x80;|&#55296;|&#xD800;|&#57344;|&#1114112;|&#x110000;|&#x1F600;</p></div>");
+
+    assertEquals("\uFFFD|€|€|\uFFFD|\uFFFD|\uE000|\uFFFD|\uFFFD|😀",
+        only(builder.buildRussianManifest(selection(book))).metadata().get("description"));
+  }
+
+  @Test
   void omitsExplicitNullCollectionMetadata() {
     Map<String, Object> musicExtra = nullableMap("artist", "Artist", "albumTitle", "Album", "format", null, "streamingUrl", null, "bandcampEmbedUrl", null);
     Note musicWithNulls = note("reviews/Album.md", "Album", "album", "music", "album", musicExtra, "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
@@ -490,6 +499,16 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void hashesFixedAndExponentFloatBoundariesLikePythonJson() {
+    Map<String, Object> metadata = Map.of("values", List.of(
+        1e14, 1e15, 1e16, 1e20, 999999999999999.9,
+        1234567890123456.0, 1234567890123456.8));
+
+    assertEquals("60df887f4e156784152cb2d3ce670c81a05fb510b75750658d38b5996c908beb",
+        ManifestBuilder.sourceHash(metadata, "Тело."));
+  }
+
+  @Test
   void keepsConceptPrimaryLabelWhenNoMaterialIsPublishedAndRejectsMalformedMaterial() {
     Note noMaterial = note("editorial/Concepts.md", "Концепты", "concepts", "editorial", "curated_page", Map.of("editorialPage", "concepts"),
         "## Кратко\n\nКратко.\n\n## Eyebrow\n\nКонцепты.\n\n## Базовый концепт\n\nМетка:: База");
@@ -503,6 +522,18 @@ final class ManifestBuilderTest {
         () -> builder.buildRussianManifest(selection(malformed)));
     assertEquals("primary", error.fieldName());
     assertEquals("inline field `Материал::` must be non-empty", error.reason());
+  }
+
+  @Test
+  void blocksTheWholeManifestWhenAnotherSelectedNoteHasAnUnsupportedTopic() {
+    Note valid = note("blog/Valid.md", "Valid", "valid", "blog", "essay", Map.of(), "");
+    Note invalid = note("blog/Invalid.md", "Invalid", "invalid", "blog", "essay", Map.of("topics", List.of("unsupported")), "");
+
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(valid, invalid)));
+    assertEquals("blog/Invalid.md", error.sourcePath());
+    assertEquals("topics", error.fieldName());
+    assertEquals("contains unsupported values: unsupported", error.reason());
   }
 
   @Test

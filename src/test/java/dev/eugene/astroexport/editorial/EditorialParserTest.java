@@ -66,6 +66,28 @@ final class EditorialParserTest {
   }
 
   @Test
+  void rejectsUnsupportedAndUnknownEditorialPageValues() {
+    EditorialParser.ManifestValidationException map = assertThrows(EditorialParser.ManifestValidationException.class,
+        () -> parser.normalize("editorial/map.md", "map", frontmatter("map"), base(), common()));
+    assertEquals("editorialPage", map.fieldName());
+    assertEquals("must be one of: about, claims, concepts, essays, home, library, music, notes, now", map.reason());
+
+    EditorialParser.ManifestValidationException unknown = assertThrows(EditorialParser.ManifestValidationException.class,
+        () -> parser.normalize("editorial/home.md", "home", frontmatter("unknown"), base(), common()));
+    assertEquals("editorialPage", unknown.fieldName());
+    assertEquals("must be one of: about, claims, concepts, essays, home, library, music, notes, now", unknown.reason());
+  }
+
+  @Test
+  void reportsExactFieldForMalformedAboutPrincipleProse() {
+    EditorialParser.ManifestValidationException error = assertThrows(EditorialParser.ManifestValidationException.class,
+        () -> parser.normalize("editorial/about.md", "about", frontmatter("about"),
+            base() + "## Лид\n\nЛид.\n\n## Принципы\n\n### Первый\n\n## Колофон\n\nКолофон.", common()));
+    assertEquals("principles[0][1]", error.fieldName());
+    assertEquals("must contain non-empty prose", error.reason());
+  }
+
+  @Test
   void rejectsMalformedNestedShapesAndNonBooleanSearchable() {
     EditorialParser.ManifestValidationException nested = assertThrows(EditorialParser.ManifestValidationException.class,
         () -> parser.normalize("editorial/home.md", "home", frontmatter("home"), base() + "## Hero\n\n### Заголовок\n\nЗаголовок\n\n### Лид\n\nЛид\n\n### Описание изображения\n\nAlt\n\n## Сейчас\n\n### Изучаю\n\nТолько одна строка", common()));
