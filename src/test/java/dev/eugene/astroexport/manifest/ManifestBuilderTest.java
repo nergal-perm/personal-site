@@ -11,6 +11,7 @@ import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.model.ManifestLink;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -94,6 +95,38 @@ final class ManifestBuilderTest {
     var decodedEntry = only(builder.buildRussianManifest(selection(decoded)));
     assertEquals("\"Books & <Notes>\" © ®AB", encodedEntry.metadata().get("description"));
     assertEquals(decodedEntry.metadata().get("sourceHash"), encodedEntry.metadata().get("sourceHash"));
+  }
+
+  @Test
+  void collapsesUnicodeHtmlWhitespaceInBookDescriptionsBeforeHashing() {
+    Note encoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор"),
+        "<div class=\"book-description\"><p>A&emsp;B&ensp;C&thinsp;D</p></div>");
+    Note decoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book",
+        Map.of("author", "Автор", "description", "A B C D"), "");
+
+    var encodedEntry = only(builder.buildRussianManifest(selection(encoded)));
+    var decodedEntry = only(builder.buildRussianManifest(selection(decoded)));
+    assertEquals("A B C D", encodedEntry.metadata().get("description"));
+    assertEquals(decodedEntry.metadata().get("sourceHash"), encodedEntry.metadata().get("sourceHash"));
+  }
+
+  @Test
+  void stringifiesBibliographyScalarsAndNullableAuthorsLikePython() {
+    Map<String, Object> direct = nullableMap(
+        "authors", Arrays.asList("[[Автор]]", null),
+        "publication", Boolean.TRUE,
+        "readingStatus", Boolean.FALSE);
+    Note directBook = note("bibliography/Direct.md", "Direct", "direct", "bibliography", "book", direct, "");
+    Note derivedBook = note("bibliography/Derived.md", "Derived", "derived", "bibliography", "book", Map.of(
+        "author", "Автор", "publisher", Boolean.TRUE, "published", Boolean.FALSE, "status", " current "), "");
+
+    Map<String, Object> directMetadata = byId(builder.buildRussianManifest(selection(directBook, derivedBook)), "direct").metadata();
+    Map<String, Object> derivedMetadata = byId(builder.buildRussianManifest(selection(directBook, derivedBook)), "derived").metadata();
+    assertEquals(List.of("Автор", "None"), directMetadata.get("authors"));
+    assertEquals("True", directMetadata.get("publication"));
+    assertEquals("False", directMetadata.get("readingStatus"));
+    assertEquals("True · False", derivedMetadata.get("publication"));
+    assertEquals(" current ", derivedMetadata.get("readingStatus"));
   }
 
   @Test
@@ -257,6 +290,26 @@ final class ManifestBuilderTest {
     assertFalse(metadata.containsKey("primary"));
     assertFalse(metadata.containsKey("primaryLabel"));
     assertEquals("private-concept", result.strippedLinks().getFirst().target());
+  }
+
+  @Test
+  void resolvesShowcaseTargetsAndProseLinksWithEditorialTextProvenance() {
+    Note essays = note("editorial/Essays.md", "Essays", "essays", "editorial", "curated_page", Map.of("editorialPage", "essays"),
+        "## Кратко\n\nЭссе.\n\n## Eyebrow\n\nТексты\n\n## Принцип списка\n\nПолный список.\n\nПодсказка поиска:: Искать\n\n## Витрина\n\n### [[Essay One]]\n\nНачать с [[Essay Two]].");
+    Note first = note("blog/Essay One.md", "Essay One", "essay-one", "blog", "essay", Map.of(), "");
+    Note second = note("blog/Essay Two.md", "Essay Two", "essay-two", "blog", "essay", Map.of(), "");
+
+    var result = builder.buildRussianManifest(selection(essays, first, second));
+    Map<String, Object> metadata = byId(result, "essays").metadata();
+    assertEquals(List.of("essay-one"), metadata.get("pinned"));
+    assertEquals(List.of(Map.of(
+        "target", "essay-one",
+        "text", List.of(
+            Map.of("kind", "text", "value", "Начать с "),
+            Map.of("kind", "reference", "target", "essay-two"),
+            Map.of("kind", "text", "value", ".")))), metadata.get("showcase"));
+    assertTrue(result.retainedLinks().stream().anyMatch(link -> link.kind().equals("editorial-text")
+        && link.target().equals("Essay Two")));
   }
 
   @Test

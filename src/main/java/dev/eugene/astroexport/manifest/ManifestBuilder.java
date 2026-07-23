@@ -162,8 +162,32 @@ public final class ManifestBuilder {
     metadata.put("title", title(note));
     return metadata;
   }
-  private static String title(Note note) { Object value = note.frontmatter().get("title"); return value == null || value.toString().strip().isEmpty() ? note.title().strip() : value.toString().strip(); }
-  private static String description(Note note) { Object explicit = note.frontmatter().get("description"); if (explicit != null && !explicit.toString().strip().isEmpty()) return explicit.toString().strip(); if (note.publicCollection().equals("editorial")) return MarkdownScanner.section(note.body(), "Кратко").orElse(""); if (note.publicCollection().equals("music")) return MarkdownScanner.section(note.body(), "Контекст записи").orElse(""); if (note.publicCollection().equals("bibliography")) return bookDescription(note.body()); if (note.publicCollection().equals("blog") && note.publicContentType().equals("claim")) return string(note.frontmatter().get("statement")); return ""; }
+  private static String title(Note note) {
+    Object value = note.frontmatter().get("title");
+    return value == null || pythonScalar(value).strip().isEmpty()
+        ? note.title().strip()
+        : pythonScalar(value).strip();
+  }
+
+  private static String description(Note note) {
+    Object explicit = note.frontmatter().get("description");
+    if (explicit != null && !pythonScalar(explicit).strip().isEmpty()) {
+      return pythonScalar(explicit).strip();
+    }
+    if (note.publicCollection().equals("editorial")) {
+      return MarkdownScanner.section(note.body(), "Кратко").orElse("");
+    }
+    if (note.publicCollection().equals("music")) {
+      return MarkdownScanner.section(note.body(), "Контекст записи").orElse("");
+    }
+    if (note.publicCollection().equals("bibliography")) {
+      return bookDescription(note.body());
+    }
+    if (note.publicCollection().equals("blog") && note.publicContentType().equals("claim")) {
+      return string(note.frontmatter().get("statement"));
+    }
+    return "";
+  }
   private static List<String> stringList(Note note, String field) { Object value = note.frontmatter().get(field); if (value == null) return List.of(); List<?> values = value instanceof List<?> list ? list : List.of(value); if (values.stream().anyMatch(item -> !(item instanceof String))) throw new ManifestValidationException(note.vaultPath(), field, "must be a string or list of strings"); return values.stream().map(item -> ((String) item).strip()).filter(item -> !item.isEmpty()).toList(); }
   private static String publicBody(Note note) { if (note.publicCollection().equals("bibliography")) return MarkdownScanner.section(note.body(), "Конспект").orElse(""); if (!note.publicCollection().equals("concepts")) return note.body(); Matcher match = LEADING_H1.matcher(note.body()); if (!match.find() || match.group().startsWith("    ") || match.group().startsWith("\t")) return note.body(); String heading = ATX_CLOSER.matcher(match.group(1).strip()).replaceFirst(""); return heading.equals(title(note)) ? note.body().substring(match.end()).replaceFirst("^[\\r\\n]+", "") : note.body(); }
   private static String targetPath(Note note) { return note.publicCollection().equals("editorial") ? "src/data/pages/ru/" + note.publicId().strip() + ".json" : "src/content/" + note.publicCollection() + "/ru/" + note.publicId().strip() + ".md"; }
@@ -200,15 +224,21 @@ public final class ManifestBuilder {
     Object authors = firstValidRaw(note, "authors", "author");
     List<?> authorValues = authors instanceof List<?> list ? list : List.of(authors);
     List<String> normalizedAuthors = new ArrayList<>();
-    for (Object author : authorValues) normalizedAuthors.add(unwrap(author.toString()));
+    for (Object author : authorValues) {
+      normalizedAuthors.add(unwrap(pythonScalar(author)));
+    }
     metadata.put("authors", normalizedAuthors);
 
     Object publication = frontmatter.get("publication");
     if (publication != null) {
-      metadata.put("publication", String.valueOf(publication).strip());
+      metadata.put("publication", pythonScalar(publication).strip());
     } else {
-      String publisher = string(frontmatter.get("publisher"));
-      String published = string(frontmatter.get("published"));
+      String publisher = pythonScalar(frontmatter.containsKey("publisher")
+          ? frontmatter.get("publisher")
+          : "").strip();
+      String published = pythonScalar(frontmatter.containsKey("published")
+          ? frontmatter.get("published")
+          : "").strip();
       if (!publisher.isEmpty() || !published.isEmpty()) {
         metadata.put("publication", String.join(" · ", List.of(publisher, published).stream().filter(value -> !value.isEmpty()).toList()));
       }
@@ -219,9 +249,9 @@ public final class ManifestBuilder {
     }
     Object readingStatus = frontmatter.get("readingStatus");
     if (readingStatus != null) {
-      metadata.put("readingStatus", String.valueOf(readingStatus));
+      metadata.put("readingStatus", pythonScalar(readingStatus));
     } else if (frontmatter.get("status") != null) {
-      metadata.put("readingStatus", String.valueOf(frontmatter.get("status")));
+      metadata.put("readingStatus", pythonScalar(frontmatter.get("status")));
     }
     for (String field : List.of("use", "boundary", "selectedQuote")) {
       Object value = frontmatter.get(field);
@@ -636,17 +666,62 @@ public final class ManifestBuilder {
     return candidates.isEmpty() ? null : candidates.getFirst();
   }
 
-  private static String dateFromId(Object value) { if (value == null) return null; String id = value.toString(); return id.matches("\\d{8}.*") ? id.substring(0, 4) + "-" + id.substring(4, 6) + "-" + id.substring(6, 8) : null; }
-  private static String normalizeDate(Object value) { if (value == null || value.toString().isBlank()) return null; String text = unwrap(value.toString()); return text; }
+  private static String dateFromId(Object value) {
+    if (value == null) {
+      return null;
+    }
+    String id = pythonScalar(value);
+    return id.matches("\\d{8}.*")
+        ? id.substring(0, 4) + "-" + id.substring(4, 6) + "-" + id.substring(6, 8)
+        : null;
+  }
+
+  private static String normalizeDate(Object value) {
+    if (value == null || pythonScalar(value).isBlank()) {
+      return null;
+    }
+    return unwrap(pythonScalar(value));
+  }
+
   private static String unwrap(String value) { Matcher match = SCALAR_LINK.matcher(value.strip()); return match.matches() ? (match.group(2) == null ? match.group(1).strip() : match.group(2).strip()) : value.strip(); }
-  private static String string(Object value) { return value == null ? "" : value.toString().strip(); }
+  private static String string(Object value) { return value == null ? "" : pythonScalar(value).strip(); }
+
+  private static String pythonScalar(Object value) {
+    if (value == null) {
+      return "None";
+    }
+    if (value instanceof Boolean bool) {
+      return bool ? "True" : "False";
+    }
+    return String.valueOf(value);
+  }
+
   private static String bookDescription(String body) {
     Matcher match = BOOK_DESCRIPTION.matcher(body);
     if (!match.find()) {
       return "";
     }
     String text = HTML_TAG.matcher(match.group(1)).replaceAll("");
-    return decodeHtmlEntities(text).replaceAll("[\\s\\u00A0]+", " ").strip();
+    return collapseUnicodeWhitespace(decodeHtmlEntities(text));
+  }
+
+  private static String collapseUnicodeWhitespace(String value) {
+    StringBuilder normalized = new StringBuilder();
+    boolean pendingSpace = false;
+    for (int offset = 0; offset < value.length();) {
+      int codePoint = value.codePointAt(offset);
+      offset += Character.charCount(codePoint);
+      if (Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)) {
+        pendingSpace = normalized.length() > 0;
+        continue;
+      }
+      if (pendingSpace) {
+        normalized.append(' ');
+        pendingSpace = false;
+      }
+      normalized.appendCodePoint(codePoint);
+    }
+    return normalized.toString();
   }
 
   private static String decodeHtmlEntities(String value) {
