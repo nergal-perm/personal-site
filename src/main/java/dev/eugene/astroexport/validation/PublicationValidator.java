@@ -45,15 +45,16 @@ public final class PublicationValidator {
     if (validContentType) {
       if (published) {
         for (PublicationRequirement requirement : PublicationKind.requirementsFor(collection, contentType)) {
-          if (requirement.source().equals("frontmatter") && !identity(requirement.validator())
+          if (requirement.source().equals("frontmatter") && !identity(requirement)
               && !hasValidFrontmatterValue(frontmatter, requirement)) {
-            diagnostics.add(new PublicationDiagnostic(String.join(" / ", requirement.fields()), requirement.validator() == RequirementValidator.EDITORIAL_PAGE
+            diagnostics.add(new PublicationDiagnostic(String.join(" / ", requirement.fields()), requirement.validator() == RequirementValidator.SUPPORTED_EDITORIAL_PAGE
                 ? "must be one of: " + values(EDITORIAL_PAGES) : requirement.expectation()));
           }
         }
       }
       for (PublicationRequirement requirement : PublicationKind.requirementsFor(collection, contentType)) {
-        if (requirement.source().equals("body") && requirement.validator() == RequirementValidator.BODY_SECTION
+        if (requirement.source().equals("body") && requirement.validator() == RequirementValidator.CONCEPT_DEFINITION_SECTION
+            && !requirement.fields().getFirst().equals("editorial body")
             && !hasVisibleSection(body, requirement.fields().getFirst())) {
           diagnostics.add(new PublicationDiagnostic(requirement.fields().getFirst(), requirement.expectation()));
         }
@@ -62,18 +63,18 @@ public final class PublicationValidator {
     return List.copyOf(diagnostics);
   }
 
-  private static boolean identity(RequirementValidator validator) {
-    return switch (validator) {
-      case REQUIRED_TRUE, ROUTE_SLUG, COLLECTION, CONTENT_TYPE -> true;
+  private static boolean identity(PublicationRequirement requirement) {
+    return switch (requirement.fields().getFirst()) {
+      case "publish", "publicId", "publicCollection", "publicContentType" -> true;
       default -> false;
     };
   }
 
   private static boolean hasValidFrontmatterValue(Map<String, Object> frontmatter, PublicationRequirement requirement) {
     return requirement.fields().stream().anyMatch(field -> switch (requirement.validator()) {
-      case NON_EMPTY_STRING, ONE_NON_EMPTY_STRING -> nonEmptyString(frontmatter.get(field)) != null;
-      case ONE_NON_EMPTY_STRING_OR_LIST -> nonEmptyStringOrList(frontmatter.get(field));
-      case EDITORIAL_PAGE -> frontmatter.get(field) instanceof String value && EDITORIAL_PAGES.contains(value);
+      case NON_EMPTY_STRING -> nonEmptyString(frontmatter.get(field)) != null;
+      case NON_EMPTY_STRING_OR_LIST -> nonEmptyStringOrList(frontmatter.get(field));
+      case SUPPORTED_EDITORIAL_PAGE -> frontmatter.get(field) instanceof String value && EDITORIAL_PAGES.contains(value);
       default -> false;
     });
   }

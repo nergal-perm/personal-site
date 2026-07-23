@@ -21,18 +21,15 @@ final class PublicationContractTest {
   }
 
   @Test
-  void usesTheLivePythonValidatorVocabulary() {
+  void usesTheTaskFourValidatorVocabulary() {
     assertEquals(Set.of(
-        RequirementValidator.REQUIRED_TRUE,
-        RequirementValidator.ROUTE_SLUG,
-        RequirementValidator.COLLECTION,
-        RequirementValidator.CONTENT_TYPE,
+        RequirementValidator.BOOLEAN_TRUE,
         RequirementValidator.NON_EMPTY_STRING,
-        RequirementValidator.ONE_NON_EMPTY_STRING,
-        RequirementValidator.ONE_NON_EMPTY_STRING_OR_LIST,
-        RequirementValidator.EDITORIAL_PAGE,
-        RequirementValidator.BODY_SECTION,
-        RequirementValidator.EDITORIAL_BODY),
+        RequirementValidator.NON_EMPTY_STRING_OR_LIST,
+        RequirementValidator.SUPPORTED_COLLECTION,
+        RequirementValidator.SUPPORTED_CONTENT_TYPE,
+        RequirementValidator.SUPPORTED_EDITORIAL_PAGE,
+        RequirementValidator.CONCEPT_DEFINITION_SECTION),
         PublicationKind.all().stream()
             .flatMap(kind -> kind.requirements().stream())
             .map(requirement -> requirement.validator())
@@ -47,14 +44,14 @@ final class PublicationContractTest {
     assertEquals(RequirementValidator.NON_EMPTY_STRING,
         requirements.get(requirements.size() - 2).validator());
     assertEquals("Определение", requirements.getLast().fields().getFirst());
-    assertEquals(RequirementValidator.BODY_SECTION, requirements.getLast().validator());
+    assertEquals(RequirementValidator.CONCEPT_DEFINITION_SECTION, requirements.getLast().validator());
   }
 
   @Test
   void rejectsAlternativeFrontmatterFieldNamesEncodedAsText() {
     var error = org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
         () -> new PublicationRequirement(List.of("authors or author"), "expectation", "author expectation",
-            "frontmatter", RequirementValidator.ONE_NON_EMPTY_STRING));
+            "frontmatter", RequirementValidator.NON_EMPTY_STRING));
 
     assertEquals("alternative frontmatter fields must be separate schema entries", error.getMessage());
   }
