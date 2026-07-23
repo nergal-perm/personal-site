@@ -157,7 +157,12 @@ public final class EditorialParser {
     }
     String text = value.toString().strip();
     if (text.startsWith("[[") && text.endsWith("]]")) {
-      text = text.substring(2, text.length() - 2).split("[|#]", 2)[0].strip();
+      String wikilink = text.substring(2, text.length() - 2);
+      int labelSeparator = wikilink.indexOf('|');
+      if (labelSeparator >= 0) {
+        return wikilink.substring(labelSeparator + 1).strip();
+      }
+      text = wikilink.split("#", 2)[0].strip();
     }
     return text;
   }

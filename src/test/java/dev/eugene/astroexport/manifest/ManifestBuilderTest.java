@@ -380,6 +380,30 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void resolvesTrimmedAliasesForShowcaseCurrentCardsAndClaimReferences() {
+    Note essays = note("editorial/Essays.md", "Эссе", "essays", "editorial", "curated_page", Map.of("editorialPage", "essays"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nТексты.\n\n## Принцип списка\n\nПринцип.\n\nПодсказка поиска:: Искать\n\n## Витрина\n\n### [[Shared essay]]\n\nТекст.");
+    Note essay = note("blog/Essay.md", "Другое эссе", "essay-target", "blog", "essay", Map.of(), "", List.of(" Shared essay "));
+
+    Note home = note("editorial/Home.md", "Главная", "home", "editorial", "curated_page", Map.of("editorialPage", "home"),
+        homeWithLinkedCurrentCards().replace("[[Study source|Текущий фокус]]", "[[Shared study|Текущий фокус]]"));
+    Note study = note("blog/Study.md", "Другая учеба", "study-target", "blog", "essay", Map.of(), "", List.of(" Shared study "));
+    Note build = note("concepts/Build.md", "Build source", "build-target", "concepts", "concept", Map.of("description", "Описание."), "## Определение\n\nОпределение.");
+    Note book = note("bibliography/Book.md", "Book source", "book-target", "bibliography", "book", Map.of("author", "Автор"), "");
+    Note album = note("reviews/Album.md", "Album source", "album-target", "music", "album", Map.of("artist", "Автор", "albumTitle", "Альбом"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
+
+    Note claim = note("claims/Claim.md", "Тезис", "claim", "blog", "claim", Map.of(
+        "statement", "Тезис.", "supports", List.of("[[Shared claim]]")), "");
+    Note relation = note("claims/Relation.md", "Другая связь", "claim-target", "blog", "claim", Map.of("statement", "Связь."), "", List.of(" Shared claim "));
+
+    var result = builder.buildRussianManifest(selection(essays, essay, home, study, build, book, album, claim, relation));
+    assertEquals(List.of("essay-target"), byId(result, "essays").metadata().get("pinned"));
+    assertEquals("study-target", ((List<Map<String, Object>>) byId(result, "home").metadata().get("current")).getFirst().get("target"));
+    assertEquals(Map.of("label", "Shared claim", "target", "claim-target"),
+        ((List<Map<String, Object>>) byId(result, "claim").metadata().get("supports")).getFirst());
+  }
+
+  @Test
   void recordsHomeCurrentTargetBeforeItsProseLinks() {
     Note home = note("editorial/Home.md", "Главная", "home", "editorial", "curated_page", Map.of("editorialPage", "home"),
         homeWithLinkedCurrentCards().replaceFirst("Описание\\.", "См. [[Public note]]."));
@@ -982,8 +1006,11 @@ final class ManifestBuilderTest {
   private static dev.eugene.astroexport.model.ManifestEntry byId(dev.eugene.astroexport.model.ManifestResult result, String id) { return result.entries().stream().filter(entry -> id.equals(entry.metadata().get("id"))).findFirst().orElseThrow(); }
   private static SelectionResult selection(Note... notes) { return new SelectionResult(List.of(notes), List.of(), notes.length, notes.length); }
   private static Note note(String path, String title, String id, String collection, String type, Map<String, Object> extra, String body) {
+    return note(path, title, id, collection, type, extra, body, List.of());
+  }
+  private static Note note(String path, String title, String id, String collection, String type, Map<String, Object> extra, String body, List<String> aliases) {
     Map<String, Object> metadata = new LinkedHashMap<>(); metadata.put("title", title); metadata.put("publish", true); metadata.put("publicId", id); metadata.put("publicCollection", collection); metadata.put("publicContentType", type); metadata.putAll(extra);
-    return new Note(Path.of(path), path, title, metadata, body, true, id, collection, type, List.of());
+    return new Note(Path.of(path), path, title, metadata, body, true, id, collection, type, aliases);
   }
   private static Note referenceNote(String id) { return new Note(Path.of(id + ".md"), id + ".md", id, Map.of(), "", true, id, "blog", "note", List.of()); }
   private static Map<String, Object> nullableMap(Object... values) {

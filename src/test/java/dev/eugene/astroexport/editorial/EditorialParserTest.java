@@ -116,6 +116,14 @@ final class EditorialParserTest {
   }
 
   @Test
+  void normalizesNowDateWikilinksToTheirDisplayLabels() {
+    Map<String, Object> frontmatter = nowFrontmatter();
+    frontmatter.put("date", "[[2026-07-15|2026-07-16]]");
+
+    assertEquals("2026-07-16", parser.normalize("editorial/now.md", "now", frontmatter, nowBody(), common()).get("date"));
+  }
+
+  @Test
   void rejectsMalformedShowcaseRowsWithPreciseTargetFields() {
     EditorialParser.ManifestValidationException error = assertThrows(EditorialParser.ManifestValidationException.class,
         () -> parser.normalize("editorial/essays.md", "essays", frontmatter("essays"), collectionBody("Принцип списка", "Принцип.\n\nПодсказка поиска:: Искать") + "\n\n## Витрина\n\n### Не ссылка\n\nТекст.", common()));

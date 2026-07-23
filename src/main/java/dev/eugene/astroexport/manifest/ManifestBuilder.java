@@ -727,7 +727,7 @@ public final class ManifestBuilder {
         ? notes.stream()
             .filter(note -> target.equals(note.title())
                 || matchesDescriptiveFrontmatterTitle(note, target)
-                || note.aliases().contains(target))
+                || matchesAlias(note, target))
             .toList()
         : exact;
     if (candidates.size() > 1) {
@@ -739,6 +739,10 @@ public final class ManifestBuilder {
   private static boolean matchesDescriptiveFrontmatterTitle(Note note, String target) {
     Object title = note.frontmatter().get("title");
     return pythonTruthy(title) && target.equals(string(title));
+  }
+
+  private static boolean matchesAlias(Note note, String target) {
+    return note.aliases().stream().anyMatch(alias -> alias != null && target.equals(alias.strip()));
   }
 
   private static String dateFromId(Object value) {
