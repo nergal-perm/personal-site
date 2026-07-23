@@ -242,6 +242,23 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void acceptsPythonIsoDateFormsWithoutRewritingMetadata() {
+    for (String date : List.of("20260723", "2026-W30-4")) {
+      Note common = note("blog/" + date + ".md", "Дата", "date-" + date.replaceAll("[^0-9]", ""), "blog", "essay", Map.of("date", date), "");
+      assertEquals(date, only(builder.buildRussianManifest(selection(common))).metadata().get("date"));
+
+      Note now = note("editorial/Now.md", "Сейчас", "now", "editorial", "curated_page", Map.of(
+          "editorialPage", "now", "date", date, "status", "current"), editorialNowBody());
+      assertEquals(date, only(builder.buildRussianManifest(selection(now))).metadata().get("date"));
+    }
+
+    ManifestBuilder.ManifestValidationException invalid = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("blog/Ordinal.md", "Дата", "ordinal", "blog", "essay", Map.of("date", "2026-204"), ""))));
+    assertEquals("date", invalid.fieldName());
+    assertEquals("must be a real YYYY-MM-DD date", invalid.reason());
+  }
+
+  @Test
   void emitsEntriesInSourcePathOrder() {
     var result = builder.buildRussianManifest(selection(note("z/Second.md", "Second", "second", "blog", "note", Map.of(), ""), note("a/First.md", "First", "first", "blog", "note", Map.of(), "")));
     assertEquals(List.of("a/First.md", "z/Second.md"), result.entries().stream().map(entry -> entry.sourcePath()).toList());
@@ -526,6 +543,8 @@ final class ManifestBuilderTest {
 
     assertEquals("https://example.com/path", only(builder.buildRussianManifest(selection(
         note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "streamingUrl", "https://example.com/path"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.")))).metadata().get("streamingUrl"));
+    assertEquals("https://exa mple.com/path", only(builder.buildRussianManifest(selection(
+        note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "streamingUrl", "https://exa mple.com/path"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.")))).metadata().get("streamingUrl"));
   }
 
   @Test
@@ -592,6 +611,42 @@ final class ManifestBuilderTest {
 
     assertEquals("60df887f4e156784152cb2d3ce670c81a05fb510b75750658d38b5996c908beb",
         ManifestBuilder.sourceHash(metadata, "Тело."));
+  }
+
+  @Test
+  void hashesSubnormalFloatsLikePythonJson() {
+    assertEquals("5c45a1d1519416239839d6f276a8fbcd753c49a159b94250a3f7467a8e4a3642",
+        ManifestBuilder.sourceHash(Map.of("x", Double.MIN_VALUE), "Тело."));
+  }
+
+  @Test
+  void sortsSourceHashObjectKeysByUnicodeCodePoint() {
+    Map<String, Object> controllerProbe = new LinkedHashMap<>();
+    controllerProbe.put("😀", 1);
+    controllerProbe.put("a", 2);
+    controllerProbe.put("💡", 3);
+    controllerProbe.put("𐐀", 4);
+    assertEquals("84fae55a07de006e3affcd3e7e41dcb665aa2133857aa73192955bef9a18690d",
+        ManifestBuilder.sourceHash(controllerProbe, "Тело."));
+
+    controllerProbe.put("\uE000", 5);
+    assertEquals("5caacaad90afd1b3b86e7feb2ae965a42d30237a0205bc1feeadafc10fdd7f5b",
+        ManifestBuilder.sourceHash(controllerProbe, "Тело."));
+  }
+
+  @Test
+  void choosesPythonStringQuotesForCompoundPublicationValues() {
+    Map<String, Object> publication = new LinkedHashMap<>();
+    publication.put("text", "don't");
+    Note rendered = note("bibliography/Book.md", "Book", "book", "bibliography", "book",
+        Map.of("author", "Автор", "publication", publication), "");
+    Note explicit = note("bibliography/Book.md", "Book", "book", "bibliography", "book",
+        Map.of("author", "Автор", "publication", "{'text': \"don't\"}"), "");
+
+    var renderedEntry = only(builder.buildRussianManifest(selection(rendered)));
+    var explicitEntry = only(builder.buildRussianManifest(selection(explicit)));
+    assertEquals("{'text': \"don't\"}", renderedEntry.metadata().get("publication"));
+    assertEquals(explicitEntry.metadata().get("sourceHash"), renderedEntry.metadata().get("sourceHash"));
   }
 
   @Test
@@ -721,4 +776,5 @@ final class ManifestBuilderTest {
     assertEquals(field, error.fieldName());
   }
   private static String homeWithLinkedCurrentCards() { return "## Кратко\n\nКратко.\n\n## Eyebrow\n\nГлавная.\n\n## Hero\n\n### Заголовок\n\nЗаголовок.\n\n### Лид\n\nЛид.\n\n### Описание изображения\n\nAlt.\n\n## Сейчас\n\n### Изучаю\n\n[[Study source|Текущий фокус]]\n\nОписание.\n\n### Создаю\n\n[[Build source|Текущая сборка]]\n\nОписание.\n\n### Читаю\n\n[[Book source|Текущая книга]]\n\nОписание.\n\n### Слушаю\n\n[[Album source|Текущий альбом]]\n\nОписание."; }
+  private static String editorialNowBody() { return "## Кратко\n\nКратко.\n\n## Eyebrow\n\nСейчас.\n\n## Обновлено\n\nСегодня.\n\n## Читаю\n\n### Материал\n\nТекст.\n\nДействие вопроса:: Вопрос\nДействие записи:: Запись"; }
 }

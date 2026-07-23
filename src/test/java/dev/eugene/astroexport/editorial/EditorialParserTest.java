@@ -107,6 +107,15 @@ final class EditorialParserTest {
   }
 
   @Test
+  void preservesPythonAcceptedNowDateFormsForManifestValidation() {
+    for (String date : List.of("20260723", "2026-W30-4")) {
+      Map<String, Object> frontmatter = nowFrontmatter();
+      frontmatter.put("date", date);
+      assertEquals(date, parser.normalize("editorial/now.md", "now", frontmatter, nowBody(), common()).get("date"));
+    }
+  }
+
+  @Test
   void rejectsMalformedShowcaseRowsWithPreciseTargetFields() {
     EditorialParser.ManifestValidationException error = assertThrows(EditorialParser.ManifestValidationException.class,
         () -> parser.normalize("editorial/essays.md", "essays", frontmatter("essays"), collectionBody("Принцип списка", "Принцип.\n\nПодсказка поиска:: Искать") + "\n\n## Витрина\n\n### Не ссылка\n\nТекст.", common()));

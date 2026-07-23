@@ -1,7 +1,5 @@
 package dev.eugene.astroexport.editorial;
 
-import java.time.LocalDate;
-import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -153,7 +151,16 @@ public final class EditorialParser {
   private static List<String> inlineValues(List<String> lines, String name) { List<String> values = new ArrayList<>(); for (String line : lines) { Matcher match = INLINE.matcher(line); if (match.matches() && match.group(1).strip().equals(name)) values.add(match.group(2).strip()); } return values; }
   private static List<String> list(Section section, String path, String target) { if (!section.children.isEmpty()) fail(path, target, "must be a flat bullet list"); List<String> result = new ArrayList<>(); int index = 0; for (String line : section.leading) { if (line.strip().isEmpty() || INLINE.matcher(line).matches()) continue; Matcher match = LIST.matcher(line); if (!match.matches() || match.group(1).strip().isEmpty()) fail(path, target + "[" + index + "]", "must be a non-empty bullet list row"); result.add(match.group(1).strip()); index++; } if (result.isEmpty()) fail(path, target, "must contain at least one bullet list row"); return result; }
   private static boolean hasContent(List<String> lines) { return lines.stream().anyMatch(line -> !line.strip().isEmpty()); }
-  private static String normalizeDate(Object value) { if (value == null || value.toString().isBlank()) return null; String text = value.toString().strip(); if (text.startsWith("[[") && text.endsWith("]]")) text = text.substring(2, text.length() - 2).split("[|#]", 2)[0].strip(); try { return LocalDate.parse(text).toString(); } catch (DateTimeParseException ignored) { return text; } }
+  private static String normalizeDate(Object value) {
+    if (value == null || value.toString().isBlank()) {
+      return null;
+    }
+    String text = value.toString().strip();
+    if (text.startsWith("[[") && text.endsWith("]]")) {
+      text = text.substring(2, text.length() - 2).split("[|#]", 2)[0].strip();
+    }
+    return text;
+  }
   private static void fail(String path, String field, String reason) { throw new ManifestValidationException(path, field, reason); }
   private record Document(List<Section> sections) { List<Section> named(String title) { return sections.stream().filter(section -> section.title.equals(title)).toList(); } }
   private static final class Section { final String title; final List<String> leading = new ArrayList<>(); final List<Child> children = new ArrayList<>(); Section(String title) { this.title = title; } List<String> allLines() { List<String> result = new ArrayList<>(leading); for (Child child : children) result.addAll(child.lines); return result; } }

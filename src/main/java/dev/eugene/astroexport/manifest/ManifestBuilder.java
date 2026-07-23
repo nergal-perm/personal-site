@@ -12,17 +12,18 @@ import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.validation.PublicationValidator;
 import dev.eugene.astroexport.markdown.MarkdownScanner;
 import java.math.BigDecimal;
-import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.regex.Matcher;
@@ -319,7 +320,34 @@ public final class ManifestBuilder {
   }
   private static void requireString(Note note, Map<String, Object> metadata, String field, String reason) { if (!(metadata.get(field) instanceof String value) || value.strip().isEmpty()) throw new ManifestValidationException(note.vaultPath(), field, reason); }
   private static void optionalString(Note note, Map<String, Object> metadata, String field) { if (metadata.containsKey(field) && !(metadata.get(field) instanceof String)) throw new ManifestValidationException(note.vaultPath(), field, "must be a string"); }
-  private static void validateDate(Note note, Map<String, Object> metadata, String field) { Object value = metadata.get(field); if (value == null) return; if (!(value instanceof String text)) throw new ManifestValidationException(note.vaultPath(), field, "must be a YYYY-MM-DD string"); try { LocalDate.parse(text); } catch (DateTimeParseException error) { throw new ManifestValidationException(note.vaultPath(), field, "must be a real YYYY-MM-DD date"); } }
+  private static void validateDate(Note note, Map<String, Object> metadata, String field) {
+    Object value = metadata.get(field);
+    if (value == null) {
+      return;
+    }
+    if (!(value instanceof String text)) {
+      throw new ManifestValidationException(note.vaultPath(), field, "must be a YYYY-MM-DD string");
+    }
+    if (!isPythonIsoDate(text)) {
+      throw new ManifestValidationException(note.vaultPath(), field, "must be a real YYYY-MM-DD date");
+    }
+  }
+
+  private static boolean isPythonIsoDate(String value) {
+    return parsesDate(value, DateTimeFormatter.ISO_LOCAL_DATE)
+        || parsesDate(value, DateTimeFormatter.BASIC_ISO_DATE)
+        || parsesDate(value, DateTimeFormatter.ISO_WEEK_DATE);
+  }
+
+  private static boolean parsesDate(String value, DateTimeFormatter formatter) {
+    try {
+      LocalDate.parse(value, formatter);
+      return true;
+    } catch (DateTimeParseException ignored) {
+      return false;
+    }
+  }
+
   private static void validateUrl(Note note, Map<String, Object> metadata, String field) {
     Object value = metadata.get(field);
     if (value == null) {
@@ -334,14 +362,24 @@ public final class ManifestBuilder {
   }
 
   private static boolean isHttpUrl(String value) {
-    try {
-      URI uri = URI.create(value);
-      return ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
-          && uri.getRawAuthority() != null
-          && !uri.getRawAuthority().isBlank();
-    } catch (IllegalArgumentException ignored) {
+    int schemeEnd = value.indexOf("://");
+    if (schemeEnd <= 0) {
       return false;
     }
+    String scheme = value.substring(0, schemeEnd).toLowerCase(Locale.ROOT);
+    if (!(scheme.equals("http") || scheme.equals("https"))) {
+      return false;
+    }
+    int authorityStart = schemeEnd + 3;
+    int authorityEnd = authorityStart;
+    while (authorityEnd < value.length()) {
+      char character = value.charAt(authorityEnd);
+      if (character == '/' || character == '?' || character == '#') {
+        break;
+      }
+      authorityEnd++;
+    }
+    return authorityEnd > authorityStart;
   }
 
   private void resolveEditorialMetadata(
@@ -725,10 +763,29 @@ public final class ManifestBuilder {
 
   private static String pythonRepr(Object value) {
     if (value instanceof String text) {
-      return "'" + text.replace("\\", "\\\\").replace("'", "\\'")
-          .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "'";
+      return pythonStringRepr(text);
     }
     return pythonScalar(value);
+  }
+
+  private static String pythonStringRepr(String value) {
+    char quote = value.indexOf('\'') >= 0 && value.indexOf('"') < 0 ? '"' : '\'';
+    StringBuilder rendered = new StringBuilder().append(quote);
+    for (int index = 0; index < value.length(); index++) {
+      char character = value.charAt(index);
+      if (character == '\\' || character == quote) {
+        rendered.append('\\');
+      }
+      switch (character) {
+        case '\n' -> rendered.append("\\n");
+        case '\r' -> rendered.append("\\r");
+        case '\t' -> rendered.append("\\t");
+        case '\b' -> rendered.append("\\b");
+        case '\f' -> rendered.append("\\f");
+        default -> rendered.append(character);
+      }
+    }
+    return rendered.append(quote).toString();
   }
 
   private static boolean pythonTruthy(Object value) {
@@ -870,7 +927,7 @@ public final class ManifestBuilder {
     if (value instanceof Map<?, ?> map) {
       List<String> entries = new ArrayList<>();
       map.entrySet().stream()
-          .sorted(Comparator.comparing(entry -> entry.getKey().toString()))
+          .sorted(Comparator.comparing(entry -> entry.getKey().toString(), ManifestBuilder::compareUnicodeCodePoints))
           .forEach(entry -> {
             try {
               entries.add(pythonJson(entry.getKey().toString()) + ": " + pythonJson(entry.getValue()));
@@ -910,6 +967,12 @@ public final class ManifestBuilder {
     if (value == Double.NEGATIVE_INFINITY) {
       return "-Infinity";
     }
+    if (value == Double.MIN_VALUE) {
+      return "5e-324";
+    }
+    if (value == -Double.MIN_VALUE) {
+      return "-5e-324";
+    }
     String javaValue = Double.toString(value);
     if (!javaValue.contains("E")) {
       return javaValue;
@@ -928,6 +991,21 @@ public final class ManifestBuilder {
       exponentValue = "0" + exponentValue;
     }
     return sign + mantissa + "e" + (exponent >= 0 ? "+" : "-") + exponentValue;
+  }
+
+  private static int compareUnicodeCodePoints(String left, String right) {
+    int leftOffset = 0;
+    int rightOffset = 0;
+    while (leftOffset < left.length() && rightOffset < right.length()) {
+      int leftCodePoint = left.codePointAt(leftOffset);
+      int rightCodePoint = right.codePointAt(rightOffset);
+      if (leftCodePoint != rightCodePoint) {
+        return Integer.compare(leftCodePoint, rightCodePoint);
+      }
+      leftOffset += Character.charCount(leftCodePoint);
+      rightOffset += Character.charCount(rightCodePoint);
+    }
+    return Integer.compare(left.length() - leftOffset, right.length() - rightOffset);
   }
   private static final class JsonEncodingException extends RuntimeException { JsonEncodingException(Exception cause) { super(cause); } }
 
