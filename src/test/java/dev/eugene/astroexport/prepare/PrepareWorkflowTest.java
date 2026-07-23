@@ -10,8 +10,12 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.astroexport.fs.AtomicExchange;
+import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.process.CodexRunner;
+import dev.eugene.astroexport.workflow.WorkflowStateService;
+import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
@@ -512,6 +516,132 @@ final class PrepareWorkflowTest {
     assertTrue(result.diagnostics().stream().anyMatch(item ->
         item.message().contains(
             "symlink".equals(substitution) ? "symbolic link" : "multiple hard links")));
+  }
+
+  @Test
+  void initialEnglishReadRejectsSymlinkSwapAfterLeafValidation() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] priorBytes = Files.readAllBytes(prior);
+    Path saved = temp.resolve("saved-prior-en.md");
+    Path external = temp.resolve("external-secret.md");
+    Files.writeString(external, "external content must not enter the job\n");
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+    PrepareWorkflow.ExistingEnglishReadHook swapAfterValidation = path -> {
+      Files.move(path, saved);
+      Files.createSymbolicLink(path, external);
+    };
+    PrepareWorkflow.RecoveryFilePreserver unusedPreserver = (temporary, target) -> {
+      throw new AssertionError("recovery preservation must not run");
+    };
+    PrepareWorkflow workflow = new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        new JnaAtomicExchange(),
+        swapAfterValidation,
+        unusedPreserver);
+
+    PrepareWorkflow.PrepareResult result = workflow.prepare(
+        fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertArrayEquals(priorBytes, Files.readAllBytes(saved));
+    assertEquals("external content must not enter the job\n", Files.readString(external));
+    assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.message().toLowerCase().contains("symbolic link")));
+  }
+
+  @Test
+  void initialEnglishReadRejectsSameContentIdentitySwapBeforeOpen() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] priorBytes = Files.readAllBytes(prior);
+    Path saved = temp.resolve("saved-prior-en.md");
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+    PrepareWorkflow.ExistingEnglishReadHook replaceAfterValidation = path -> {
+      Files.move(path, saved);
+      Files.write(path, priorBytes);
+    };
+    PrepareWorkflow workflow = new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        new JnaAtomicExchange(),
+        replaceAfterValidation,
+        (temporary, target) -> {
+          throw new AssertionError("recovery preservation must not run");
+        });
+
+    PrepareWorkflow.PrepareResult result = workflow.prepare(
+        fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertArrayEquals(priorBytes, Files.readAllBytes(saved));
+    assertArrayEquals(priorBytes, Files.readAllBytes(prior));
+    assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.message().contains("changed while it was read")));
+  }
+
+  @Test
+  void failedRecoveryMoveRetainsConflictingEnglishTemporaryBytes() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    String original = Files.readString(prior);
+    byte[] firstEdit = original.replace(
+        "Prior English body.", "First concurrent English edit.")
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    byte[] secondEdit = original.replace(
+        "Prior English body.", "Second concurrent English edit.")
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    AtomicInteger exchanges = new AtomicInteger();
+    AtomicExchange platform = new JnaAtomicExchange();
+    AtomicExchange editingExchange = (first, second) -> {
+      int exchange = exchanges.incrementAndGet();
+      if (exchange == 1) {
+        Files.write(first, firstEdit);
+      } else if (exchange == 2) {
+        Files.write(first, secondEdit);
+      }
+      platform.exchange(first, second);
+    };
+    Path[] recoveryTemporary = new Path[1];
+    PrepareWorkflow.RecoveryFilePreserver failingPreserver = (temporary, target) -> {
+      recoveryTemporary[0] = temporary;
+      assertArrayEquals(secondEdit, Files.readAllBytes(temporary));
+      throw new IOException("simulated recovery move failure");
+    };
+    PrepareWorkflow workflow = new PrepareWorkflow(
+        runner,
+        Clock.fixed(NOW, ZoneOffset.UTC),
+        new WorkflowStateService(),
+        editingExchange,
+        path -> { },
+        failingPreserver);
+
+    PrepareWorkflow.PrepareResult result = workflow.prepare(
+        fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("stale", result.status());
+    assertEquals(2, exchanges.get());
+    assertArrayEquals(firstEdit, Files.readAllBytes(prior));
+    assertNotNull(recoveryTemporary[0]);
+    assertTrue(Files.exists(recoveryTemporary[0]));
+    assertArrayEquals(secondEdit, Files.readAllBytes(recoveryTemporary[0]));
+    assertTrue(result.diagnostics().stream()
+        .anyMatch(item -> item.message().contains(recoveryTemporary[0].toString())));
   }
 
   @Test

@@ -15,6 +15,7 @@ import dev.eugene.astroexport.translation.TranslationValidator;
 import dev.eugene.astroexport.validation.PreflightService;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -88,17 +89,27 @@ public final class PrepareWorkflow {
   private final ManifestBuilder manifestBuilder = new ManifestBuilder();
   private final WorkflowStateService workflowState;
   private final AtomicExchange atomicExchange;
+  private final ExistingEnglishReadHook existingEnglishReadHook;
+  private final RecoveryFilePreserver recoveryFilePreserver;
 
   public PrepareWorkflow() {
     this(
         defaultRunner(),
         Clock.systemUTC(),
         new WorkflowStateService(),
-        new JnaAtomicExchange());
+        new JnaAtomicExchange(),
+        path -> { },
+        PrepareWorkflow::preserve);
   }
 
   public PrepareWorkflow(TranslationRunner runner, Clock clock) {
-    this(runner, clock, new WorkflowStateService(), new JnaAtomicExchange());
+    this(
+        runner,
+        clock,
+        new WorkflowStateService(),
+        new JnaAtomicExchange(),
+        path -> { },
+        PrepareWorkflow::preserve);
   }
 
   public PrepareWorkflow(
@@ -106,10 +117,28 @@ public final class PrepareWorkflow {
       Clock clock,
       WorkflowStateService workflowState,
       AtomicExchange atomicExchange) {
+    this(
+        runner,
+        clock,
+        workflowState,
+        atomicExchange,
+        path -> { },
+        PrepareWorkflow::preserve);
+  }
+
+  PrepareWorkflow(
+      TranslationRunner runner,
+      Clock clock,
+      WorkflowStateService workflowState,
+      AtomicExchange atomicExchange,
+      ExistingEnglishReadHook existingEnglishReadHook,
+      RecoveryFilePreserver recoveryFilePreserver) {
     this.runner = runner;
     this.clock = clock;
     this.workflowState = workflowState;
     this.atomicExchange = atomicExchange;
+    this.existingEnglishReadHook = existingEnglishReadHook;
+    this.recoveryFilePreserver = recoveryFilePreserver;
   }
 
   public PrepareResult prepare(
@@ -769,7 +798,11 @@ public final class PrepareWorkflow {
               false,
               preserved);
         } else {
-          Path preserved = preserve(temporary, target);
+          Path preserved = preserveEnglishRecovery(
+              temporary,
+              target,
+              true,
+              "target changed immediately after atomic exchange");
           preserveTemporary = preserved.equals(temporary);
           throw new WorkflowStateService.ConcurrentFileUpdateException(
               "target changed immediately after atomic exchange; displaced bytes preserved",
@@ -800,14 +833,14 @@ public final class PrepareWorkflow {
     } catch (IOException rollbackError) {
       Path preserved;
       try {
-        preserved = preserve(temporary, target);
-      } catch (IOException preservationError) {
-        throw new WorkflowStateService.ConcurrentFileUpdateException(
-            "guarded English review conflicted, rollback failed, and recovery "
-                + "bytes remain in the temporary file",
-            true,
+        preserved = preserveEnglishRecovery(
             temporary,
-            rollbackError);
+            target,
+            true,
+            "guarded English review conflicted and atomic rollback failed");
+      } catch (WorkflowStateService.ConcurrentFileUpdateException preservationError) {
+        preservationError.addSuppressed(rollbackError);
+        throw preservationError;
       }
       throw new WorkflowStateService.ConcurrentFileUpdateException(
           "guarded English review conflicted and atomic rollback failed",
@@ -815,18 +848,52 @@ public final class PrepareWorkflow {
           preserved,
           rollbackError);
     }
-    return matches(temporary, payload) ? null : preserve(temporary, target);
+    if (matches(temporary, payload)) {
+      return null;
+    }
+    return preserveEnglishRecovery(
+        temporary,
+        target,
+        false,
+        "guarded English review rollback exposed additional conflicting bytes");
   }
 
-  private static byte[] readSafeExisting(Path path) throws IOException {
+  private byte[] readSafeExisting(Path path) throws IOException {
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
       return null;
     }
-    validateExistingEnglishLeaf(path);
-    return Files.readAllBytes(path);
+    BasicFileAttributes namedBefore = validateExistingEnglishLeaf(path);
+    existingEnglishReadHook.beforeNoFollowOpen(path);
+
+    byte[] content;
+    try (FileChannel channel = FileChannel.open(
+        path, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS)) {
+      ByteArrayOutputStream output = new ByteArrayOutputStream();
+      ByteBuffer buffer = ByteBuffer.allocate(64 * 1024);
+      while (channel.read(buffer) >= 0) {
+        buffer.flip();
+        output.write(buffer.array(), 0, buffer.remaining());
+        buffer.clear();
+      }
+      content = output.toByteArray();
+    } catch (IOException error) {
+      if (Files.isSymbolicLink(path)) {
+        throw new IllegalArgumentException(
+            "Existing en.md must not be a symbolic link.", error);
+      }
+      throw error;
+    }
+
+    BasicFileAttributes namedAfter = validateExistingEnglishLeaf(path);
+    if (!sameFileSnapshot(namedBefore, namedAfter)) {
+      throw new IllegalArgumentException(
+          "Existing en.md changed while it was read.");
+    }
+    return content;
   }
 
-  private static void validateExistingEnglishLeaf(Path path) throws IOException {
+  private static BasicFileAttributes validateExistingEnglishLeaf(Path path)
+      throws IOException {
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
       throw new WorkflowStateService.ConcurrentFileUpdateException(
           "guarded English review disappeared");
@@ -848,6 +915,7 @@ public final class PrepareWorkflow {
     } catch (UnsupportedOperationException ignored) {
       // Supported Unix targets expose nlink; type checks still apply elsewhere.
     }
+    return attributes;
   }
 
   private static void copyPermissions(Path source, Path target) throws IOException {
@@ -1197,6 +1265,35 @@ public final class PrepareWorkflow {
     }
   }
 
+  private Path preserveEnglishRecovery(
+      Path temporary,
+      Path target,
+      boolean committed,
+      String message) throws IOException {
+    try {
+      return recoveryFilePreserver.preserve(temporary, target);
+    } catch (IOException error) {
+      throw new WorkflowStateService.ConcurrentFileUpdateException(
+          message + "; recovery bytes remain in the temporary file",
+          committed,
+          temporary,
+          error);
+    }
+  }
+
+  private static boolean sameFileSnapshot(
+      BasicFileAttributes first,
+      BasicFileAttributes second) {
+    Object firstKey = first.fileKey();
+    Object secondKey = second.fileKey();
+    boolean identityMatches = firstKey != null && secondKey != null
+        ? firstKey.equals(secondKey)
+        : first.creationTime().equals(second.creationTime());
+    return identityMatches
+        && first.size() == second.size()
+        && first.lastModifiedTime().equals(second.lastModifiedTime());
+  }
+
   private static Path preserve(Path temporary, Path target) throws IOException {
     Path directory = Files.createTempDirectory(
         target.getParent(), "." + target.getFileName() + ".astro-export-conflict-");
@@ -1251,6 +1348,16 @@ public final class PrepareWorkflow {
   @FunctionalInterface
   public interface TranslationRunner {
     CodexRunner.Run run(Path workdir, String prompt, Duration timeout) throws Exception;
+  }
+
+  @FunctionalInterface
+  interface ExistingEnglishReadHook {
+    void beforeNoFollowOpen(Path path) throws IOException;
+  }
+
+  @FunctionalInterface
+  interface RecoveryFilePreserver {
+    Path preserve(Path temporary, Path target) throws IOException;
   }
 
   public record PrepareResult(
