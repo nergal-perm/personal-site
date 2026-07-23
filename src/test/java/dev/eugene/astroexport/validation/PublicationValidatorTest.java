@@ -97,7 +97,7 @@ final class PublicationValidatorTest {
   void validatesAlternativesAndEditorialPagesWithoutTrimmingTheirValues() {
     assertEquals(List.of(), validator.validate(note(Map.of(
         "publish", true, "publicId", "claim", "publicCollection", "blog",
-        "publicContentType", "claim", "description", "Valid claim"), "Body")));
+        "publicContentType", "claim", "statement", 123, "description", "Valid claim"), "Body")));
     assertEquals(List.of(diagnostic("editorialPage",
         "must be one of: about, claims, concepts, essays, home, library, music, notes, now")),
         validator.validate(note(Map.of(
@@ -133,15 +133,19 @@ final class PublicationValidatorTest {
     assertEquals(List.of(diagnostic("work / albumTitle", "must be a non-empty string")),
         validator.validate(note(Map.of("publish", true, "publicId", "album", "publicCollection", "music",
             "publicContentType", "album", "artist", "Artist"), "## Контекст записи\n\nText\n\n## Личная связь\n\nText\n")));
+    assertEquals(List.of(diagnostic("authors / author", "must contain at least one non-empty string")),
+        validator.validate(note(Map.of("publish", true, "publicId", "book", "publicCollection", "bibliography",
+            "publicContentType", "book"), "Body")));
   }
 
   @Test
   void acceptsValidAlternativeFieldsAndDoesNotTreatDefinitionFrontmatterAsTheBodySection() {
     assertEquals(List.of(), validator.validate(note(Map.of("publish", true, "publicId", "book",
-        "publicCollection", "bibliography", "publicContentType", "book", "author", "Valid author"), "Body")));
+        "publicCollection", "bibliography", "publicContentType", "book", "authors", List.of(123),
+        "author", "Valid author"), "Body")));
     assertEquals(List.of(), validator.validate(note(Map.of("publish", true, "publicId", "album",
         "publicCollection", "music", "publicContentType", "album", "artist", "Artist",
-        "albumTitle", "Album"), "## Контекст записи\n\nText\n\n## Личная связь\n\nText\n")));
+        "work", 123, "albumTitle", "Album"), "## Контекст записи\n\nText\n\n## Личная связь\n\nText\n")));
     assertEquals(List.of(diagnostic("Определение", "must be a non-empty section")),
         validator.validate(note(Map.of("publish", true, "publicId", "organisation", "publicCollection", "concepts",
             "publicContentType", "concept", "description", "Public description", "definition", "Legacy value"), "")));

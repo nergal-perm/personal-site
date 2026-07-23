@@ -17,6 +17,9 @@ final class PublicationContractTest {
         "concepts/concept", "editorial/curated_page"),
         PublicationKind.all().stream().map(kind -> kind.collection() + "/" + kind.contentType())
             .collect(java.util.stream.Collectors.toSet()));
+    for (PublicationKind kind : PublicationKind.all()) {
+      assertEquals(kind.requirements(), PublicationKind.requirementsFor(kind.collection(), kind.contentType()));
+    }
     assertTrue(PublicationKind.requirementsFor("blog", "case").isEmpty());
   }
 
