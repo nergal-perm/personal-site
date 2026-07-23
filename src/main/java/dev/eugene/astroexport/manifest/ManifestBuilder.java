@@ -11,6 +11,8 @@ import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.validation.PublicationValidator;
 import dev.eugene.astroexport.markdown.MarkdownScanner;
+import java.math.BigDecimal;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -40,7 +42,7 @@ public final class ManifestBuilder {
   private static final Pattern SCALAR_EMBED = Pattern.compile("^!\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]$");
   private static final Pattern BOOK_DESCRIPTION = Pattern.compile("(?is)<div\\s+class=[\"']book-description[\"'][^>]*>.*?<p>(.*?)</p>");
   private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
-  private static final Pattern HTML_ENTITY = Pattern.compile("&(?:(amp)|(nbsp)|#([0-9]+)|#[xX]([0-9a-fA-F]+));");
+  private static final Pattern HTML_ENTITY = Pattern.compile("&(#(?:[xX][0-9a-fA-F]+|[0-9]+);?|[A-Za-z][A-Za-z0-9]*;?)");
   private static final ObjectMapper HASH_JSON = new ObjectMapper();
   private final PublicationValidator publicationValidator = new PublicationValidator();
   private final LinkProcessor linkProcessor = new LinkProcessor();
@@ -291,8 +293,19 @@ public final class ManifestBuilder {
     if (!(value instanceof String text)) {
       throw new ManifestValidationException(note.vaultPath(), field, "must be a URL string");
     }
-    if (!text.matches("https?://[^/]+(?:/.*)?")) {
+    if (!isHttpUrl(text)) {
       throw new ManifestValidationException(note.vaultPath(), field, "must be an http(s) URL");
+    }
+  }
+
+  private static boolean isHttpUrl(String value) {
+    try {
+      URI uri = URI.create(value);
+      return ("http".equals(uri.getScheme()) || "https".equals(uri.getScheme()))
+          && uri.getRawAuthority() != null
+          && !uri.getRawAuthority().isBlank();
+    } catch (IllegalArgumentException ignored) {
+      return false;
     }
   }
 
@@ -634,13 +647,12 @@ public final class ManifestBuilder {
     Matcher matcher = HTML_ENTITY.matcher(value);
     StringBuffer decoded = new StringBuffer();
     while (matcher.find()) {
+      String entity = matcher.group(1);
       String replacement;
-      if (matcher.group(1) != null) {
-        replacement = "&";
-      } else if (matcher.group(2) != null) {
-        replacement = "\u00A0";
+      if (entity.startsWith("#")) {
+        replacement = decodeNumericEntity(entity, matcher.group());
       } else {
-        replacement = decodeNumericEntity(matcher.group(3), matcher.group(4), matcher.group());
+        replacement = decodeNamedEntity(entity, matcher.group());
       }
       matcher.appendReplacement(decoded, Matcher.quoteReplacement(replacement));
     }
@@ -648,17 +660,113 @@ public final class ManifestBuilder {
     return decoded.toString();
   }
 
-  private static String decodeNumericEntity(String decimal, String hexadecimal, String original) {
+  private static String decodeNamedEntity(String name, String original) {
+    String decoded = Html5Entities.decode(name);
+    if (decoded != null) {
+      return decoded;
+    }
+    boolean hasSemicolon = name.endsWith(";");
+    String candidate = hasSemicolon ? name.substring(0, name.length() - 1) : name;
+    for (int end = candidate.length() - 1; end > 0; end--) {
+      decoded = Html5Entities.decode(candidate.substring(0, end));
+      if (decoded != null) {
+        return decoded + candidate.substring(end) + (hasSemicolon ? ";" : "");
+      }
+    }
+    return original;
+  }
+
+  private static String decodeNumericEntity(String entity, String original) {
     try {
-      int codePoint = Integer.parseInt(decimal != null ? decimal : hexadecimal, decimal != null ? 10 : 16);
+      String value = entity.endsWith(";") ? entity.substring(0, entity.length() - 1) : entity;
+      boolean hexadecimal = value.startsWith("#x") || value.startsWith("#X");
+      int codePoint = Integer.parseInt(value.substring(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
       return Character.isValidCodePoint(codePoint) ? new String(Character.toChars(codePoint)) : original;
     } catch (NumberFormatException ignored) {
       return original;
     }
   }
   private static String linkTarget(String message) { return message.replaceFirst("^ambiguous public link: ", ""); }
-  static String sourceHash(Map<String, Object> metadata, String body) { LinkedHashMap<String, Object> values = new LinkedHashMap<>(metadata); values.remove("sourceHash"); try { String json = pythonJson(values); MessageDigest digest = MessageDigest.getInstance("SHA-256"); return java.util.HexFormat.of().formatHex(digest.digest((json + "\n" + body).getBytes(StandardCharsets.UTF_8))); } catch (Exception error) { throw new IllegalStateException("cannot hash manifest source", error); } }
-  private static String pythonJson(Object value) throws Exception { if (value == null || value instanceof String || value instanceof Character || value instanceof Boolean || value instanceof Number) return HASH_JSON.writeValueAsString(value); if (value instanceof Map<?, ?> map) { List<String> entries = new ArrayList<>(); map.entrySet().stream().sorted(Comparator.comparing(entry -> entry.getKey().toString())).forEach(entry -> { try { entries.add(pythonJson(entry.getKey().toString()) + ": " + pythonJson(entry.getValue())); } catch (Exception error) { throw new JsonEncodingException(error); } }); return "{" + String.join(", ", entries) + "}"; } if (value instanceof List<?> list) { List<String> values = new ArrayList<>(); for (Object item : list) values.add(pythonJson(item)); return "[" + String.join(", ", values) + "]"; } return HASH_JSON.writeValueAsString(value.toString()); }
+  static String sourceHash(Map<String, Object> metadata, String body) {
+    LinkedHashMap<String, Object> values = new LinkedHashMap<>(metadata);
+    values.remove("sourceHash");
+    try {
+      String json = pythonJson(values);
+      MessageDigest digest = MessageDigest.getInstance("SHA-256");
+      return java.util.HexFormat.of().formatHex(digest.digest((json + "\n" + body).getBytes(StandardCharsets.UTF_8)));
+    } catch (Exception error) {
+      throw new IllegalStateException("cannot hash manifest source", error);
+    }
+  }
+
+  private static String pythonJson(Object value) throws Exception {
+    if (value == null || value instanceof String || value instanceof Character || value instanceof Boolean) {
+      return HASH_JSON.writeValueAsString(value);
+    }
+    if (value instanceof Number number) {
+      return pythonNumber(number);
+    }
+    if (value instanceof Map<?, ?> map) {
+      List<String> entries = new ArrayList<>();
+      map.entrySet().stream()
+          .sorted(Comparator.comparing(entry -> entry.getKey().toString()))
+          .forEach(entry -> {
+            try {
+              entries.add(pythonJson(entry.getKey().toString()) + ": " + pythonJson(entry.getValue()));
+            } catch (Exception error) {
+              throw new JsonEncodingException(error);
+            }
+          });
+      return "{" + String.join(", ", entries) + "}";
+    }
+    if (value instanceof List<?> list) {
+      List<String> values = new ArrayList<>();
+      for (Object item : list) {
+        values.add(pythonJson(item));
+      }
+      return "[" + String.join(", ", values) + "]";
+    }
+    return HASH_JSON.writeValueAsString(value.toString());
+  }
+
+  private static String pythonNumber(Number value) throws Exception {
+    if (value instanceof Double number) {
+      return pythonDouble(number);
+    }
+    if (value instanceof Float number) {
+      return pythonDouble(number.doubleValue());
+    }
+    return HASH_JSON.writeValueAsString(value);
+  }
+
+  private static String pythonDouble(double value) {
+    if (Double.isNaN(value)) {
+      return "NaN";
+    }
+    if (value == Double.POSITIVE_INFINITY) {
+      return "Infinity";
+    }
+    if (value == Double.NEGATIVE_INFINITY) {
+      return "-Infinity";
+    }
+    String javaValue = Double.toString(value);
+    if (!javaValue.contains("E")) {
+      return javaValue;
+    }
+    BigDecimal decimal = BigDecimal.valueOf(value).stripTrailingZeros();
+    int exponent = decimal.precision() - decimal.scale() - 1;
+    if (exponent >= -4 && exponent < 16) {
+      return decimal.toPlainString();
+    }
+    String digits = decimal.unscaledValue().abs().toString();
+    String mantissa = digits.length() == 1 ? digits : digits.charAt(0) + "." + digits.substring(1);
+    String sign = decimal.signum() < 0 ? "-" : "";
+    String exponentValue = Integer.toString(Math.abs(exponent));
+    if (exponent < 0 && exponentValue.length() == 1) {
+      exponentValue = "0" + exponentValue;
+    }
+    return sign + mantissa + "e" + (exponent >= 0 ? "+" : "-") + exponentValue;
+  }
   private static final class JsonEncodingException extends RuntimeException { JsonEncodingException(Exception cause) { super(cause); } }
 
   public static final class ManifestValidationException extends IllegalArgumentException {

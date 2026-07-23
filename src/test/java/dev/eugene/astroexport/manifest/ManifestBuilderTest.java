@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
@@ -85,13 +86,13 @@ final class ManifestBuilderTest {
 
   @Test
   void decodesBookDescriptionHtmlEntitiesBeforeMetadataHashing() {
-    String body = "<div class=\"book-description\"><p>Books &amp; Notes&nbsp;&#65;&#x42;</p></div>";
+    String body = "<div class=\"book-description\"><p>&quot;Books &amp; &lt;Notes&gt;&quot;&nbsp;&copy; &reg;&#65;&#x42;</p></div>";
     Note encoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор"), body);
-    Note decoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор", "description", "Books & Notes AB"), "");
+    Note decoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор", "description", "\"Books & <Notes>\" © ®AB"), "");
 
     var encodedEntry = only(builder.buildRussianManifest(selection(encoded)));
     var decodedEntry = only(builder.buildRussianManifest(selection(decoded)));
-    assertEquals("Books & Notes AB", encodedEntry.metadata().get("description"));
+    assertEquals("\"Books & <Notes>\" © ®AB", encodedEntry.metadata().get("description"));
     assertEquals(decodedEntry.metadata().get("sourceHash"), encodedEntry.metadata().get("sourceHash"));
   }
 
@@ -420,6 +421,16 @@ final class ManifestBuilderTest {
         () -> builder.buildRussianManifest(selection(note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "streamingUrl", "ftp://invalid"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь."))));
     assertEquals("streamingUrl", malformed.fieldName());
     assertEquals("must be an http(s) URL", malformed.reason());
+
+    for (String invalid : List.of("https://?query", "https://#fragment")) {
+      ManifestBuilder.ManifestValidationException malformedAuthority = assertThrows(ManifestBuilder.ManifestValidationException.class,
+          () -> builder.buildRussianManifest(selection(note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "streamingUrl", invalid), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь."))));
+      assertEquals("streamingUrl", malformedAuthority.fieldName());
+      assertEquals("must be an http(s) URL", malformedAuthority.reason());
+    }
+
+    assertEquals("https://example.com/path", only(builder.buildRussianManifest(selection(
+        note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album", "streamingUrl", "https://example.com/path"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.")))).metadata().get("streamingUrl"));
   }
 
   @Test
@@ -464,6 +475,54 @@ final class ManifestBuilderTest {
 
     assertEquals("c985ffddbbee1e97b5ac82ca893d6e53860dac96bd2d541dcb0e2116be4f8770",
         ManifestBuilder.sourceHash(metadata, "Тело."));
+  }
+
+  @Test
+  void hashesExponentAndNonFiniteNumbersLikePythonJson() {
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("nested", Map.of(
+        "tiny", List.of(1e-7, 1e-6, 1e-5, 1.25e-7),
+        "large", 1e20,
+        "nonFinite", List.of(Double.NaN, Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)));
+
+    assertEquals("e776f47ec71acbadf3a0e58f902d224c48a2affd9340bf235d0b19d755fec93c",
+        ManifestBuilder.sourceHash(metadata, "Тело."));
+  }
+
+  @Test
+  void keepsConceptPrimaryLabelWhenNoMaterialIsPublishedAndRejectsMalformedMaterial() {
+    Note noMaterial = note("editorial/Concepts.md", "Концепты", "concepts", "editorial", "curated_page", Map.of("editorialPage", "concepts"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nКонцепты.\n\n## Базовый концепт\n\nМетка:: База");
+    Map<String, Object> metadata = only(builder.buildRussianManifest(selection(noMaterial))).metadata();
+    assertEquals("База", metadata.get("primaryLabel"));
+    assertFalse(metadata.containsKey("primary"));
+
+    Note malformed = note("editorial/Concepts.md", "Концепты", "concepts", "editorial", "curated_page", Map.of("editorialPage", "concepts"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nКонцепты.\n\n## Базовый концепт\n\nМетка:: База\nМатериал::");
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(malformed)));
+    assertEquals("primary", error.fieldName());
+    assertEquals("inline field `Материал::` must be non-empty", error.reason());
+  }
+
+  @Test
+  void exportsExplicitBookDescriptionAndKonspektBodyOnly() {
+    Note book = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор", "description", "Краткое описание."),
+        "<div class=\"book-description\"><p>Старое описание.</p></div>\n\n## Конспект\n\n### Введение\n\nПервый пункт.\n\n### Старт\n\n- Второй пункт.\n\n## Blinks\n\nНе экспортировать.");
+    var entry = only(builder.buildRussianManifest(selection(book)));
+    assertEquals("Краткое описание.", entry.metadata().get("description"));
+    assertEquals("### Введение\n\nПервый пункт.\n\n### Старт\n\n- Второй пункт.", entry.body());
+    assertFalse(entry.body().contains("Blinks"));
+  }
+
+  @Test
+  void stripsVisibleObsidianCommentsButPreservesProtectedCodeMarkers() {
+    Note music = note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album"),
+        "## Контекст записи\n\nВидимый %%PRIVATE_CONTEXT%% текст с `%%INLINE_CODE%%`.\n\n```text\n%%FENCED_CODE%%\n```\n\n## Личная связь\n\nВидимая %%PRIVATE_ASSOCIATION%% связь.");
+    var entry = only(builder.buildRussianManifest(selection(music)));
+    assertFalse((entry.metadata().toString() + entry.body()).contains("PRIVATE_"));
+    assertTrue(((String) entry.metadata().get("context")).contains("%%INLINE_CODE%%"));
+    assertTrue(((String) entry.metadata().get("context")).contains("%%FENCED_CODE%%"));
   }
 
   @Test
