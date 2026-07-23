@@ -6,14 +6,17 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.process.CodexRunner;
 import java.nio.file.Files;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -25,6 +28,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 final class PrepareWorkflowTest {
   private static final Instant NOW = Instant.parse("2026-07-18T12:30:00Z");
@@ -373,6 +378,50 @@ final class PrepareWorkflowTest {
     assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
   }
 
+  @ParameterizedTest
+  @ValueSource(strings = {"C:/", "~/"})
+  void exactLocalRootsAreRejectedBeforeReviewAndJobArtifacts(String pathValue)
+      throws Exception {
+    Fixture fixture = fixture();
+    Files.writeString(
+        fixture.source(),
+        Files.readString(fixture.source())
+            .replace("Russian body.", "Local root " + pathValue));
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertFalse(Files.exists(fixture.review().resolve("blog/essay/ru.md")));
+    assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"notes/Plan.md", "config/local.json"})
+  void genericRelativeFilePathsAreRejectedBeforeArtifacts(String pathValue)
+      throws Exception {
+    Fixture fixture = fixture();
+    Files.writeString(
+        fixture.source(),
+        Files.readString(fixture.source())
+            .replace("Russian description.", "Local file " + pathValue));
+    RecordingRunner runner = new RecordingRunner(job -> {
+      throw new AssertionError("runner must not start");
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals(0, runner.calls.get());
+    assertFalse(Files.exists(fixture.review().resolve("blog/essay/ru.md")));
+    assertFalse(Files.exists(fixture.jobs().resolve("blog/essay")));
+  }
+
   @Test
   void publicRoutesUrlsAndSlashProseAreAllowed() throws Exception {
     Fixture fixture = fixture();
@@ -411,6 +460,58 @@ final class PrepareWorkflowTest {
     assertTrue(result.diagnostics().stream()
         .anyMatch(item -> item.message().contains("multiple hard links")));
     assertFalse(Files.exists(fixture.review().resolve("blog/essay/ru.md")));
+  }
+
+  @Test
+  void existingEnglishPermissionsArePreservedAcrossReplacement() throws Exception {
+    assumeTrue(FileSystems.getDefault().supportedFileAttributeViews().contains("posix"));
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    var expectedPermissions = PosixFilePermissions.fromString("rw-r-----");
+    Files.setPosixFilePermissions(prior, expectedPermissions);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertEquals(expectedPermissions, Files.getPosixFilePermissions(prior));
+  }
+
+  @ParameterizedTest
+  @ValueSource(strings = {"symlink", "hardlink"})
+  void sameContentEnglishLeafSubstitutionDuringJobIsRejected(String substitution)
+      throws Exception {
+    assumeTrue(
+        !"hardlink".equals(substitution)
+            || FileSystems.getDefault().supportedFileAttributeViews().contains("unix"));
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] before = Files.readAllBytes(prior);
+    Path external = temp.resolve("external-en.md");
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      Files.move(prior, external);
+      if ("symlink".equals(substitution)) {
+        Files.createSymbolicLink(prior, external);
+      } else {
+        Files.createLink(prior, external);
+      }
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertArrayEquals(before, Files.readAllBytes(external));
+    assertArrayEquals(before, Files.readAllBytes(prior));
+    assertTrue(result.diagnostics().stream().anyMatch(item ->
+        item.message().contains(
+            "symlink".equals(substitution) ? "symbolic link" : "multiple hard links")));
   }
 
   @Test

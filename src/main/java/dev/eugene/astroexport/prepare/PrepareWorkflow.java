@@ -63,10 +63,17 @@ public final class PrepareWorkflow {
   private static final Pattern TARGET_PATH_LINE = Pattern.compile(
       "(?m)^targetPath:[^\\r\\n]*(?:\\r?\\n|$)");
   private static final Pattern LOCAL_PATH = Pattern.compile(
-      "(?i)(?<!https:)(?<!http:)(?<![\\w/])(?:file:/+|[A-Za-z]:[\\\\/]|~[\\\\/]|\\.\\.?[\\\\/])\\S+"
+      "(?i)(?<!https:)(?<!http:)(?<![\\w/])"
+          + "(?:file:/+\\S*|[A-Za-z]:[\\\\/]\\S*|~[\\\\/]\\S*|\\.\\.?[\\\\/]\\S+)"
           + "|(?<![\\w:/])/(?!ru(?:/|\\b)|en(?:/|\\b)|assets(?:/|\\b))[^\\s<>\"']+"
           + "|(?<![\\w/])(?:private|review|\\.publication-review|\\.publication-jobs)[\\\\/]\\S+"
-          + "|(?<![\\w/])src[\\\\/](?:content|data[\\\\/]pages)(?:[\\\\/]\\S*)?");
+          + "|(?<![\\w/])src[\\\\/](?:content|data[\\\\/]pages)(?:[\\\\/]\\S*)?"
+          + "|(?<![\\w:/])(?:[A-Za-z0-9_.+-]+[\\\\/])+"
+          + "[A-Za-z0-9_.+-]+\\.(?:md|json|ya?ml|toml|txt|csv|py|ts|tsx|js|jsx"
+          + "|astro|html|pdf|docx?)\\b");
+  private static final Pattern ALLOWED_PATH_TEXT = Pattern.compile(
+      "https?://[^\\s<>\"']+|(?<![\\w/])/(?:ru|en|assets)/[^\\s<>\"']*",
+      Pattern.CASE_INSENSITIVE);
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final Dump YAML = new Dump(DumpSettings.builder()
       .setDefaultFlowStyle(FlowStyle.BLOCK)
@@ -711,6 +718,10 @@ public final class PrepareWorkflow {
         target.getParent(), "." + target.getFileName() + ".", ".tmp");
     boolean preserveTemporary = false;
     try {
+      if (expected != null) {
+        validateExistingEnglishLeaf(target);
+        copyPermissions(target, temporary);
+      }
       writeDurably(temporary, payload);
       assertSnapshot(source, expectedSource, "guarded source content changed");
       if (expected == null) {
@@ -735,6 +746,7 @@ public final class PrepareWorkflow {
         return;
       }
 
+      validateExistingEnglishLeaf(target);
       assertSnapshot(target, expected, "guarded English review changed");
       atomicExchange.exchange(target, temporary);
       byte[] displaced = Files.readAllBytes(temporary);
@@ -810,6 +822,15 @@ public final class PrepareWorkflow {
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
       return null;
     }
+    validateExistingEnglishLeaf(path);
+    return Files.readAllBytes(path);
+  }
+
+  private static void validateExistingEnglishLeaf(Path path) throws IOException {
+    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+      throw new WorkflowStateService.ConcurrentFileUpdateException(
+          "guarded English review disappeared");
+    }
     if (Files.isSymbolicLink(path)) {
       throw new IllegalArgumentException("Existing en.md must not be a symbolic link.");
     }
@@ -827,7 +848,16 @@ public final class PrepareWorkflow {
     } catch (UnsupportedOperationException ignored) {
       // Supported Unix targets expose nlink; type checks still apply elsewhere.
     }
-    return Files.readAllBytes(path);
+  }
+
+  private static void copyPermissions(Path source, Path target) throws IOException {
+    try {
+      Files.setPosixFilePermissions(
+          target,
+          Files.getPosixFilePermissions(source, LinkOption.NOFOLLOW_LINKS));
+    } catch (UnsupportedOperationException ignored) {
+      // POSIX mode preservation is available on supported macOS/Linux filesystems.
+    }
   }
 
   private static String candidate(Path jobDirectory) throws IOException {
@@ -997,7 +1027,7 @@ public final class PrepareWorkflow {
   }
 
   private static boolean containsPrivatePath(String value) {
-    return LOCAL_PATH.matcher(value).find();
+    return LOCAL_PATH.matcher(maskAllowedPathText(value)).find();
   }
 
   private static byte[] sanitizePrior(byte[] content) {
@@ -1051,7 +1081,27 @@ public final class PrepareWorkflow {
   }
 
   private static String redactPaths(String value) {
-    return LOCAL_PATH.matcher(value).replaceAll("[publication path removed]");
+    String masked = maskAllowedPathText(value);
+    var matcher = LOCAL_PATH.matcher(masked);
+    List<int[]> spans = new ArrayList<>();
+    while (matcher.find()) {
+      spans.add(new int[] {matcher.start(), matcher.end()});
+    }
+    StringBuilder redacted = new StringBuilder(value);
+    for (int index = spans.size() - 1; index >= 0; index--) {
+      int[] span = spans.get(index);
+      redacted.replace(span[0], span[1], "[publication path removed]");
+    }
+    return redacted.toString();
+  }
+
+  private static String maskAllowedPathText(String value) {
+    char[] masked = value.toCharArray();
+    var matcher = ALLOWED_PATH_TEXT.matcher(value);
+    while (matcher.find()) {
+      Arrays.fill(masked, matcher.start(), matcher.end(), ' ');
+    }
+    return new String(masked);
   }
 
   private static String previousTranslationStatus(byte[] content) {

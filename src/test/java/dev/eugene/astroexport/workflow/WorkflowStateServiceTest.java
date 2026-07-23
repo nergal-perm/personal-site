@@ -10,9 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -131,6 +134,97 @@ final class WorkflowStateServiceTest {
 
     assertTrue(error.getMessage().contains("must be a scalar"));
     assertEquals(original, Files.readString(source));
+  }
+
+  @Test
+  void replacesAlternateYamlSpellingsAtOwnedFieldPosition() throws Exception {
+    for (String statusLine : new String[] {
+        "publicWorkflowStatus : \"stale\"",
+        "\"publicWorkflowStatus\": \"stale\""
+    }) {
+      String original = """
+          ---
+          title: Essay
+          %s
+          summary: Keep this position.
+          publicTranslationStatus: "reviewed"
+          publicWorkflowUpdated: "2026-07-17T09:00:00Z"
+          publicWorkflowDiagnostic: "Old"
+          ---
+          Body.
+          """.formatted(statusLine);
+      Path source = write("alternate-" + Math.abs(statusLine.hashCode()) + ".md", original);
+
+      new WorkflowStateService().updateWorkflowState(
+          source,
+          new WorkflowStateService.WorkflowUpdate("ready_for_review", "generated", ""),
+          UPDATED_AT);
+
+      assertEquals(
+          original
+              .replace(statusLine, "publicWorkflowStatus: \"ready_for_review\"")
+              .replace(
+                  "publicTranslationStatus: \"reviewed\"",
+                  "publicTranslationStatus: \"generated\"")
+              .replace(
+                  "publicWorkflowUpdated: \"2026-07-17T09:00:00Z\"",
+                  "publicWorkflowUpdated: \"2026-07-18T08:34:56Z\"")
+              .replace(
+                  "publicWorkflowDiagnostic: \"Old\"",
+                  "publicWorkflowDiagnostic: \"\""),
+          Files.readString(source));
+    }
+  }
+
+  @Test
+  void rejectsMissingFrontmatterWithoutChangingSource() throws Exception {
+    String original = "# No frontmatter\n\n[[Body]]\n";
+    Path source = write("missing-frontmatter.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("stale", null, ""),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("YAML frontmatter"));
+    assertEquals(original, Files.readString(source));
+  }
+
+  @Test
+  void rejectsInvalidUpdatesWithoutChangingSource() throws Exception {
+    Path source = write("invalid-update.md", richSource());
+    byte[] original = Files.readAllBytes(source);
+    WorkflowStateService service = new WorkflowStateService();
+
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("unsupported", null, ""),
+            UPDATED_AT));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("stale", "source", ""),
+            UPDATED_AT));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("stale", null, null),
+            UPDATED_AT));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> service.updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("stale", null, ""),
+            null));
+
+    assertArrayEquals(original, Files.readAllBytes(source));
+    assertNoTemporaryFiles();
   }
 
   @Test
@@ -253,6 +347,40 @@ final class WorkflowStateServiceTest {
   }
 
   @Test
+  void preservesSecondEditObservedDuringRollback() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    byte[] firstEdit = "---\ntitle: First concurrent edit\n---\nFirst.\n"
+        .getBytes(StandardCharsets.UTF_8);
+    byte[] secondEdit = "---\ntitle: Second concurrent edit\n---\nSecond.\n"
+        .getBytes(StandardCharsets.UTF_8);
+    AtomicInteger exchanges = new AtomicInteger();
+    AtomicExchange platform = new JnaAtomicExchange();
+    AtomicExchange injecting = (first, second) -> {
+      int exchange = exchanges.incrementAndGet();
+      if (exchange == 1) {
+        Files.write(first, firstEdit);
+      } else if (exchange == 2) {
+        Files.write(first, secondEdit);
+      }
+      platform.exchange(first, second);
+    };
+
+    WorkflowStateService.ConcurrentFileUpdateException error = assertThrows(
+        WorkflowStateService.ConcurrentFileUpdateException.class,
+        () -> new WorkflowStateService(injecting).updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, expected)));
+
+    assertEquals(2, exchanges.get());
+    assertArrayEquals(firstEdit, Files.readAllBytes(source));
+    assertNotNull(error.preservedPath());
+    assertArrayEquals(secondEdit, Files.readAllBytes(error.preservedPath()));
+  }
+
+  @Test
   void clearBlanksOwnedValues() throws Exception {
     Path source = write("essay.md", richSource());
 
@@ -281,7 +409,7 @@ final class WorkflowStateServiceTest {
   }
 
   @Test
-  void retainsTemporaryRecoveryFileWhenPreservationCannotMoveIt() throws Exception {
+  void retainsTemporaryRecoveryFileWhenConflictDirectoryCreationFails() throws Exception {
     Path source = write("essay.md", richSource());
     byte[] expected = Files.readAllBytes(source);
     byte[] concurrent = "---\ntitle: Concurrent\n---\nExternal.\n".getBytes(StandardCharsets.UTF_8);
@@ -308,6 +436,42 @@ final class WorkflowStateServiceTest {
     assertNotNull(error.preservedPath());
     assertTrue(Files.exists(error.preservedPath()));
     assertArrayEquals(expected, Files.readAllBytes(error.preservedPath()));
+  }
+
+  @Test
+  void detectsOpenDescriptorMutationBeforeFinalVerification() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    byte[] concurrent = richSource().replace("# Heading", "# Open descriptor edit")
+        .getBytes(StandardCharsets.UTF_8);
+    AtomicInteger exchanges = new AtomicInteger();
+    AtomicExchange platform = new JnaAtomicExchange();
+
+    try (FileChannel descriptor = FileChannel.open(source, StandardOpenOption.WRITE)) {
+      AtomicExchange injecting = (first, second) -> {
+        platform.exchange(first, second);
+        if (exchanges.incrementAndGet() == 1) {
+          descriptor.truncate(0);
+          descriptor.position(0);
+          descriptor.write(ByteBuffer.wrap(concurrent));
+          descriptor.force(true);
+        }
+      };
+
+      WorkflowStateService.ConcurrentFileUpdateException error = assertThrows(
+          WorkflowStateService.ConcurrentFileUpdateException.class,
+          () -> new WorkflowStateService(injecting).updateWorkflowState(
+              source,
+              new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+              UPDATED_AT,
+              new WorkflowStateService.SnapshotGuard(source, expected)));
+
+      assertTrue(error.getMessage().contains("commit boundary"));
+    }
+
+    assertEquals(2, exchanges.get());
+    assertArrayEquals(concurrent, Files.readAllBytes(source));
+    assertNoTemporaryFiles();
   }
 
   private Path write(String name, String content) throws IOException {
