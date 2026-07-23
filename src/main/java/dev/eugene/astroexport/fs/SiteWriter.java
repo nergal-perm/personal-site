@@ -11,11 +11,14 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.DirectoryStream;
 import java.nio.file.FileStore;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.SecureDirectoryStream;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -35,7 +38,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
-import java.util.stream.Stream;
 
 /** Writes a serialized Astro export through a staged managed-tree transaction. */
 public final class SiteWriter {
@@ -219,6 +221,28 @@ public final class SiteWriter {
       RollbackHook rollbackHook,
       CleanupHook cleanupHook,
       StoreChecker storeChecker) {
+    return replaceManagedTrees(
+        siteRoot,
+        staged,
+        validator,
+        mover,
+        backupMover,
+        rollbackHook,
+        cleanupHook,
+        storeChecker,
+        ForwardBoundaryHook.noop());
+  }
+
+  static WriteResult replaceManagedTrees(
+      Path siteRoot,
+      StagedSite staged,
+      Consumer<Path> validator,
+      PathMover mover,
+      BackupMover backupMover,
+      RollbackHook rollbackHook,
+      CleanupHook cleanupHook,
+      StoreChecker storeChecker,
+      ForwardBoundaryHook forwardBoundaryHook) {
     StageBinding binding = claimStage(staged);
     try {
       Path site = canonicalSiteRoot(siteRoot, storeChecker);
@@ -266,7 +290,7 @@ public final class SiteWriter {
           : backedUpRoots(backupOwned.path());
       List<String> rollbackErrors = backupOwned == null
           ? List.of()
-          : rollback(site, backupOwned.path(), reconciled, false, rollbackHook);
+          : rollback(site, backupOwned.path(), reconciled, false, rollbackHook, Map.of());
       List<String> ancestorErrors = rollbackErrors.isEmpty()
           ? cleanupAncestors(createdAncestors)
           : List.of();
@@ -289,10 +313,11 @@ public final class SiteWriter {
       throw cleanupWithPrimary(primary, cleanup, false, retained, cleanupHook);
     }
 
+    LinkedHashMap<String, PathIdentity> installedRoots = new LinkedHashMap<>();
     try {
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         preflightLiveLayout(site, binding, storeChecker);
-        mover.move(binding.temp().path().resolve(relative), site.resolve(relative));
+        moveManagedTree(site, binding, relative, mover, storeChecker, forwardBoundaryHook, installedRoots);
         preflightLiveLayout(site, binding, storeChecker);
       }
       preflightLiveLayout(site, binding, storeChecker);
@@ -306,7 +331,13 @@ public final class SiteWriter {
         throw new WriterException("installed managed trees do not match staged evidence");
       }
     } catch (Exception error) {
-      List<String> rollbackErrors = rollback(site, backupOwned.path(), backedUpRoots(backupOwned.path()), true, rollbackHook);
+      List<String> rollbackErrors = rollback(
+          site,
+          backupOwned.path(),
+          backedUpRoots(backupOwned.path()),
+          true,
+          rollbackHook,
+          installedRoots);
       List<String> ancestorErrors = rollbackErrors.isEmpty()
           ? cleanupAncestors(createdAncestors)
           : List.of();
@@ -484,6 +515,39 @@ public final class SiteWriter {
     return created;
   }
 
+  private static void moveManagedTree(
+      Path site,
+      StageBinding binding,
+      String relative,
+      PathMover mover,
+      StoreChecker storeChecker,
+      ForwardBoundaryHook forwardBoundaryHook,
+      Map<String, PathIdentity> installedRoots) throws IOException {
+    Path source = binding.temp().path().resolve(relative);
+    Path destination = site.resolve(relative);
+    PathIdentity sourceIdentity = pathIdentity(source);
+    if (!sourceIdentity.directory() || sourceIdentity.symlink()) {
+      throw new WriterException("staged managed tree is not a real directory: " + relative);
+    }
+    forwardBoundaryHook.beforeMove(relative, source, destination);
+    preflightLiveLayout(site, binding, storeChecker);
+    if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
+      throw new WriterException("managed target unexpectedly exists before install: " + destination);
+    }
+    try {
+      mover.move(source, destination);
+    } catch (IOException | RuntimeException error) {
+      if (identityMatches(destination, sourceIdentity)) {
+        installedRoots.put(relative, sourceIdentity);
+      }
+      throw error;
+    }
+    if (!identityMatches(destination, sourceIdentity)) {
+      throw new WriterException("installed managed tree ownership does not match staged source: " + relative);
+    }
+    installedRoots.put(relative, sourceIdentity);
+  }
+
   private static List<String> cleanupAncestors(List<Path> created) {
     List<String> errors = new ArrayList<>();
     for (Path path : created.reversed()) {
@@ -504,12 +568,13 @@ public final class SiteWriter {
       Path backupRoot,
       List<String> backedUp,
       boolean removeAllLive,
-      RollbackHook rollbackHook) {
+      RollbackHook rollbackHook,
+      Map<String, PathIdentity> removableTargets) {
     List<String> errors = new ArrayList<>();
     if (removeAllLive) {
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         try {
-          removeManagedTree(site, relative);
+          removeManagedTree(site, relative, removableTargets.get(relative));
         } catch (Exception error) {
           errors.add("cannot remove partial target " + relative + ": " + error.getMessage());
         }
@@ -525,9 +590,13 @@ public final class SiteWriter {
         }
         Files.createDirectories(target.getParent());
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
-          removeManagedTree(site, relative);
+          PathIdentity expected = removableTargets.get(relative);
+          if (expected == null) {
+            throw new WriterException("managed target ownership changed before restore: " + relative);
+          }
+          removeManagedTree(site, relative, expected);
         }
-        Files.move(source, target);
+        movePathConfined(source, target);
       } catch (Exception error) {
         errors.add("cannot restore backup " + relative + ": " + error.getMessage());
       }
@@ -541,23 +610,30 @@ public final class SiteWriter {
         .toList();
   }
 
-  private static void removeManagedTree(Path site, String relative) throws IOException {
+  private static void removeManagedTree(Path site, String relative, PathIdentity expectedRootIdentity) throws IOException {
     Path cursor = site;
     for (String part : relative.split("/")) {
       cursor = cursor.resolve(part);
       if (Files.isSymbolicLink(cursor)) {
-        Files.deleteIfExists(cursor);
+        deletePathConfined(cursor);
         return;
       }
       if (!Files.exists(cursor, LinkOption.NOFOLLOW_LINKS)) {
         return;
       }
       if (!Files.isDirectory(cursor, LinkOption.NOFOLLOW_LINKS) && !cursor.equals(site.resolve(relative))) {
-        Files.deleteIfExists(cursor);
+        deletePathConfined(cursor);
         return;
       }
     }
-    deleteTree(site.resolve(relative));
+    Path root = site.resolve(relative);
+    if (expectedRootIdentity == null) {
+      throw new WriterException("managed target ownership is unknown before removal: " + relative);
+    }
+    if (!identityMatches(root, expectedRootIdentity)) {
+      throw new WriterException("managed target ownership changed before removal: " + relative);
+    }
+    deleteTree(root);
   }
 
   private static Path canonicalSiteRoot(Path siteRoot) {
@@ -897,7 +973,7 @@ public final class SiteWriter {
         indent(builder, indent).append("-\n");
         yamlList(nestedList, indent + 2, builder);
       } else {
-        indent(builder, indent).append("- ").append(yamlScalar(value)).append('\n');
+        indent(builder, indent).append("- ").append(yamlScalar(value, indent)).append('\n');
       }
     }
   }
@@ -919,11 +995,11 @@ public final class SiteWriter {
       builder.append('\n');
       yamlList(list, keyIndent, builder);
     } else {
-      builder.append(' ').append(yamlScalar(value)).append('\n');
+      builder.append(' ').append(yamlScalar(value, keyIndent)).append('\n');
     }
   }
 
-  private static String yamlScalar(Object value) {
+  private static String yamlScalar(Object value, int indent) {
     if (value == null) {
       return "null";
     }
@@ -939,6 +1015,9 @@ public final class SiteWriter {
     String text = value.toString();
     if (text.isEmpty()) {
       return "''";
+    }
+    if (text.contains("\n")) {
+      return yamlMultilineSingleQuoted(text, indent + 2);
     }
     return shouldQuoteYamlString(text) ? yamlSingleQuoted(text) : text;
   }
@@ -966,6 +1045,17 @@ public final class SiteWriter {
 
   private static String yamlSingleQuoted(String text) {
     return "'" + text.replace("'", "''") + "'";
+  }
+
+  private static String yamlMultilineSingleQuoted(String text, int continuationIndent) {
+    String[] parts = text.split("\n", -1);
+    StringBuilder builder = new StringBuilder("'");
+    builder.append(parts[0].replace("'", "''"));
+    String continuation = " ".repeat(continuationIndent);
+    for (int index = 1; index < parts.length; index++) {
+      builder.append("\n\n").append(continuation).append(parts[index].replace("'", "''"));
+    }
+    return builder.append("'").toString();
   }
 
   private static String json(Object value, int indent) {
@@ -1090,27 +1180,82 @@ public final class SiteWriter {
   }
 
   private static void deleteOwnedTemp(OwnedPath owned) throws IOException {
+    deleteOwnedTemp(owned, CleanupBoundaryHook.noop());
+  }
+
+  private static void deleteOwnedTemp(OwnedPath owned, CleanupBoundaryHook cleanupBoundaryHook) throws IOException {
     if (!identityMatches(owned.path().getParent(), owned.parentIdentity())) {
       throw new WriterException("owned " + owned.kind() + " parent ownership no longer matches: " + owned.path().getParent());
     }
     if (!identityMatches(owned.path(), owned.identity())) {
       throw new WriterException("owned " + owned.kind() + " path ownership no longer matches: " + owned.path());
     }
-    deleteTree(owned.path());
+    cleanupBoundaryHook.beforeDelete(owned);
+    if (!identityMatches(owned.path().getParent(), owned.parentIdentity())) {
+      throw new WriterException("owned " + owned.kind() + " parent ownership no longer matches: " + owned.path().getParent());
+    }
+    if (!identityMatches(owned.path(), owned.identity())) {
+      throw new WriterException("owned " + owned.kind() + " path ownership no longer matches: " + owned.path());
+    }
+    deleteTree(owned.path(), owned.identity(), owned.parentIdentity());
   }
 
   private static void deleteTree(Path root) throws IOException {
     if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
       return;
     }
-    if (Files.isSymbolicLink(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
-      Files.deleteIfExists(root);
+    deleteTree(root, pathIdentity(root), pathIdentity(root.getParent()));
+  }
+
+  private static void deleteTree(Path root, PathIdentity expectedRoot, PathIdentity expectedParent) throws IOException {
+    if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
       return;
     }
-    try (Stream<Path> paths = Files.walk(root)) {
-      for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
-        Files.deleteIfExists(path);
+    if (!identityMatches(root.getParent(), expectedParent)) {
+      throw new WriterException("tree parent ownership changed before deletion: " + root.getParent());
+    }
+    if (!identityMatches(root, expectedRoot)) {
+      throw new WriterException("tree root ownership changed before deletion: " + root);
+    }
+    try (SecureDirectoryStream<Path> parent = openSecureDirectory(root.getParent(), expectedParent)) {
+      deleteEntryRecursive(parent, root.getFileName(), expectedRoot, root);
+    }
+  }
+
+  private static void deletePathConfined(Path path) throws IOException {
+    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    PathIdentity parentIdentity = pathIdentity(path.getParent());
+    try (SecureDirectoryStream<Path> parent = openSecureDirectory(path.getParent(), parentIdentity)) {
+      BasicFileAttributes attributes = attributes(parent, path.getFileName());
+      if (attributes.isDirectory() && !attributes.isSymbolicLink()) {
+        parent.deleteDirectory(path.getFileName());
+      } else {
+        parent.deleteFile(path.getFileName());
       }
+    }
+  }
+
+  private static void deleteEntryRecursive(
+      SecureDirectoryStream<Path> parent,
+      Path name,
+      PathIdentity expectedIdentity,
+      Path displayPath) throws IOException {
+    BasicFileAttributes attributes = attributes(parent, name);
+    if (expectedIdentity != null && !attributesMatch(expectedIdentity, attributes, displayPath)) {
+      throw new WriterException("tree root ownership changed before deletion: " + displayPath);
+    }
+    if (attributes.isDirectory() && !attributes.isSymbolicLink()) {
+      try (SecureDirectoryStream<Path> child = openSecureChild(parent, name, displayPath)) {
+        for (Path entry : child) {
+          Path entryName = entry.getFileName();
+          deleteEntryRecursive(child, entryName, null, displayPath.resolve(entryName));
+        }
+      }
+      parent.deleteDirectory(name);
+    } else {
+      parent.deleteFile(name);
     }
   }
 
@@ -1120,6 +1265,72 @@ public final class SiteWriter {
     } catch (IOException ignored) {
       // Best effort for a partially-created stage before ownership evidence exists.
     }
+  }
+
+  private static void movePathConfined(Path source, Path destination) throws IOException {
+    PathIdentity sourceParentIdentity = pathIdentity(source.getParent());
+    PathIdentity destinationParentIdentity = pathIdentity(destination.getParent());
+    try (SecureDirectoryStream<Path> sourceParent = openSecureDirectory(source.getParent(), sourceParentIdentity);
+        SecureDirectoryStream<Path> destinationParent = openSecureDirectory(destination.getParent(), destinationParentIdentity)) {
+      sourceParent.move(source.getFileName(), destinationParent, destination.getFileName());
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private static SecureDirectoryStream<Path> openSecureDirectory(Path path, PathIdentity expectedIdentity) throws IOException {
+    DirectoryStream<Path> stream = Files.newDirectoryStream(path);
+    if (stream instanceof SecureDirectoryStream<?> secure) {
+      SecureDirectoryStream<Path> typed = (SecureDirectoryStream<Path>) secure;
+      if (!attributesMatch(expectedIdentity, typed
+          .getFileAttributeView(BasicFileAttributeView.class)
+          .readAttributes(), path)) {
+        try {
+          typed.close();
+        } catch (IOException ignored) {
+          // Preserve the ownership failure as the primary error.
+        }
+        throw new WriterException("directory ownership changed while opening: " + path);
+      }
+      return typed;
+    }
+    try {
+      stream.close();
+    } catch (IOException ignored) {
+      // Preserve the fail-closed secure stream error as the primary error.
+    }
+    throw new WriterException("secure directory stream is unavailable for " + path);
+  }
+
+  private static SecureDirectoryStream<Path> openSecureChild(
+      SecureDirectoryStream<Path> parent,
+      Path name,
+      Path displayPath) throws IOException {
+    SecureDirectoryStream<Path> child = parent.newDirectoryStream(name, LinkOption.NOFOLLOW_LINKS);
+    BasicFileAttributes attributes = child
+        .getFileAttributeView(BasicFileAttributeView.class)
+        .readAttributes();
+    if (!attributes.isDirectory() || attributes.isSymbolicLink()) {
+      try {
+        child.close();
+      } catch (IOException ignored) {
+        // Preserve the directory ownership failure as the primary error.
+      }
+      throw new WriterException("secure child directory changed while opening: " + displayPath);
+    }
+    return child;
+  }
+
+  private static BasicFileAttributes attributes(SecureDirectoryStream<Path> parent, Path name) throws IOException {
+    return parent
+        .getFileAttributeView(name, BasicFileAttributeView.class, LinkOption.NOFOLLOW_LINKS)
+        .readAttributes();
+  }
+
+  private static boolean attributesMatch(PathIdentity expected, BasicFileAttributes attributes, Path fallbackPath) {
+    String fileKey = Objects.toString(attributes.fileKey(), fallbackPath.toAbsolutePath().normalize().toString());
+    return expected.fileKey().equals(fileKey)
+        && expected.directory() == attributes.isDirectory()
+        && expected.symlink() == attributes.isSymbolicLink();
   }
 
   private static WriterException writerError(Exception error, String fallback) {
@@ -1248,7 +1459,7 @@ public final class SiteWriter {
     void move(Path source, Path destination) throws IOException;
 
     static PathMover filesMove() {
-      return (source, destination) -> Files.move(source, destination);
+      return SiteWriter::movePathConfined;
     }
   }
 
@@ -1258,7 +1469,7 @@ public final class SiteWriter {
 
     static BackupMover filesMove() {
       return (source, destination, relative) -> {
-        Files.move(source, destination);
+        movePathConfined(source, destination);
         return true;
       };
     }
@@ -1274,11 +1485,33 @@ public final class SiteWriter {
   }
 
   @FunctionalInterface
+  interface ForwardBoundaryHook {
+    void beforeMove(String relative, Path source, Path destination) throws IOException;
+
+    static ForwardBoundaryHook noop() {
+      return (relative, source, destination) -> { };
+    }
+  }
+
+  @FunctionalInterface
+  interface CleanupBoundaryHook {
+    void beforeDelete(OwnedPath owned) throws IOException;
+
+    static CleanupBoundaryHook noop() {
+      return owned -> { };
+    }
+  }
+
+  @FunctionalInterface
   interface CleanupHook {
     void cleanup(OwnedPath owned) throws IOException;
 
     static CleanupHook deleteOwnedTemp() {
       return SiteWriter::deleteOwnedTemp;
+    }
+
+    static CleanupHook deleteOwnedTemp(CleanupBoundaryHook cleanupBoundaryHook) {
+      return owned -> SiteWriter.deleteOwnedTemp(owned, cleanupBoundaryHook);
     }
   }
 

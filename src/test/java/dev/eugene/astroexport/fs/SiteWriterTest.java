@@ -203,6 +203,47 @@ final class SiteWriterTest {
   }
 
   @Test
+  void stageSiteSerializesMultilineFrontmatterWithPyYamlCompatibleScalars() throws Exception {
+    Path site = site();
+    ManifestEntry entry = entry(
+        "src/content/blog/ru/multiline.md",
+        "multiline",
+        "Multiline parity",
+        "Body",
+        orderedMap(
+            "multiline", "line one\nline two",
+            "quoteMultiline", "Bob's\nnote",
+            "list", List.of("line one\nline two", "plain"),
+            "nested", orderedMap("multiline", "alpha\nbeta")));
+
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(site,
+        manifest(List.of(entry), List.of(), List.of()));
+
+    assertEquals("""
+        ---
+        list:
+        - 'line one
+
+          line two'
+        - plain
+        multiline: 'line one
+
+          line two'
+        nested:
+          multiline: 'alpha
+
+            beta'
+        quoteMultiline: 'Bob''s
+
+          note'
+        ---
+
+        Body
+        """, Files.readString(staged.root().resolve("src/content/blog/ru/multiline.md")));
+    discard(staged);
+  }
+
+  @Test
   void emptyCollectionBodyEndsAtFrontmatterWithoutBlankLines() throws Exception {
     Path site = site();
     ManifestEntry entry = entry(
@@ -814,6 +855,51 @@ final class SiteWriterTest {
     }
   }
 
+  @Test
+  void defaultForwardMoveRechecksManagedAncestorsAfterBoundarySwap() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path outside = Files.createDirectory(temp.resolve("forward-outside"));
+    Files.createDirectories(outside.resolve("assets"));
+    Path movedPublic = sample.site.resolve("public-swapped-original");
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(
+              sample.site,
+              staged,
+              root -> { },
+              SiteWriter.PathMover.filesMove(),
+              SiteWriter.BackupMover.filesMove(),
+              SiteWriter.RollbackHook.noop(),
+              SiteWriter.CleanupHook.deleteOwnedTemp(),
+              SiteWriter.StoreChecker.filesStore(),
+              (relative, source, destination) -> {
+                if (relative.equals("public/assets/vault")) {
+                  Files.move(sample.site.resolve("public"), movedPublic);
+                  Files.createSymbolicLink(sample.site.resolve("public"), outside);
+                }
+              }));
+
+      assertTrue(error.getMessage().toLowerCase().contains("symlink")
+          || error.getMessage().toLowerCase().contains("ownership"));
+      assertFalse(Files.exists(outside.resolve("assets/vault")));
+      assertEquals(before, managedState(sample.site));
+      assertEquals(List.of(), temporarySiblings(sample.site));
+    } finally {
+      if (Files.isSymbolicLink(sample.site.resolve("public"))) {
+        Files.deleteIfExists(sample.site.resolve("public"));
+      }
+      if (Files.exists(movedPublic) && !Files.exists(sample.site.resolve("public"))) {
+        Files.move(movedPublic, sample.site.resolve("public"));
+      } else {
+        deleteTree(movedPublic);
+      }
+    }
+  }
+
   @ParameterizedTest
   @MethodSource("absentTargetFailures")
   void forwardFailurePreservesInitiallyAbsentTargets(List<String> initiallyAbsent, int failAt) throws Exception {
@@ -876,7 +962,7 @@ final class SiteWriterTest {
         () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> { },
             (source, destination) -> { }));
 
-    assertTrue(error.getMessage().contains("installed managed trees"));
+    assertTrue(error.getMessage().contains("installed managed tree"));
     assertEquals(before, managedSnapshot(sample.site));
     assertEquals(List.of(), temporarySiblings(sample.site));
   }
@@ -956,6 +1042,47 @@ final class SiteWriterTest {
       assertEquals(before, managedState(sample.site));
     } finally {
       deleteTree(staged.root());
+    }
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @Test
+  void ownedTempCleanupRechecksIdentityAfterBoundaryReplacement() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path movedStage = temp.resolve("moved-stage");
+
+    SiteWriter.CleanupHook cleanup = SiteWriter.CleanupHook.deleteOwnedTemp(owned -> {
+      if (owned.kind().equals("staging")) {
+        Files.move(owned.path(), movedStage);
+        Files.createDirectories(owned.path());
+        Files.writeString(owned.path().resolve("replacement.txt"), "replacement must survive\n");
+      }
+    });
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(
+              sample.site,
+              staged,
+              root -> {
+                throw new RuntimeException("validation failed");
+              },
+              SiteWriter.PathMover.filesMove(),
+              SiteWriter.BackupMover.filesMove(),
+              SiteWriter.RollbackHook.noop(),
+              cleanup));
+
+      assertFalse(error.committed());
+      assertTrue(error.getMessage().toLowerCase().contains("ownership"));
+      assertEquals("replacement must survive\n", Files.readString(staged.root().resolve("replacement.txt")));
+      assertTrue(Files.isDirectory(movedStage));
+      assertEquals(before, managedState(sample.site));
+    } finally {
+      deleteTree(staged.root());
+      deleteTree(movedStage);
     }
     assertEquals(List.of(), temporarySiblings(sample.site));
   }
