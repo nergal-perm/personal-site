@@ -3,7 +3,11 @@ package dev.eugene.astroexport.manifest;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-/** Generated from Python 3.14 html.entities.html5 (2,231 entries) for book-description source parity. */
+/**
+ * Generated from Python 3.14 {@code html.entities.html5} (2,231 entries) for book-description
+ * source parity. Reproduce by iterating the local Python table in sorted-key order and encoding
+ * each value as uppercase hexadecimal code points separated by spaces.
+ */
 final class Html5Entities {
   private static final String DATA = """
 AElig	C6

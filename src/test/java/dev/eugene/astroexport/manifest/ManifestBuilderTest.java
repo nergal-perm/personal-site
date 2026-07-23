@@ -172,6 +172,19 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void normalizesPythonWhitespaceAndOversizedNumericReferencesInBookDescriptions() {
+    String body = "<div class=\"book-description\"><p>A\u0085B&#999999999999999999999999999999;|&#xFFFFFFFFFFFFFFFFFFFFFFFF;</p></div>";
+    Note encoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор"), body);
+    Note decoded = note("bibliography/Book.md", "Book", "book", "bibliography", "book",
+        Map.of("author", "Автор", "description", "A B\uFFFD|\uFFFD"), "");
+
+    var encodedEntry = only(builder.buildRussianManifest(selection(encoded)));
+    var decodedEntry = only(builder.buildRussianManifest(selection(decoded)));
+    assertEquals("A B\uFFFD|\uFFFD", encodedEntry.metadata().get("description"));
+    assertEquals(decodedEntry.metadata().get("sourceHash"), encodedEntry.metadata().get("sourceHash"));
+  }
+
+  @Test
   void omitsExplicitNullCollectionMetadata() {
     Map<String, Object> musicExtra = nullableMap("artist", "Artist", "albumTitle", "Album", "format", null, "streamingUrl", null, "bandcampEmbedUrl", null);
     Note musicWithNulls = note("reviews/Album.md", "Album", "album", "music", "album", musicExtra, "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
@@ -833,6 +846,18 @@ final class ManifestBuilderTest {
         () -> builder.buildRussianManifest(selection(essays, first, second)));
     assertEquals("showcase[0].target", error.fieldName());
     assertEquals("must resolve to exactly one published entry", error.reason());
+  }
+
+  @Test
+  void rejectsDuplicateClaimsShowcasePinsAtTheLaterTarget() {
+    Note claims = note("editorial/Claims.md", "Тезисы", "claims", "editorial", "curated_page", Map.of("editorialPage", "claims"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nТезисы.\n\n## Витрина\n\n### [[claim-target]]\n\nПервый.\n\n### [[claim-target]]\n\nВторой.");
+    Note target = note("claims/Target.md", "Claim target", "claim-target", "blog", "claim", Map.of("statement", "Тезис."), "");
+
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(claims, target)));
+    assertEquals("showcase[1].target", error.fieldName());
+    assertEquals("must not duplicate an earlier pin", error.reason());
   }
 
   private static dev.eugene.astroexport.model.ManifestEntry only(dev.eugene.astroexport.model.ManifestResult result) { return result.entries().getFirst(); }

@@ -12,6 +12,7 @@ import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.validation.PublicationValidator;
 import dev.eugene.astroexport.markdown.MarkdownScanner;
 import java.math.BigDecimal;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -531,9 +532,10 @@ public final class ManifestBuilder {
       if (expected != null && !expected.equals(resolved.publicContentType())) {
         throw new ManifestValidationException(path, targetField, "must reference a " + expected);
       }
-      if (!pins.add(resolved.publicId())) {
+      if (pins.contains(resolved.publicId())) {
         throw new ManifestValidationException(path, targetField, "must not duplicate an earlier pin");
       }
+      pins.add(resolved.publicId());
       showcase.put("target", resolved.publicId());
     }
     metadata.put("pinned", pins);
@@ -844,7 +846,7 @@ public final class ManifestBuilder {
     for (int offset = 0; offset < value.length();) {
       int codePoint = value.codePointAt(offset);
       offset += Character.charCount(codePoint);
-      if (Character.isWhitespace(codePoint) || Character.isSpaceChar(codePoint)) {
+      if (isPythonWhitespace(codePoint)) {
         pendingSpace = normalized.length() > 0;
         continue;
       }
@@ -855,6 +857,12 @@ public final class ManifestBuilder {
       normalized.appendCodePoint(codePoint);
     }
     return normalized.toString();
+  }
+
+  private static boolean isPythonWhitespace(int codePoint) {
+    return codePoint == 0x85
+        || Character.isWhitespace(codePoint)
+        || Character.isSpaceChar(codePoint);
   }
 
   private static String decodeHtmlEntities(String value) {
@@ -894,8 +902,11 @@ public final class ManifestBuilder {
     try {
       String value = entity.endsWith(";") ? entity.substring(0, entity.length() - 1) : entity;
       boolean hexadecimal = value.startsWith("#x") || value.startsWith("#X");
-      int codePoint = Integer.parseInt(value.substring(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
-      return html5NumericReplacement(codePoint);
+      BigInteger codePoint = new BigInteger(value.substring(hexadecimal ? 2 : 1), hexadecimal ? 16 : 10);
+      if (codePoint.compareTo(BigInteger.valueOf(Character.MAX_CODE_POINT)) > 0) {
+        return "\uFFFD";
+      }
+      return html5NumericReplacement(codePoint.intValue());
     } catch (NumberFormatException ignored) {
       return original;
     }
