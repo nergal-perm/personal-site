@@ -151,7 +151,7 @@ Each task below ports the relevant tests before or alongside the Java implementa
 - Produces: picocli command named `astro-export`
 - Produces: Maven commands `mvn test` and `mvn -Pnative native:compile`
 
-- [ ] **Step 1: Create Maven project files**
+- [x] **Step 1: Create Maven project files**
 
 Create `pom.xml` with this initial content:
 
@@ -257,7 +257,7 @@ Create `pom.xml` with this initial content:
 </project>
 ```
 
-- [ ] **Step 2: Create the CLI entry point**
+- [x] **Step 2: Create the CLI entry point**
 
 Create `src/main/java/dev/eugene/astroexport/AstroExportApp.java`:
 
@@ -298,7 +298,7 @@ public final class AstroExportCommand implements Callable<Integer> {
 }
 ```
 
-- [ ] **Step 3: Add native resource config**
+- [x] **Step 3: Add native resource config**
 
 Create `src/main/resources/META-INF/native-image/dev.eugene/astro-export/resource-config.json`:
 
@@ -313,7 +313,7 @@ Create `src/main/resources/META-INF/native-image/dev.eugene/astro-export/resourc
 }
 ```
 
-- [ ] **Step 4: Add smoke test**
+- [x] **Step 4: Add smoke test**
 
 Create `src/test/java/dev/eugene/astroexport/cli/AstroExportCommandSmokeTest.java`:
 
@@ -334,7 +334,7 @@ final class AstroExportCommandSmokeTest {
 }
 ```
 
-- [ ] **Step 5: Run JVM tests**
+- [x] **Step 5: Run JVM tests**
 
 Run:
 
@@ -344,7 +344,7 @@ mvn test
 
 Expected: build succeeds and runs `AstroExportCommandSmokeTest`.
 
-- [ ] **Step 6: Build native binary**
+- [x] **Step 6: Build native binary**
 
 Run with GraalVM active:
 
@@ -354,7 +354,7 @@ mvn -Pnative native:compile
 
 Expected: `target/astro-export` exists and `target/astro-export --help` exits 0.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pom.xml README.md src
@@ -377,7 +377,7 @@ git commit -m "build: bootstrap Java astro exporter"
 - Produces: `CommandFixture.run(String... args)`
 - Produces: `GoldenAssertions.assertTreeHash(Path root, String expectedHash)`
 
-- [ ] **Step 1: Create the Python-to-Java source map**
+- [x] **Step 1: Create the Python-to-Java source map**
 
 Create `docs/source-map.md` with:
 
@@ -415,7 +415,7 @@ Create `docs/source-map.md` with:
 The Java test suite must port every behavior assertion from the Python test file with the matching class listed in the implementation plan.
 ```
 
-- [ ] **Step 2: Create fixture helpers**
+- [x] **Step 2: Create fixture helpers**
 
 Create `src/test/java/dev/eugene/astroexport/testsupport/FixtureFiles.java`:
 
@@ -474,7 +474,7 @@ public final class CommandFixture {
 }
 ```
 
-- [ ] **Step 3: Run tests**
+- [x] **Step 3: Run tests**
 
 Run:
 
@@ -484,7 +484,7 @@ mvn test
 
 Expected: smoke test and helper compilation pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add docs src/test
@@ -508,7 +508,7 @@ git commit -m "test: add porting harness and source map"
 - Produces: `PublicationDiscovery.findCandidates(Path vault)`
 - Produces: `SelectionResult select(Path vault)`
 
-- [ ] **Step 1: Port discovery and selection tests**
+- [x] **Step 1: Port discovery and selection tests**
 
 Port these Python behaviors first:
 
@@ -526,7 +526,7 @@ The first Java tests should use a fake `ProcessRunner` that records the exact `r
 rg --files-with-matches --glob *.md --glob !.* --glob !**/.* ^publish:[ \t]+true[ \t]*$
 ```
 
-- [ ] **Step 2: Implement frontmatter split**
+- [x] **Step 2: Implement frontmatter split**
 
 Implement `FrontmatterDocument` so it handles only markdown documents whose first line is `---`, parses YAML until the next standalone `---`, and returns an empty metadata map when no frontmatter block exists.
 
@@ -546,7 +546,7 @@ public record FrontmatterDocument(
 }
 ```
 
-- [ ] **Step 3: Implement selected note model**
+- [x] **Step 3: Implement selected note model**
 
 Required Java record:
 
@@ -571,11 +571,11 @@ public record Note(
 }
 ```
 
-- [ ] **Step 4: Implement discovery with `rg`**
+- [x] **Step 4: Implement discovery with `rg`**
 
 `PublicationDiscovery.findCandidates(Path vault)` must run `rg` in the vault directory, reject hidden paths after process output is read, and return vault-relative POSIX paths sorted in `rg` output order.
 
-- [ ] **Step 5: Run targeted tests**
+- [x] **Step 5: Run targeted tests**
 
 Run:
 
@@ -585,7 +585,7 @@ mvn test -Dtest=PublicationDiscoveryTest,PublicationSelectionTest
 
 Expected: all selection tests pass and no filesystem writes occur outside JUnit temp directories.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/frontmatter src/main/java/dev/eugene/astroexport/discovery src/main/java/dev/eugene/astroexport/model src/test/java/dev/eugene/astroexport/discovery
@@ -611,7 +611,7 @@ git commit -m "feat: port publication discovery and selection"
 - Produces: `PublicationValidator.validate(Note note)`
 - Produces: `PreflightService.preflight(Path vault, String notePath)`
 
-- [ ] **Step 1: Encode the supported publication pairs**
+- [x] **Step 1: Encode the supported publication pairs**
 
 Create an enum or immutable registry with exactly these pairs:
 
@@ -623,7 +623,7 @@ concepts: concept
 editorial: curated_page
 ```
 
-- [ ] **Step 2: Port contract and validation tests**
+- [x] **Step 2: Port contract and validation tests**
 
 Port all tests from:
 
@@ -635,7 +635,7 @@ tests/test_preflight.py
 
 Keep the precise diagnostics from Python, including supported collection lists and field names.
 
-- [ ] **Step 3: Implement requirement validators**
+- [x] **Step 3: Implement requirement validators**
 
 Implement these validator names as code constants, not strings scattered through tests:
 
@@ -651,11 +651,11 @@ public enum RequirementValidator {
 }
 ```
 
-- [ ] **Step 4: Implement preflight note confinement**
+- [x] **Step 4: Implement preflight note confinement**
 
 `PreflightService.preflight` must accept only a vault-relative Markdown path, reject absolute paths and traversal, load only that note, validate publication metadata, and return diagnostics without scanning the whole vault.
 
-- [ ] **Step 5: Run targeted tests**
+- [x] **Step 5: Run targeted tests**
 
 Run:
 
@@ -665,7 +665,7 @@ mvn test -Dtest=PublicationContractTest,PublicationValidatorTest,PreflightTest
 
 Expected: all validation tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/model src/main/java/dev/eugene/astroexport/validation src/test/java/dev/eugene/astroexport/validation
@@ -691,11 +691,11 @@ git commit -m "feat: port publication contract validation"
 - Produces: `LinkProcessor.processLinks(Note note, Collection<Note> selectedNotes)`
 - Produces: `LinkProcessor.tokenizeEditorialText(String source, Collection<Note> selectedNotes)`
 
-- [ ] **Step 1: Port normalization tests**
+- [x] **Step 1: Port normalization tests**
 
 Port every test in `tests/test_normalize.py`, including headings inside fenced code, HTML comments, Obsidian comments, inline code, raw `<pre>` blocks, carriage-return line endings, and timestamp-derived dates.
 
-- [ ] **Step 2: Port link tests**
+- [x] **Step 2: Port link tests**
 
 Port every test in `tests/test_links.py`, including:
 
@@ -710,11 +710,11 @@ editorial rich-text tokenization
 ambiguous alias blocking
 ```
 
-- [ ] **Step 3: Implement the scanner as one reusable state machine**
+- [x] **Step 3: Implement the scanner as one reusable state machine**
 
 `MarkdownScanner` must return protected spans for fenced code, inline code, HTML comments, Obsidian comments, raw `<pre>` blocks, and escaped wikilinks. `section`, `listItems`, link replacement, asset collection, and editorial tokenization must call this scanner instead of maintaining separate regular-expression skip logic.
 
-- [ ] **Step 4: Implement public-link index precedence**
+- [x] **Step 4: Implement public-link index precedence**
 
 Resolution precedence must be:
 
@@ -728,7 +728,7 @@ aliases
 
 Ambiguous title or alias matches must throw a manifest validation error instead of choosing a target.
 
-- [ ] **Step 5: Run targeted tests**
+- [x] **Step 5: Run targeted tests**
 
 Run:
 
@@ -738,7 +738,7 @@ mvn test -Dtest=MarkdownNormalizationTest,LinkProcessorTest
 
 Expected: all markdown and link tests pass.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/markdown src/main/java/dev/eugene/astroexport/links src/test/java/dev/eugene/astroexport/markdown src/test/java/dev/eugene/astroexport/links
@@ -758,11 +758,11 @@ git commit -m "feat: port markdown and public link processing"
 - Produces: `AssetResolver.resolveAssets(Path vault, List<String> references)`
 - Produces: `AssetResolver.rewriteAssetEmbeds(String body, Collection<ResolvedAsset> allowlist)`
 
-- [ ] **Step 1: Port asset tests**
+- [x] **Step 1: Port asset tests**
 
 Port every test in `tests/test_assets.py`, including invalid absolute paths, Windows UNC paths, traversal, hidden path components, ambiguous basenames, symlink escapes, extension-family compatibility, content-addressed names, repeated source byte caching, and EN-only asset blockers.
 
-- [ ] **Step 2: Implement validated references**
+- [x] **Step 2: Implement validated references**
 
 Accept only POSIX-style relative references with no hidden components and these suffixes:
 
@@ -770,7 +770,7 @@ Accept only POSIX-style relative references with no hidden components and these 
 .png .jpg .jpeg .gif .svg .webp .mp3 .mp4
 ```
 
-- [ ] **Step 3: Implement content-addressed destinations**
+- [x] **Step 3: Implement content-addressed destinations**
 
 Destination format:
 
@@ -780,7 +780,7 @@ Destination format:
 
 `.jpg` and `.jpeg` with identical bytes must share the canonical `.jpg` destination. Identical bytes with incompatible suffix families must block the write.
 
-- [ ] **Step 4: Run targeted tests**
+- [x] **Step 4: Run targeted tests**
 
 Run:
 
@@ -790,7 +790,7 @@ mvn test -Dtest=AssetResolverTest
 
 Expected: all asset tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/assets src/test/java/dev/eugene/astroexport/assets
@@ -813,11 +813,11 @@ git commit -m "feat: port asset resolution"
 - Produces: `ManifestBuilder.buildRussianManifest(SelectionResult selection)`
 - Produces: `EditorialParser.normalize(String sourcePath, String publicId, Map<String,Object> frontmatter, String body, Map<String,Object> common)`
 
-- [ ] **Step 1: Port editorial parser tests**
+- [x] **Step 1: Port editorial parser tests**
 
 Port every test in `tests/test_editorial.py`, including complete page shapes for `home`, `essays`, `claims`, `notes`, `music`, `library`, `concepts`, `now`, and `about`, optional showcase behavior, malformed nested shapes, public-searchable boolean checks, and exact target-field diagnostics.
 
-- [ ] **Step 2: Port manifest tests in behavior groups**
+- [x] **Step 2: Port manifest tests in behavior groups**
 
 Port `tests/test_manifest.py` in this order:
 
@@ -836,7 +836,7 @@ ambiguous title/alias blocking
 bilingual manifest ordering
 ```
 
-- [ ] **Step 3: Implement common metadata normalization**
+- [x] **Step 3: Implement common metadata normalization**
 
 `ManifestBuilder` must emit common fields:
 
@@ -863,7 +863,7 @@ sourceHash
 
 Only include optional fields when source metadata provides them after validation.
 
-- [ ] **Step 4: Implement collection-specific normalization**
+- [x] **Step 4: Implement collection-specific normalization**
 
 Required routes and targets:
 
@@ -875,11 +875,11 @@ concepts -> src/content/concepts/ru/<publicId>.md, /ru/concepts/<publicId>/
 editorial -> src/data/pages/ru/<editorialPage>.json, /ru/<page-specific-route>/
 ```
 
-- [ ] **Step 5: Implement deterministic source hashing**
+- [x] **Step 5: Implement deterministic source hashing**
 
 `sourceHash` must be SHA-256 over normalized public metadata and canonical body after public-link processing. The Java hash bytes must match the Python hash for the same fixture.
 
-- [ ] **Step 6: Run targeted tests**
+- [x] **Step 6: Run targeted tests**
 
 Run:
 
@@ -889,7 +889,7 @@ mvn test -Dtest=EditorialParserTest,ManifestBuilderTest
 
 Expected: all manifest and editorial tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/model src/main/java/dev/eugene/astroexport/manifest src/main/java/dev/eugene/astroexport/editorial src/test/java/dev/eugene/astroexport/manifest src/test/java/dev/eugene/astroexport/editorial
@@ -918,19 +918,19 @@ git commit -m "feat: port manifest and editorial normalization"
 - Produces: `ReviewWorkspace.loadEnglishPatch(Path reviewRoot, ManifestEntry entry)`
 - Produces: `RuCache.changedRecords(Path cacheRoot, List<ManifestEntry> entries)`
 
-- [ ] **Step 1: Port translation tests**
+- [x] **Step 1: Port translation tests**
 
 Port all behavior from `tests/test_translation.py`, including duplicate JSON keys, missing and extra translated fields, stale source hashes, generated and reviewed statuses, internal `/ru/` route rejection, inherited invariant fields, reference translation materialization, dormant reference translations, and localized EN route rewriting.
 
-- [ ] **Step 2: Port review workspace tests**
+- [x] **Step 2: Port review workspace tests**
 
 Port all behavior from `tests/test_review_workspace.py`, including Markdown override migration, editorial JSON override migration, `referenceTranslations` round-trip, generated/reviewed status rewrite, RU review serialization, symlink/hardlink blockers, atomic replacement failure preservation, and editorial review Markdown parsing.
 
-- [ ] **Step 3: Port RU cache tests**
+- [x] **Step 3: Port RU cache tests**
 
 Port `tests/test_ru_cache.py` exactly: normalized public record round-trip and changed-record detection on body changes.
 
-- [ ] **Step 4: Implement translation projection**
+- [x] **Step 4: Implement translation projection**
 
 Invariant keys must be inherited from RU and not copied from EN:
 
@@ -956,7 +956,7 @@ telegram
 
 The translatable projection must include only text leaves that the review file is allowed to translate.
 
-- [ ] **Step 5: Implement review file validation**
+- [x] **Step 5: Implement review file validation**
 
 Accepted review control fields:
 
@@ -976,7 +976,7 @@ reviewed
 
 Anything else blocks the EN pair.
 
-- [ ] **Step 6: Run targeted tests**
+- [x] **Step 6: Run targeted tests**
 
 Run:
 
@@ -986,7 +986,7 @@ mvn test -Dtest=TranslationProjectionTest,TranslationValidatorTest,ReviewWorkspa
 
 Expected: all translation and review tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/translation src/main/java/dev/eugene/astroexport/review src/test/java/dev/eugene/astroexport/translation src/test/java/dev/eugene/astroexport/review
@@ -1014,11 +1014,11 @@ git commit -m "feat: port translation review validation"
 - Produces: `PrepareWorkflow.prepare(Path vault, String notePath, Path reviewRoot, Path jobsRoot)`
 - Produces: `CodexRunner.run(Path workdir, List<String> args, Duration timeout)`
 
-- [ ] **Step 1: Port workflow-state tests**
+- [x] **Step 1: Port workflow-state tests**
 
 Port all tests from `tests/test_workflow_state.py`, including duplicate YAML key rejection, YAML alias workflow-key rejection, scalar-only workflow field replacement, new workflow field insertion, atomic exchange rollback, recovery copy reporting, and unsupported exchange behavior.
 
-- [ ] **Step 2: Implement platform atomic exchange**
+- [x] **Step 2: Implement platform atomic exchange**
 
 `JnaAtomicExchange` must call:
 
@@ -1029,7 +1029,7 @@ Linux: renameat2(AT_FDCWD, first, AT_FDCWD, second, RENAME_EXCHANGE)
 
 If the platform call is unavailable, return an `AtomicExchangeUnavailableException` and leave both paths untouched.
 
-- [ ] **Step 3: Port prepare and Codex tests**
+- [x] **Step 3: Port prepare and Codex tests**
 
 Port all behavior from:
 
@@ -1053,7 +1053,7 @@ symlink escape rejection
 post-run tamper rejection
 ```
 
-- [ ] **Step 4: Implement guarded workflow writes**
+- [x] **Step 4: Implement guarded workflow writes**
 
 The Java implementation must preserve the Python boundary:
 
@@ -1067,7 +1067,7 @@ rollback through atomic exchange on mismatch
 preserve conflict copies when rollback cannot prove lossless recovery
 ```
 
-- [ ] **Step 5: Run targeted tests**
+- [x] **Step 5: Run targeted tests**
 
 Run:
 
@@ -1077,7 +1077,7 @@ mvn test -Dtest=WorkflowStateServiceTest,PrepareWorkflowTest,CodexRunnerTest
 
 Expected: all guarded workflow and prepare tests pass on macOS.
 
-- [ ] **Step 6: Run native workflow smoke**
+- [x] **Step 6: Run native workflow smoke**
 
 Run:
 
@@ -1088,7 +1088,7 @@ target/astro-export --help
 
 Expected: native binary starts and prints usage. Workflow native integration tests remain in JVM until Task 12 adds full native parity.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/fs src/main/java/dev/eugene/astroexport/frontmatter src/main/java/dev/eugene/astroexport/workflow src/main/java/dev/eugene/astroexport/process src/main/java/dev/eugene/astroexport/prepare src/test/java/dev/eugene/astroexport/workflow src/test/java/dev/eugene/astroexport/prepare src/test/java/dev/eugene/astroexport/process
@@ -1116,15 +1116,15 @@ git commit -m "feat: port guarded workflow preparation"
 - Produces: `ReportBuilder.buildManifestReport(...)`
 - Produces: `ReportBuilder.buildWriteReport(...)`
 
-- [ ] **Step 1: Port writer tests**
+- [x] **Step 1: Port writer tests**
 
 Port all behavior from `tests/test_writer.py`, including exact tree serialization, empty directory creation, byte-identical repeated staging, target confinement, duplicate target blocking, staged asset integrity checks, validator failure rollback, capability ownership, symlink and device mismatch blockers, ordered backup and restore failures, committed-with-errors recovery paths, and idempotent live replacements.
 
-- [ ] **Step 2: Port report tests**
+- [x] **Step 2: Port report tests**
 
 Port every test in `tests/test_report.py`. Reports must keep section names and counts stable because they are operator evidence.
 
-- [ ] **Step 3: Implement resource-backed search templates**
+- [x] **Step 3: Implement resource-backed search templates**
 
 Copy current templates from:
 
@@ -1140,7 +1140,7 @@ src/main/resources/templates/pages/ru/search.json
 src/main/resources/templates/pages/en/search.json
 ```
 
-- [ ] **Step 4: Implement managed roots exactly**
+- [x] **Step 4: Implement managed roots exactly**
 
 Managed roots:
 
@@ -1166,7 +1166,7 @@ src/data/pages/en
 src/data/pages/ru
 ```
 
-- [ ] **Step 5: Implement Astro content gate adapter**
+- [x] **Step 5: Implement Astro content gate adapter**
 
 The CLI write path must run:
 
@@ -1176,7 +1176,7 @@ npm run check-content
 
 with `ASTRO_CONTENT_DIR` and `ASTRO_PAGES_DIR` pointing at the staged tree before the first live move. A non-zero exit or process start failure must block the write and preserve live trees.
 
-- [ ] **Step 6: Run targeted tests**
+- [x] **Step 6: Run targeted tests**
 
 Run:
 
@@ -1186,7 +1186,7 @@ mvn test -Dtest=SiteWriterTest,ReportBuilderTest
 
 Expected: all writer and report tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/fs src/main/java/dev/eugene/astroexport/report src/main/resources src/test/java/dev/eugene/astroexport/fs src/test/java/dev/eugene/astroexport/report
@@ -1211,11 +1211,11 @@ git commit -m "feat: port site writer and reports"
 - Produces root command: `astro-export --vault PATH [--dry-run] [--out PATH] [--report PATH] [--review PATH]`
 - Produces subcommands: `build-from-review`, `migrate-overrides`, `prepare`, `inspect-publication`, `mark-reviewed`, `refresh-publication-queue`, `write-publication-contract`
 
-- [ ] **Step 1: Port CLI tests**
+- [x] **Step 1: Port CLI tests**
 
 Port every behavior from `tests/test_cli.py`, including bridge JSON shape, parser rejections, read-only inspect, mark-reviewed guarded transitions, refresh six-state summary, report/out separation blockers, missing Astro root files, dry-run no-write behavior, successful write gate evidence, gate failure preservation, translation blockers, asset blockers, committed-with-errors status, and programmer-error propagation.
 
-- [ ] **Step 2: Implement root export flow**
+- [x] **Step 2: Implement root export flow**
 
 Root export flow:
 
@@ -1230,11 +1230,11 @@ if --dry-run: print and write dry-run report, exit 0 or 1 from blockers
 if write mode: validate Astro root, stage complete bilingual manifest, run Astro gate, replace managed roots, print and write write report
 ```
 
-- [ ] **Step 3: Implement build-from-review**
+- [x] **Step 3: Implement build-from-review**
 
 `build-from-review` uses the same validation and writer flow but never invokes Codex and never rewrites `en.md`. It may refresh generated `ru.md` because that is exporter-owned.
 
-- [ ] **Step 4: Implement bridge JSON schema**
+- [x] **Step 4: Implement bridge JSON schema**
 
 Every bridge response must contain exactly these top-level keys:
 
@@ -1260,7 +1260,7 @@ uncertain
 
 Values that do not apply must be JSON `null`, except list fields which must be empty lists when the Python command returns empty lists.
 
-- [ ] **Step 5: Create wrappers**
+- [x] **Step 5: Create wrappers**
 
 Create wrappers with the same defaults as the current Python scripts:
 
@@ -1282,7 +1282,7 @@ After native build they must prefer:
 target/astro-export
 ```
 
-- [ ] **Step 6: Run full JVM suite**
+- [x] **Step 6: Run full JVM suite**
 
 Run:
 
@@ -1292,7 +1292,7 @@ mvn test
 
 Expected: all migrated unit and CLI tests pass.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add src/main/java/dev/eugene/astroexport/cli src/test/java/dev/eugene/astroexport/cli scripts
