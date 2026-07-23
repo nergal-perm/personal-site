@@ -34,7 +34,7 @@ public final class PublicationDiscovery {
       return List.of();
     }
     if (result.exitCode() != 0) {
-      throw new IllegalStateException(result.stderr().isBlank()
+      throw new PublicationSearchException(result.stderr().isBlank()
           ? "rg failed with exit code " + result.exitCode()
           : result.stderr().strip());
     }
@@ -58,7 +58,7 @@ public final class PublicationDiscovery {
       try {
         document = FrontmatterDocument.parse(path, vaultPath, Files.readString(path, StandardCharsets.UTF_8));
       } catch (IOException exception) {
-        throw new IllegalStateException("could not read " + vaultPath, exception);
+        throw new PublicationSearchException("could not read " + vaultPath, exception);
       }
 
       Map<String, Object> metadata = document.metadata();
@@ -126,7 +126,7 @@ public final class PublicationDiscovery {
       Process process = new ProcessBuilder(command).directory(workingDirectory.toFile()).start();
       return drainProcess(process);
     } catch (IOException exception) {
-      throw new IllegalStateException("ripgrep (`rg`) is required for publication discovery", exception);
+      throw new PublicationSearchException("ripgrep (`rg`) is required for publication discovery", exception);
     }
   }
 
@@ -142,9 +142,9 @@ public final class PublicationDiscovery {
       return new ProcessResult(exitCode, stdout.content(), stderr.content());
     } catch (InterruptedException exception) {
       Thread.currentThread().interrupt();
-      throw new IllegalStateException("rg interrupted", exception);
+      throw new PublicationSearchException("rg interrupted", exception);
     } catch (IOException exception) {
-      throw new IllegalStateException("could not read rg output", exception);
+      throw new PublicationSearchException("could not read rg output", exception);
     }
   }
 
@@ -186,5 +186,15 @@ public final class PublicationDiscovery {
   }
 
   public record ProcessResult(int exitCode, String stdout, String stderr) {
+  }
+
+  public static final class PublicationSearchException extends RuntimeException {
+    public PublicationSearchException(String message) {
+      super(message);
+    }
+
+    public PublicationSearchException(String message, Throwable cause) {
+      super(message, cause);
+    }
   }
 }

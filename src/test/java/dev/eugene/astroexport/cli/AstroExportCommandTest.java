@@ -282,6 +282,49 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void refreshBridgeReportsMissingVaultDiscoveryFailureAsJson() throws Exception {
+    Path vault = temp.resolve("missing-vault");
+
+    CommandFixture.Result result = run(command(),
+        "refresh-publication-queue",
+        "--vault", vault.toString(),
+        "--json");
+
+    assertEquals(1, result.exitCode());
+    assertEquals(1, result.stdout().lines().count());
+    assertFalse(result.stdout().contains("Traceback"));
+    assertFalse(result.stderr().contains("Traceback"));
+    Map<String, Object> payload = json(result.stdout());
+    assertIterableEquals(BRIDGE_KEYS, payload.keySet());
+    assertEquals(1, payload.get("schemaVersion"));
+    assertEquals("refresh-publication-queue", payload.get("command"));
+    assertEquals(false, payload.get("ok"));
+    assertEquals("refresh_failed", payload.get("status"));
+    assertEquals(null, payload.get("note"));
+    assertEquals(null, payload.get("collection"));
+    assertEquals(null, payload.get("publicId"));
+    assertEquals(null, payload.get("reviewDirectory"));
+    assertEquals(null, payload.get("pairFreshness"));
+    assertEquals(null, payload.get("translationStatus"));
+    assertEquals(List.of(Map.of(
+        "field", "io",
+        "message", "Could not read publication files: PublicationSearchException.",
+        "blocking", true)), payload.get("diagnostics"));
+    assertEquals(List.of(), payload.get("workspaceHealth"));
+    assertEquals(null, payload.get("jobId"));
+    assertEquals(Map.of(
+        "metadata_blocked", 0,
+        "translating", 0,
+        "ready_for_review", 0,
+        "ready_to_publish", 0,
+        "translation_failed", 0,
+        "stale", 0), payload.get("summary"));
+    assertEquals(0, payload.get("updated"));
+    assertEquals(0, payload.get("unchanged"));
+    assertEquals(0, payload.get("uncertain"));
+  }
+
+  @Test
   void dryRunWritesReportWithoutOutReviewGateOrTracebackOnTranslationBlocker() throws Exception {
     Path vault = temp.resolve("vault");
     writeBlogNote(vault);

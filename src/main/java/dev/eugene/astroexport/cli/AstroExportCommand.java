@@ -1,6 +1,7 @@
 package dev.eugene.astroexport.cli;
 
 import dev.eugene.astroexport.assets.AssetResolver;
+import dev.eugene.astroexport.discovery.PublicationDiscovery;
 import dev.eugene.astroexport.fs.JnaFileDescriptor;
 import dev.eugene.astroexport.fs.SiteWriter;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
@@ -644,7 +645,12 @@ public final class AstroExportCommand implements Callable<Integer> {
   }
 
   private int refresh(Path vaultRoot, Path reviewRoot, Path jobsRoot) {
-    SelectionResult selection = services.select(vaultRoot);
+    SelectionResult selection;
+    try {
+      selection = services.select(vaultRoot);
+    } catch (PublicationDiscovery.PublicationSearchException | java.io.UncheckedIOException error) {
+      return refreshBridgeIoFailure(error);
+    }
     LinkedHashSet<String> paths = new LinkedHashSet<>();
     selection.included().stream().map(Note::vaultPath).sorted().forEach(paths::add);
     selection.excluded().stream().map(SelectionResult.Exclusion::vaultPath).sorted().forEach(paths::add);
@@ -773,6 +779,18 @@ public final class AstroExportCommand implements Callable<Integer> {
         .uncertain(uncertain)
         .build());
     return ok ? 0 : 1;
+  }
+
+  private int refreshBridgeIoFailure(RuntimeException error) {
+    emitJson(bridge("refresh-publication-queue", false, "refresh_failed")
+        .diagnostics(List.of(new PublicationDiagnostic(
+            "io", "Could not read publication files: " + error.getClass().getSimpleName() + ".")))
+        .summary(emptySummary())
+        .updated(0)
+        .unchanged(0)
+        .uncertain(0)
+        .build());
+    return 1;
   }
 
   private DerivedRefreshState deriveRefreshState(
