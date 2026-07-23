@@ -63,6 +63,20 @@ public final class ManifestBuilder {
       .appendValue(ChronoField.DAY_OF_WEEK)
       .toFormatter(Locale.ROOT)
       .withResolverStyle(ResolverStyle.STRICT);
+  private static final DateTimeFormatter ISO_WEEK_DATE_WITHOUT_DAY = new DateTimeFormatterBuilder()
+      .appendValue(IsoFields.WEEK_BASED_YEAR, 4)
+      .appendLiteral("-W")
+      .appendValue(IsoFields.WEEK_OF_WEEK_BASED_YEAR, 2)
+      .parseDefaulting(ChronoField.DAY_OF_WEEK, 1)
+      .toFormatter(Locale.ROOT)
+      .withResolverStyle(ResolverStyle.STRICT);
+  private static final DateTimeFormatter COMPACT_ISO_WEEK_DATE_WITHOUT_DAY = new DateTimeFormatterBuilder()
+      .appendValue(IsoFields.WEEK_BASED_YEAR, 4)
+      .appendLiteral('W')
+      .appendValue(IsoFields.WEEK_OF_WEEK_BASED_YEAR, 2)
+      .parseDefaulting(ChronoField.DAY_OF_WEEK, 1)
+      .toFormatter(Locale.ROOT)
+      .withResolverStyle(ResolverStyle.STRICT);
   private final PublicationValidator publicationValidator = new PublicationValidator();
   private final LinkProcessor linkProcessor = new LinkProcessor();
   private final EditorialParser editorialParser = new EditorialParser();
@@ -351,7 +365,9 @@ public final class ManifestBuilder {
     return parsesDate(value, DateTimeFormatter.ISO_LOCAL_DATE)
         || parsesDate(value, DateTimeFormatter.BASIC_ISO_DATE)
         || parsesDate(value, DateTimeFormatter.ISO_WEEK_DATE)
-        || parsesDate(value, COMPACT_ISO_WEEK_DATE);
+        || parsesDate(value, COMPACT_ISO_WEEK_DATE)
+        || parsesDate(value, ISO_WEEK_DATE_WITHOUT_DAY)
+        || parsesDate(value, COMPACT_ISO_WEEK_DATE_WITHOUT_DAY);
   }
 
   private static boolean parsesDate(String value, DateTimeFormatter formatter) {
@@ -773,10 +789,10 @@ public final class ManifestBuilder {
       return bool ? "True" : "False";
     }
     if (value instanceof Double number) {
-      return pythonDouble(number);
+      return pythonScalarDouble(number);
     }
     if (value instanceof Float number) {
-      return pythonDouble(number.doubleValue());
+      return pythonScalarDouble(number.doubleValue());
     }
     if (value instanceof List<?> list) {
       return pythonList(list);
@@ -785,6 +801,19 @@ public final class ManifestBuilder {
       return pythonMap(map);
     }
     return String.valueOf(value);
+  }
+
+  private static String pythonScalarDouble(double value) {
+    if (Double.isNaN(value)) {
+      return "nan";
+    }
+    if (value == Double.POSITIVE_INFINITY) {
+      return "inf";
+    }
+    if (value == Double.NEGATIVE_INFINITY) {
+      return "-inf";
+    }
+    return pythonDouble(value);
   }
 
   private static String pythonList(List<?> values) {

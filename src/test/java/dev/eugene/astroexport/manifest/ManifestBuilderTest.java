@@ -289,7 +289,7 @@ final class ManifestBuilderTest {
 
   @Test
   void acceptsPythonIsoDateFormsWithoutRewritingMetadata() {
-    for (String date : List.of("20260723", "2026-W30-4", "2026W304", "0001-01-01", "00010101", "0001-W01-1")) {
+    for (String date : List.of("20260723", "2026-W30-4", "2026W304", "2026-W30", "2026W30", "0001-01-01", "00010101", "0001-W01-1")) {
       Note common = note("blog/" + date + ".md", "Дата", "date-" + date.replaceAll("[^0-9]", ""), "blog", "essay", Map.of("date", date), "");
       assertEquals(date, only(builder.buildRussianManifest(selection(common))).metadata().get("date"));
 
@@ -315,6 +315,13 @@ final class ManifestBuilderTest {
       assertEquals("date", assertThrows(ManifestBuilder.ManifestValidationException.class,
           () -> builder.buildRussianManifest(selection(now))).fieldName());
     }
+
+    Note malformedWikilink = note("editorial/Now.md", "Сейчас", "now", "editorial", "curated_page", Map.of(
+        "editorialPage", "now", "date", "[[|2026-07-23]]", "status", "current"), editorialNowBody());
+    ManifestBuilder.ManifestValidationException malformedWikilinkError = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(malformedWikilink)));
+    assertEquals("date", malformedWikilinkError.fieldName());
+    assertEquals("must be a real YYYY-MM-DD date", malformedWikilinkError.reason());
   }
 
   @Test
@@ -636,6 +643,29 @@ final class ManifestBuilderTest {
     assertSelectedQuoteError(Map.of("kind", "invalid", "text", "Текст"), "selectedQuote.kind");
     assertSelectedQuoteError(Map.of("kind", "quote", "text", " "), "selectedQuote.text");
     assertSelectedQuoteError(Map.of("text", "Текст", "locator", 42), "selectedQuote.locator");
+  }
+
+  @Test
+  void stringifiesNonFiniteScalarsLikePythonAndHashesTheirRenderedValues() {
+    Note nonFiniteBook = note("bibliography/Book.md", "Книга", "book", "bibliography", "book", Map.of(
+        "author", "Автор",
+        "publication", Map.of("value", Double.NaN),
+        "readingStatus", List.of(Double.POSITIVE_INFINITY, Double.NEGATIVE_INFINITY)), "");
+    Note renderedBook = note("bibliography/Book.md", "Книга", "book", "bibliography", "book", Map.of(
+        "author", "Автор",
+        "publication", "{'value': nan}",
+        "readingStatus", "[inf, -inf]"), "");
+    Note scalarCommon = note("blog/Scalar.md", "Fallback", "scalar", "blog", "essay", Map.of(
+        "title", Double.NaN, "description", Double.POSITIVE_INFINITY), "");
+
+    var nonFiniteMetadata = only(builder.buildRussianManifest(selection(nonFiniteBook))).metadata();
+    var renderedMetadata = only(builder.buildRussianManifest(selection(renderedBook))).metadata();
+    var commonMetadata = only(builder.buildRussianManifest(selection(scalarCommon))).metadata();
+    assertEquals("{'value': nan}", nonFiniteMetadata.get("publication"));
+    assertEquals("[inf, -inf]", nonFiniteMetadata.get("readingStatus"));
+    assertEquals(renderedMetadata.get("sourceHash"), nonFiniteMetadata.get("sourceHash"));
+    assertEquals("nan", commonMetadata.get("title"));
+    assertEquals("inf", commonMetadata.get("description"));
   }
 
   @Test

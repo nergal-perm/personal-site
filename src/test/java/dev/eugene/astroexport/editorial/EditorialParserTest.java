@@ -108,7 +108,7 @@ final class EditorialParserTest {
 
   @Test
   void preservesPythonAcceptedNowDateFormsForManifestValidation() {
-    for (String date : List.of("20260723", "2026-W30-4", "2026W304")) {
+    for (String date : List.of("20260723", "2026-W30-4", "2026W304", "2026-W30", "2026W30")) {
       Map<String, Object> frontmatter = nowFrontmatter();
       frontmatter.put("date", date);
       assertEquals(date, parser.normalize("editorial/now.md", "now", frontmatter, nowBody(), common()).get("date"));
@@ -121,6 +121,14 @@ final class EditorialParserTest {
     frontmatter.put("date", "[[2026-07-15|2026-07-16]]");
 
     assertEquals("2026-07-16", parser.normalize("editorial/now.md", "now", frontmatter, nowBody(), common()).get("date"));
+  }
+
+  @Test
+  void leavesMalformedNowDateWikilinksUnchangedForManifestValidation() {
+    Map<String, Object> frontmatter = nowFrontmatter();
+    frontmatter.put("date", "[[|2026-07-23]]");
+
+    assertEquals("[[|2026-07-23]]", parser.normalize("editorial/now.md", "now", frontmatter, nowBody(), common()).get("date"));
   }
 
   @Test
