@@ -3,16 +3,13 @@ package dev.eugene.astroexport.review;
 import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.sun.jna.Function;
-import com.sun.jna.Native;
-import com.sun.jna.NativeLibrary;
-import com.sun.jna.Platform;
+import dev.eugene.astroexport.fs.AtomicExchange;
+import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.channels.FileChannel;
-import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -48,8 +45,7 @@ public final class ReviewWorkspace {
   private static final Pattern TRAILING_LINE_WHITESPACE = Pattern.compile("[ \\t]+(?=\\R|$)");
   private static final Pattern ALIASED_CONTROL_KEY = Pattern.compile(
       "(?m)^\\*[A-Za-z0-9_-]+[ \\t]*:");
-  private static final int EXCHANGE_FLAG = 0x00000002;
-  private static final int AT_FDCWD = -100;
+  private static final AtomicExchange ATOMIC_EXCHANGE = new JnaAtomicExchange();
   private static final ObjectMapper JSON = new ObjectMapper()
       .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION.mappedFeature());
   private static final Dump YAML_DUMP = new Dump(DumpSettings.builder()
@@ -627,36 +623,7 @@ public final class ReviewWorkspace {
   }
 
   private static void exchangePaths(Path first, Path second) throws IOException {
-    if (first.getFileSystem() != FileSystems.getDefault()
-        || second.getFileSystem() != FileSystems.getDefault()) {
-      throw new IOException("atomic path exchange requires the default local filesystem");
-    }
-    String firstPath = first.toAbsolutePath().toString();
-    String secondPath = second.toAbsolutePath().toString();
-    int result;
-    try {
-      NativeLibrary libc = NativeLibrary.getInstance(Platform.C_LIBRARY_NAME);
-      if (Platform.isMac()) {
-        Function exchange = libc.getFunction("renamex_np");
-        result = exchange.invokeInt(new Object[] {
-            firstPath, secondPath, EXCHANGE_FLAG
-        });
-      } else if (Platform.isLinux()) {
-        Function exchange = libc.getFunction("renameat2");
-        result = exchange.invokeInt(new Object[] {
-            AT_FDCWD, firstPath, AT_FDCWD, secondPath, EXCHANGE_FLAG
-        });
-      } else {
-        throw new IOException(
-            "atomic path exchange is unsupported on " + System.getProperty("os.name"));
-      }
-    } catch (UnsatisfiedLinkError error) {
-      throw new IOException("atomic path exchange is unavailable", error);
-    }
-    if (result != 0) {
-      int errorNumber = Native.getLastError();
-      throw new IOException("atomic path exchange failed with errno " + errorNumber);
-    }
+    ATOMIC_EXCHANGE.exchange(first, second);
   }
 
   private static void validateExpectedContent(Path target, byte[] expectedContent)

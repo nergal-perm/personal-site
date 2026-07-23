@@ -1,0 +1,350 @@
+package dev.eugene.astroexport.workflow;
+
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import dev.eugene.astroexport.fs.AtomicExchange;
+import dev.eugene.astroexport.fs.JnaAtomicExchange;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+final class WorkflowStateServiceTest {
+  private static final Instant UPDATED_AT = Instant.parse("2026-07-18T08:34:56Z");
+
+  @TempDir
+  Path temp;
+
+  @Test
+  void replacesOnlyOwnedWorkflowScalars() throws Exception {
+    Path source = write("essay.md", richSource());
+
+    new WorkflowStateService().updateWorkflowState(
+        source,
+        new WorkflowStateService.WorkflowUpdate(
+            "ready_for_review", "generated", "Check \"term\": line 2"),
+        UPDATED_AT);
+
+    assertEquals(
+        richSource()
+            .replace("publicWorkflowStatus: \"stale\"",
+                "publicWorkflowStatus: \"ready_for_review\"")
+            .replace("publicTranslationStatus: \"reviewed\"",
+                "publicTranslationStatus: \"generated\"")
+            .replace("publicWorkflowUpdated: \"2026-07-17T09:00:00Z\"",
+                "publicWorkflowUpdated: \"2026-07-18T08:34:56Z\"")
+            .replace("publicWorkflowDiagnostic: \"Old message\"",
+                "publicWorkflowDiagnostic: \"Check \\\"term\\\": line 2\""),
+        Files.readString(source));
+  }
+
+  @Test
+  void appendsMissingFieldsAndClearsTranslationStatus() throws Exception {
+    Path source = write("essay.md", "---\ntitle: Essay\n---\nBody.\n");
+
+    new WorkflowStateService().updateWorkflowState(
+        source,
+        new WorkflowStateService.WorkflowUpdate(
+            "metadata_blocked", null, "missing publicId"),
+        UPDATED_AT);
+
+    assertEquals("""
+        ---
+        title: Essay
+        publicWorkflowStatus: "metadata_blocked"
+        publicTranslationStatus: ""
+        publicWorkflowUpdated: "2026-07-18T08:34:56Z"
+        publicWorkflowDiagnostic: "missing publicId"
+        ---
+        Body.
+        """, Files.readString(source));
+  }
+
+  @Test
+  void rejectsDuplicateYamlKeysWithoutChangingSource() throws Exception {
+    String original = "---\ntitle: First\ntitle : Second\n---\nBody.\n";
+    Path source = write("essay.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("stale", null, ""),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("duplicate"));
+    assertEquals(original, Files.readString(source));
+  }
+
+  @Test
+  void rejectsAliasBasedWorkflowKeyWithoutChangingSource() throws Exception {
+    String original = """
+        ---
+        keyName: &workflowKey publicWorkflowStatus
+        *workflowKey: "stale"
+        title: Keep
+        ---
+        Body.
+        """;
+    Path source = write("essay.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("stale", null, ""),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("alias-based workflow key"));
+    assertEquals(original, Files.readString(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void rejectsNonScalarWorkflowField() throws Exception {
+    String original = """
+        ---
+        title: Essay
+        publicWorkflowDiagnostic:
+          nested: value
+        ---
+        Body.
+        """;
+    Path source = write("essay.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("stale", null, ""),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("must be a scalar"));
+    assertEquals(original, Files.readString(source));
+  }
+
+  @Test
+  void rejectsChangedSourceSnapshotWithoutOverwritingIt() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    byte[] concurrent = richSource().replace("# Heading", "# Concurrent").getBytes(StandardCharsets.UTF_8);
+    Files.write(source, concurrent);
+
+    assertThrows(
+        WorkflowStateService.ConcurrentFileUpdateException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, expected)));
+
+    assertArrayEquals(concurrent, Files.readAllBytes(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void rejectsChangedCompanionBeforeReplacingSource() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] sourceBefore = Files.readAllBytes(source);
+    Path companion = write("en.md", "reviewed English\n");
+    byte[] expectedCompanion = Files.readAllBytes(companion);
+    Files.writeString(companion, "concurrently edited English\n");
+
+    assertThrows(
+        WorkflowStateService.ConcurrentFileUpdateException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, sourceBefore),
+            new WorkflowStateService.SnapshotGuard(companion, expectedCompanion)));
+
+    assertArrayEquals(sourceBefore, Files.readAllBytes(source));
+    assertEquals("concurrently edited English\n", Files.readString(companion));
+  }
+
+  @Test
+  void rollsBackEditInjectedAtAtomicCommitBoundary() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    byte[] concurrent = richSource().replace("# Heading", "# Concurrent").getBytes(StandardCharsets.UTF_8);
+    AtomicInteger exchanges = new AtomicInteger();
+    AtomicExchange platform = new JnaAtomicExchange();
+    AtomicExchange injecting = (first, second) -> {
+      if (exchanges.incrementAndGet() == 1) {
+        Files.write(first, concurrent);
+      }
+      platform.exchange(first, second);
+    };
+
+    WorkflowStateService.ConcurrentFileUpdateException error = assertThrows(
+        WorkflowStateService.ConcurrentFileUpdateException.class,
+        () -> new WorkflowStateService(injecting).updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, expected)));
+
+    assertTrue(error.getMessage().contains("commit boundary"));
+    assertEquals(2, exchanges.get());
+    assertArrayEquals(concurrent, Files.readAllBytes(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void refusesUnsafeFallbackWhenAtomicExchangeIsUnavailable() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    AtomicExchange unavailable = (first, second) -> {
+      throw new AtomicExchange.AtomicExchangeUnavailableException("unavailable");
+    };
+
+    AtomicExchange.AtomicExchangeUnavailableException error = assertThrows(
+        AtomicExchange.AtomicExchangeUnavailableException.class,
+        () -> new WorkflowStateService(unavailable).updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, expected)));
+
+    assertEquals("unavailable", error.getMessage());
+    assertArrayEquals(expected, Files.readAllBytes(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void preservesDisplacedBytesWhenTargetChangesAfterExchange() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    byte[] concurrent = "---\ntitle: Concurrent\n---\nExternal.\n".getBytes(StandardCharsets.UTF_8);
+    AtomicInteger exchanges = new AtomicInteger();
+    AtomicExchange platform = new JnaAtomicExchange();
+    AtomicExchange injecting = (first, second) -> {
+      platform.exchange(first, second);
+      if (exchanges.incrementAndGet() == 1) {
+        Files.write(first, concurrent);
+      }
+    };
+
+    WorkflowStateService.ConcurrentFileUpdateException error = assertThrows(
+        WorkflowStateService.ConcurrentFileUpdateException.class,
+        () -> new WorkflowStateService(injecting).updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+            UPDATED_AT,
+            new WorkflowStateService.SnapshotGuard(source, expected)));
+
+    assertArrayEquals(concurrent, Files.readAllBytes(source));
+    assertNotNull(error.preservedPath());
+    assertArrayEquals(expected, Files.readAllBytes(error.preservedPath()));
+    assertTrue(error.preservedPath().getParent().getFileName().toString()
+        .startsWith(".essay.md.astro-export-conflict-"));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void clearBlanksOwnedValues() throws Exception {
+    Path source = write("essay.md", richSource());
+
+    new WorkflowStateService().clearWorkflowState(source, UPDATED_AT);
+
+    String rendered = Files.readString(source);
+    assertTrue(rendered.contains("publicWorkflowStatus: \"\""));
+    assertTrue(rendered.contains("publicTranslationStatus: \"\""));
+    assertTrue(rendered.contains("publicWorkflowUpdated: \"2026-07-18T08:34:56Z\""));
+    assertTrue(rendered.contains("publicWorkflowDiagnostic: \"\""));
+  }
+
+  @Test
+  void preservesSourcePermissionsAcrossGuardedExchange() throws Exception {
+    Path source = write("essay.md", richSource());
+    Files.setPosixFilePermissions(source, PosixFilePermissions.fromString("rw-r-----"));
+
+    new WorkflowStateService().updateWorkflowState(
+        source,
+        new WorkflowStateService.WorkflowUpdate("stale", null, ""),
+        UPDATED_AT);
+
+    assertEquals(
+        PosixFilePermissions.fromString("rw-r-----"),
+        Files.getPosixFilePermissions(source));
+  }
+
+  @Test
+  void retainsTemporaryRecoveryFileWhenPreservationCannotMoveIt() throws Exception {
+    Path source = write("essay.md", richSource());
+    byte[] expected = Files.readAllBytes(source);
+    byte[] concurrent = "---\ntitle: Concurrent\n---\nExternal.\n".getBytes(StandardCharsets.UTF_8);
+    AtomicExchange platform = new JnaAtomicExchange();
+    AtomicExchange injecting = (first, second) -> {
+      platform.exchange(first, second);
+      Files.write(first, concurrent);
+      Files.setPosixFilePermissions(temp, PosixFilePermissions.fromString("r-x------"));
+    };
+
+    WorkflowStateService.ConcurrentFileUpdateException error;
+    try {
+      error = assertThrows(
+          WorkflowStateService.ConcurrentFileUpdateException.class,
+          () -> new WorkflowStateService(injecting).updateWorkflowState(
+              source,
+              new WorkflowStateService.WorkflowUpdate("ready_for_review", "reviewed", ""),
+              UPDATED_AT,
+              new WorkflowStateService.SnapshotGuard(source, expected)));
+    } finally {
+      Files.setPosixFilePermissions(temp, PosixFilePermissions.fromString("rwx------"));
+    }
+
+    assertNotNull(error.preservedPath());
+    assertTrue(Files.exists(error.preservedPath()));
+    assertArrayEquals(expected, Files.readAllBytes(error.preservedPath()));
+  }
+
+  private Path write(String name, String content) throws IOException {
+    Path path = temp.resolve(name);
+    Files.writeString(path, content);
+    return path;
+  }
+
+  private void assertNoTemporaryFiles() throws IOException {
+    try (var paths = Files.list(temp)) {
+      assertFalse(paths.anyMatch(path -> path.getFileName().toString().endsWith(".tmp")));
+    }
+  }
+
+  private static String richSource() {
+    return """
+        ---
+        id: "essay-one"
+        title: 'Keep quotes: literally'
+        aliases:
+          - First alias
+          - "Second: alias"
+        publicWorkflowStatus: "stale"
+        summary: >-
+          First line
+          and second line.
+        publicTranslationStatus: "reviewed"
+        publicWorkflowUpdated: "2026-07-17T09:00:00Z"
+        description: |-
+          Line one.
+          Line two.
+        publicWorkflowDiagnostic: "Old message"
+        publish: true
+        ---
+        # Heading
+
+        Body with [[Wiki link|label]] and `code: intact`.
+        """;
+  }
+}
