@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
+import dev.eugene.astroexport.model.ManifestLink;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -176,6 +177,77 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void filtersOnlyDeclaredEditorialReferenceShapesAndRecordsProvenance() {
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("id", "home");
+    metadata.put("featured", "prototype-featured");
+    metadata.put("featuredLabel", "Prototype label");
+    metadata.put("featuredTitle", "Prototype title");
+    metadata.put("featuredText", "Prototype text");
+    metadata.put("featuredTraceAlt", "Prototype trace");
+    metadata.put("primary", "published-primary");
+    metadata.put("selected", List.of("published-first", "prototype-selected", "published-second"));
+    metadata.put("items", List.of("prototype-item", "published-first"));
+    metadata.put("paths", List.of(Map.of("route", "published-first", "title", "First"), Map.of("route", "prototype-path", "title", "Remove"), Map.of("route", "published-second", "title", "Second")));
+    metadata.put("routes", List.of(Map.of("route", "prototype-route", "title", "Remove"), Map.of("route", "published-primary", "title", "Primary")));
+    metadata.put("unrelated", Map.of("route", "prototype-unrelated"));
+    List<ManifestLink> stripped = new java.util.ArrayList<>();
+
+    ManifestBuilder.filterEditorialReferences("editorial/Home.md", metadata, List.of(referenceNote("published-first"), referenceNote("published-primary"), referenceNote("published-second")), stripped);
+
+    assertEquals(Map.of(
+        "id", "home", "primary", "published-primary", "selected", List.of("published-first", "published-second"), "items", List.of("published-first"),
+        "paths", List.of(Map.of("route", "published-first", "title", "First"), Map.of("route", "published-second", "title", "Second")),
+        "routes", List.of(Map.of("route", "published-primary", "title", "Primary")), "unrelated", Map.of("route", "prototype-unrelated")), metadata);
+    assertEquals(List.of(
+        new ManifestLink("editorial/Home.md", "prototype-featured", "editorial"),
+        new ManifestLink("editorial/Home.md", "prototype-selected", "editorial"),
+        new ManifestLink("editorial/Home.md", "prototype-item", "editorial"),
+        new ManifestLink("editorial/Home.md", "prototype-path", "editorial"),
+        new ManifestLink("editorial/Home.md", "prototype-route", "editorial")), stripped);
+  }
+
+  @Test
+  void prunesOnlyPageSpecificEditorialScalarDependencies() {
+    for (String page : List.of("home", "concepts")) {
+      String reference = page.equals("home") ? "featured" : "primary";
+      String dependent = page.equals("home") ? "featuredLabel" : "primaryLabel";
+      Map<String, Object> metadata = new LinkedHashMap<>(Map.of("id", page, reference, "prototype", dependent, "stale", "unrelated", "survives"));
+      List<ManifestLink> stripped = new java.util.ArrayList<>();
+      ManifestBuilder.filterEditorialReferences("editorial/" + page + ".md", metadata, List.of(), stripped);
+      assertFalse(metadata.containsKey(reference));
+      assertFalse(metadata.containsKey(dependent));
+      assertEquals("survives", metadata.get("unrelated"));
+      assertEquals(List.of(new ManifestLink("editorial/" + page + ".md", "prototype", "editorial")), stripped);
+    }
+  }
+
+  @Test
+  void excludesDeprecatedMusicEditorialFieldsAndHashesAfterReferenceFiltering() {
+    Note music = note("editorial/Music.md", "Музыка", "music", "editorial", "curated_page", Map.of("editorialPage", "music", "featured", "private", "formatLabel", "Формат", "focusLabel", "Фокус", "focusText", "Текст"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nМузыка.\n\n## Введение\n\nВведение.");
+    Map<String, Object> musicMetadata = only(builder.buildRussianManifest(selection(music))).metadata();
+    assertFalse(musicMetadata.containsKey("featured"));
+    assertFalse(musicMetadata.containsKey("formatLabel"));
+    assertFalse(musicMetadata.containsKey("focusLabel"));
+    assertFalse(musicMetadata.containsKey("focusText"));
+
+    Map<String, Object> filtered = new LinkedHashMap<>(Map.of("id", "home", "featured", "private", "featuredLabel", "Private label"));
+    List<ManifestLink> stripped = new java.util.ArrayList<>();
+    ManifestBuilder.filterEditorialReferences("editorial/Home.md", filtered, List.of(), stripped);
+    assertEquals(ManifestBuilder.sourceHash(filtered, "Body."), ManifestBuilder.sourceHash(Map.of("id", "home"), "Body."));
+  }
+
+  @Test
+  void sanitizesObsidianCommentsBeforeMetadataAndHashing() {
+    Note music = note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album"),
+        "## Контекст записи\n\nВидимый %%PRIVATE_CONTEXT%% текст с `%%INLINE%%`.\n\n```text\n%%FENCED%%\n```\n\n## Личная связь\n\nВидимая %%PRIVATE_ASSOCIATION%% связь.");
+    var entry = only(builder.buildRussianManifest(selection(music)));
+    assertFalse((entry.metadata().toString() + entry.body()).contains("PRIVATE_"));
+    assertEquals(ManifestBuilder.sourceHash(entry.metadata(), entry.body()), entry.metadata().get("sourceHash"));
+  }
+
+  @Test
   void hashesMetadataWithThePythonJsonSerializationShape() {
     Note essay = note("blog/Essay.md", "Эссе", "essay", "blog", "essay", Map.of(), "Текст.");
     assertEquals("be5955d941c6bff7f72cb68ae4d79ec3d7ba6209b3d206d224765644eb743a23",
@@ -203,5 +275,6 @@ final class ManifestBuilderTest {
     Map<String, Object> metadata = new LinkedHashMap<>(); metadata.put("title", title); metadata.put("publish", true); metadata.put("publicId", id); metadata.put("publicCollection", collection); metadata.put("publicContentType", type); metadata.putAll(extra);
     return new Note(Path.of(path), path, title, metadata, body, true, id, collection, type, List.of());
   }
+  private static Note referenceNote(String id) { return new Note(Path.of(id + ".md"), id + ".md", id, Map.of(), "", true, id, "blog", "note", List.of()); }
   private static String homeWithLinkedCurrentCards() { return "## Кратко\n\nКратко.\n\n## Eyebrow\n\nГлавная.\n\n## Hero\n\n### Заголовок\n\nЗаголовок.\n\n### Лид\n\nЛид.\n\n### Описание изображения\n\nAlt.\n\n## Сейчас\n\n### Изучаю\n\n[[Study source|Текущий фокус]]\n\nОписание.\n\n### Создаю\n\n[[Build source|Текущая сборка]]\n\nОписание.\n\n### Читаю\n\n[[Book source|Текущая книга]]\n\nОписание.\n\n### Слушаю\n\n[[Album source|Текущий альбом]]\n\nОписание."; }
 }

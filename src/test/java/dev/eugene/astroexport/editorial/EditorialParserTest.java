@@ -26,6 +26,21 @@ final class EditorialParserTest {
   }
 
   @Test
+  void normalizesCompletePageSpecificShapes() {
+    assertEquals(Map.of("heroTitle", "Заголовок.", "lead", "Лид.", "heroImageAlt", "Alt.", "currentTitle", "Сейчас", "current", List.of(
+        Map.of("key", "studying", "label", "Изучаю", "layout", "text", "title", "Тема", "text", "Описание"),
+        Map.of("key", "building", "label", "Создаю", "layout", "text", "title", "Проект", "text", "Описание"),
+        Map.of("key", "reading", "label", "Читаю", "layout", "book", "title", "Книга", "text", "Описание"),
+        Map.of("key", "listening", "label", "Слушаю", "layout", "album", "title", "Альбом", "text", "Описание"))), pageSpecific(parser.normalize("editorial/home.md", "home", frontmatter("home"), homeBody(), common())));
+    assertEquals(Map.of("listPrincipleTitle", "Принцип списка", "listPrincipleText", "Принцип.", "searchPlaceholder", "Искать", "showcase", List.of(), "pinned", List.of()), pageSpecific(parser.normalize("editorial/essays.md", "essays", frontmatter("essays"), collectionBody("Принцип списка", "Принцип.\n\nПодсказка поиска:: Искать"), common())));
+    assertEquals(Map.of("heading", "Три типа заметок", "groups", List.of("Рабочие"), "showcase", List.of(), "pinned", List.of(), "libraryAction", "Библиотека", "conceptsAction", "Концепты"), pageSpecific(parser.normalize("editorial/notes.md", "notes", frontmatter("notes"), base() + "## Три типа заметок\n\n- Рабочие\n\nДействие библиотеки:: Библиотека\nДействие концептов:: Концепты", common())));
+    assertEquals(Map.of("intro", "Введение.", "showcase", List.of(), "pinned", List.of()), pageSpecific(parser.normalize("editorial/music.md", "music", frontmatter("music"), base() + "## Введение\n\nВведение.", common())));
+    assertEquals(Map.of("primaryLabel", "Материал", "showcase", List.of(), "pinned", List.of()), pageSpecific(parser.normalize("editorial/concepts.md", "concepts", frontmatter("concepts"), base() + "## Базовый концепт\n\nМетка:: Материал", common())));
+    assertEquals(Map.of("date", "2026-07-15", "status", "current", "updatedLabel", "Сегодня.", "sections", List.of(Map.of("label", "Читаю", "title", "Текущий материал", "text", "Текст.")), "questionAction", "Вопрос", "listeningAction", "Запись"), pageSpecific(parser.normalize("editorial/now.md", "now", nowFrontmatter(), nowBody(), common())));
+    assertEquals(Map.of("lead", "Лид.", "principles", List.of(List.of("Первый", "Принцип.")), "colophon", "Колофон."), pageSpecific(parser.normalize("editorial/about.md", "about", frontmatter("about"), base() + "## Лид\n\nЛид.\n\n## Принципы\n\n### Первый\n\nПринцип.\n\n## Колофон\n\nКолофон.", common())));
+  }
+
+  @Test
   void preservesOptionalShowcaseTargetsAndProse() {
     Map<String, Object> metadata = parser.normalize("editorial/essays.md", "essays", frontmatter("essays"), collectionBody("Принцип списка", "Принцип.\n\nПодсказка поиска:: Искать") + "\n\n## Витрина\n\n### [[Essay One]]\n\nНачать с текста.", common());
     assertEquals(List.of(Map.of("target", "Essay One", "text", "Начать с текста.")), metadata.get("showcase"));
@@ -38,6 +53,14 @@ final class EditorialParserTest {
         () -> parser.normalize("editorial/home.md", "home", frontmatter("home"), base(), common()));
     assertEquals("heroTitle", error.fieldName());
     assertEquals("requires heading `## Hero`", error.reason());
+  }
+
+  @Test
+  void reportsExactTargetForDuplicateRequiredHeadings() {
+    EditorialParser.ManifestValidationException error = assertThrows(EditorialParser.ManifestValidationException.class,
+        () -> parser.normalize("editorial/home.md", "home", frontmatter("home"), homeBody() + "\n\n## Hero\n\n### Заголовок\n\nПовтор.", common()));
+    assertEquals("heroTitle", error.fieldName());
+    assertEquals("requires exactly one heading `## Hero`", error.reason());
   }
 
   @Test
@@ -82,4 +105,5 @@ final class EditorialParserTest {
   private static String collectionBody(String heading, String content) { return base() + "## " + heading + "\n\n" + content; }
   private static String homeBody() { return base() + "## Hero\n\n### Заголовок\n\nЗаголовок.\n\n### Лид\n\nЛид.\n\n### Описание изображения\n\nAlt.\n\n## Сейчас\n\n### Изучаю\n\nТема\n\nОписание\n\n### Создаю\n\nПроект\n\nОписание\n\n### Читаю\n\nКнига\n\nОписание\n\n### Слушаю\n\nАльбом\n\nОписание"; }
   private static String nowBody() { return base() + "## Обновлено\n\nСегодня.\n\n## Читаю\n\n### Текущий материал\n\nТекст.\n\nДействие вопроса:: Вопрос\nДействие записи:: Запись"; }
+  private static Map<String, Object> pageSpecific(Map<String, Object> metadata) { Map<String, Object> result = new LinkedHashMap<>(metadata); for (String key : List.of("id", "title", "topics", "links", "type", "searchable", "summary", "eyebrow")) result.remove(key); return result; }
 }
