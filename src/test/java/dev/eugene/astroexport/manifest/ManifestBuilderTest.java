@@ -130,6 +130,39 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void stringifiesYamlNativeBibliographyValuesLikePython() {
+    Map<String, Object> compound = new LinkedHashMap<>();
+    compound.put("x", 1);
+    compound.put("enabled", true);
+    compound.put("missing", null);
+    Note exponent = note("bibliography/Exponent.md", "Exponent", "exponent", "bibliography", "book",
+        Map.of("author", "Автор", "publication", 1e20), "");
+    Note list = note("bibliography/List.md", "List", "list", "bibliography", "book",
+        Map.of("author", "Автор", "publication", Arrays.asList(1, "a", true, null)), "");
+    Note map = note("bibliography/Map.md", "Map", "map", "bibliography", "book",
+        Map.of("author", "Автор", "publication", compound), "");
+
+    var result = builder.buildRussianManifest(selection(exponent, list, map));
+    assertEquals("1e+20", byId(result, "exponent").metadata().get("publication"));
+    assertEquals("[1, 'a', True, None]", byId(result, "list").metadata().get("publication"));
+    assertEquals("{'x': 1, 'enabled': True, 'missing': None}", byId(result, "map").metadata().get("publication"));
+  }
+
+  @Test
+  void appliesPythonTruthinessToTitlesAndClaimStatementDescriptions() {
+    Note falseTitle = note("blog/False.md", "Fallback false", "false-title", "blog", "essay", Map.of("title", false), "");
+    Note zeroTitle = note("blog/Zero.md", "Fallback zero", "zero-title", "blog", "essay", Map.of("title", 0), "");
+    Note claim = note("claims/Claim.md", "Claim", "claim", "blog", "claim", Map.of(
+        "statement", false, "description", "Описание тезиса."), "");
+
+    var result = builder.buildRussianManifest(selection(falseTitle, zeroTitle, claim));
+    assertEquals("Fallback false", byId(result, "false-title").metadata().get("title"));
+    assertEquals("Fallback zero", byId(result, "zero-title").metadata().get("title"));
+    assertEquals("Описание тезиса.", byId(result, "claim").metadata().get("description"));
+    assertEquals("Описание тезиса.", byId(result, "claim").metadata().get("statement"));
+  }
+
+  @Test
   void appliesHtml5NumericReferenceReplacementRulesInBookDescriptions() {
     Note book = note("bibliography/Book.md", "Book", "book", "bibliography", "book", Map.of("author", "Автор"),
         "<div class=\"book-description\"><p>&#0;|&#128;|&#x80;|&#55296;|&#xD800;|&#57344;|&#1114112;|&#x110000;|&#x1F600;</p></div>");

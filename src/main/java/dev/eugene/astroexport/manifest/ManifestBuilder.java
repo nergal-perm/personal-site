@@ -164,9 +164,7 @@ public final class ManifestBuilder {
   }
   private static String title(Note note) {
     Object value = note.frontmatter().get("title");
-    return value == null || pythonScalar(value).strip().isEmpty()
-        ? note.title().strip()
-        : pythonScalar(value).strip();
+    return pythonTruthy(value) ? pythonScalar(value).strip() : note.title().strip();
   }
 
   private static String description(Note note) {
@@ -184,7 +182,8 @@ public final class ManifestBuilder {
       return bookDescription(note.body());
     }
     if (note.publicCollection().equals("blog") && note.publicContentType().equals("claim")) {
-      return string(note.frontmatter().get("statement"));
+      Object statement = note.frontmatter().get("statement");
+      return pythonTruthy(statement) ? pythonScalar(statement).strip() : "";
     }
     return "";
   }
@@ -693,7 +692,65 @@ public final class ManifestBuilder {
     if (value instanceof Boolean bool) {
       return bool ? "True" : "False";
     }
+    if (value instanceof Double number) {
+      return pythonDouble(number);
+    }
+    if (value instanceof Float number) {
+      return pythonDouble(number.doubleValue());
+    }
+    if (value instanceof List<?> list) {
+      return pythonList(list);
+    }
+    if (value instanceof Map<?, ?> map) {
+      return pythonMap(map);
+    }
     return String.valueOf(value);
+  }
+
+  private static String pythonList(List<?> values) {
+    List<String> rendered = new ArrayList<>();
+    for (Object value : values) {
+      rendered.add(pythonRepr(value));
+    }
+    return "[" + String.join(", ", rendered) + "]";
+  }
+
+  private static String pythonMap(Map<?, ?> values) {
+    List<String> rendered = new ArrayList<>();
+    for (Map.Entry<?, ?> entry : values.entrySet()) {
+      rendered.add(pythonRepr(entry.getKey()) + ": " + pythonRepr(entry.getValue()));
+    }
+    return "{" + String.join(", ", rendered) + "}";
+  }
+
+  private static String pythonRepr(Object value) {
+    if (value instanceof String text) {
+      return "'" + text.replace("\\", "\\\\").replace("'", "\\'")
+          .replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t") + "'";
+    }
+    return pythonScalar(value);
+  }
+
+  private static boolean pythonTruthy(Object value) {
+    if (value == null) {
+      return false;
+    }
+    if (value instanceof Boolean bool) {
+      return bool;
+    }
+    if (value instanceof Number number) {
+      return number.doubleValue() != 0.0d;
+    }
+    if (value instanceof CharSequence text) {
+      return text.length() > 0;
+    }
+    if (value instanceof List<?> list) {
+      return !list.isEmpty();
+    }
+    if (value instanceof Map<?, ?> map) {
+      return !map.isEmpty();
+    }
+    return true;
   }
 
   private static String bookDescription(String body) {
