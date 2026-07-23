@@ -109,25 +109,62 @@ public final class EditorialParser {
   }
 
   private static Map<String, Object> now(Document document, String path, Map<String, Object> frontmatter) {
-    Section updated = section(document, "Обновлено", path, "updatedLabel"); int start = document.sections.indexOf(updated) + 1;
-    if (start == document.sections.size()) fail(path, "sections", "must contain at least one section after `## Обновлено`");
-    List<Map<String, Object>> sections = new ArrayList<>(); List<String> actionLines = new ArrayList<>();
-    for (int i = start; i < document.sections.size(); i++) {
-      Section item = document.sections.get(i); actionLines.addAll(item.allLines());
-      if (item.children.size() != 1) fail(path, "sections[" + (i - start) + "].title", "requires exactly one H3 heading");
-      Child child = item.children.getFirst(); if (child.title.isEmpty()) fail(path, "sections[" + (i - start) + "].title", "must be non-empty");
-      sections.add(Map.of("label", item.title, "title", child.title, "text", text(child.lines, path, "sections[" + (i - start) + "].text")));
+    Section updated = section(document, "Обновлено", path, "updatedLabel");
+    int start = document.sections.indexOf(updated) + 1;
+    if (start == document.sections.size()) {
+      fail(path, "sections", "must contain at least one section after `## Обновлено`");
     }
-    String date = normalizeDate(frontmatter.get("date")); if (date == null) fail(path, "date", "must be provided for the now page");
-    Object status = frontmatter.get("status"); if (!(status instanceof String value) || value.strip().isEmpty()) fail(path, "status", "must be a non-empty string for the now page");
-    Map<String, Object> result = new LinkedHashMap<>(); result.put("date", date); result.put("status", ((String) status).strip()); result.put("updatedLabel", text(updated.leading, path, "updatedLabel")); result.put("sections", sections);
-    result.put("questionAction", inline(actionLines, "Действие вопроса", path, "questionAction")); result.put("listeningAction", inline(actionLines, "Действие записи", path, "listeningAction")); return result;
+    List<Map<String, Object>> sections = new ArrayList<>();
+    List<String> actionLines = new ArrayList<>();
+    for (int i = start; i < document.sections.size(); i++) {
+      Section item = document.sections.get(i);
+      actionLines.addAll(item.allLines());
+      if (item.children.size() != 1) {
+        fail(path, "sections[" + (i - start) + "].title", "requires exactly one H3 heading");
+      }
+      Child child = item.children.getFirst();
+      if (child.title.isEmpty()) {
+        fail(path, "sections[" + (i - start) + "].title", "must be non-empty");
+      }
+      Map<String, Object> section = new LinkedHashMap<>();
+      section.put("label", item.title);
+      section.put("title", child.title);
+      section.put("text", text(child.lines, path, "sections[" + (i - start) + "].text"));
+      sections.add(section);
+    }
+    String date = normalizeDate(frontmatter.get("date"));
+    if (date == null) {
+      fail(path, "date", "must be provided for the now page");
+    }
+    Object status = frontmatter.get("status");
+    if (!(status instanceof String value) || value.strip().isEmpty()) {
+      fail(path, "status", "must be a non-empty string for the now page");
+    }
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("date", date);
+    result.put("status", ((String) status).strip());
+    result.put("updatedLabel", text(updated.leading, path, "updatedLabel"));
+    result.put("sections", sections);
+    result.put("questionAction", inline(actionLines, "Действие вопроса", path, "questionAction"));
+    result.put("listeningAction", inline(actionLines, "Действие записи", path, "listeningAction"));
+    return result;
   }
 
   private static Map<String, Object> about(Document document, String path) {
-    Section principles = section(document, "Принципы", path, "principles"); if (principles.children.isEmpty()) fail(path, "principles", "must contain at least one H3 and prose pair");
-    List<List<String>> values = new ArrayList<>(); for (int i = 0; i < principles.children.size(); i++) { Child child = principles.children.get(i); values.add(List.of(child.title, text(child.lines, path, "principles[" + i + "][1]"))); }
-    return Map.of("lead", text(section(document, "Лид", path, "lead").leading, path, "lead"), "principles", values, "colophon", text(section(document, "Колофон", path, "colophon").leading, path, "colophon"));
+    Section principles = section(document, "Принципы", path, "principles");
+    if (principles.children.isEmpty()) {
+      fail(path, "principles", "must contain at least one H3 and prose pair");
+    }
+    List<List<String>> values = new ArrayList<>();
+    for (int i = 0; i < principles.children.size(); i++) {
+      Child child = principles.children.get(i);
+      values.add(List.of(child.title, text(child.lines, path, "principles[" + i + "][1]")));
+    }
+    Map<String, Object> result = new LinkedHashMap<>();
+    result.put("lead", text(section(document, "Лид", path, "lead").leading, path, "lead"));
+    result.put("principles", values);
+    result.put("colophon", text(section(document, "Колофон", path, "colophon").leading, path, "colophon"));
+    return result;
   }
 
   private static Map<String, Object> showcase(Document document, String path) {

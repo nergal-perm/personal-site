@@ -306,7 +306,12 @@ public final class ManifestBuilder {
       validateDate(note, metadata, field);
     }
     List<?> topics = (List<?>) metadata.get("topics");
-    List<String> unknown = topics.stream().map(Object::toString).filter(value -> !TOPICS.contains(value)).distinct().sorted().toList();
+    List<String> unknown = topics.stream()
+        .map(Object::toString)
+        .filter(value -> !TOPICS.contains(value))
+        .distinct()
+        .sorted(ManifestBuilder::compareUnicodeCodePoints)
+        .toList();
     if (!unknown.isEmpty()) throw new ManifestValidationException(note.vaultPath(), "topics", "contains unsupported values: " + String.join(", ", unknown));
     for (String field : List.of("description", "cover", "status")) optionalString(note, metadata, field);
     if (metadata.containsKey("foundational") && !(metadata.get("foundational") instanceof Boolean)) throw new ManifestValidationException(note.vaultPath(), "foundational", "must be a boolean");

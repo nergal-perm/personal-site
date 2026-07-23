@@ -426,6 +426,28 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void recordsEditorialLinksInPythonFieldOrderForAboutAndNow() {
+    Note about = note("editorial/About.md", "О проекте", "about", "editorial", "curated_page", Map.of("editorialPage", "about"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nО проекте.\n\n## Лид\n\n[[Lead target]] [[Lead private]]\n\n## Принципы\n\n### Принцип\n\n[[Principle target]] [[Principle private]]\n\n## Колофон\n\n[[Colophon target]] [[Colophon private]]");
+    Note now = note("editorial/Now.md", "Сейчас", "now", "editorial", "curated_page", Map.of(
+        "editorialPage", "now", "date", "2026-07-15", "status", "current"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nСейчас.\n\n## Обновлено\n\nСегодня.\n\n## Читаю\n\n### [[Title target]]\n\n[[Text target]] [[Text private]]\n\nДействие вопроса:: [[Question target]]\nДействие записи:: [[Listening target]]");
+    Note lead = note("blog/Lead.md", "Lead target", "lead", "blog", "note", Map.of(), "");
+    Note principle = note("blog/Principle.md", "Principle target", "principle", "blog", "note", Map.of(), "");
+    Note colophon = note("blog/Colophon.md", "Colophon target", "colophon", "blog", "note", Map.of(), "");
+    Note title = note("blog/Title.md", "Title target", "title", "blog", "note", Map.of(), "");
+    Note text = note("blog/Text.md", "Text target", "text", "blog", "note", Map.of(), "");
+    Note question = note("blog/Question.md", "Question target", "question", "blog", "note", Map.of(), "");
+    Note listening = note("blog/Listening.md", "Listening target", "listening", "blog", "note", Map.of(), "");
+
+    var result = builder.buildRussianManifest(selection(about, now, lead, principle, colophon, title, text, question, listening));
+    assertEquals(List.of("Lead target", "Principle target", "Colophon target", "Title target", "Text target", "Question target", "Listening target"),
+        result.retainedLinks().stream().map(ManifestLink::target).toList());
+    assertEquals(List.of("Lead private", "Principle private", "Colophon private", "Text private"),
+        result.strippedLinks().stream().map(ManifestLink::target).toList());
+  }
+
+  @Test
   void allowsHomeCurrentPlainTitlesWithoutTargets() {
     Note home = note("editorial/Home.md", "Главная", "home", "editorial", "curated_page", Map.of("editorialPage", "home"),
         homeWithLinkedCurrentCards().replace("[[Build source|Текущая сборка]]", "Текущая сборка"));
@@ -877,6 +899,16 @@ final class ManifestBuilderTest {
     assertEquals("blog/Invalid.md", error.sourcePath());
     assertEquals("topics", error.fieldName());
     assertEquals("contains unsupported values: unsupported", error.reason());
+  }
+
+  @Test
+  void sortsUnsupportedTopicDiagnosticsByUnicodeCodePoint() {
+    Note invalid = note("blog/Invalid.md", "Invalid", "invalid", "blog", "essay", Map.of(
+        "topics", List.of("😀", "💡", "𐐀", "\uE000")), "");
+
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(invalid)));
+    assertEquals("contains unsupported values: \uE000, 𐐀, 💡, 😀", error.reason());
   }
 
   @Test
