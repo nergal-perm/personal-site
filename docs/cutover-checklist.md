@@ -1,7 +1,34 @@
 # Cutover Checklist
 
 - [x] Python source status captured with `git status --short /Users/eugene/Documents/personal-wiki/tools/astro-export`.
-  Evidence captured on 2026-07-23: Python oracle tree was dirty, including modified `tools/astro-export/src/astro_export/cli.py`, `publication_contract.py`, `workflow_state.py`, `tests/test_cli.py`, `README.md`, multiple review files, and four untracked review directories.
+  Evidence captured on 2026-07-23 from `/Users/eugene/Documents/personal-wiki`:
+  ```text
+   M tools/astro-export/README.md
+   M tools/astro-export/review/bibliography/book-the-lean-startup/en.md
+   M tools/astro-export/review/bibliography/book-the-lean-startup/ru.md
+   M tools/astro-export/review/blog/innovations-need-special-accounting/en.md
+   M tools/astro-export/review/blog/innovations-need-special-accounting/ru.md
+   M tools/astro-export/review/blog/lean-startup-based-on-the-busted-myth/en.md
+   M tools/astro-export/review/blog/lean-startup-based-on-the-busted-myth/ru.md
+   M tools/astro-export/review/blog/startup-goal-is-to-learn/en.md
+   M tools/astro-export/review/blog/startup-goal-is-to-learn/ru.md
+   M tools/astro-export/review/blog/startup-is-uncertainty/en.md
+   M tools/astro-export/review/blog/startup-is-uncertainty/ru.md
+   M tools/astro-export/review/blog/startup-management-uncertainty/en.md
+   M tools/astro-export/review/blog/startup-management-uncertainty/ru.md
+   M tools/astro-export/review/blog/work-without-learning-is-waste/en.md
+   M tools/astro-export/review/blog/work-without-learning-is-waste/ru.md
+   M tools/astro-export/review/concepts/org-3-0/en.md
+   M tools/astro-export/review/concepts/org-3-0/ru.md
+   M tools/astro-export/src/astro_export/cli.py
+   M tools/astro-export/src/astro_export/publication_contract.py
+   M tools/astro-export/src/astro_export/workflow_state.py
+   M tools/astro-export/tests/test_cli.py
+  ?? tools/astro-export/review/blog/management-of-unpredictable-is-predictable/
+  ?? tools/astro-export/review/blog/startup-is-feedback-driven/
+  ?? tools/astro-export/review/blog/vision-strategy-product-as-falsifiability-gradient/
+  ?? tools/astro-export/review/concepts/structural-shifts-of-increased-productivity/
+  ```
 - [x] Java `mvn test` passes.
   Evidence command: `env JAVA_HOME=/Users/eugene/.sdkman/candidates/java/25.0.4-graal PATH=/Users/eugene/.sdkman/candidates/java/25.0.4-graal/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin /opt/homebrew/bin/mvn test`.
 - [x] Java `mvn -Pnative native:compile` passes.
