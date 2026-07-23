@@ -248,6 +248,75 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void usesEditorialSpecificCommonMetadataWithoutContentFieldLeakage() {
+    Note library = note("editorial/Library.md", "Библиотека", "library", "editorial", "curated_page", Map.of(
+        "editorialPage", "library", "description", "Не экспортировать.", "tags", List.of("private"),
+        "aliases", List.of("Приватный псевдоним"), "date", "2024-01-01", "updated", "2024-01-02"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nЧтение.");
+    var entry = only(builder.buildRussianManifest(selection(library)));
+    Map<String, Object> metadata = entry.metadata();
+    assertEquals("library", metadata.get("id"));
+    assertEquals("Библиотека", metadata.get("title"));
+    assertEquals(List.of(), metadata.get("topics"));
+    assertEquals(List.of(), metadata.get("links"));
+    assertEquals("ru", metadata.get("language"));
+    for (String leaked : List.of("publish", "description", "tags", "aliases", "date", "updated", "cover", "foundational", "readTime")) assertFalse(metadata.containsKey(leaked));
+    assertEquals(ManifestBuilder.sourceHash(metadata, entry.body()), metadata.get("sourceHash"));
+  }
+
+  @Test
+  void keepsEditorialNowDateOnlyThroughPageSpecificParsing() {
+    Note now = note("editorial/Now.md", "Сейчас", "now", "editorial", "curated_page", Map.of(
+        "editorialPage", "now", "date", "2026-07-15", "updated", "2026-07-16", "status", "current"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nСейчас.\n\n## Обновлено\n\nСегодня.\n\n## Читаю\n\n### Материал\n\nТекст.\n\nДействие вопроса:: Вопрос\nДействие записи:: Запись");
+    Map<String, Object> metadata = only(builder.buildRussianManifest(selection(now))).metadata();
+    assertEquals("2026-07-15", metadata.get("date"));
+    assertFalse(metadata.containsKey("updated"));
+  }
+
+  @Test
+  void rejectsTypedBibliographyFieldsAndSelectedQuoteShapes() {
+    for (String field : List.of("publication", "readingStatus", "use", "boundary")) {
+      Map<String, Object> extra = new LinkedHashMap<>(Map.of("author", "Автор"));
+      extra.put(field, 42);
+      ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+          () -> builder.buildRussianManifest(selection(note("bibliography/Book.md", "Книга", "book", "bibliography", "book", extra, ""))));
+      assertEquals(field, error.fieldName());
+    }
+    assertSelectedQuoteError("bad", "selectedQuote");
+    assertSelectedQuoteError(Map.of("kind", "invalid", "text", "Текст"), "selectedQuote.kind");
+    assertSelectedQuoteError(Map.of("kind", "quote", "text", " "), "selectedQuote.text");
+    assertSelectedQuoteError(Map.of("text", "Текст", "locator", 42), "selectedQuote.locator");
+  }
+
+  @Test
+  void rejectsTypedClaimListsAndMalformedSourceRecords() {
+    for (String field : List.of("claimKinds", "supports", "opposes", "assumes", "refines", "contradicts")) {
+      Map<String, Object> extra = new LinkedHashMap<>(Map.of("statement", "Тезис."));
+      extra.put(field, List.of(42));
+      ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+          () -> builder.buildRussianManifest(selection(note("claims/Claim.md", "Тезис", "claim", "blog", "claim", extra, ""))));
+      assertEquals(field, error.fieldName());
+    }
+    ManifestBuilder.ManifestValidationException sources = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("claims/Claim.md", "Тезис", "claim", "blog", "claim", Map.of("statement", "Тезис.", "sources", "не список"), ""))));
+    assertEquals("sources", sources.fieldName());
+    ManifestBuilder.ManifestValidationException sourceObject = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("claims/Claim.md", "Тезис", "claim", "blog", "claim", Map.of("statement", "Тезис.", "sources", List.of("не объект")), ""))));
+    assertEquals("sources[0]", sourceObject.fieldName());
+  }
+
+  @Test
+  void retainsFrontmatterLinksOnlyWhenTheyArePublicIds() {
+    Note source = note("blog/Source.md", "Источник", "source", "blog", "note", Map.of("links", List.of("Public title", "Public alias", "notes/Target", "public-id")), "");
+    Note target = new Note(Path.of("notes/Target.md"), "notes/Target.md", "Public title", Map.of("title", "Public title", "publish", true, "publicId", "public-id", "publicCollection", "blog", "publicContentType", "note"), "", true, "public-id", "blog", "note", List.of("Public alias"));
+    var result = builder.buildRussianManifest(selection(source, target));
+    assertEquals(List.of("public-id"), byId(result, "source").metadata().get("links"));
+    assertEquals(List.of("Public title", "Public alias", "notes/Target"), result.strippedLinks().stream().filter(link -> link.kind().equals("frontmatter")).map(ManifestLink::target).toList());
+    assertEquals(List.of("public-id"), result.retainedLinks().stream().filter(link -> link.kind().equals("frontmatter")).map(ManifestLink::target).toList());
+  }
+
+  @Test
   void hashesMetadataWithThePythonJsonSerializationShape() {
     Note essay = note("blog/Essay.md", "Эссе", "essay", "blog", "essay", Map.of(), "Текст.");
     assertEquals("be5955d941c6bff7f72cb68ae4d79ec3d7ba6209b3d206d224765644eb743a23",
@@ -276,5 +345,10 @@ final class ManifestBuilderTest {
     return new Note(Path.of(path), path, title, metadata, body, true, id, collection, type, List.of());
   }
   private static Note referenceNote(String id) { return new Note(Path.of(id + ".md"), id + ".md", id, Map.of(), "", true, id, "blog", "note", List.of()); }
+  private void assertSelectedQuoteError(Object selectedQuote, String field) {
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(note("bibliography/Book.md", "Книга", "book", "bibliography", "book", Map.of("author", "Автор", "selectedQuote", selectedQuote), ""))));
+    assertEquals(field, error.fieldName());
+  }
   private static String homeWithLinkedCurrentCards() { return "## Кратко\n\nКратко.\n\n## Eyebrow\n\nГлавная.\n\n## Hero\n\n### Заголовок\n\nЗаголовок.\n\n### Лид\n\nЛид.\n\n### Описание изображения\n\nAlt.\n\n## Сейчас\n\n### Изучаю\n\n[[Study source|Текущий фокус]]\n\nОписание.\n\n### Создаю\n\n[[Build source|Текущая сборка]]\n\nОписание.\n\n### Читаю\n\n[[Book source|Текущая книга]]\n\nОписание.\n\n### Слушаю\n\n[[Album source|Текущий альбом]]\n\nОписание."; }
 }

@@ -77,9 +77,16 @@ public final class ManifestBuilder {
     validatePublication(note);
     LinkedHashMap<String, Object> metadata;
     if (note.publicCollection().equals("editorial")) {
-      metadata = common(note);
-      try { metadata = new LinkedHashMap<>(editorialParser.normalize(note.vaultPath(), note.publicId().strip(), note.frontmatter(), note.body(), metadata)); }
-      catch (EditorialParser.ManifestValidationException error) { throw new ManifestValidationException(error.sourcePath(), error.fieldName(), error.reason()); }
+      metadata = editorialCommon(note);
+      try {
+        metadata = new LinkedHashMap<>(editorialParser.normalize(
+            note.vaultPath(), note.publicId().strip(), note.frontmatter(), note.body(), metadata));
+      } catch (EditorialParser.ManifestValidationException error) {
+        throw new ManifestValidationException(error.sourcePath(), error.fieldName(), error.reason());
+      }
+      metadata.put("language", "ru");
+      metadata.put("sourceLanguage", "ru");
+      metadata.put("translationStatus", "source");
     } else {
       metadata = common(note);
       if (note.publicCollection().equals("blog")) { metadata.put("contentType", note.publicContentType()); if (note.publicContentType().equals("claim")) claimMetadata(note, metadata); }
@@ -108,6 +115,14 @@ public final class ManifestBuilder {
     for (String key : List.of("cover", "status", "foundational", "readTime")) if (fm.containsKey(key) && fm.get(key) != null) metadata.put(key, fm.get(key));
     return metadata;
   }
+  private static LinkedHashMap<String, Object> editorialCommon(Note note) {
+    LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("id", note.publicId().strip());
+    metadata.put("topics", stringList(note, "topics"));
+    metadata.put("links", stringList(note, "links"));
+    metadata.put("title", title(note));
+    return metadata;
+  }
   private static String title(Note note) { Object value = note.frontmatter().get("title"); return value == null || value.toString().strip().isEmpty() ? note.title().strip() : value.toString().strip(); }
   private static String description(Note note) { Object explicit = note.frontmatter().get("description"); if (explicit != null && !explicit.toString().strip().isEmpty()) return explicit.toString().strip(); if (note.publicCollection().equals("editorial")) return MarkdownScanner.section(note.body(), "Кратко").orElse(""); if (note.publicCollection().equals("music")) return MarkdownScanner.section(note.body(), "Контекст записи").orElse(""); if (note.publicCollection().equals("bibliography")) return bookDescription(note.body()); if (note.publicCollection().equals("blog") && note.publicContentType().equals("claim")) return string(note.frontmatter().get("statement")); return ""; }
   private static List<String> stringList(Note note, String field) { Object value = note.frontmatter().get(field); if (value == null) return List.of(); List<?> values = value instanceof List<?> list ? list : List.of(value); if (values.stream().anyMatch(item -> !(item instanceof String))) throw new ManifestValidationException(note.vaultPath(), field, "must be a string or list of strings"); return values.stream().map(item -> ((String) item).strip()).filter(item -> !item.isEmpty()).toList(); }
@@ -116,20 +131,85 @@ public final class ManifestBuilder {
   private static String route(Note note) { if (note.publicCollection().equals("editorial")) return note.publicId().equals("home") ? "/ru/" : "/ru/" + note.publicId() + "/"; String section = switch (note.publicContentType()) { case "essay" -> "essays"; case "claim" -> "claims"; case "note" -> "notes"; case "album" -> "music"; case "book" -> "library"; case "concept" -> "concepts"; default -> throw new ManifestValidationException(note.vaultPath(), "publicContentType", "must be a supported publication type"); }; return "/ru/" + section + "/" + note.publicId() + "/"; }
 
   private static void musicMetadata(Note note, Map<String, Object> metadata) { Map<String, Object> fm = note.frontmatter(); metadata.put("reviewType", note.publicContentType()); metadata.put("artist", string(fm.get("artist"))); metadata.put("work", firstValid(note, "work", "albumTitle")); metadata.put("context", MarkdownScanner.section(note.body(), "Контекст записи").orElse("")); metadata.put("association", MarkdownScanner.section(note.body(), "Личная связь").orElse("")); metadata.put("listenFor", MarkdownScanner.listItems(note.body(), "Что слушать")); Object format = fm.get("format"); if (format != null) metadata.put("format", format); String release = normalizeDate(fm.get("releaseDate")); if (release != null) metadata.put("releaseDate", release); if (fm.containsKey("genreTags")) metadata.put("genreTags", stringList(note, "genreTags")); else metadata.put("genreTags", List.of()); for (String field : List.of("streamingUrl", "bandcampEmbedUrl")) if (fm.containsKey(field)) metadata.put(field, fm.get(field)); MarkdownScanner.section(note.body(), "Рекомендация как забота").ifPresent(value -> metadata.put("care", value)); }
-  private static void bookMetadata(Note note, Map<String, Object> metadata) { Map<String, Object> fm = note.frontmatter(); Object authors = firstValidRaw(note, "authors", "author"); List<?> values = authors instanceof List<?> list ? list : List.of(authors); List<String> result = new ArrayList<>(); for (Object author : values) result.add(unwrap(author.toString())); metadata.put("authors", result); Object publication = fm.get("publication"); if (publication != null) metadata.put("publication", publication.toString().strip()); else { String publisher = string(fm.get("publisher")); String published = string(fm.get("published")); if (!publisher.isEmpty() || !published.isEmpty()) metadata.put("publication", String.join(" · ", List.of(publisher, published).stream().filter(value -> !value.isEmpty()).toList())); } for (String field : List.of("publicationDate", "start", "end")) { String value = normalizeDate(fm.get(field)); if (value != null) metadata.put(field, value); } if (fm.containsKey("readingStatus")) metadata.put("readingStatus", fm.get("readingStatus").toString()); else if (fm.containsKey("status")) metadata.put("readingStatus", fm.get("status").toString()); for (String field : List.of("use", "boundary", "selectedQuote")) if (fm.containsKey(field)) metadata.put(field, fm.get(field)); }
+  private static void bookMetadata(Note note, Map<String, Object> metadata) {
+    Map<String, Object> frontmatter = note.frontmatter();
+    Object authors = firstValidRaw(note, "authors", "author");
+    List<?> authorValues = authors instanceof List<?> list ? list : List.of(authors);
+    List<String> normalizedAuthors = new ArrayList<>();
+    for (Object author : authorValues) normalizedAuthors.add(unwrap(author.toString()));
+    metadata.put("authors", normalizedAuthors);
+
+    Object publication = frontmatter.get("publication");
+    if (publication != null) {
+      metadata.put("publication", publication);
+    } else {
+      String publisher = string(frontmatter.get("publisher"));
+      String published = string(frontmatter.get("published"));
+      if (!publisher.isEmpty() || !published.isEmpty()) {
+        metadata.put("publication", String.join(" · ", List.of(publisher, published).stream().filter(value -> !value.isEmpty()).toList()));
+      }
+    }
+    for (String field : List.of("publicationDate", "start", "end")) {
+      String value = normalizeDate(frontmatter.get(field));
+      if (value != null) metadata.put(field, value);
+    }
+    if (frontmatter.containsKey("readingStatus")) {
+      metadata.put("readingStatus", frontmatter.get("readingStatus"));
+    } else if (frontmatter.containsKey("status")) {
+      metadata.put("readingStatus", frontmatter.get("status"));
+    }
+    for (String field : List.of("use", "boundary", "selectedQuote")) {
+      if (frontmatter.containsKey(field)) metadata.put(field, frontmatter.get(field));
+    }
+  }
   private static void claimMetadata(Note note, Map<String, Object> metadata) { Map<String, Object> fm = note.frontmatter(); metadata.put("statement", firstValid(note, "statement", "description")); for (String field : List.of("claimKinds", "supports", "opposes", "assumes", "refines", "contradicts", "sources")) if (fm.containsKey(field)) metadata.put(field, fm.get(field)); }
   private static String firstValid(Note note, String... fields) { return firstValidRaw(note, fields).toString().strip(); }
   private static Object firstValidRaw(Note note, String... fields) { for (String field : fields) { Object value = note.frontmatter().get(field); if (value instanceof String text && !text.strip().isEmpty()) return value; if (value instanceof List<?> list && list.stream().anyMatch(item -> item instanceof String text && !text.strip().isEmpty())) return value; } throw new ManifestValidationException(note.vaultPath(), String.join(" / ", fields), "must be a non-empty string"); }
 
   private static void validateEntry(Note note, Map<String, Object> metadata) {
-    requireString(note, metadata, "id", "must be a non-empty string"); requireString(note, metadata, "title", "must be a non-empty string");
-    for (String field : List.of("date", "updated", "releaseDate", "publicationDate", "start", "end")) validateDate(note, metadata, field);
-    List<?> topics = (List<?>) metadata.get("topics"); List<String> unknown = topics.stream().map(Object::toString).filter(value -> !TOPICS.contains(value)).distinct().sorted().toList(); if (!unknown.isEmpty()) throw new ManifestValidationException(note.vaultPath(), "topics", "contains unsupported values: " + String.join(", ", unknown));
+    requireString(note, metadata, "id", "must be a non-empty string");
+    requireString(note, metadata, "title", "must be a non-empty string");
+    for (String field : List.of("date", "updated", "releaseDate", "publicationDate", "start", "end")) {
+      validateDate(note, metadata, field);
+    }
+    List<?> topics = (List<?>) metadata.get("topics");
+    List<String> unknown = topics.stream().map(Object::toString).filter(value -> !TOPICS.contains(value)).distinct().sorted().toList();
+    if (!unknown.isEmpty()) throw new ManifestValidationException(note.vaultPath(), "topics", "contains unsupported values: " + String.join(", ", unknown));
     for (String field : List.of("description", "cover", "status")) optionalString(note, metadata, field);
     if (metadata.containsKey("foundational") && !(metadata.get("foundational") instanceof Boolean)) throw new ManifestValidationException(note.vaultPath(), "foundational", "must be a boolean");
     if (metadata.containsKey("readTime") && (!(metadata.get("readTime") instanceof Integer) || ((Integer) metadata.get("readTime")) <= 0)) throw new ManifestValidationException(note.vaultPath(), "readTime", "must be a positive integer");
-    if (note.publicCollection().equals("music")) { for (String field : List.of("artist", "work", "context", "association")) requireString(note, metadata, field, "must be a non-empty string"); Object genres = metadata.get("genreTags"); if (!(genres instanceof List<?> list) || list.stream().anyMatch(value -> !(value instanceof String))) throw new ManifestValidationException(note.vaultPath(), "genreTags", "must be a list of strings"); for (String field : List.of("format", "care")) optionalString(note, metadata, field); for (String field : List.of("streamingUrl", "bandcampEmbedUrl")) validateUrl(note, metadata, field); }
-    if (note.publicCollection().equals("bibliography")) { Object authors = metadata.get("authors"); if (!(authors instanceof List<?> list) || list.isEmpty() || list.stream().anyMatch(value -> !(value instanceof String text) || text.strip().isEmpty())) throw new ManifestValidationException(note.vaultPath(), "authors", "must contain at least one non-empty string"); }
+    if (note.publicCollection().equals("music")) validateMusicEntry(note, metadata);
+    if (note.publicCollection().equals("bibliography")) validateBibliographyEntry(note, metadata);
+    if (note.publicCollection().equals("blog") && "claim".equals(metadata.get("contentType"))) validateClaimEntry(note, metadata);
+  }
+  private static void validateMusicEntry(Note note, Map<String, Object> metadata) {
+    for (String field : List.of("artist", "work", "context", "association")) requireString(note, metadata, field, "must be a non-empty string");
+    Object genres = metadata.get("genreTags");
+    if (!(genres instanceof List<?> list) || list.stream().anyMatch(value -> !(value instanceof String))) throw new ManifestValidationException(note.vaultPath(), "genreTags", "must be a list of strings");
+    for (String field : List.of("format", "care")) optionalString(note, metadata, field);
+    for (String field : List.of("streamingUrl", "bandcampEmbedUrl")) validateUrl(note, metadata, field);
+  }
+  private static void validateBibliographyEntry(Note note, Map<String, Object> metadata) {
+    Object authors = metadata.get("authors");
+    if (!(authors instanceof List<?> list) || list.isEmpty() || list.stream().anyMatch(value -> !(value instanceof String text) || text.strip().isEmpty())) throw new ManifestValidationException(note.vaultPath(), "authors", "must contain at least one non-empty string");
+    for (String field : List.of("publication", "readingStatus", "use", "boundary")) optionalString(note, metadata, field);
+    Object selectedQuote = metadata.get("selectedQuote");
+    if (selectedQuote == null) return;
+    if (!(selectedQuote instanceof Map<?, ?> quote)) throw new ManifestValidationException(note.vaultPath(), "selectedQuote", "must be an object");
+    Object kind = quote.containsKey("kind") ? quote.get("kind") : "paraphrase";
+    if (!("quote".equals(kind) || "paraphrase".equals(kind))) throw new ManifestValidationException(note.vaultPath(), "selectedQuote.kind", "must be quote or paraphrase");
+    Object text = quote.get("text");
+    if (!(text instanceof String value) || value.strip().isEmpty()) throw new ManifestValidationException(note.vaultPath(), "selectedQuote.text", "must be a non-empty string");
+    if (quote.containsKey("locator") && !(quote.get("locator") instanceof String)) throw new ManifestValidationException(note.vaultPath(), "selectedQuote.locator", "must be a string");
+  }
+  private static void validateClaimEntry(Note note, Map<String, Object> metadata) {
+    for (String field : List.of("claimKinds", "supports", "opposes", "assumes", "refines", "contradicts")) {
+      Object value = metadata.getOrDefault(field, List.of());
+      if (!(value instanceof List<?> list) || list.stream().anyMatch(item -> !(item instanceof String))) throw new ManifestValidationException(note.vaultPath(), field, "must be a list of strings");
+    }
+    Object sources = metadata.getOrDefault("sources", List.of());
+    if (!(sources instanceof List<?> list)) throw new ManifestValidationException(note.vaultPath(), "sources", "must be a list");
+    for (int index = 0; index < list.size(); index++) if (!(list.get(index) instanceof Map<?, ?>)) throw new ManifestValidationException(note.vaultPath(), "sources[" + index + "]", "must be an object");
   }
   private static void requireString(Note note, Map<String, Object> metadata, String field, String reason) { if (!(metadata.get(field) instanceof String value) || value.strip().isEmpty()) throw new ManifestValidationException(note.vaultPath(), field, reason); }
   private static void optionalString(Note note, Map<String, Object> metadata, String field) { if (metadata.containsKey(field) && !(metadata.get(field) instanceof String)) throw new ManifestValidationException(note.vaultPath(), field, "must be a string"); }
@@ -176,7 +256,24 @@ public final class ManifestBuilder {
       metadata.put(field, retained);
     }
   }
-  @SuppressWarnings("unchecked") private static void resolveFrontmatterLinks(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) { Object raw = metadata.get("links"); if (!(raw instanceof List<?> links)) return; List<String> kept = new ArrayList<>(); for (Object value : links) { String target = value.toString(); Note resolved = resolveNote(notes, target, path, "frontmatter link " + target); if (resolved == null) stripped.add(new ManifestLink(path, target, "frontmatter")); else { kept.add(resolved.publicId()); retained.add(new ManifestLink(path, target, "frontmatter", resolved.publicId(), route(resolved))); } } metadata.put("links", kept); }
+  private static void resolveFrontmatterLinks(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) {
+    Object raw = metadata.get("links");
+    if (!(raw instanceof List<?> links)) return;
+    Map<String, Note> byPublicId = new LinkedHashMap<>();
+    for (Note note : notes) byPublicId.put(note.publicId(), note);
+    List<String> kept = new ArrayList<>();
+    for (Object value : links) {
+      String target = value.toString();
+      Note resolved = byPublicId.get(target);
+      if (resolved == null) {
+        stripped.add(new ManifestLink(path, target, "frontmatter"));
+        continue;
+      }
+      kept.add(resolved.publicId());
+      retained.add(new ManifestLink(path, target, "frontmatter", resolved.publicId(), route(resolved)));
+    }
+    metadata.put("links", kept);
+  }
   @SuppressWarnings("unchecked") private void resolveClaimLinks(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) { for (String field : List.of("supports", "opposes", "assumes", "refines", "contradicts")) { if (!(metadata.get(field) instanceof List<?> values)) continue; List<Object> result = new ArrayList<>(); for (Object value : values) result.add(resolveClaimReference(path, value, notes, retained, stripped, field)); metadata.put(field, result); }
     if (!(metadata.get("sources") instanceof List<?> values)) return;
     List<Map<String, Object>> sources = new ArrayList<>();
