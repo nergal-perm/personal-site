@@ -31,7 +31,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -83,6 +82,14 @@ public final class SiteWriter {
   }
 
   static StagedSite stageSite(Path siteRoot, ManifestResult manifest, AssetCopier assetCopier) {
+    return stageSite(siteRoot, manifest, assetCopier, IdentityReader.filesIdentity());
+  }
+
+  static StagedSite stageSite(
+      Path siteRoot,
+      ManifestResult manifest,
+      AssetCopier assetCopier,
+      IdentityReader identityReader) {
     Path site = canonicalSiteRoot(siteRoot);
     List<RecordToWrite> records = records(manifest);
     Map<String, byte[]> templates = loadSearchTemplates();
@@ -93,7 +100,7 @@ public final class SiteWriter {
       stagedRoot = Files.createTempDirectory(
           site.getParent(),
           "." + site.getFileName() + ".astro-export-stage-");
-      owned = ownedPath(stagedRoot, "staging");
+      owned = ownedPath(stagedRoot, "staging", identityReader);
       sameStore(owned.path(), site, "staging and site device mismatch");
       createRequiredDirectories(stagedRoot);
       for (RecordToWrite record : records) {
@@ -119,8 +126,8 @@ public final class SiteWriter {
           capability,
           owned,
           site,
-          pathIdentity(site),
-          pathIdentity(site.getParent()),
+          pathIdentity(site, identityReader),
+          pathIdentity(site.getParent(), identityReader),
           records.size() + templates.size(),
           assets,
           hashes);
@@ -243,6 +250,30 @@ public final class SiteWriter {
       CleanupHook cleanupHook,
       StoreChecker storeChecker,
       ForwardBoundaryHook forwardBoundaryHook) {
+    return replaceManagedTrees(
+        siteRoot,
+        staged,
+        validator,
+        mover,
+        backupMover,
+        rollbackHook,
+        cleanupHook,
+        storeChecker,
+        forwardBoundaryHook,
+        IdentityReader.filesIdentity());
+  }
+
+  static WriteResult replaceManagedTrees(
+      Path siteRoot,
+      StagedSite staged,
+      Consumer<Path> validator,
+      PathMover mover,
+      BackupMover backupMover,
+      RollbackHook rollbackHook,
+      CleanupHook cleanupHook,
+      StoreChecker storeChecker,
+      ForwardBoundaryHook forwardBoundaryHook,
+      IdentityReader identityReader) {
     StageBinding binding = claimStage(staged);
     Path site;
     LiveLayoutBinding liveLayout;
@@ -251,14 +282,14 @@ public final class SiteWriter {
       if (!site.equals(binding.siteRoot())) {
         throw new WriterException("staged site belongs to " + binding.siteRoot() + ", not requested site " + site);
       }
-      verifyStaged(binding);
-      liveLayout = bindLiveLayout(site, binding, storeChecker);
+      verifyStaged(binding, identityReader);
+      liveLayout = bindLiveLayout(site, binding, storeChecker, identityReader);
       if (validator == null) {
         throw new WriterException("validate callback must be callable");
       }
       validator.accept(binding.temp().path());
-      verifyStaged(binding);
-      verifyLiveLayout(site, binding, liveLayout, storeChecker);
+      verifyStaged(binding, identityReader);
+      verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
     } catch (Exception error) {
       WriterException primary = writerError(error, "staged validation failed: " + error.getMessage());
       throw cleanupWithPrimary(primary, List.of(binding.temp()), false, List.of(), cleanupHook);
@@ -268,14 +299,14 @@ public final class SiteWriter {
     OwnedPath backupOwned = null;
     List<String> backedUp = new ArrayList<>();
     try {
-      verifyLiveLayout(site, binding, liveLayout, storeChecker);
+      verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
       createdAncestors = createLiveAncestors(site);
-      bindCreatedAncestors(site, createdAncestors, liveLayout, storeChecker);
-      verifyLiveLayout(site, binding, liveLayout, storeChecker);
+      bindCreatedAncestors(site, createdAncestors, liveLayout, storeChecker, identityReader);
+      verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
       Path backupRoot = Files.createTempDirectory(
           site.getParent(),
           "." + site.getFileName() + ".astro-export-backup-");
-      backupOwned = ownedPath(backupRoot, "backup");
+      backupOwned = ownedPath(backupRoot, "backup", identityReader);
       storeChecker.sameStore(backupRoot, site, "backup and live layout device mismatch");
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         Path source = site.resolve(relative);
@@ -288,8 +319,8 @@ public final class SiteWriter {
               destination,
               relative,
               liveLayout.parentIdentity(relative),
-              pathIdentity(destination.getParent()))) {
-            if (!identityMatches(destination, expectedSource)) {
+              pathIdentity(destination.getParent(), identityReader))) {
+            if (!identityMatches(destination, expectedSource, identityReader)) {
               throw new WriterException("backed-up managed tree ownership does not match live source: " + relative);
             }
             backedUp.add(relative);
@@ -303,9 +334,9 @@ public final class SiteWriter {
           : backedUpRoots(backupOwned.path());
       List<String> rollbackErrors = backupOwned == null
           ? List.of()
-          : rollback(site, backupOwned.path(), reconciled, false, rollbackHook, Map.of(), liveLayout);
+          : rollback(site, backupOwned.path(), reconciled, false, rollbackHook, Map.of(), liveLayout, identityReader);
       List<String> ancestorErrors = rollbackErrors.isEmpty()
-          ? cleanupAncestors(site, createdAncestors, liveLayout)
+          ? cleanupAncestors(site, createdAncestors, liveLayout, identityReader)
           : List.of();
       List<Path> retained = new ArrayList<>(createdAncestors.stream()
           .filter(path -> Files.exists(path, LinkOption.NOFOLLOW_LINKS))
@@ -329,11 +360,20 @@ public final class SiteWriter {
     LinkedHashMap<String, PathIdentity> installedRoots = new LinkedHashMap<>();
     try {
       for (String relative : TreeHasher.MANAGED_ROOTS) {
-        verifyLiveLayout(site, binding, liveLayout, storeChecker);
-        moveManagedTree(site, binding, liveLayout, relative, mover, storeChecker, forwardBoundaryHook, installedRoots);
-        verifyLiveLayout(site, binding, liveLayout, storeChecker);
+        verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
+        moveManagedTree(
+            site,
+            binding,
+            liveLayout,
+            relative,
+            mover,
+            storeChecker,
+            forwardBoundaryHook,
+            installedRoots,
+            identityReader);
+        verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
       }
-      verifyLiveLayout(site, binding, liveLayout, storeChecker);
+      verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         if (!Files.isDirectory(site.resolve(relative), LinkOption.NOFOLLOW_LINKS)
             || Files.isSymbolicLink(site.resolve(relative))) {
@@ -351,9 +391,10 @@ public final class SiteWriter {
           true,
           rollbackHook,
           installedRoots,
-          liveLayout);
+          liveLayout,
+          identityReader);
       List<String> ancestorErrors = rollbackErrors.isEmpty()
-          ? cleanupAncestors(site, createdAncestors, liveLayout)
+          ? cleanupAncestors(site, createdAncestors, liveLayout, identityReader)
           : List.of();
       List<Path> retained = new ArrayList<>(createdAncestors.stream()
           .filter(path -> Files.exists(path, LinkOption.NOFOLLOW_LINKS))
@@ -464,8 +505,8 @@ public final class SiteWriter {
     return binding;
   }
 
-  private static void verifyStaged(StageBinding binding) {
-    if (!identityMatches(binding.temp().path(), binding.temp().identity())) {
+  private static void verifyStaged(StageBinding binding, IdentityReader identityReader) {
+    if (!identityMatches(binding.temp().path(), binding.temp().identity(), identityReader)) {
       throw new WriterException(
           "staging ownership no longer matches registered inode: " + binding.temp().path(),
           false,
@@ -483,11 +524,15 @@ public final class SiteWriter {
     }
   }
 
-  private static void preflightLiveLayout(Path site, StageBinding binding, StoreChecker storeChecker) {
-    if (!identityMatches(site, binding.siteIdentity())) {
+  private static void preflightLiveLayout(
+      Path site,
+      StageBinding binding,
+      StoreChecker storeChecker,
+      IdentityReader identityReader) {
+    if (!identityMatches(site, binding.siteIdentity(), identityReader)) {
       throw new WriterException("site ownership changed after staging: " + site);
     }
-    if (!identityMatches(site.getParent(), binding.siteParentIdentity())) {
+    if (!identityMatches(site.getParent(), binding.siteParentIdentity(), identityReader)) {
       throw new WriterException("site parent ownership changed after staging: " + site.getParent());
     }
     storeChecker.sameStore(site, site.getParent(), "site and parent device mismatch for " + site);
@@ -510,14 +555,15 @@ public final class SiteWriter {
   private static LiveLayoutBinding bindLiveLayout(
       Path site,
       StageBinding binding,
-      StoreChecker storeChecker) {
-    preflightLiveLayout(site, binding, storeChecker);
+      StoreChecker storeChecker,
+      IdentityReader identityReader) {
+    preflightLiveLayout(site, binding, storeChecker, identityReader);
     LinkedHashMap<String, PathIdentity> identities = new LinkedHashMap<>();
     LinkedHashSet<String> absent = new LinkedHashSet<>();
     for (String relative : concat(LIVE_ANCESTORS, TreeHasher.MANAGED_ROOTS)) {
       Path path = site.resolve(relative);
       if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
-        identities.put(relative, pathIdentity(path));
+        identities.put(relative, pathIdentity(path, identityReader));
       } else {
         absent.add(relative);
       }
@@ -529,11 +575,12 @@ public final class SiteWriter {
       Path site,
       StageBinding binding,
       LiveLayoutBinding liveLayout,
-      StoreChecker storeChecker) {
-    if (!identityMatches(site, binding.siteIdentity())) {
+      StoreChecker storeChecker,
+      IdentityReader identityReader) {
+    if (!identityMatches(site, binding.siteIdentity(), identityReader)) {
       throw new WriterException("site ownership changed after staging: " + site);
     }
-    if (!identityMatches(site.getParent(), binding.siteParentIdentity())) {
+    if (!identityMatches(site.getParent(), binding.siteParentIdentity(), identityReader)) {
       throw new WriterException("site parent ownership changed after staging: " + site.getParent());
     }
     storeChecker.sameStore(site, site.getParent(), "site and parent device mismatch for " + site);
@@ -547,7 +594,7 @@ public final class SiteWriter {
         }
         continue;
       }
-      if (!identityMatches(path, expected)) {
+      if (!identityMatches(path, expected, identityReader)) {
         throw new WriterException("live layout ownership changed after validation: " + path);
       }
       if (Files.isSymbolicLink(path)) {
@@ -564,14 +611,15 @@ public final class SiteWriter {
       Path site,
       List<Path> createdAncestors,
       LiveLayoutBinding liveLayout,
-      StoreChecker storeChecker) {
+      StoreChecker storeChecker,
+      IdentityReader identityReader) {
     for (Path path : createdAncestors) {
       String relative = site.relativize(path).toString().replace('\\', '/');
       if (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
         throw new WriterException("created live layout ancestor is not a directory: " + path);
       }
       storeChecker.sameStore(path, site, "live layout device mismatch for " + path);
-      liveLayout.bind(relative, pathIdentity(path));
+      liveLayout.bind(relative, pathIdentity(path, identityReader));
     }
   }
 
@@ -610,29 +658,30 @@ public final class SiteWriter {
       PathMover mover,
       StoreChecker storeChecker,
       ForwardBoundaryHook forwardBoundaryHook,
-      Map<String, PathIdentity> installedRoots) throws IOException {
+      Map<String, PathIdentity> installedRoots,
+      IdentityReader identityReader) throws IOException {
     Path source = binding.temp().path().resolve(relative);
     Path destination = site.resolve(relative);
-    PathIdentity sourceIdentity = pathIdentity(source);
-    PathIdentity sourceParentIdentity = pathIdentity(source.getParent());
+    PathIdentity sourceIdentity = pathIdentity(source, identityReader);
+    PathIdentity sourceParentIdentity = pathIdentity(source.getParent(), identityReader);
     if (!sourceIdentity.directory() || sourceIdentity.symlink()) {
       throw new WriterException("staged managed tree is not a real directory: " + relative);
     }
     forwardBoundaryHook.beforeMove(relative, source, destination);
-    verifyLiveLayout(site, binding, liveLayout, storeChecker);
+    verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
     if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
       throw new WriterException("managed target unexpectedly exists before install: " + destination);
     }
     try {
       mover.move(source, destination, sourceParentIdentity, liveLayout.parentIdentity(relative));
     } catch (IOException | RuntimeException error) {
-      if (identityMatches(destination, sourceIdentity)) {
+      if (identityMatches(destination, sourceIdentity, identityReader)) {
         installedRoots.put(relative, sourceIdentity);
         liveLayout.bind(relative, sourceIdentity);
       }
       throw error;
     }
-    if (!identityMatches(destination, sourceIdentity)) {
+    if (!identityMatches(destination, sourceIdentity, identityReader)) {
       throw new WriterException("installed managed tree ownership does not match staged source: " + relative);
     }
     installedRoots.put(relative, sourceIdentity);
@@ -642,7 +691,8 @@ public final class SiteWriter {
   private static List<String> cleanupAncestors(
       Path site,
       List<Path> created,
-      LiveLayoutBinding liveLayout) {
+      LiveLayoutBinding liveLayout,
+      IdentityReader identityReader) {
     List<String> errors = new ArrayList<>();
     for (Path path : created.reversed()) {
       String relative = site.relativize(path).toString().replace('\\', '/');
@@ -655,7 +705,7 @@ public final class SiteWriter {
         if (expected == null) {
           throw new WriterException("created ancestor ownership is not bound before cleanup: " + path);
         }
-        deleteDirectoryConfined(path, expected, liveLayout.parentIdentity(relative));
+        deleteDirectoryConfined(path, expected, liveLayout.parentIdentity(relative), identityReader);
         liveLayout.markAbsent(relative);
       } catch (IOException | WriterException error) {
         errors.add("cannot remove created ancestor " + path + ": " + error.getMessage());
@@ -671,12 +721,13 @@ public final class SiteWriter {
       boolean removeAllLive,
       RollbackHook rollbackHook,
       Map<String, PathIdentity> removableTargets,
-      LiveLayoutBinding liveLayout) {
+      LiveLayoutBinding liveLayout,
+      IdentityReader identityReader) {
     List<String> errors = new ArrayList<>();
     if (removeAllLive) {
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         try {
-          removeManagedTree(site, relative, removableTargets.get(relative), liveLayout);
+          removeManagedTree(site, relative, removableTargets.get(relative), liveLayout, identityReader);
         } catch (Exception error) {
           errors.add("cannot remove partial target " + relative + ": " + error.getMessage());
         }
@@ -696,11 +747,15 @@ public final class SiteWriter {
           if (expected == null) {
             throw new WriterException("managed target ownership changed before restore: " + relative);
           }
-          removeManagedTree(site, relative, expected, liveLayout);
+          removeManagedTree(site, relative, expected, liveLayout, identityReader);
         }
-        PathIdentity sourceIdentity = pathIdentity(source);
-        movePathConfined(source, target, pathIdentity(source.getParent()), liveLayout.parentIdentity(relative));
-        if (!identityMatches(target, sourceIdentity)) {
+        PathIdentity sourceIdentity = pathIdentity(source, identityReader);
+        movePathConfined(
+            source,
+            target,
+            pathIdentity(source.getParent(), identityReader),
+            liveLayout.parentIdentity(relative));
+        if (!identityMatches(target, sourceIdentity, identityReader)) {
           throw new WriterException("restored managed tree ownership does not match backup: " + relative);
         }
         liveLayout.bind(relative, sourceIdentity);
@@ -721,13 +776,14 @@ public final class SiteWriter {
       Path site,
       String relative,
       PathIdentity expectedRootIdentity,
-      LiveLayoutBinding liveLayout) throws IOException {
+      LiveLayoutBinding liveLayout,
+      IdentityReader identityReader) throws IOException {
     Path cursor = site;
     for (String part : relative.split("/")) {
       cursor = cursor.resolve(part);
       if (Files.isSymbolicLink(cursor)) {
         String cursorRelative = site.relativize(cursor).toString().replace('\\', '/');
-        deletePathConfined(cursor, liveLayout.parentIdentity(cursorRelative));
+        deletePathConfined(cursor, liveLayout.parentIdentity(cursorRelative), identityReader);
         return;
       }
       if (!Files.exists(cursor, LinkOption.NOFOLLOW_LINKS)) {
@@ -735,7 +791,7 @@ public final class SiteWriter {
       }
       if (!Files.isDirectory(cursor, LinkOption.NOFOLLOW_LINKS) && !cursor.equals(site.resolve(relative))) {
         String cursorRelative = site.relativize(cursor).toString().replace('\\', '/');
-        deletePathConfined(cursor, liveLayout.parentIdentity(cursorRelative));
+        deletePathConfined(cursor, liveLayout.parentIdentity(cursorRelative), identityReader);
         return;
       }
     }
@@ -743,10 +799,10 @@ public final class SiteWriter {
     if (expectedRootIdentity == null) {
       throw new WriterException("managed target ownership is unknown before removal: " + relative);
     }
-    if (!identityMatches(root, expectedRootIdentity)) {
+    if (!identityMatches(root, expectedRootIdentity, identityReader)) {
       throw new WriterException("managed target ownership changed before removal: " + relative);
     }
-    deleteTree(root, expectedRootIdentity, liveLayout.parentIdentity(relative));
+    deleteTree(root, expectedRootIdentity, liveLayout.parentIdentity(relative), identityReader);
     liveLayout.markAbsent(relative);
   }
 
@@ -773,9 +829,9 @@ public final class SiteWriter {
     }
   }
 
-  private static OwnedPath ownedPath(Path path, String kind) {
-    PathIdentity identity = pathIdentity(path);
-    PathIdentity parentIdentity = pathIdentity(path.getParent());
+  private static OwnedPath ownedPath(Path path, String kind, IdentityReader identityReader) {
+    PathIdentity identity = pathIdentity(path, identityReader);
+    PathIdentity parentIdentity = pathIdentity(path.getParent(), identityReader);
     if (!identity.directory() || identity.symlink()) {
       throw new WriterException("owned " + kind + " path is not a real directory: " + path);
     }
@@ -783,29 +839,50 @@ public final class SiteWriter {
   }
 
   private static PathIdentity pathIdentity(Path path) {
+    return pathIdentity(path, IdentityReader.filesIdentity());
+  }
+
+  private static PathIdentity pathIdentity(Path path, IdentityReader identityReader) {
     try {
-      BasicFileAttributes attributes = Files.readAttributes(
-          path,
-          BasicFileAttributes.class,
-          LinkOption.NOFOLLOW_LINKS);
-      FileStore store = Files.getFileStore(path);
+      PathEvidence evidence = identityReader.read(path);
+      if (evidence == null || evidence.fileKey() == null) {
+        throw new WriterException("stable path identity is unavailable for " + path);
+      }
       return new PathIdentity(
-          Objects.toString(attributes.fileKey(), path.toAbsolutePath().normalize().toString()),
-          attributes.isDirectory(),
-          attributes.isSymbolicLink(),
-          store.name(),
-          store.type());
+          evidence.fileKey().toString(),
+          evidence.directory(),
+          evidence.symlink(),
+          evidence.fileStoreName(),
+          evidence.fileStoreType());
     } catch (IOException error) {
       throw new WriterException("cannot inspect path " + path + ": " + error.getMessage(), error);
     }
   }
 
   private static boolean identityMatches(Path path, PathIdentity expected) {
+    return identityMatches(path, expected, IdentityReader.filesIdentity());
+  }
+
+  private static boolean identityMatches(Path path, PathIdentity expected, IdentityReader identityReader) {
     try {
-      return pathIdentity(path).equals(expected);
+      return pathIdentity(path, identityReader).equals(expected);
     } catch (WriterException error) {
       return false;
     }
+  }
+
+  private static PathEvidence pathEvidence(Path path) throws IOException {
+    BasicFileAttributes attributes = Files.readAttributes(
+        path,
+        BasicFileAttributes.class,
+        LinkOption.NOFOLLOW_LINKS);
+    FileStore store = Files.getFileStore(path);
+    return new PathEvidence(
+        attributes.fileKey(),
+        attributes.isDirectory(),
+        attributes.isSymbolicLink(),
+        store.name(),
+        store.type());
   }
 
   private static void sameStore(Path first, Path second, String message) {
@@ -1322,13 +1399,21 @@ public final class SiteWriter {
   }
 
   private static void deleteTree(Path root, PathIdentity expectedRoot, PathIdentity expectedParent) throws IOException {
+    deleteTree(root, expectedRoot, expectedParent, IdentityReader.filesIdentity());
+  }
+
+  private static void deleteTree(
+      Path root,
+      PathIdentity expectedRoot,
+      PathIdentity expectedParent,
+      IdentityReader identityReader) throws IOException {
     if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
       return;
     }
-    if (!identityMatches(root.getParent(), expectedParent)) {
+    if (!identityMatches(root.getParent(), expectedParent, identityReader)) {
       throw new WriterException("tree parent ownership changed before deletion: " + root.getParent());
     }
-    if (!identityMatches(root, expectedRoot)) {
+    if (!identityMatches(root, expectedRoot, identityReader)) {
       throw new WriterException("tree root ownership changed before deletion: " + root);
     }
     try (SecureDirectoryStream<Path> parent = openSecureDirectory(root.getParent(), expectedParent)) {
@@ -1341,8 +1426,18 @@ public final class SiteWriter {
   }
 
   private static void deletePathConfined(Path path, PathIdentity expectedParentIdentity) throws IOException {
+    deletePathConfined(path, expectedParentIdentity, IdentityReader.filesIdentity());
+  }
+
+  private static void deletePathConfined(
+      Path path,
+      PathIdentity expectedParentIdentity,
+      IdentityReader identityReader) throws IOException {
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
       return;
+    }
+    if (!identityMatches(path.getParent(), expectedParentIdentity, identityReader)) {
+      throw new WriterException("path parent ownership changed before deletion: " + path.getParent());
     }
     try (SecureDirectoryStream<Path> parent = openSecureDirectory(path.getParent(), expectedParentIdentity)) {
       BasicFileAttributes attributes = attributes(parent, path.getFileName());
@@ -1357,12 +1452,16 @@ public final class SiteWriter {
   private static void deleteDirectoryConfined(
       Path path,
       PathIdentity expectedRootIdentity,
-      PathIdentity expectedParentIdentity) throws IOException {
+      PathIdentity expectedParentIdentity,
+      IdentityReader identityReader) throws IOException {
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
       return;
     }
-    if (!identityMatches(path.getParent(), expectedParentIdentity)) {
+    if (!identityMatches(path.getParent(), expectedParentIdentity, identityReader)) {
       throw new WriterException("created ancestor parent ownership changed before cleanup: " + path.getParent());
+    }
+    if (!identityMatches(path, expectedRootIdentity, identityReader)) {
+      throw new WriterException("created ancestor ownership changed before cleanup: " + path);
     }
     try (SecureDirectoryStream<Path> parent = openSecureDirectory(path.getParent(), expectedParentIdentity)) {
       BasicFileAttributes attributes = attributes(parent, path.getFileName());
@@ -1401,7 +1500,7 @@ public final class SiteWriter {
   private static void deleteUnownedBestEffort(Path root) {
     try {
       deleteTree(root);
-    } catch (IOException ignored) {
+    } catch (Exception ignored) {
       // Best effort for a partially-created stage before ownership evidence exists.
     }
   }
@@ -1472,8 +1571,9 @@ public final class SiteWriter {
   }
 
   private static boolean attributesMatch(PathIdentity expected, BasicFileAttributes attributes, Path fallbackPath) {
-    String fileKey = Objects.toString(attributes.fileKey(), fallbackPath.toAbsolutePath().normalize().toString());
-    return expected.fileKey().equals(fileKey)
+    Object fileKey = attributes.fileKey();
+    return fileKey != null
+        && expected.fileKey().equals(fileKey.toString())
         && expected.directory() == attributes.isDirectory()
         && expected.symlink() == attributes.isSymbolicLink();
   }
@@ -1501,6 +1601,13 @@ public final class SiteWriter {
 
   record PathIdentity(
       String fileKey,
+      boolean directory,
+      boolean symlink,
+      String fileStoreName,
+      String fileStoreType) { }
+
+  record PathEvidence(
+      Object fileKey,
       boolean directory,
       boolean symlink,
       String fileStoreName,
@@ -1743,6 +1850,15 @@ public final class SiteWriter {
 
     static StoreChecker filesStore() {
       return SiteWriter::sameStore;
+    }
+  }
+
+  @FunctionalInterface
+  interface IdentityReader {
+    PathEvidence read(Path path) throws IOException;
+
+    static IdentityReader filesIdentity() {
+      return SiteWriter::pathEvidence;
     }
   }
 

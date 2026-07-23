@@ -854,6 +854,59 @@ final class SiteWriterTest {
     }
   }
 
+  @Test
+  void replacedCreatedAncestorWithUnavailableStableIdentityIsRetainedAndReportedAfterRollback() throws Exception {
+    Sample sample = sampleExport();
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path movedCreatedSrc = sample.site.resolve("src-created-original");
+    Path replacementSrc = sample.site.resolve("src");
+    java.util.concurrent.atomic.AtomicBoolean srcReplaced = new java.util.concurrent.atomic.AtomicBoolean(false);
+    SiteWriter.IdentityReader identityReader = path -> {
+      SiteWriter.PathEvidence evidence = SiteWriter.IdentityReader.filesIdentity().read(path);
+      if (srcReplaced.get() && path.equals(replacementSrc)) {
+        return new SiteWriter.PathEvidence(
+            null,
+            evidence.directory(),
+            evidence.symlink(),
+            evidence.fileStoreName(),
+            evidence.fileStoreType());
+      }
+      return evidence;
+    };
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(
+              sample.site,
+              staged,
+              root -> { },
+              (source, destination) -> {
+                Files.move(replacementSrc, movedCreatedSrc);
+                Files.createDirectory(replacementSrc);
+                srcReplaced.set(true);
+                throw new IOException("injected forward failure after unavailable identity replacement");
+              },
+              SiteWriter.BackupMover.filesMove(),
+              SiteWriter.RollbackHook.noop(),
+              SiteWriter.CleanupHook.deleteOwnedTemp(),
+              SiteWriter.StoreChecker.filesStore(),
+              SiteWriter.ForwardBoundaryHook.noop(),
+              identityReader));
+
+      assertFalse(error.committed());
+      assertTrue(error.getMessage().contains("ancestor cleanup errors"));
+      assertTrue(error.getMessage().toLowerCase().contains("ownership"));
+      assertTrue(error.recoveryPaths().contains(sample.site.toRealPath().resolve("src").toString()));
+      assertTrue(Files.isDirectory(replacementSrc));
+      assertTrue(Files.isDirectory(movedCreatedSrc.resolve("data")));
+      assertFalse(Files.exists(sample.site.resolve("public")));
+      assertEquals(List.of(), temporarySiblings(sample.site));
+    } finally {
+      deleteTree(replacementSrc);
+      deleteTree(movedCreatedSrc);
+    }
+  }
+
   @ParameterizedTest
   @ValueSource(ints = {2, 3})
   void forwardMoveFailureRollsBackAllOldTreesAndCleansTemporaryState(int failAt) throws Exception {
