@@ -305,7 +305,7 @@ public final class SiteWriter {
           ? List.of()
           : rollback(site, backupOwned.path(), reconciled, false, rollbackHook, Map.of(), liveLayout);
       List<String> ancestorErrors = rollbackErrors.isEmpty()
-          ? cleanupAncestors(createdAncestors)
+          ? cleanupAncestors(site, createdAncestors, liveLayout)
           : List.of();
       List<Path> retained = new ArrayList<>(createdAncestors.stream()
           .filter(path -> Files.exists(path, LinkOption.NOFOLLOW_LINKS))
@@ -353,7 +353,7 @@ public final class SiteWriter {
           installedRoots,
           liveLayout);
       List<String> ancestorErrors = rollbackErrors.isEmpty()
-          ? cleanupAncestors(createdAncestors)
+          ? cleanupAncestors(site, createdAncestors, liveLayout)
           : List.of();
       List<Path> retained = new ArrayList<>(createdAncestors.stream()
           .filter(path -> Files.exists(path, LinkOption.NOFOLLOW_LINKS))
@@ -639,15 +639,25 @@ public final class SiteWriter {
     liveLayout.bind(relative, sourceIdentity);
   }
 
-  private static List<String> cleanupAncestors(List<Path> created) {
+  private static List<String> cleanupAncestors(
+      Path site,
+      List<Path> created,
+      LiveLayoutBinding liveLayout) {
     List<String> errors = new ArrayList<>();
     for (Path path : created.reversed()) {
+      String relative = site.relativize(path).toString().replace('\\', '/');
       if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+        liveLayout.markAbsent(relative);
         continue;
       }
       try {
-        Files.delete(path);
-      } catch (IOException error) {
+        PathIdentity expected = liveLayout.identity(relative);
+        if (expected == null) {
+          throw new WriterException("created ancestor ownership is not bound before cleanup: " + path);
+        }
+        deleteDirectoryConfined(path, expected, liveLayout.parentIdentity(relative));
+        liveLayout.markAbsent(relative);
+      } catch (IOException | WriterException error) {
         errors.add("cannot remove created ancestor " + path + ": " + error.getMessage());
       }
     }
@@ -1341,6 +1351,28 @@ public final class SiteWriter {
       } else {
         parent.deleteFile(path.getFileName());
       }
+    }
+  }
+
+  private static void deleteDirectoryConfined(
+      Path path,
+      PathIdentity expectedRootIdentity,
+      PathIdentity expectedParentIdentity) throws IOException {
+    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
+    if (!identityMatches(path.getParent(), expectedParentIdentity)) {
+      throw new WriterException("created ancestor parent ownership changed before cleanup: " + path.getParent());
+    }
+    try (SecureDirectoryStream<Path> parent = openSecureDirectory(path.getParent(), expectedParentIdentity)) {
+      BasicFileAttributes attributes = attributes(parent, path.getFileName());
+      if (!attributesMatch(expectedRootIdentity, attributes, path)) {
+        throw new WriterException("created ancestor ownership changed before cleanup: " + path);
+      }
+      if (!attributes.isDirectory() || attributes.isSymbolicLink()) {
+        throw new WriterException("created ancestor is not a real directory before cleanup: " + path);
+      }
+      parent.deleteDirectory(path.getFileName());
     }
   }
 

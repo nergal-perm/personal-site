@@ -825,6 +825,35 @@ final class SiteWriterTest {
     assertEquals(List.of(), temporarySiblings(sample.site));
   }
 
+  @Test
+  void replacedCreatedAncestorIsRetainedAndReportedAfterRollback() throws Exception {
+    Sample sample = sampleExport();
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path movedCreatedSrc = sample.site.resolve("src-created-original");
+    Path replacementSrc = sample.site.resolve("src");
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> { }, (source, destination) -> {
+            Files.move(replacementSrc, movedCreatedSrc);
+            Files.createDirectory(replacementSrc);
+            throw new IOException("injected forward failure after created ancestor replacement");
+          }));
+
+      assertFalse(error.committed());
+      assertTrue(error.getMessage().contains("ancestor cleanup errors"));
+      assertTrue(error.getMessage().toLowerCase().contains("ownership"));
+      assertTrue(error.recoveryPaths().contains(sample.site.toRealPath().resolve("src").toString()));
+      assertTrue(Files.isDirectory(replacementSrc));
+      assertTrue(Files.isDirectory(movedCreatedSrc.resolve("data")));
+      assertFalse(Files.exists(sample.site.resolve("public")));
+      assertEquals(List.of(), temporarySiblings(sample.site));
+    } finally {
+      deleteTree(replacementSrc);
+      deleteTree(movedCreatedSrc);
+    }
+  }
+
   @ParameterizedTest
   @ValueSource(ints = {2, 3})
   void forwardMoveFailureRollsBackAllOldTreesAndCleansTemporaryState(int failAt) throws Exception {
