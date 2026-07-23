@@ -68,6 +68,22 @@ final class LinkProcessorTest {
   }
 
   @Test
+  void honoursFencesWithLoneCarriageReturnLineEndings() {
+    ManifestLink result = processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "~~~md\r[[Code]]\r~~~\rRendered [[Private]]."), List.of());
+    assertEquals("~~~md\r[[Code]]\r~~~\rRendered Private.", result.body());
+    assertEquals(List.of("Private"), result.stripped());
+  }
+
+  @Test
+  void preservesObsidianCommentMarkersInsidePreBlocks() {
+    String body = "<pre>\n%% literal comment markers %%\n![[inside.png]] and [[Private]].\n</pre>\nVisible.";
+    ManifestLink result = processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", body), List.of());
+    assertEquals(body, result.body());
+    assertEquals(List.of(), result.assets());
+    assertEquals(List.of(), result.stripped());
+  }
+
+  @Test
   void stripsHeadingLinksToPrivateNotesAndNormalizesHeadingFragmentsForPublicRoutes() {
     assertEquals("private section", processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "[[Private#Section|private section]]"), List.of()).body());
     assertEquals("[public](/ru/notes/public/#section-title)", processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "[[Public#Section Title|public]]"), List.of(note("Public", "blog/Public.md", "public", "blog", "note", ""))).body());
@@ -104,8 +120,20 @@ final class LinkProcessorTest {
   }
 
   @Test
-  void rejectsAmbiguousDescriptiveTargets() {
-    Collection<Note> notes = List.of(note("One", "notes/One.md", "one", "blog", "note", "", Map.of("title", "Duplicate")), note("Two", "notes/Two.md", "two", "blog", "note", "", Map.of(), List.of("Duplicate")));
+  void resolvesFrontmatterTitleBeforeAnotherNotesAlias() {
+    Collection<Note> notes = List.of(note("One", "notes/One.md", "one", "blog", "note", "", Map.of("title", "Shared")), note("Two", "notes/Two.md", "two", "blog", "note", "", Map.of(), List.of("Shared")));
+    assertEquals("[Shared](/ru/notes/one/)", processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "[[Shared]]"), notes).body());
+  }
+
+  @Test
+  void rejectsDuplicateFrontmatterTitles() {
+    Collection<Note> notes = List.of(note("One", "notes/One.md", "one", "blog", "note", "", Map.of("title", "Duplicate")), note("Two", "notes/Two.md", "two", "blog", "note", "", Map.of("title", "Duplicate")));
+    assertThrows(LinkProcessor.ManifestValidationException.class, () -> processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "[[Duplicate]]"), notes));
+  }
+
+  @Test
+  void rejectsDuplicateAliases() {
+    Collection<Note> notes = List.of(note("One", "notes/One.md", "one", "blog", "note", "", Map.of(), List.of("Duplicate")), note("Two", "notes/Two.md", "two", "blog", "note", "", Map.of(), List.of("Duplicate")));
     assertThrows(LinkProcessor.ManifestValidationException.class, () -> processor.processLinks(note("Source", "blog/Source.md", "source", "blog", "note", "[[Duplicate]]"), notes));
   }
 

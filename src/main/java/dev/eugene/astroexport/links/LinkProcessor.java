@@ -114,7 +114,8 @@ public final class LinkProcessor {
     addIndex(result, notes, note -> withoutMarkdownExtension(note.vaultPath()));
     addIndex(result, notes, Note::publicId);
     addIndex(result, notes, note -> TIMESTAMP.matcher(filenameStem(note)).replaceFirst(""));
-    addDescriptiveIndex(result, notes);
+    addIndex(result, notes, note -> stringValue(note.frontmatter().get("title")));
+    addAliasIndex(result, notes);
     return result;
   }
 
@@ -129,14 +130,11 @@ public final class LinkProcessor {
     candidates.forEach((key, links) -> index.put(key, links.size() == 1 ? new Resolved(links.getFirst()) : new Ambiguous()));
   }
 
-  private static void addDescriptiveIndex(Map<String, Resolution> index, Collection<Note> notes) {
+  private static void addAliasIndex(Map<String, Resolution> index, Collection<Note> notes) {
     Map<String, List<PublicLink>> candidates = new LinkedHashMap<>();
     for (Note note : notes) {
       PublicLink link = new PublicLink(note.publicId().strip(), route(note));
-      List<String> keys = new ArrayList<>();
-      keys.add(stringValue(note.frontmatter().get("title")));
-      keys.addAll(note.aliases());
-      for (String key : keys) {
+      for (String key : note.aliases()) {
         if (key == null || key.strip().isEmpty() || index.containsKey(key.strip())) continue;
         List<PublicLink> values = candidates.computeIfAbsent(key.strip(), ignored -> new ArrayList<>());
         if (values.stream().noneMatch(value -> value.publicId().equals(link.publicId()))) values.add(link);

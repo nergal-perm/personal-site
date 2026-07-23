@@ -41,6 +41,22 @@ final class MarkdownNormalizationTest {
   }
 
   @Test
+  void recognisesInlineCodeAfterAnEarlierPreBlock() {
+    String body = "<pre>\n`\n</pre>\n`Code sample.\n## Definition\n\nNot rendered.\n`\n";
+    assertTrue(MarkdownScanner.section(body, "Definition").isEmpty());
+  }
+
+  @Test
+  void preservesObsidianCommentsInsideARealSectionWithoutTreatingTheirHeadingAsBoundary() {
+    String comment = "%%\n## Hidden boundary\n\nHidden comment.\n%%";
+    String body = "## Definition\n\nPublic definition.\n\n" + comment
+        + "\n\nStill part.\n\n## Context\n\nMore text.\n";
+
+    assertEquals("Public definition.\n\n" + comment + "\n\nStill part.",
+        MarkdownScanner.section(body, "Definition").orElseThrow());
+  }
+
+  @Test
   void stripsOnlyObsidanCommentsAndKeepsCommentMarkersInProtectedContexts() {
     assertEquals("Visible.\n\nAfter.", MarkdownScanner.stripObsidianComments("Visible.\n%% hidden %%\nAfter."));
     assertEquals("```md\n%% literal %%\n```\n`%% literal %%`", MarkdownScanner.stripObsidianComments("```md\n%% literal %%\n```\n`%% literal %%`"));
