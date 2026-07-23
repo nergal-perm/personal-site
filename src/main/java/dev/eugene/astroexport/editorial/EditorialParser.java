@@ -151,7 +151,9 @@ public final class EditorialParser {
   }
 
   private static Map<String, Object> about(Document document, String path) {
+    Section lead = section(document, "Лид", path, "lead");
     Section principles = section(document, "Принципы", path, "principles");
+    Section colophon = section(document, "Колофон", path, "colophon");
     if (principles.children.isEmpty()) {
       fail(path, "principles", "must contain at least one H3 and prose pair");
     }
@@ -161,9 +163,9 @@ public final class EditorialParser {
       values.add(List.of(child.title, text(child.lines, path, "principles[" + i + "][1]")));
     }
     Map<String, Object> result = new LinkedHashMap<>();
-    result.put("lead", text(section(document, "Лид", path, "lead").leading, path, "lead"));
+    result.put("lead", text(lead.leading, path, "lead"));
     result.put("principles", values);
-    result.put("colophon", text(section(document, "Колофон", path, "colophon").leading, path, "colophon"));
+    result.put("colophon", text(colophon.leading, path, "colophon"));
     return result;
   }
 

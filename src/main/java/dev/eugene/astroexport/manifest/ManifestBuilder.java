@@ -434,10 +434,15 @@ public final class ManifestBuilder {
       List<Note> notes,
       List<ManifestLink> retained,
       List<ManifestLink> stripped) {
-    resolveCurrentTargets(path, metadata, notes, retained, stripped);
     for (Map.Entry<String, Object> entry : new ArrayList<>(metadata.entrySet())) {
-      if (!entry.getKey().equals("title") && !entry.getKey().equals("current")) {
-        metadata.put(entry.getKey(), tokenizeEditorial(path, entry.getKey(), entry.getValue(), notes, retained, stripped));
+      String key = entry.getKey();
+      if (key.equals("title")) {
+        continue;
+      }
+      if (key.equals("current")) {
+        resolveCurrentTargets(path, metadata, notes, retained, stripped);
+      } else {
+        metadata.put(key, tokenizeEditorial(path, key, entry.getValue(), notes, retained, stripped));
       }
     }
   }

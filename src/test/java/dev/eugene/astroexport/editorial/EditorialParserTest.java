@@ -88,6 +88,15 @@ final class EditorialParserTest {
   }
 
   @Test
+  void reportsMissingAboutLeadBeforeLaterPrincipleValidation() {
+    EditorialParser.ManifestValidationException error = assertThrows(EditorialParser.ManifestValidationException.class,
+        () -> parser.normalize("editorial/about.md", "about", frontmatter("about"),
+            base() + "## Принципы\n\n## Колофон\n\nКолофон.", common()));
+    assertEquals("lead", error.fieldName());
+    assertEquals("requires heading `## Лид`", error.reason());
+  }
+
+  @Test
   void rejectsMalformedNestedShapesAndNonBooleanSearchable() {
     EditorialParser.ManifestValidationException nested = assertThrows(EditorialParser.ManifestValidationException.class,
         () -> parser.normalize("editorial/home.md", "home", frontmatter("home"), base() + "## Hero\n\n### Заголовок\n\nЗаголовок\n\n### Лид\n\nЛид\n\n### Описание изображения\n\nAlt\n\n## Сейчас\n\n### Изучаю\n\nТолько одна строка", common()));

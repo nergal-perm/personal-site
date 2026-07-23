@@ -426,6 +426,27 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void recordsHomeLinksInMetadataOrderBeforeCurrentCardLinks() {
+    String body = homeWithLinkedCurrentCards()
+        .replace("Кратко.", "[[Summary target]] [[Summary private]]")
+        .replace("Заголовок.", "[[Hero target]]")
+        .replaceFirst("Описание\\.", "[[Current prose target]] [[Current prose private]]");
+    Note home = note("editorial/Home.md", "Главная", "home", "editorial", "curated_page", Map.of("editorialPage", "home"), body);
+    Note summary = note("blog/Summary.md", "Summary target", "summary", "blog", "note", Map.of(), "");
+    Note hero = note("blog/Hero.md", "Hero target", "hero", "blog", "note", Map.of(), "");
+    Note study = note("blog/Study.md", "Study source", "study-target", "blog", "essay", Map.of(), "");
+    Note prose = note("blog/Prose.md", "Current prose target", "current-prose", "blog", "note", Map.of(), "");
+    Note build = note("concepts/Build.md", "Build source", "build-target", "concepts", "concept", Map.of("description", "Описание."), "## Определение\n\nОпределение.");
+    Note book = note("bibliography/Book.md", "Book source", "book-target", "bibliography", "book", Map.of("author", "Автор"), "");
+    Note album = note("reviews/Album.md", "Album source", "album-target", "music", "album", Map.of("artist", "Автор", "albumTitle", "Альбом"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
+
+    var result = builder.buildRussianManifest(selection(home, summary, hero, study, prose, build, book, album));
+    assertEquals(List.of("Summary target", "Hero target", "Study source", "Current prose target", "Build source", "Book source", "Album source"),
+        result.retainedLinks().stream().map(ManifestLink::target).toList());
+    assertEquals(List.of("Summary private", "Current prose private"), result.strippedLinks().stream().map(ManifestLink::target).toList());
+  }
+
+  @Test
   void recordsEditorialLinksInPythonFieldOrderForAboutAndNow() {
     Note about = note("editorial/About.md", "О проекте", "about", "editorial", "curated_page", Map.of("editorialPage", "about"),
         "## Кратко\n\nКратко.\n\n## Eyebrow\n\nО проекте.\n\n## Лид\n\n[[Lead target]] [[Lead private]]\n\n## Принципы\n\n### Принцип\n\n[[Principle target]] [[Principle private]]\n\n## Колофон\n\n[[Colophon target]] [[Colophon private]]");
