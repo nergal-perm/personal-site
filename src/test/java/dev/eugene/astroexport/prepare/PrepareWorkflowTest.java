@@ -821,6 +821,8 @@ final class PrepareWorkflowTest {
     assertTrue(Files.readString(prior).contains("Fresh English body."));
     assertTrue(Files.exists(preserved));
     assertArrayEquals(previous, Files.readAllBytes(preserved));
+    assertTrue(Files.readString(fixture.source()).contains(
+        "publicTranslationStatus: \"generated\""));
     assertEquals("stale", journal(fixture, result).get("state"));
     assertTrue(result.diagnostics().stream()
         .anyMatch(item -> item.message().contains("replacement may already be live")

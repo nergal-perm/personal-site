@@ -636,7 +636,7 @@ public final class PrepareWorkflow {
             reviewDirectory,
             jobId,
             journal,
-            previousStatus,
+            durableTranslationStatus(durableEn, previousStatus),
             now);
       } catch (Exception error) {
         return terminal(
@@ -1392,6 +1392,14 @@ public final class PrepareWorkflow {
           : null;
     } catch (RuntimeException error) {
       return null;
+    }
+  }
+
+  private String durableTranslationStatus(Path durableEn, String fallback) {
+    try {
+      return previousTranslationStatus(decodeUtf8(readSafeExisting(durableEn)));
+    } catch (IOException | IllegalArgumentException error) {
+      return fallback;
     }
   }
 

@@ -74,6 +74,27 @@ final class WorkflowStateServiceTest {
   }
 
   @Test
+  void appendsWorkflowFieldsToEmptyFrontmatter() throws Exception {
+    Path source = write("empty.md", "---\n---\nBody.\n");
+
+    new WorkflowStateService().updateWorkflowState(
+        source,
+        new WorkflowStateService.WorkflowUpdate(
+            "metadata_blocked", null, "missing metadata"),
+        UPDATED_AT);
+
+    assertEquals("""
+        ---
+        publicWorkflowStatus: "metadata_blocked"
+        publicTranslationStatus: ""
+        publicWorkflowUpdated: "2026-07-18T08:34:56Z"
+        publicWorkflowDiagnostic: "missing metadata"
+        ---
+        Body.
+        """, Files.readString(source));
+  }
+
+  @Test
   void rejectsDuplicateYamlKeysWithoutChangingSource() throws Exception {
     String original = "---\ntitle: First\ntitle : Second\n---\nBody.\n";
     Path source = write("essay.md", original);

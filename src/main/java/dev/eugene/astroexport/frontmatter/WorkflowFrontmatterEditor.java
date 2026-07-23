@@ -124,11 +124,17 @@ public final class WorkflowFrontmatterEditor {
 
   private static MappingNode parseMapping(String header) {
     Object loaded = load(header);
+    if (loaded == null) {
+      return null;
+    }
     if (!(loaded instanceof Map<?, ?>)) {
       throw new IllegalArgumentException("invalid YAML frontmatter: expected a mapping");
     }
     try {
       Node node = new Compose(settings()).composeString(header).orElse(null);
+      if (node == null) {
+        return null;
+      }
       if (!(node instanceof MappingNode mapping)) {
         throw new IllegalArgumentException("invalid YAML frontmatter: expected a mapping");
       }
@@ -164,6 +170,9 @@ public final class WorkflowFrontmatterEditor {
   }
 
   private static Map<Integer, Range> workflowRanges(MappingNode mapping) {
+    if (mapping == null) {
+      return Map.of();
+    }
     Map<Integer, Range> ranges = new LinkedHashMap<>();
     for (NodeTuple tuple : mapping.getValue()) {
       if (!(tuple.getKeyNode() instanceof ScalarNode key)
@@ -189,6 +198,9 @@ public final class WorkflowFrontmatterEditor {
     try {
       Iterator<Event> events = new Parse(settings()).parseString(header).iterator();
       Event root = nextNodeEvent(events);
+      if (root == null) {
+        return;
+      }
       if (!(root instanceof MappingStartEvent)) {
         return;
       }
@@ -246,7 +258,7 @@ public final class WorkflowFrontmatterEditor {
         return event;
       }
     }
-    throw new IllegalArgumentException("invalid YAML frontmatter: missing root node");
+    return null;
   }
 
   private static Event nextEvent(Iterator<Event> events) {
