@@ -181,6 +181,55 @@ final class WorkflowStateServiceTest {
   }
 
   @Test
+  void rejectsExplicitAliasWorkflowKeyWithoutChangingSource() throws Exception {
+    String original = """
+        ---
+        keyName: &workflowKey "publicWorkflowStatus"
+        ? *workflowKey
+        : "stale"
+        title: Keep
+        ---
+        Body.
+        """;
+    Path source = write("explicit-alias-key.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("ready_for_review", null, ""),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("alias-based workflow key"));
+    assertEquals(original, Files.readString(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
+  void rejectsQuotedAnchorAliasWorkflowKeyWithoutChangingSource() throws Exception {
+    String original = """
+        ---
+        keyName: &workflowKey "publicWorkflowDiagnostic"
+        *workflowKey: "old diagnostic"
+        title: Keep
+        ---
+        Body.
+        """;
+    Path source = write("quoted-anchor-alias-key.md", original);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> new WorkflowStateService().updateWorkflowState(
+            source,
+            new WorkflowStateService.WorkflowUpdate("translation_failed", null, "new"),
+            UPDATED_AT));
+
+    assertTrue(error.getMessage().contains("alias-based workflow key"));
+    assertEquals(original, Files.readString(source));
+    assertNoTemporaryFiles();
+  }
+
+  @Test
   void rejectsNonScalarWorkflowField() throws Exception {
     String original = """
         ---
