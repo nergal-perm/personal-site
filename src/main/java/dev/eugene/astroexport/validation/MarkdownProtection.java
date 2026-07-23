@@ -26,6 +26,18 @@ final class MarkdownProtection {
     return result.toString();
   }
 
+  static String stripComments(String body) {
+    StringBuilder result = new StringBuilder(body.length());
+    int cursor = 0;
+    for (Range range : ranges(body)) {
+      result.append(body, cursor, range.start());
+      if (!range.comment()) result.append(body, range.start(), range.end());
+      cursor = range.end();
+    }
+    result.append(body, cursor, body.length());
+    return result.toString();
+  }
+
   private static List<Range> ranges(String body) {
     List<Range> ranges = new ArrayList<>();
     int cursor = 0;
@@ -39,12 +51,12 @@ final class MarkdownProtection {
   }
 
   private static Range nextRange(String body, int cursor) {
-    Range candidate = earliest(fencedRange(body, cursor), patternRange(HTML_COMMENT, body, cursor),
+    Range candidate = earliest(fencedRange(body, cursor), patternRange(HTML_COMMENT, body, cursor, true),
         rawHtmlPreRange(body, cursor), patternRange(INLINE_CODE, body, cursor));
     int obsidianStart = body.indexOf("%%", cursor);
     if (obsidianStart >= 0 && (candidate == null || obsidianStart < candidate.start())) {
       int closing = body.indexOf("%%", obsidianStart + 2);
-      return new Range(obsidianStart, closing < 0 ? body.length() : closing + 2);
+      return new Range(obsidianStart, closing < 0 ? body.length() : closing + 2, true);
     }
     return candidate;
   }
@@ -58,10 +70,10 @@ final class MarkdownProtection {
       while (closing.find(opening.end())) {
         String closingFence = closing.group(1);
         if (closingFence.charAt(0) == fence.charAt(0) && closingFence.length() >= fence.length()) {
-          return new Range(opening.start(), closing.end());
+          return new Range(opening.start(), closing.end(), false);
         }
       }
-      return new Range(opening.start(), body.length());
+      return new Range(opening.start(), body.length(), false);
     }
     return null;
   }
@@ -70,13 +82,17 @@ final class MarkdownProtection {
     var opening = RAW_HTML_PRE_OPEN.matcher(body);
     if (!opening.find(cursor)) return null;
     var closing = RAW_HTML_PRE_CLOSE.matcher(body);
-    return new Range(opening.start(), closing.find(opening.end()) ? closing.end() : body.length());
+    return new Range(opening.start(), closing.find(opening.end()) ? closing.end() : body.length(), false);
   }
 
   private static Range patternRange(Pattern pattern, String body, int cursor) {
+    return patternRange(pattern, body, cursor, false);
+  }
+
+  private static Range patternRange(Pattern pattern, String body, int cursor, boolean comment) {
     var match = pattern.matcher(body);
     if (!match.find(cursor)) return null;
-    return new Range(match.start(), match.end());
+    return new Range(match.start(), match.end(), comment);
   }
 
   private static Range earliest(Range... ranges) {
@@ -85,5 +101,5 @@ final class MarkdownProtection {
     return earliest;
   }
 
-  private record Range(int start, int end) { }
+  private record Range(int start, int end, boolean comment) { }
 }

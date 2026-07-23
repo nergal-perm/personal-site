@@ -41,6 +41,8 @@ final class PublicationValidatorTest {
         "<pre>\n## Определение\n\nNot a rendered section.\n</pre>\n",
         "## Определение\n\n<!-- Hidden definition. -->\n",
         "## Определение\n\n%% Hidden definition. %%\n",
+        "## Определение\n\n<!-- Hidden definition.\n",
+        "## Определение\n\n%% Hidden definition.\n",
         "##\nОпределение\n\nNot a rendered section.\n",
         "<!--\n## Определение\n\nHidden.\n-->\n",
         "%%\n## Определение\n\nHidden.\n%%\n")) {

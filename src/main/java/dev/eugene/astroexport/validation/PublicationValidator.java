@@ -101,7 +101,7 @@ public final class PublicationValidator {
     var match = section.matcher(searchable);
     if (!match.find()) return false;
     String content = body.substring(match.start(1), match.end(1));
-    return !content.replaceAll("(?s)<!--.*?-->", "").replaceAll("(?s)%%.*?%%", "").strip().isEmpty();
+    return !MarkdownProtection.stripComments(content).strip().isEmpty();
   }
 
 }
