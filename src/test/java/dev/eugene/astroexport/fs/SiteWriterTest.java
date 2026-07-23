@@ -134,6 +134,75 @@ final class SiteWriterTest {
   }
 
   @Test
+  void stageSiteSerializesFrontmatterWithPyYamlCompatibleScalars() throws Exception {
+    Path site = site();
+    ManifestEntry entry = entry(
+        "src/content/blog/ru/scalars.md",
+        "scalars",
+        "Scalar parity",
+        "Body",
+        orderedMap(
+            "plain", "Plain text",
+            "dateObject", LocalDate.of(2026, 7, 15),
+            "dateLike", "2026-07-15",
+            "boolLike", "true",
+            "falseLike", "false",
+            "yesLike", "yes",
+            "noLike", "no",
+            "nullLike", "null",
+            "intLike", "42",
+            "floatLike", "3.14",
+            "colon", "key: value",
+            "hashText", "with # hash",
+            "singleQuote", "Bob's note",
+            "empty", "",
+            "emptyList", List.of(),
+            "emptyMap", Map.of(),
+            "unicode", "Русский текст",
+            "list", List.of("2026-07-15", "plain", "false", "key: value", "Bob's note"),
+            "nested", orderedMap("z", "2026-07-15", "a", "yes", "emptyList", List.of(), "emptyMap", Map.of())));
+
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(site,
+        manifest(List.of(entry), List.of(), List.of()));
+
+    assertEquals("""
+        ---
+        boolLike: 'true'
+        colon: 'key: value'
+        dateLike: '2026-07-15'
+        dateObject: 2026-07-15
+        empty: ''
+        emptyList: []
+        emptyMap: {}
+        falseLike: 'false'
+        floatLike: '3.14'
+        hashText: 'with # hash'
+        intLike: '42'
+        list:
+        - '2026-07-15'
+        - plain
+        - 'false'
+        - 'key: value'
+        - Bob's note
+        nested:
+          a: 'yes'
+          emptyList: []
+          emptyMap: {}
+          z: '2026-07-15'
+        noLike: 'no'
+        nullLike: 'null'
+        plain: Plain text
+        singleQuote: Bob's note
+        unicode: Русский текст
+        yesLike: 'yes'
+        ---
+
+        Body
+        """, Files.readString(staged.root().resolve("src/content/blog/ru/scalars.md")));
+    discard(staged);
+  }
+
+  @Test
   void emptyCollectionBodyEndsAtFrontmatterWithoutBlankLines() throws Exception {
     Path site = site();
     ManifestEntry entry = entry(
@@ -250,6 +319,24 @@ final class SiteWriterTest {
         () -> SiteWriter.stageSite(sample.site, manifest));
 
     assertTrue(error.getMessage().toLowerCase().contains("hash"));
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @Test
+  void validResolvedDigestStillRejectsCorruptedDestinationBytes() throws Exception {
+    Sample sample = sampleExport();
+
+    SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+        () -> SiteWriter.stageSite(sample.site, sample.manifest, (source, destination) -> {
+          Files.copy(source, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+          Files.writeString(
+              destination,
+              "corrupted after copy",
+              StandardCharsets.UTF_8,
+              java.nio.file.StandardOpenOption.APPEND);
+        }));
+
+    assertTrue(error.getMessage().contains("copied asset hash mismatch"));
     assertEquals(List.of(), temporarySiblings(sample.site));
   }
 
@@ -374,6 +461,27 @@ final class SiteWriterTest {
   }
 
   @Test
+  void movedStagedDirectoryIsRejectedWithoutDeletingMovedTree() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path decoyParent = Files.createDirectory(temp.resolve("decoy-parent"));
+    Path movedStage = decoyParent.resolve(staged.root().getFileName());
+    Files.move(staged.root(), movedStage);
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> { }));
+
+      assertTrue(error.getMessage().toLowerCase().contains("ownership"));
+      assertTrue(Files.isDirectory(movedStage));
+      assertFalse(Files.exists(staged.root()));
+    } finally {
+      deleteTree(movedStage);
+    }
+  }
+
+  @Test
   void stagedSiteCapabilityIsOneUseEvenAfterSuccess() throws Exception {
     Sample sample = sampleExport();
     seedLiveTrees(sample.site);
@@ -446,6 +554,79 @@ final class SiteWriterTest {
   }
 
   @ParameterizedTest
+  @ValueSource(strings = {"site-parent", "managed-target", "staging"})
+  void deviceMismatchBlocksBeforeValidationOrForwardMoves(String mismatch) throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path mismatchedPath = switch (mismatch) {
+      case "site-parent" -> sample.site.toRealPath().getParent();
+      case "managed-target" -> sample.site.resolve("src/content").toRealPath();
+      case "staging" -> staged.root();
+      default -> throw new IllegalArgumentException(mismatch);
+    };
+    List<Path> validated = new java.util.ArrayList<>();
+    List<Path> forwardMoves = new java.util.ArrayList<>();
+
+    SiteWriter.StoreChecker checker = (first, second, message) -> {
+      if (first.equals(mismatchedPath) || second.equals(mismatchedPath)) {
+        throw new SiteWriter.WriterException(message);
+      }
+      SiteWriter.StoreChecker.filesStore().sameStore(first, second, message);
+    };
+
+    SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+        () -> SiteWriter.replaceManagedTrees(sample.site, staged, validated::add, (source, destination) -> {
+          forwardMoves.add(destination);
+          throw new AssertionError("forward move must not run");
+        }, SiteWriter.BackupMover.filesMove(), SiteWriter.RollbackHook.noop(),
+            SiteWriter.CleanupHook.deleteOwnedTemp(), checker));
+
+    assertTrue(error.getMessage().toLowerCase().contains("device"));
+    assertEquals(List.of(), validated);
+    assertEquals(List.of(), forwardMoves);
+    assertEquals(before, managedState(sample.site));
+    assertFalse(Files.exists(staged.root()));
+  }
+
+  @Test
+  void backupDeviceMismatchBlocksBeforeFirstLiveMove() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    List<Path> validated = new java.util.ArrayList<>();
+    List<String> backupAttempts = new java.util.ArrayList<>();
+    List<Path> forwardMoves = new java.util.ArrayList<>();
+
+    SiteWriter.StoreChecker checker = (first, second, message) -> {
+      if (first.getFileName().toString().startsWith("." + sample.site.getFileName() + ".astro-export-backup-")) {
+        throw new SiteWriter.WriterException(message);
+      }
+      SiteWriter.StoreChecker.filesStore().sameStore(first, second, message);
+    };
+
+    SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+        () -> SiteWriter.replaceManagedTrees(sample.site, staged, validated::add, (source, destination) -> {
+          forwardMoves.add(destination);
+          throw new AssertionError("forward move must not run");
+        }, (source, destination, relative) -> {
+          backupAttempts.add(relative);
+          Files.move(source, destination);
+          return true;
+        }, SiteWriter.RollbackHook.noop(), SiteWriter.CleanupHook.deleteOwnedTemp(), checker));
+
+    assertTrue(error.getMessage().toLowerCase().contains("backup"));
+    assertTrue(error.getMessage().toLowerCase().contains("device"));
+    assertEquals(List.of(staged.root()), validated);
+    assertEquals(List.of(), backupAttempts);
+    assertEquals(List.of(), forwardMoves);
+    assertEquals(before, managedState(sample.site));
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @ParameterizedTest
   @ValueSource(ints = {1, 2, 3})
   void eachOneShotBackupFailureRestoresExactLiveState(int failAt) throws Exception {
     Sample sample = sampleExport();
@@ -471,6 +652,34 @@ final class SiteWriterTest {
     assertEquals(failAt, backupAttempts.size());
     assertEquals(before, managedState(sample.site));
     assertEquals("keep me\n", Files.readString(sample.site.resolve("unmanaged.txt")));
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @ParameterizedTest
+  @ValueSource(ints = {1, 2, 3})
+  void backupExceptionAfterSuccessfulRenameIsReconciledAndRestored(int failAt) throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    List<String> backupAttempts = new java.util.ArrayList<>();
+
+    SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+        () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> { },
+            SiteWriter.PathMover.filesMove(),
+            (source, destination, relative) -> {
+              backupAttempts.add(relative);
+              Files.createDirectories(destination.getParent());
+              Files.move(source, destination);
+              if (backupAttempts.size() == failAt) {
+                throw new IOException("injected post-rename backup failure " + failAt);
+              }
+              return true;
+            }));
+
+    assertTrue(error.getMessage().contains("injected post-rename backup failure " + failAt));
+    assertEquals(failAt, backupAttempts.size());
+    assertEquals(before, managedState(sample.site));
     assertEquals(List.of(), temporarySiblings(sample.site));
   }
 
@@ -570,6 +779,93 @@ final class SiteWriterTest {
   }
 
   @Test
+  void symlinkSwapDuringInjectedForwardIsCaughtAndRollbackIsConfined() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path outside = Files.createDirectory(temp.resolve("outside"));
+    Files.writeString(outside.resolve("sentinel.txt"), "outside\n");
+    Path movedSrc = sample.site.resolve("src-swapped-original");
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> { }, (source, destination) -> {
+            Files.move(source, destination);
+            Files.move(sample.site.resolve("src"), movedSrc);
+            Files.createSymbolicLink(sample.site.resolve("src"), outside);
+            throw new IOException("injected ancestor symlink swap");
+          }));
+
+      assertTrue(error.getMessage().toLowerCase().contains("symlink"));
+      assertEquals(List.of("sentinel.txt"), Files.list(outside).map(path -> path.getFileName().toString()).toList());
+      assertTrue(Files.isDirectory(movedSrc));
+      assertEquals(before, managedState(sample.site));
+      assertEquals(List.of(), temporarySiblings(sample.site));
+    } finally {
+      if (Files.isSymbolicLink(sample.site.resolve("src"))) {
+        Files.deleteIfExists(sample.site.resolve("src"));
+      }
+      if (Files.exists(movedSrc) && !Files.exists(sample.site.resolve("src"))) {
+        Files.move(movedSrc, sample.site.resolve("src"));
+      } else {
+        deleteTree(movedSrc);
+      }
+    }
+  }
+
+  @ParameterizedTest
+  @MethodSource("absentTargetFailures")
+  void forwardFailurePreservesInitiallyAbsentTargets(List<String> initiallyAbsent, int failAt) throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    for (String relative : initiallyAbsent) {
+      deleteTree(sample.site.resolve(relative));
+    }
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    List<String> forwardMoves = new java.util.ArrayList<>();
+
+    SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+        () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> { }, (source, destination) -> {
+          forwardMoves.add(sample.site.relativize(destination).toString().replace('\\', '/'));
+          if (forwardMoves.size() == failAt) {
+            throw new IOException("injected absent-target forward move " + failAt);
+          }
+          Files.move(source, destination);
+        }));
+
+    assertTrue(error.getMessage().contains("injected absent-target forward move " + failAt));
+    assertEquals(failAt, forwardMoves.size());
+    assertEquals(before, managedState(sample.site));
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @Test
+  void forwardMoverThatCorruptsInstalledBytesTriggersExactRollback() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, String> beforeSite = treeShape(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    List<String> forwardMoves = new java.util.ArrayList<>();
+
+    SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+        () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> { }, (source, destination) -> {
+          Files.move(source, destination);
+          String relative = sample.site.toRealPath().relativize(destination).toString().replace('\\', '/');
+          forwardMoves.add(relative);
+          if (relative.equals("src/data/pages")) {
+            Files.writeString(destination.resolve("ru/search.json"), "{\"corrupted\": \"after valid directory move\"}\n");
+          }
+        }));
+
+    assertTrue(error.getMessage().contains("installed managed trees do not match staged evidence"));
+    assertEquals(MANAGED_ROOTS, forwardMoves);
+    assertEquals(beforeSite, treeShape(sample.site));
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @Test
   void forwardMoverMustInstallEveryStagedTreeBeforeBackupCleanup() throws Exception {
     Sample sample = sampleExport();
     seedLiveTrees(sample.site);
@@ -582,6 +878,85 @@ final class SiteWriterTest {
 
     assertTrue(error.getMessage().contains("installed managed trees"));
     assertEquals(before, managedSnapshot(sample.site));
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @Test
+  void postCommitCleanupFailuresAreAggregatedWithRecoveryPaths() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Map<String, Map<String, ByteBuffer>> expectedLive = managedSnapshot(staged.root());
+    LinkedHashMap<String, Path> retained = new LinkedHashMap<>();
+
+    SiteWriter.CleanupHook cleanup = owned -> {
+      retained.put(owned.kind(), owned.path());
+      throw new IOException("injected " + owned.kind() + " cleanup failure");
+    };
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(
+              sample.site,
+              staged,
+              root -> { },
+              SiteWriter.PathMover.filesMove(),
+              SiteWriter.BackupMover.filesMove(),
+              SiteWriter.RollbackHook.noop(),
+              cleanup));
+
+      assertTrue(error.committed());
+      assertTrue(error.getMessage().contains("committed=true"));
+      assertTrue(error.getMessage().contains("injected backup cleanup failure"));
+      assertTrue(error.getMessage().contains("injected staging cleanup failure"));
+      assertEquals(
+          new java.util.TreeSet<>(List.of(retained.get("backup").toString(), retained.get("staging").toString())),
+          new java.util.TreeSet<>(error.recoveryPaths()));
+      assertTrue(error.recoveryPaths().stream().allMatch(path -> Files.isDirectory(Path.of(path))));
+      assertEquals(expectedLive, managedSnapshot(sample.site));
+      assertEquals("keep me\n", Files.readString(sample.site.resolve("unmanaged.txt")));
+    } finally {
+      for (Path path : retained.values()) {
+        deleteTree(path);
+      }
+    }
+    assertEquals(List.of(), temporarySiblings(sample.site));
+  }
+
+  @Test
+  void precommitCleanupFailureIsReportedAsUncommittedRecovery() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+
+    SiteWriter.CleanupHook cleanup = owned -> {
+      throw new IOException("injected " + owned.kind() + " cleanup failure before commit");
+    };
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(
+              sample.site,
+              staged,
+              root -> {
+                throw new RuntimeException("validation failed");
+              },
+              SiteWriter.PathMover.filesMove(),
+              SiteWriter.BackupMover.filesMove(),
+              SiteWriter.RollbackHook.noop(),
+              cleanup));
+
+      assertFalse(error.committed());
+      assertTrue(error.getMessage().contains("committed=false"));
+      assertTrue(error.getMessage().contains("cleanup failures"));
+      assertTrue(error.getMessage().contains("injected staging cleanup failure before commit"));
+      assertEquals(List.of(staged.root().toString()), error.recoveryPaths());
+      assertTrue(Files.isDirectory(staged.root()));
+      assertEquals(before, managedState(sample.site));
+    } finally {
+      deleteTree(staged.root());
+    }
     assertEquals(List.of(), temporarySiblings(sample.site));
   }
 
@@ -745,6 +1120,14 @@ final class SiteWriterTest {
         Arguments.of("public/assets/vault"),
         Arguments.of("src/content"),
         Arguments.of("src/data/pages"));
+  }
+
+  private static Stream<Arguments> absentTargetFailures() {
+    return Stream.of(
+        Arguments.of(List.of("public/assets/vault"), 2),
+        Arguments.of(List.of("src/content"), 3),
+        Arguments.of(List.of("src/data/pages"), 3),
+        Arguments.of(List.of("public/assets/vault", "src/content"), 3));
   }
 
   private Path site() throws IOException {

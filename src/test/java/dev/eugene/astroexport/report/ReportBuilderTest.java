@@ -210,7 +210,8 @@ final class ReportBuilderTest {
     assertTrue(report.contains("Included by selector: 0"));
     assertTrue(report.contains("Manifest records before staging: 2"));
     assertFalse(report.contains("Generated records before validation"));
-    assertTrue(report.contains("Astro content gate failed with exit code 7"));
+    assertTrue(report.contains("```text\nAstro content gate failed with exit code 7\n```"));
+    assertFalse(report.contains("RuntimeException"));
   }
 
   @Test

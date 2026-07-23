@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,6 +62,14 @@ public final class SiteWriter {
       "ru", "src/data/pages/ru/search.json",
       "en", "src/data/pages/en/search.json");
   private static final Pattern WINDOWS_ABSOLUTE = Pattern.compile("^[A-Za-z]:[\\\\/].*|^\\\\\\\\.*");
+  private static final Pattern YAML_DATE_LIKE =
+      Pattern.compile("^[0-9]{4}-[0-9]{2}-[0-9]{2}(?:[Tt ].*)?$");
+  private static final Pattern YAML_INTEGER_LIKE =
+      Pattern.compile("^[+-]?(?:[0-9][0-9_]*|0x[0-9A-Fa-f_]+|[0-9][0-9_]*(?::[0-5]?[0-9])+)$");
+  private static final Pattern YAML_FLOAT_LIKE =
+      Pattern.compile("^[+-]?(?:(?:[0-9][0-9_]*)?\\.[0-9_]+|[0-9][0-9_]*\\.)(?:[eE][-+]?[0-9]+)?$|^[+-]?\\.(?:inf|Inf|INF|nan|NaN|NAN)$");
+  private static final Set<String> YAML_AMBIGUOUS_VALUES = Set.of(
+      "true", "false", "yes", "no", "on", "off", "null", "~");
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final ConcurrentHashMap<String, StageBinding> STAGES = new ConcurrentHashMap<>();
   private static final AssetResolver ASSET_RESOLVER = new AssetResolver();
@@ -68,6 +77,10 @@ public final class SiteWriter {
   private SiteWriter() { }
 
   public static StagedSite stageSite(Path siteRoot, ManifestResult manifest) {
+    return stageSite(siteRoot, manifest, AssetCopier.filesCopy());
+  }
+
+  static StagedSite stageSite(Path siteRoot, ManifestResult manifest, AssetCopier assetCopier) {
     Path site = canonicalSiteRoot(siteRoot);
     List<RecordToWrite> records = records(manifest);
     Map<String, byte[]> templates = loadSearchTemplates();
@@ -97,7 +110,7 @@ public final class SiteWriter {
       for (Map.Entry<String, byte[]> template : templates.entrySet()) {
         writeBytes(stagedRoot.resolve(SEARCH_TARGETS.get(template.getKey())), template.getValue());
       }
-      copyAssets(stagedRoot, assets);
+      copyAssets(stagedRoot, assets, assetCopier);
       List<TreeHasher.ManagedTreeHash> hashes = TreeHasher.hashManagedTrees(stagedRoot);
       String capability = UUID.randomUUID().toString() + UUID.randomUUID();
       StageBinding binding = new StageBinding(
@@ -168,23 +181,61 @@ public final class SiteWriter {
       PathMover mover,
       BackupMover backupMover,
       RollbackHook rollbackHook) {
+    return replaceManagedTrees(
+        siteRoot,
+        staged,
+        validator,
+        mover,
+        backupMover,
+        rollbackHook,
+        CleanupHook.deleteOwnedTemp());
+  }
+
+  static WriteResult replaceManagedTrees(
+      Path siteRoot,
+      StagedSite staged,
+      Consumer<Path> validator,
+      PathMover mover,
+      BackupMover backupMover,
+      RollbackHook rollbackHook,
+      CleanupHook cleanupHook) {
+    return replaceManagedTrees(
+        siteRoot,
+        staged,
+        validator,
+        mover,
+        backupMover,
+        rollbackHook,
+        cleanupHook,
+        StoreChecker.filesStore());
+  }
+
+  static WriteResult replaceManagedTrees(
+      Path siteRoot,
+      StagedSite staged,
+      Consumer<Path> validator,
+      PathMover mover,
+      BackupMover backupMover,
+      RollbackHook rollbackHook,
+      CleanupHook cleanupHook,
+      StoreChecker storeChecker) {
     StageBinding binding = claimStage(staged);
     try {
-      Path site = canonicalSiteRoot(siteRoot);
+      Path site = canonicalSiteRoot(siteRoot, storeChecker);
       if (!site.equals(binding.siteRoot())) {
         throw new WriterException("staged site belongs to " + binding.siteRoot() + ", not requested site " + site);
       }
       verifyStaged(binding);
-      preflightLiveLayout(site, binding);
+      preflightLiveLayout(site, binding, storeChecker);
       if (validator == null) {
         throw new WriterException("validate callback must be callable");
       }
       validator.accept(binding.temp().path());
       verifyStaged(binding);
-      preflightLiveLayout(site, binding);
+      preflightLiveLayout(site, binding, storeChecker);
     } catch (Exception error) {
       WriterException primary = writerError(error, "staged validation failed: " + error.getMessage());
-      throw cleanupWithPrimary(primary, List.of(binding.temp()), false, List.of());
+      throw cleanupWithPrimary(primary, List.of(binding.temp()), false, List.of(), cleanupHook);
     }
 
     Path site = binding.siteRoot();
@@ -193,12 +244,12 @@ public final class SiteWriter {
     List<String> backedUp = new ArrayList<>();
     try {
       createdAncestors = createLiveAncestors(site);
-      preflightLiveLayout(site, binding);
+      preflightLiveLayout(site, binding, storeChecker);
       Path backupRoot = Files.createTempDirectory(
           site.getParent(),
           "." + site.getFileName() + ".astro-export-backup-");
       backupOwned = ownedPath(backupRoot, "backup");
-      sameStore(backupRoot, site, "backup and live layout device mismatch");
+      storeChecker.sameStore(backupRoot, site, "backup and live layout device mismatch");
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         Path source = site.resolve(relative);
         if (Files.exists(source, LinkOption.NOFOLLOW_LINKS)) {
@@ -235,16 +286,16 @@ public final class SiteWriter {
       List<OwnedPath> cleanup = backupOwned == null || !rollbackErrors.isEmpty()
           ? List.of(binding.temp())
           : List.of(backupOwned, binding.temp());
-      throw cleanupWithPrimary(primary, cleanup, false, retained);
+      throw cleanupWithPrimary(primary, cleanup, false, retained, cleanupHook);
     }
 
     try {
       for (String relative : TreeHasher.MANAGED_ROOTS) {
-        preflightLiveLayout(site, binding);
+        preflightLiveLayout(site, binding, storeChecker);
         mover.move(binding.temp().path().resolve(relative), site.resolve(relative));
-        preflightLiveLayout(site, binding);
+        preflightLiveLayout(site, binding, storeChecker);
       }
-      preflightLiveLayout(site, binding);
+      preflightLiveLayout(site, binding, storeChecker);
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         if (!Files.isDirectory(site.resolve(relative), LinkOption.NOFOLLOW_LINKS)
             || Files.isSymbolicLink(site.resolve(relative))) {
@@ -273,14 +324,14 @@ public final class SiteWriter {
       List<OwnedPath> cleanup = rollbackErrors.isEmpty()
           ? List.of(backupOwned, binding.temp())
           : List.of(binding.temp());
-      throw cleanupWithPrimary(primary, cleanup, false, retained);
+      throw cleanupWithPrimary(primary, cleanup, false, retained, cleanupHook);
     }
 
     List<String> cleanupErrors = new ArrayList<>();
     List<String> recoveryPaths = new ArrayList<>();
     for (OwnedPath owned : List.of(backupOwned, binding.temp())) {
       try {
-        deleteOwnedTemp(owned);
+        cleanupHook.cleanup(owned);
       } catch (Exception error) {
         cleanupErrors.add(error.getMessage());
         if (Files.exists(owned.path(), LinkOption.NOFOLLOW_LINKS)) {
@@ -387,14 +438,15 @@ public final class SiteWriter {
     }
   }
 
-  private static void preflightLiveLayout(Path site, StageBinding binding) {
+  private static void preflightLiveLayout(Path site, StageBinding binding, StoreChecker storeChecker) {
     if (!identityMatches(site, binding.siteIdentity())) {
       throw new WriterException("site ownership changed after staging: " + site);
     }
     if (!identityMatches(site.getParent(), binding.siteParentIdentity())) {
       throw new WriterException("site parent ownership changed after staging: " + site.getParent());
     }
-    sameStore(binding.temp().path(), site, "staging and live layout device mismatch");
+    storeChecker.sameStore(site, site.getParent(), "site and parent device mismatch for " + site);
+    storeChecker.sameStore(binding.temp().path(), site, "staging and live layout device mismatch");
     for (String relative : concat(LIVE_ANCESTORS, TreeHasher.MANAGED_ROOTS)) {
       Path path = site.resolve(relative);
       if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
@@ -406,7 +458,7 @@ public final class SiteWriter {
       if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
         throw new WriterException("live layout ancestor is not a directory: " + path);
       }
-      sameStore(path, site, "live layout device mismatch for " + path);
+      storeChecker.sameStore(path, site, "live layout device mismatch for " + path);
     }
   }
 
@@ -509,6 +561,10 @@ public final class SiteWriter {
   }
 
   private static Path canonicalSiteRoot(Path siteRoot) {
+    return canonicalSiteRoot(siteRoot, StoreChecker.filesStore());
+  }
+
+  private static Path canonicalSiteRoot(Path siteRoot, StoreChecker storeChecker) {
     try {
       Path root = siteRoot.toRealPath();
       if (Files.isSymbolicLink(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
@@ -520,7 +576,7 @@ public final class SiteWriter {
           || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
         throw new WriterException("site parent is not a real directory: " + parent);
       }
-      sameStore(root, parent, "site and parent device mismatch for " + root);
+      storeChecker.sameStore(root, parent, "site and parent device mismatch for " + root);
       return root;
     } catch (IOException error) {
       throw new WriterException("cannot resolve site root " + siteRoot + ": " + error.getMessage(), error);
@@ -722,7 +778,7 @@ public final class SiteWriter {
     return List.copyOf(ordered);
   }
 
-  private static void copyAssets(Path stagedRoot, List<ResolvedAsset> assets) {
+  private static void copyAssets(Path stagedRoot, List<ResolvedAsset> assets, AssetCopier assetCopier) {
     LinkedHashMap<String, ResolvedAsset> byOutput = new LinkedHashMap<>();
     for (ResolvedAsset asset : assets) {
       ResolvedAsset existing = byOutput.putIfAbsent(asset.outputName(), asset);
@@ -736,7 +792,7 @@ public final class SiteWriter {
           ResolvedAsset asset = entry.getValue();
           Path destination = stagedRoot.resolve("public/assets/vault").resolve(asset.outputName());
           try {
-            Files.copy(asset.sourcePath(), destination, StandardCopyOption.REPLACE_EXISTING);
+            assetCopier.copy(asset.sourcePath(), destination);
             String digest = sha256(Files.readAllBytes(destination));
             if (!digest.equals(asset.sha256())) {
               throw new WriterException("copied asset hash mismatch for '" + asset.reference()
@@ -799,9 +855,6 @@ public final class SiteWriter {
     if (value instanceof List<?> list) {
       return list.stream().map(SiteWriter::sortedValue).toList();
     }
-    if (value instanceof TemporalAccessor) {
-      return value.toString();
-    }
     return value;
   }
 
@@ -813,35 +866,69 @@ public final class SiteWriter {
 
   private static void yamlMap(Map<String, Object> map, int indent, StringBuilder builder) {
     for (Map.Entry<String, Object> entry : map.entrySet()) {
-      indent(builder, indent).append(entry.getKey()).append(":");
-      Object value = entry.getValue();
-      if (value instanceof Map<?, ?> nested) {
-        builder.append('\n');
-        yamlMap(castMap(nested), indent + 2, builder);
-      } else if (value instanceof List<?> list) {
-        builder.append('\n');
-        yamlList(list, indent + 2, builder);
-      } else {
-        builder.append(' ').append(yamlScalar(value)).append('\n');
-      }
+      indent(builder, indent);
+      yamlEntry(builder, entry.getKey(), entry.getValue(), indent);
     }
   }
 
   private static void yamlList(List<?> list, int indent, StringBuilder builder) {
     for (Object value : list) {
-      indent(builder, indent).append("-");
       if (value instanceof Map<?, ?> nested) {
-        builder.append('\n');
-        yamlMap(castMap(nested), indent + 2, builder);
+        Map<String, Object> map = sorted(castMap(nested));
+        if (map.isEmpty()) {
+          indent(builder, indent).append("- {}\n");
+          continue;
+        }
+        int index = 0;
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+          if (index == 0) {
+            indent(builder, indent).append("- ");
+          } else {
+            indent(builder, indent + 2);
+          }
+          yamlEntry(builder, entry.getKey(), entry.getValue(), indent + 2);
+          index++;
+        }
+      } else if (value instanceof List<?> nestedList) {
+        if (nestedList.isEmpty()) {
+          indent(builder, indent).append("- []\n");
+          continue;
+        }
+        indent(builder, indent).append("-\n");
+        yamlList(nestedList, indent + 2, builder);
       } else {
-        builder.append(' ').append(yamlScalar(value)).append('\n');
+        indent(builder, indent).append("- ").append(yamlScalar(value)).append('\n');
       }
+    }
+  }
+
+  private static void yamlEntry(StringBuilder builder, String key, Object value, int keyIndent) {
+    builder.append(key).append(":");
+    if (value instanceof Map<?, ?> nested) {
+      if (nested.isEmpty()) {
+        builder.append(" {}\n");
+        return;
+      }
+      builder.append('\n');
+      yamlMap(castMap(nested), keyIndent + 2, builder);
+    } else if (value instanceof List<?> list) {
+      if (list.isEmpty()) {
+        builder.append(" []\n");
+        return;
+      }
+      builder.append('\n');
+      yamlList(list, keyIndent, builder);
+    } else {
+      builder.append(' ').append(yamlScalar(value)).append('\n');
     }
   }
 
   private static String yamlScalar(Object value) {
     if (value == null) {
       return "null";
+    }
+    if (value instanceof TemporalAccessor temporal) {
+      return temporal.toString();
     }
     if (value instanceof Boolean bool) {
       return bool ? "true" : "false";
@@ -853,10 +940,32 @@ public final class SiteWriter {
     if (text.isEmpty()) {
       return "''";
     }
-    if (text.matches("[\\p{L}\\p{N} _./@+-]+")) {
-      return text;
+    return shouldQuoteYamlString(text) ? yamlSingleQuoted(text) : text;
+  }
+
+  private static boolean shouldQuoteYamlString(String text) {
+    if (!text.equals(text.strip())) {
+      return true;
     }
-    return json(text, 0);
+    if (text.contains(": ") || text.contains(" #")) {
+      return true;
+    }
+    if (text.startsWith("- ") || text.startsWith("? ") || text.startsWith(": ")) {
+      return true;
+    }
+    char first = text.charAt(0);
+    if ("[]{}#,&*!|>'\"%@`".indexOf(first) >= 0) {
+      return true;
+    }
+    String normalized = text.toLowerCase(Locale.ROOT);
+    return YAML_AMBIGUOUS_VALUES.contains(normalized)
+        || YAML_DATE_LIKE.matcher(text).matches()
+        || YAML_INTEGER_LIKE.matcher(text).matches()
+        || YAML_FLOAT_LIKE.matcher(text).matches();
+  }
+
+  private static String yamlSingleQuoted(String text) {
+    return "'" + text.replace("'", "''") + "'";
   }
 
   private static String json(Object value, int indent) {
@@ -947,6 +1056,15 @@ public final class SiteWriter {
       List<OwnedPath> ownedPaths,
       boolean committed,
       List<Path> retainedPaths) {
+    return cleanupWithPrimary(primary, ownedPaths, committed, retainedPaths, CleanupHook.deleteOwnedTemp());
+  }
+
+  private static WriterException cleanupWithPrimary(
+      WriterException primary,
+      List<OwnedPath> ownedPaths,
+      boolean committed,
+      List<Path> retainedPaths,
+      CleanupHook cleanupHook) {
     ArrayList<String> cleanupErrors = new ArrayList<>();
     LinkedHashSet<String> recoveryPaths = new LinkedHashSet<>(primary.recoveryPaths());
     for (Path path : retainedPaths) {
@@ -956,7 +1074,7 @@ public final class SiteWriter {
     }
     for (OwnedPath owned : ownedPaths) {
       try {
-        deleteOwnedTemp(owned);
+        cleanupHook.cleanup(owned);
       } catch (Exception error) {
         cleanupErrors.add(error.getMessage());
         if (Files.exists(owned.path(), LinkOption.NOFOLLOW_LINKS)) {
@@ -1117,6 +1235,15 @@ public final class SiteWriter {
   }
 
   @FunctionalInterface
+  interface AssetCopier {
+    void copy(Path source, Path destination) throws IOException;
+
+    static AssetCopier filesCopy() {
+      return (source, destination) -> Files.copy(source, destination, StandardCopyOption.REPLACE_EXISTING);
+    }
+  }
+
+  @FunctionalInterface
   interface PathMover {
     void move(Path source, Path destination) throws IOException;
 
@@ -1143,6 +1270,24 @@ public final class SiteWriter {
 
     static RollbackHook noop() {
       return relative -> { };
+    }
+  }
+
+  @FunctionalInterface
+  interface CleanupHook {
+    void cleanup(OwnedPath owned) throws IOException;
+
+    static CleanupHook deleteOwnedTemp() {
+      return SiteWriter::deleteOwnedTemp;
+    }
+  }
+
+  @FunctionalInterface
+  interface StoreChecker {
+    void sameStore(Path first, Path second, String message);
+
+    static StoreChecker filesStore() {
+      return SiteWriter::sameStore;
     }
   }
 

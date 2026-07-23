@@ -193,7 +193,8 @@ public final class ReportBuilder {
       lines.add("- Manifest records before staging: " + (manifest.entries().size() + manifest.englishEntries().size()));
       lines.add("- Collected assets: " + manifest.assets().size());
     }
-    lines.addAll(List.of("", "## Error", "", "```text", error.toString(), "```", ""));
+    String errorText = error.getMessage() == null ? "" : error.getMessage();
+    lines.addAll(List.of("", "## Error", "", "```text", errorText, "```", ""));
     return String.join("\n", lines);
   }
 
