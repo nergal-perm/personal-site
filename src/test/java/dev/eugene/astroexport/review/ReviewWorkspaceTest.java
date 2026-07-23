@@ -162,6 +162,32 @@ final class ReviewWorkspaceTest {
   }
 
   @Test
+  void rejectsNonStringReviewControlValues() throws Exception {
+    ManifestEntry entry = contentEntry();
+    Path path = temp.resolve("review/blog/essay/en.md");
+    Files.createDirectories(path.getParent());
+    Files.writeString(path, """
+        ---
+        sourceHash:
+        - not
+        - a string
+        translationStatus: generated
+        translatedAt: 2026-07-17
+        translationProfile: codex-test-v1
+        title: English
+        description: English description.
+        ---
+        English body.
+        """);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> ReviewWorkspace.loadEnglishPatch(temp.resolve("review"), entry));
+
+    assertTrue(error.getMessage().contains("sourceHash must be a non-empty string"));
+  }
+
+  @Test
   void rejectsSymlinkAndHardlinkReviewTargets() throws Exception {
     Path target = temp.resolve("review/blog/essay/ru.md");
     Files.createDirectories(target.getParent());

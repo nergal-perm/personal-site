@@ -5,7 +5,6 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import dev.eugene.astroexport.model.ManifestEntry;
-import dev.eugene.astroexport.translation.TranslationProjection;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -38,7 +37,10 @@ public final class RuCache {
         deepMap(entry.metadata()),
         entry.body(),
         string(entry.metadata().get("sourceHash")),
-        TranslationProjection.translationSourceHash(entry));
+        entry.translationSourceHash() == null
+            ? string(entry.metadata().get("sourceHash"))
+            : entry.translationSourceHash(),
+        entry.translationSourceMetadata());
   }
 
   public static List<Path> writeCachedRecords(
@@ -201,9 +203,13 @@ public final class RuCache {
       Map<String, Object> metadata,
       String body,
       @JsonProperty("source_hash") String sourceHash,
-      @JsonProperty("translation_source_hash") String translationSourceHash) {
+      @JsonProperty("translation_source_hash") String translationSourceHash,
+      @JsonProperty("translation_source_metadata")
+      Map<String, Object> translationSourceMetadata) {
     public NormalizedPublicRecord {
       metadata = deepMap(metadata);
+      translationSourceMetadata =
+          translationSourceMetadata == null ? null : deepMap(translationSourceMetadata);
     }
   }
 }

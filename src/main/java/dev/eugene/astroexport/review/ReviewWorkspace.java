@@ -71,7 +71,13 @@ public final class ReviewWorkspace {
         && entry.metadata().get("current") instanceof List<?> sourceCurrent) {
       metadata.put("current", parseCurrent(entry, target.publicId(), parsed.body(), sourceCurrent.size()));
     }
-    return normalizePatch(entry, target.publicId(), payload, metadata, references, parsed.body());
+    return normalizePatch(
+        entry,
+        target.publicId(),
+        payload,
+        metadata,
+        references,
+        target.editorial() ? "" : parsed.body());
   }
 
   public static List<Path> migrateOverrides(Path overridesRoot, Path reviewRoot) {
@@ -204,18 +210,18 @@ public final class ReviewWorkspace {
       Map<String, Object> metadata,
       Map<String, Object> references,
       String body) {
-    String sourceHash = requiredString(entry, publicId, controls, "sourceHash");
-    String status = requiredString(entry, publicId, controls, "translationStatus");
+    String sourceHash = requiredString(entry, publicId, controls, "sourceHash", false);
+    String status = requiredString(entry, publicId, controls, "translationStatus", false);
     if (!Set.of("generated", "reviewed").contains(status)) {
       fail(entry, publicId, "translationStatus must be generated or reviewed");
     }
-    String translatedAt = requiredString(entry, publicId, controls, "translatedAt");
+    String translatedAt = requiredString(entry, publicId, controls, "translatedAt", true);
     try {
       LocalDate.parse(translatedAt);
     } catch (DateTimeParseException error) {
       fail(entry, publicId, "translatedAt must be a real ISO date");
     }
-    String profile = requiredString(entry, publicId, controls, "translationProfile");
+    String profile = requiredString(entry, publicId, controls, "translationProfile", false);
     return new TranslationPatch(
         sourceHash, status, translatedAt, profile, metadata, references, body.strip(), "review");
   }
@@ -224,9 +230,18 @@ public final class ReviewWorkspace {
       ManifestEntry entry,
       String publicId,
       Map<String, Object> values,
-      String field) {
+      String field,
+      boolean allowDate) {
     Object value = values.get(field);
-    String text = value == null ? "" : value.toString().strip();
+    String text;
+    if (value instanceof String string) {
+      text = string.strip();
+    } else if (allowDate && value instanceof LocalDate date) {
+      text = date.toString();
+    } else {
+      fail(entry, publicId, field + " must be a non-empty string");
+      throw new AssertionError("unreachable");
+    }
     if (text.isEmpty()) {
       fail(entry, publicId, field + " must be a non-empty string");
     }

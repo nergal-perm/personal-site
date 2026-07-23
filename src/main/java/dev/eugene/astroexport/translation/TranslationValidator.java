@@ -18,7 +18,7 @@ import java.util.regex.Pattern;
 public final class TranslationValidator {
   private static final Set<String> CONTROL_FIELDS = Set.of(
       "translationStatus", "translatedAt", "translationProfile");
-  private static final Set<String> OBJECT_REFERENCE_FIELDS = Set.of("paths", "routes");
+  private static final List<String> OBJECT_REFERENCE_FIELDS = List.of("paths", "routes");
   private static final Pattern INTERNAL_RU_ROUTE = Pattern.compile("(?<![\\p{Alnum}_])/ru/");
 
   public static ManifestResult buildEnglishManifest(ManifestResult russian, Path reviewRoot) {
@@ -36,7 +36,10 @@ public final class TranslationValidator {
         fail(entry, target.publicId(), error.getMessage());
         throw new AssertionError("unreachable");
       }
-      if (!patch.sourceHash().equals(TranslationProjection.translationSourceHash(entry))) {
+      String requiredHash = entry.translationSourceHash() == null
+          ? TranslationProjection.translationSourceHash(entry)
+          : entry.translationSourceHash();
+      if (!patch.sourceHash().equals(requiredHash)) {
         fail(entry, target.publicId(), "stale review: sourceHash does not match translation sourceHash");
       }
       entries.add(englishEntry(entry, target, patch));
@@ -84,58 +87,188 @@ public final class TranslationValidator {
       ManifestEntry entry,
       String publicId,
       TranslationPatch patch) {
-    LinkedHashMap<String, Object> translated = deepMap(patch.metadata());
+    boolean authoredEditorial = entry.targetPath().startsWith("src/data/pages/ru/")
+        && entry.translationSourceMetadata() != null;
+    if (!authoredEditorial) {
+      if (!patch.referenceTranslations().isEmpty()) {
+        fail(
+            entry,
+            publicId,
+            "referenceTranslations require authored editorial source metadata");
+      }
+      return patch.metadata();
+    }
+
+    Map<String, Object> authored = entry.translationSourceMetadata();
+    LinkedHashSet<String> expectedFields = new LinkedHashSet<>();
     for (String field : OBJECT_REFERENCE_FIELDS) {
-      if (!entry.metadata().containsKey(field)) {
-        continue;
+      if (authored.containsKey(field)
+          && TranslationProjection.hasTranslationLeaf(authored.get(field), field)) {
+        expectedFields.add(field);
       }
-      Object sourceValue = entry.metadata().get(field);
-      if (!TranslationProjection.hasTranslationLeaf(sourceValue, field)) {
-        translated.remove(field);
-        continue;
-      }
+    }
+    LinkedHashSet<String> actualFields = new LinkedHashSet<>(patch.referenceTranslations().keySet());
+    LinkedHashSet<String> missingFields = new LinkedHashSet<>(expectedFields);
+    missingFields.removeAll(actualFields);
+    if (!missingFields.isEmpty()) {
+      fail(
+          entry,
+          publicId,
+          "referenceTranslations has missing fields: "
+              + String.join(", ", missingFields.stream().sorted().toList()));
+    }
+    LinkedHashSet<String> unexpectedFields = new LinkedHashSet<>(actualFields);
+    unexpectedFields.removeAll(expectedFields);
+    if (!unexpectedFields.isEmpty()) {
+      fail(
+          entry,
+          publicId,
+          "referenceTranslations has unexpected fields: "
+              + String.join(", ", unexpectedFields.stream().sorted().toList()));
+    }
+
+    LinkedHashMap<String, Object> authoredWithoutCatalogs = deepMap(authored);
+    expectedFields.forEach(authoredWithoutCatalogs::remove);
+    mergeMap(entry, publicId, authoredWithoutCatalogs, patch.metadata(), "metadata");
+
+    LinkedHashMap<String, Object> translated = deepMap(patch.metadata());
+    for (String field : expectedFields) {
       if (translated.containsKey(field)) {
         fail(
             entry,
             publicId,
             "metadata." + field + " must be stored in referenceTranslations");
       }
-      Object catalogValue = patch.referenceTranslations().get(field);
-      if (!(catalogValue instanceof Map<?, ?>)) {
-        fail(entry, publicId, "referenceTranslations has missing fields: " + field);
-      }
-      Map<?, ?> catalog = (Map<?, ?>) catalogValue;
-      if (!(sourceValue instanceof List<?>)) {
-        fail(entry, publicId, "metadata." + field + " must be a list");
-      }
-      List<?> items = (List<?>) sourceValue;
-      List<Object> visible = new ArrayList<>();
-      for (Object itemValue : items) {
-        if (!(itemValue instanceof Map<?, ?>)) {
-          fail(entry, publicId, "metadata." + field + " items must be objects");
-        }
-        Map<?, ?> item = (Map<?, ?>) itemValue;
-        Object reference = item.get("route");
-        if (!(reference instanceof String)) {
-          fail(entry, publicId, "metadata." + field + " route must be a string");
-        }
-        String route = (String) reference;
-        if (!catalog.containsKey(route)) {
-          fail(
-              entry,
-              publicId,
-              "referenceTranslations." + field + " has missing references: " + route);
-        }
-        visible.add(mergeMap(
+      Map<String, Object> catalog = requiredCatalog(
+          entry, publicId, field, patch.referenceTranslations().get(field));
+      Map<String, Map<String, Object>> authoredByReference = authoredByReference(
+          entry, publicId, field, authored.get(field));
+
+      LinkedHashSet<String> missingReferences =
+          new LinkedHashSet<>(authoredByReference.keySet());
+      missingReferences.removeAll(catalog.keySet());
+      if (!missingReferences.isEmpty()) {
+        fail(
             entry,
             publicId,
-            stringMap(item, "metadata." + field),
-            catalog.get(route),
-            "referenceTranslations." + field + "." + route));
+            "referenceTranslations." + field + " has missing references: "
+                + String.join(", ", missingReferences.stream().sorted().toList()));
       }
-      translated.put(field, visible);
+      LinkedHashSet<String> unexpectedReferences = new LinkedHashSet<>(catalog.keySet());
+      unexpectedReferences.removeAll(authoredByReference.keySet());
+      if (!unexpectedReferences.isEmpty()) {
+        fail(
+            entry,
+            publicId,
+            "referenceTranslations." + field + " has unexpected references: "
+                + String.join(", ", unexpectedReferences.stream().sorted().toList()));
+      }
+
+      LinkedHashMap<String, Object> mergedCatalog = new LinkedHashMap<>();
+      for (Map.Entry<String, Map<String, Object>> authoredItem : authoredByReference.entrySet()) {
+        mergedCatalog.put(
+            authoredItem.getKey(),
+            mergeMap(
+                entry,
+                publicId,
+                authoredItem.getValue(),
+                catalog.get(authoredItem.getKey()),
+                "referenceTranslations." + field + "." + authoredItem.getKey()));
+      }
+
+      Object visibleValue = entry.metadata().getOrDefault(field, List.of());
+      if (TranslationProjection.hasTranslationLeaf(visibleValue, field)) {
+        if (!(visibleValue instanceof List<?>)) {
+          fail(entry, publicId, "metadata." + field + " must be a list");
+        }
+        List<?> visibleItems = (List<?>) visibleValue;
+        List<Object> visible = new ArrayList<>();
+        for (Object visibleItem : visibleItems) {
+          String reference = reference(
+              entry, publicId, field, stringMapValue(entry, publicId, field, visibleItem));
+          if (!mergedCatalog.containsKey(reference)) {
+            fail(
+                entry,
+                publicId,
+                "metadata." + field + " has unauthored reference " + reference);
+          }
+          visible.add(mergedCatalog.get(reference));
+        }
+        translated.put(field, visible);
+      } else {
+        translated.remove(field);
+      }
     }
-    return translated;
+
+    LinkedHashMap<String, Object> visibleTranslations = new LinkedHashMap<>();
+    for (Map.Entry<String, Object> value : translated.entrySet()) {
+      Object sourceValue = entry.metadata().get(value.getKey());
+      if (entry.metadata().containsKey(value.getKey())
+          && (TranslationProjection.hasTranslationLeaf(sourceValue, value.getKey())
+              || containsReferenceToken(sourceValue))) {
+        visibleTranslations.put(value.getKey(), value.getValue());
+      }
+    }
+    return visibleTranslations;
+  }
+
+  private static Map<String, Object> requiredCatalog(
+      ManifestEntry entry,
+      String publicId,
+      String field,
+      Object value) {
+    if (!(value instanceof Map<?, ?> catalog)) {
+      fail(
+          entry,
+          publicId,
+          "referenceTranslations." + field + " must be an object");
+    }
+    return stringMap((Map<?, ?>) value, "referenceTranslations." + field);
+  }
+
+  private static Map<String, Map<String, Object>> authoredByReference(
+      ManifestEntry entry,
+      String publicId,
+      String field,
+      Object value) {
+    if (!(value instanceof List<?> items)) {
+      fail(entry, publicId, "authored metadata." + field + " must be a list");
+    }
+    LinkedHashMap<String, Map<String, Object>> byReference = new LinkedHashMap<>();
+    for (Object item : (List<?>) value) {
+      Map<String, Object> object = stringMapValue(entry, publicId, field, item);
+      String reference = reference(entry, publicId, field, object);
+      if (byReference.putIfAbsent(reference, object) != null) {
+        fail(
+            entry,
+            publicId,
+            "authored metadata." + field + " has duplicate reference " + reference);
+      }
+    }
+    return byReference;
+  }
+
+  private static Map<String, Object> stringMapValue(
+      ManifestEntry entry,
+      String publicId,
+      String field,
+      Object value) {
+    if (!(value instanceof Map<?, ?> map)) {
+      fail(entry, publicId, "authored metadata." + field + " items must be objects");
+    }
+    return stringMap((Map<?, ?>) value, "authored metadata." + field);
+  }
+
+  private static String reference(
+      ManifestEntry entry,
+      String publicId,
+      String field,
+      Map<String, Object> item) {
+    Object value = item.get("route");
+    if (!(value instanceof String route)) {
+      fail(entry, publicId, "authored metadata." + field + " route must be a string");
+    }
+    return (String) value;
   }
 
   private static Map<String, Object> mergeMap(
