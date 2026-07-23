@@ -25,7 +25,7 @@ public record FrontmatterDocument(
 
     int closingDelimiterEnd = markdown.indexOf('\n', closingDelimiterStart);
     String metadataSource = markdown.substring(metadataStart, closingDelimiterStart);
-    String body = closingDelimiterEnd < 0 ? "" : markdown.substring(closingDelimiterEnd + 1);
+    String body = closingDelimiterEnd < 0 ? "" : markdown.substring(closingDelimiterEnd + 1).strip();
     return new FrontmatterDocument(path, vaultPath, parseMetadata(path, metadataSource), body);
   }
 

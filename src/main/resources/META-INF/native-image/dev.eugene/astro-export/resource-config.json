@@ -1,8 +1,15 @@
 {
   "resources": {
     "includes": [
-      { "pattern": "templates/pages/ru/search\\.json" },
-      { "pattern": "templates/pages/en/search\\.json" }
+      { "pattern": "templates/pages/en/search\\.json" },
+      { "pattern": "templates/pages/ru/search\\.json" }
     ]
-  }
+  },
+  "bundles": [],
+  "globs": [
+    {
+      "module": "java.base",
+      "glob": "sun/text/resources/LineBreakIteratorData"
+    }
+  ]
 }
