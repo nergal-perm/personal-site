@@ -293,6 +293,31 @@ final class ReviewWorkspaceTest {
   }
 
   @Test
+  void rejectsExplicitlyNullReferenceTranslations() throws Exception {
+    ManifestEntry entry = contentEntry();
+    Path path = temp.resolve("review/blog/essay/en.md");
+    Files.createDirectories(path.getParent());
+    Files.writeString(path, """
+        ---
+        sourceHash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        translationStatus: generated
+        translatedAt: 2026-07-17
+        translationProfile: codex-test-v1
+        title: English
+        description: English description.
+        referenceTranslations: null
+        ---
+        English body.
+        """);
+
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> ReviewWorkspace.loadEnglishPatch(temp.resolve("review"), entry));
+
+    assertTrue(error.getMessage().contains("referenceTranslations must be an object"));
+  }
+
+  @Test
   void rejectsMalformedEditorialCurrentMarkdownCases() throws Exception {
     ManifestEntry entry = authoredEditorialEntry();
     List<List<String>> cases = List.of(
@@ -479,6 +504,35 @@ final class ReviewWorkspaceTest {
         assertEquals(List.of("en.md"), paths.map(path -> path.getFileName().toString()).toList());
       }
     }
+  }
+
+  @Test
+  void doesNotDuplicateExistingEditorialCurrentSection() throws Exception {
+    ManifestEntry source = editorialEntry();
+    String body = """
+        # Тихие системы
+
+        ## Сейчас
+
+        ### Изучаю
+
+        Наблюдаемая работа
+
+        Русское описание.
+        """.strip();
+    ManifestEntry entry = new ManifestEntry(
+        source.sourcePath(),
+        source.targetPath(),
+        source.route(),
+        source.metadata(),
+        body);
+
+    Path path = ReviewWorkspace.writeRuReviewFile(temp.resolve("review"), entry);
+    String markdown = Files.readString(path);
+
+    assertEquals(1, markdown.split("## Сейчас", -1).length - 1);
+    assertTrue(markdown.endsWith(body + "\n"));
+    assertFalse(markdown.contains("\ncurrent:"));
   }
 
   private static ManifestEntry contentEntry() {

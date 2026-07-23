@@ -19,7 +19,8 @@ public final class TranslationValidator {
   private static final Set<String> CONTROL_FIELDS = Set.of(
       "translationStatus", "translatedAt", "translationProfile");
   private static final List<String> OBJECT_REFERENCE_FIELDS = List.of("paths", "routes");
-  private static final Pattern INTERNAL_RU_ROUTE = Pattern.compile("(?<![\\p{Alnum}_])/ru/");
+  private static final Pattern INTERNAL_RU_ROUTE =
+      Pattern.compile("(?<!\\w)/ru/", Pattern.UNICODE_CHARACTER_CLASS);
 
   public static ManifestResult buildEnglishManifest(ManifestResult russian, Path reviewRoot) {
     List<ManifestEntry> entries = new ArrayList<>();

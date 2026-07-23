@@ -77,7 +77,11 @@ public final class ReviewWorkspace {
     }
     ParsedMarkdown parsed = parseMarkdown(path);
     LinkedHashMap<String, Object> payload = new LinkedHashMap<>(parsed.metadata());
-    Map<String, Object> references = map(payload.remove("referenceTranslations"), "referenceTranslations");
+    boolean hasReferences = payload.containsKey("referenceTranslations");
+    Object referenceValue = payload.remove("referenceTranslations");
+    Map<String, Object> references = hasReferences
+        ? stringMap(referenceValue, "referenceTranslations")
+        : Map.of();
     LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(payload);
     CONTROL_FIELDS.forEach(metadata::remove);
     if (target.editorial()

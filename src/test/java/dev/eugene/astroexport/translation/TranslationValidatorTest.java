@@ -379,6 +379,93 @@ final class TranslationValidatorTest {
   }
 
   @Test
+  void preservesExternalUrlsWithUnicodeHostnames() throws Exception {
+    LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(richEntry().metadata());
+    metadata.put("cover", "https://пример.рф/ru/help");
+    ManifestEntry entry = new ManifestEntry(
+        "blog/Essay.md",
+        "src/content/blog/ru/essay.md",
+        "/ru/essays/essay/",
+        metadata,
+        "Русский текст.");
+    writeReview(
+        entry,
+        "title: English\ndescription: Description\ncards:\n- text: Text\n",
+        "English body.");
+
+    ManifestEntry english = validator(entry).entries().getFirst();
+
+    assertEquals("https://пример.рф/ru/help", english.metadata().get("cover"));
+  }
+
+  @Test
+  void removesObsidianCommentsFromTranslatedBodies() throws Exception {
+    ManifestEntry entry = richEntry();
+    writeReview(
+        entry,
+        "title: English\ndescription: Description\ncards:\n- text: Text\n",
+        """
+        Visible.
+        %%
+        Private translation note.
+        %%
+        Still visible.
+        """);
+
+    ManifestEntry english = validator(entry).entries().getFirst();
+
+    assertEquals("Visible.\n\nStill visible.", english.body());
+  }
+
+  @Test
+  void typedServiceRecordsDoNotRequireTranslatedBodies() throws Exception {
+    List<ManifestEntry> entries = List.of(
+        typedServiceEntry(
+            "album",
+            "src/content/music/ru/album.md",
+            "/ru/music/album/",
+            Map.of("reviewType", "album", "artist", "Artist", "work", "Album")),
+        typedServiceEntry(
+            "home",
+            "src/data/pages/ru/home.json",
+            "/ru/",
+            Map.of("type", "home", "searchable", false)));
+
+    for (ManifestEntry entry : entries) {
+      writeReview(entry, "title: English title\n", "");
+
+      ManifestEntry english = validator(entry).entries().getFirst();
+
+      assertEquals("", english.body());
+      assertEquals("English title", english.metadata().get("title"));
+    }
+  }
+
+  @Test
+  void bibliographyWithPublicRussianSynopsisRequiresTranslatedBody() throws Exception {
+    LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("id", "book");
+    metadata.put("title", "Русская книга");
+    metadata.put("language", "ru");
+    metadata.put("sourceLanguage", "ru");
+    metadata.put("sourceHash", "a".repeat(64));
+    metadata.put("authors", List.of("Author"));
+    ManifestEntry entry = new ManifestEntry(
+        "sources/book.md",
+        "src/content/bibliography/ru/book.md",
+        "/ru/library/book/",
+        metadata,
+        "### Введение\n\nРусский конспект.");
+    writeReview(entry, "title: English book\n", "");
+
+    TranslationValidator.TranslationValidationException error = assertThrows(
+        TranslationValidator.TranslationValidationException.class,
+        () -> validator(entry));
+
+    assertTrue(error.getMessage().contains("bibliography body must be non-empty"));
+  }
+
+  @Test
   void rejectsUnexpectedReferenceTranslationCatalogField() throws Exception {
     ManifestEntry entry = editorialEntry();
     writeEditorialReview(entry, """
@@ -540,6 +627,27 @@ final class TranslationValidatorTest {
         "/ru/essays/essay/",
         metadata,
         "Русский текст.");
+  }
+
+  private static ManifestEntry typedServiceEntry(
+      String publicId,
+      String targetPath,
+      String route,
+      Map<String, Object> invariants) {
+    LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("id", publicId);
+    metadata.put("title", "Русский заголовок");
+    metadata.put("language", "ru");
+    metadata.put("sourceLanguage", "ru");
+    metadata.put("translationStatus", "source");
+    metadata.put("sourceHash", "a".repeat(64));
+    metadata.putAll(invariants);
+    return new ManifestEntry(
+        "sources/" + publicId + ".md",
+        targetPath,
+        route,
+        metadata,
+        "Служебное русское тело.");
   }
 
   private static ManifestEntry editorialEntry() {
