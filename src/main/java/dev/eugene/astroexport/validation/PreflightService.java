@@ -9,8 +9,12 @@ import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Pattern;
 
 public final class PreflightService {
+  private static final Pattern PUBLISH_TRUE_LINE = Pattern.compile("(?m)^publish:[ \\t]+true[ \\t]*$");
+  private static final Pattern TRUE_LIKE_PUBLISH_DECLARATION =
+      Pattern.compile("(?im)^publish:[ \\t]+true(?:[ \\t]+#.*)?[ \\t]*$");
   private final PublicationValidator validator;
 
   public PreflightService() { this(new PublicationValidator()); }
@@ -20,6 +24,10 @@ public final class PreflightService {
     Loaded loaded = load(vault, notePath);
     if (loaded.error() != null) return failure(loaded.error());
     Note note = loaded.note();
+    if (!loaded.selectorIncluded() && loaded.declaresTrueLikePublish()) {
+      return new Result(note, List.of(new PublicationDiagnostic("selection",
+          note.vaultPath() + ": must be selected for publication")));
+    }
     List<PublicationDiagnostic> diagnostics = validator.validate(note).stream()
         .map(item -> new PublicationDiagnostic(item.field(), note.vaultPath() + ": " + item.message(), item.blocking()))
         .toList();
@@ -35,8 +43,12 @@ public final class PreflightService {
     if (!candidate.startsWith(resolvedVault)) return Loaded.error("path", notePath + ": must be a vault-relative .md path");
     try {
       if (!Files.isRegularFile(candidate)) return Loaded.error("path", notePath + ": does not exist");
-      if (!candidate.toRealPath().startsWith(resolvedVault.toRealPath())) return Loaded.error("path", notePath + ": must be a vault-relative .md path");
-      return Loaded.note(note(candidate, notePath, FrontmatterDocument.parse(candidate, notePath, Files.readString(candidate, StandardCharsets.UTF_8))));
+      Path realVault = resolvedVault.toRealPath();
+      Path realCandidate = candidate.toRealPath();
+      if (!realCandidate.startsWith(realVault)) return Loaded.error("path", notePath + ": must be a vault-relative .md path");
+      String source = Files.readString(realCandidate, StandardCharsets.UTF_8);
+      return Loaded.note(note(realCandidate, notePath, FrontmatterDocument.parse(realCandidate, notePath, source)),
+          PUBLISH_TRUE_LINE.matcher(source).find(), TRUE_LIKE_PUBLISH_DECLARATION.matcher(source).find());
     } catch (IOException exception) { return Loaded.error("path", notePath + ": " + exception.getMessage());
     } catch (RuntimeException exception) { return Loaded.error("frontmatter", notePath + ": invalid frontmatter: " + exception.getMessage()); }
   }
@@ -57,5 +69,12 @@ public final class PreflightService {
     public boolean ready() { return note != null && diagnostics.stream().noneMatch(PublicationDiagnostic::blocking); }
   }
   private record Error(String field, String message) { }
-  private record Loaded(Note note, Error error) { static Loaded note(Note note) { return new Loaded(note, null); } static Loaded error(String field, String message) { return new Loaded(null, new Error(field, message)); } }
+  private record Loaded(Note note, Error error, boolean selectorIncluded, boolean declaresTrueLikePublish) {
+    static Loaded note(Note note, boolean selectorIncluded, boolean declaresTrueLikePublish) {
+      return new Loaded(note, null, selectorIncluded, declaresTrueLikePublish);
+    }
+    static Loaded error(String field, String message) {
+      return new Loaded(null, new Error(field, message), false, false);
+    }
+  }
 }

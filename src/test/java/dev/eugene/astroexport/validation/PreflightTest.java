@@ -56,6 +56,19 @@ final class PreflightTest {
   }
 
   @Test
+  void rejectsSymlinksThatResolveOutsideTheVault() throws Exception {
+    Path vault = Files.createTempDirectory("astro-export-vault");
+    Path outside = Files.createTempFile("astro-export-outside", ".md");
+    Files.writeString(outside, "---\npublish: true\npublicId: active\npublicCollection: blog\npublicContentType: note\n---\nBody\n");
+    Path link = vault.resolve("blog/Outside.md");
+    Files.createDirectories(link.getParent());
+    Files.createSymbolicLink(link, outside);
+
+    assertEquals(List.of(new PublicationDiagnostic("path", "blog/Outside.md: must be a vault-relative .md path")),
+        preflight.preflight(vault, "blog/Outside.md").diagnostics());
+  }
+
+  @Test
   void reportsMissingAndMalformedActiveNotesWithoutThrowing() throws Exception {
     Path vault = Files.createTempDirectory("astro-export-vault");
     assertEquals(List.of(new PublicationDiagnostic("path", "blog/Missing.md: does not exist")),
@@ -81,6 +94,21 @@ final class PreflightTest {
     assertEquals(List.of(new PublicationDiagnostic("editorialPage", "blog/Home.md: must be one of: "
         + "about, claims, concepts, essays, home, library, music, notes, now")),
         preflight.preflight(vault, "blog/Home.md").diagnostics());
+  }
+
+  @Test
+  void requiresTheExactPublishTrueSelectorLine() throws Exception {
+    for (String publishLine : List.of("publish: True", "publish: true # comment")) {
+      Path vault = Files.createTempDirectory("astro-export-vault");
+      makeNote(vault, "blog/Active.md", publishLine + "\npublicId: active\n"
+          + "publicCollection: blog\npublicContentType: note", "Body");
+
+      var result = preflight.preflight(vault, "blog/Active.md");
+
+      assertFalse(result.ready(), publishLine);
+      assertEquals(List.of(new PublicationDiagnostic("selection",
+          "blog/Active.md: must be selected for publication")), result.diagnostics());
+    }
   }
 
   private static void makeNote(Path vault, String name, String frontmatter, String body) throws Exception {
