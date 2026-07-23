@@ -1314,7 +1314,7 @@ git commit -m "feat: port full CLI surface"
 - Produces: documented release command `mvn -Pnative native:compile`
 - Produces: parity evidence comparing Java CLI output with the Python oracle on fixed fixtures
 
-- [ ] **Step 1: Add native metadata for reflection and resources**
+- [x] **Step 1: Add native metadata for reflection and resources**
 
 If picocli, Jackson, SnakeYAML, or JNA require native metadata, add it under:
 
@@ -1330,7 +1330,7 @@ java -agentlib:native-image-agent=config-output-dir=src/main/resources/META-INF/
 java -agentlib:native-image-agent=config-merge-dir=src/main/resources/META-INF/native-image/dev.eugene/astro-export -cp target/classes:$(cat target/classpath.txt) dev.eugene.astroexport.AstroExportApp --vault /Users/eugene/Documents/personal-wiki/knowledge-base --dry-run --report /private/tmp/astro-export-java-native-dry-run.md
 ```
 
-- [ ] **Step 2: Build native executable**
+- [x] **Step 2: Build native executable**
 
 Run:
 
@@ -1340,7 +1340,7 @@ mvn -Pnative native:compile
 
 Expected: `target/astro-export` exists and has executable permissions.
 
-- [ ] **Step 3: Native smoke commands**
+- [x] **Step 3: Native smoke commands**
 
 Run:
 
@@ -1351,7 +1351,7 @@ target/astro-export --vault /Users/eugene/Documents/personal-wiki/knowledge-base
 
 Expected: help exits 0. Dry-run exits with the same status as the Python dry-run for the same live source and writes the report outside the Astro root.
 
-- [ ] **Step 4: Python oracle comparison**
+- [x] **Step 4: Python oracle comparison**
 
 Run the Python oracle:
 
@@ -1379,7 +1379,7 @@ asset count matches
 source-to-target mappings match
 ```
 
-- [ ] **Step 5: Native write-stage comparison in temp Astro root**
+- [x] **Step 5: Native write-stage comparison in temp Astro root**
 
 Create a temp Astro root with the required gate files and a gate stub. Run both implementations against identical fixture vault and review roots, then compare managed-tree hashes:
 
@@ -1389,23 +1389,23 @@ target/astro-export --vault /private/tmp/astro-export-fixture-vault --out /priva
 
 Expected: Java managed-tree hashes match the Python oracle for the same fixture.
 
-- [ ] **Step 6: Document cutover**
+- [x] **Step 6: Document cutover**
 
 Create `docs/cutover-checklist.md` with these gates:
 
 ```markdown
 # Cutover Checklist
 
-- [ ] Python source status captured with `git status --short /Users/eugene/Documents/personal-wiki/tools/astro-export`.
-- [ ] Java `mvn test` passes.
-- [ ] Java `mvn -Pnative native:compile` passes.
-- [ ] Native dry-run report matches Python oracle counts and mappings.
-- [ ] Native temp write produces managed-tree hashes matching Python oracle.
-- [ ] Current operator scripts have Java equivalents.
-- [ ] No production Astro deployment is included in cutover.
+- [x] Python source status captured with `git status --short /Users/eugene/Documents/personal-wiki/tools/astro-export`.
+- [x] Java `mvn test` passes.
+- [x] Java `mvn -Pnative native:compile` passes.
+- [x] Native dry-run report matches Python oracle counts and mappings.
+- [x] Native temp write produces managed-tree hashes matching Python oracle.
+- [x] Current operator scripts have Java equivalents.
+- [x] No production Astro deployment is included in cutover.
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add pom.xml src/test/java/dev/eugene/astroexport/nativeimage docs
