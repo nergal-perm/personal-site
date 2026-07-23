@@ -7,11 +7,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.translation.TranslationPatch;
+import java.net.URI;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -36,7 +42,7 @@ final class ReviewWorkspaceTest {
 
   @Test
   void loadsReviewPatchAndParsesEditorialCurrentCards() throws Exception {
-    ManifestEntry entry = editorialEntry();
+    ManifestEntry entry = authoredEditorialEntry();
     Path path = temp.resolve("review/editorial/home/en.md");
     Files.createDirectories(path.getParent());
     Files.writeString(path, """
@@ -177,7 +183,70 @@ final class ReviewWorkspaceTest {
         reviewed);
     assertTrue(
         ReviewWorkspace.setGeneratedReviewStatus(reviewed)
-            .contains("translationStatus: \"generated\" # durable state"));
+            .contains("translationStatus: generated"));
+  }
+
+  @Test
+  void generatedStatusParsesAndReserializesQuotedYamlKeys() {
+    String source = """
+        ---
+        "translationStatus": reviewed
+        title: English
+        ---
+        Body with deliberate formatting.
+        """;
+
+    String generated = ReviewWorkspace.setGeneratedReviewStatus(source);
+
+    assertTrue(generated.contains("translationStatus: generated"));
+    assertTrue(generated.endsWith("Body with deliberate formatting.\n"));
+  }
+
+  @Test
+  void generatedStatusAddsMissingFieldAndRejectsMalformedYaml() {
+    String generated = ReviewWorkspace.setGeneratedReviewStatus("""
+        ---
+        title: English
+        ---
+        Body.
+        """);
+
+    assertTrue(generated.contains("translationStatus: generated"));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> ReviewWorkspace.setGeneratedReviewStatus("""
+            ---
+            title: [unterminated
+            translationStatus: reviewed
+            ---
+            Body.
+            """));
+  }
+
+  @Test
+  void reviewedStatusPreservesQuotedKeyAndRejectsMalformedYaml() {
+    String quoted = """
+        ---
+        "translationStatus": generated # durable state
+        title: English
+        ---
+        Body with deliberate formatting.
+        """;
+
+    assertEquals(
+        quoted.replace(
+            "\"translationStatus\": generated",
+            "\"translationStatus\": \"reviewed\""),
+        ReviewWorkspace.setReviewedStatusPreservingContent(quoted));
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> ReviewWorkspace.setReviewedStatusPreservingContent("""
+            ---
+            title: [unterminated
+            translationStatus: generated
+            ---
+            Body.
+            """));
   }
 
   @Test
@@ -225,7 +294,7 @@ final class ReviewWorkspaceTest {
 
   @Test
   void rejectsMalformedEditorialCurrentMarkdownCases() throws Exception {
-    ManifestEntry entry = editorialEntry();
+    ManifestEntry entry = authoredEditorialEntry();
     List<List<String>> cases = List.of(
         List.of("### Studying\n\nWork\n\nDescription.", "## Сейчас section"),
         List.of("## Сейчас\n\nUnexpected.", "unexpected section content"),
@@ -268,6 +337,34 @@ final class ReviewWorkspaceTest {
   }
 
   @Test
+  void ignoresEditorialCurrentWithoutAuthoredTranslationMetadata() throws Exception {
+    ManifestEntry entry = editorialEntry();
+    Path path = temp.resolve("review/editorial/home/en.md");
+    Files.createDirectories(path.getParent());
+    Files.writeString(path, """
+        ---
+        sourceHash: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        translationStatus: reviewed
+        translatedAt: 2026-07-17
+        translationProfile: codex-test-v1
+        title: Home
+        ---
+        ## Сейчас
+
+        ### Studying
+
+        Translated work
+
+        Translated description.
+        """);
+
+    TranslationPatch patch = ReviewWorkspace.loadEnglishPatch(temp.resolve("review"), entry);
+
+    assertFalse(patch.metadata().containsKey("current"));
+    assertEquals("", patch.body());
+  }
+
+  @Test
   void rejectsSymlinkAndHardlinkReviewTargets() throws Exception {
     Path target = temp.resolve("review/blog/essay/ru.md");
     Files.createDirectories(target.getParent());
@@ -307,6 +404,83 @@ final class ReviewWorkspaceTest {
     assertEquals("editor changes\n", Files.readString(target));
   }
 
+  @Test
+  void publicEnglishGuardedReplacementAtomicallyReplacesExpectedFile() throws Exception {
+    Path directory = temp.resolve("review/blog/essay");
+    Path target = directory.resolve("en.md");
+    Files.createDirectories(directory);
+    Files.writeString(target, "generated translation\n");
+
+    ReviewWorkspace.replaceEnglishReviewFile(
+        temp.resolve("review"),
+        "reviewed translation\n",
+        "blog",
+        "essay",
+        Files.readAllBytes(target));
+
+    assertEquals("reviewed translation\n", Files.readString(target));
+    try (var paths = Files.list(directory)) {
+      assertEquals(List.of("en.md"), paths.map(path -> path.getFileName().toString()).toList());
+    }
+  }
+
+  @Test
+  void publicEnglishReplacementPreservesExistingFileWhenTemporaryCreationFails() throws Exception {
+    Assumptions.assumeTrue(
+        Files.getFileStore(temp).supportsFileAttributeView("posix"),
+        "requires POSIX directory permissions");
+    Path directory = temp.resolve("review/blog/essay");
+    Path target = directory.resolve("en.md");
+    Files.createDirectories(directory);
+    Files.writeString(target, "previous valid translation\n");
+    Set<PosixFilePermission> original = Files.getPosixFilePermissions(directory);
+    try {
+      Files.setPosixFilePermissions(directory, PosixFilePermissions.fromString("r-x------"));
+
+      assertThrows(
+          IllegalStateException.class,
+          () -> ReviewWorkspace.replaceEnglishReviewFile(
+              temp.resolve("review"),
+              "replacement translation\n",
+              "blog",
+              "essay"));
+    } finally {
+      Files.setPosixFilePermissions(directory, original);
+    }
+
+    assertEquals("previous valid translation\n", Files.readString(target));
+    try (var paths = Files.list(directory)) {
+      assertEquals(List.of("en.md"), paths.map(path -> path.getFileName().toString()).toList());
+    }
+  }
+
+  @Test
+  void publicEnglishReplacementPreservesExistingFileWhenAtomicExchangeFails() throws Exception {
+    Path archive = temp.resolve("review.zip");
+    URI uri = URI.create("jar:" + archive.toUri());
+    try (var fileSystem = FileSystems.newFileSystem(uri, Map.of("create", "true"))) {
+      Path reviewRoot = fileSystem.getPath("/review");
+      Path directory = reviewRoot.resolve("blog/essay");
+      Path target = directory.resolve("en.md");
+      Files.createDirectories(directory);
+      Files.writeString(target, "previous valid translation\n");
+
+      assertThrows(
+          IllegalStateException.class,
+          () -> ReviewWorkspace.replaceEnglishReviewFile(
+              reviewRoot,
+              "replacement translation\n",
+              "blog",
+              "essay",
+              Files.readAllBytes(target)));
+
+      assertEquals("previous valid translation\n", Files.readString(target));
+      try (var paths = Files.list(directory)) {
+        assertEquals(List.of("en.md"), paths.map(path -> path.getFileName().toString()).toList());
+      }
+    }
+  }
+
   private static ManifestEntry contentEntry() {
     return new ManifestEntry(
         "blog/Essay.md",
@@ -340,6 +514,18 @@ final class ReviewWorkspaceTest {
         "/ru/",
         metadata,
         "");
+  }
+
+  private static ManifestEntry authoredEditorialEntry() {
+    ManifestEntry entry = editorialEntry();
+    return new ManifestEntry(
+        entry.sourcePath(),
+        entry.targetPath(),
+        entry.route(),
+        entry.metadata(),
+        entry.body(),
+        "a".repeat(64),
+        entry.metadata());
   }
 
   private static ManifestEntry filteredHomeEntry() {

@@ -3,14 +3,21 @@ package dev.eugene.astroexport.review;
 import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.sun.jna.Function;
+import com.sun.jna.Native;
+import com.sun.jna.NativeLibrary;
+import com.sun.jna.Platform;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
+import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -19,14 +26,20 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.snakeyaml.engine.v2.api.Dump;
 import org.snakeyaml.engine.v2.api.DumpSettings;
 import org.snakeyaml.engine.v2.api.Load;
 import org.snakeyaml.engine.v2.api.LoadSettings;
+import org.snakeyaml.engine.v2.api.lowlevel.Compose;
 import org.snakeyaml.engine.v2.common.FlowStyle;
+import org.snakeyaml.engine.v2.exceptions.Mark;
+import org.snakeyaml.engine.v2.nodes.MappingNode;
+import org.snakeyaml.engine.v2.nodes.Node;
+import org.snakeyaml.engine.v2.nodes.NodeTuple;
+import org.snakeyaml.engine.v2.nodes.ScalarNode;
 
 /** Durable RU/EN Markdown review workspace operations. */
 public final class ReviewWorkspace {
@@ -35,8 +48,8 @@ public final class ReviewWorkspace {
   private static final Pattern TRAILING_LINE_WHITESPACE = Pattern.compile("[ \\t]+(?=\\R|$)");
   private static final Pattern ALIASED_CONTROL_KEY = Pattern.compile(
       "(?m)^\\*[A-Za-z0-9_-]+[ \\t]*:");
-  private static final Pattern TRANSLATION_STATUS_LINE = Pattern.compile(
-      "(?m)^(translationStatus[ \\t]*:[ \\t]*)([^#\\r\\n]*?)([ \\t]*(?:#[^\\r\\n]*)?)(\\r?)$");
+  private static final int EXCHANGE_FLAG = 0x00000002;
+  private static final int AT_FDCWD = -100;
   private static final ObjectMapper JSON = new ObjectMapper()
       .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION.mappedFeature());
   private static final Dump YAML_DUMP = new Dump(DumpSettings.builder()
@@ -67,13 +80,16 @@ public final class ReviewWorkspace {
     Map<String, Object> references = map(payload.remove("referenceTranslations"), "referenceTranslations");
     LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(payload);
     CONTROL_FIELDS.forEach(metadata::remove);
-    Map<String, Object> authored = entry.translationSourceMetadata() == null
-        ? entry.metadata()
-        : entry.translationSourceMetadata();
     if (target.editorial()
         && "home".equals(target.publicId())
-        && authored.get("current") instanceof List<?> sourceCurrent) {
-      metadata.put("current", parseCurrent(entry, target.publicId(), parsed.body(), sourceCurrent.size()));
+        && entry.translationSourceMetadata() != null) {
+      Object authoredCurrent =
+          entry.translationSourceMetadata().getOrDefault("current", List.of());
+      if (authoredCurrent instanceof List<?> sourceCurrent) {
+        metadata.put(
+            "current",
+            parseCurrent(entry, target.publicId(), parsed.body(), sourceCurrent.size()));
+      }
     }
     return normalizePatch(
         entry,
@@ -124,11 +140,62 @@ public final class ReviewWorkspace {
   }
 
   public static String setGeneratedReviewStatus(String content) {
-    return rewriteTranslationStatus(content, "generated");
+    ParsedMarkdown parsed = parseMarkdown(content, "English review");
+    LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(parsed.metadata());
+    metadata.put("translationStatus", "generated");
+    return serializeMarkdown(metadata, parsed.body());
   }
 
   public static String setReviewedStatusPreservingContent(String content) {
-    return rewriteTranslationStatus(content, "reviewed");
+    Frontmatter frontmatter = frontmatter(content);
+    String header = content.substring(frontmatter.headerStart(), frontmatter.close());
+    if (ALIASED_CONTROL_KEY.matcher(header).find()) {
+      throw new IllegalArgumentException(
+          "English review must use an explicit translationStatus key and value");
+    }
+    Node root;
+    try {
+      root = new Compose(yamlSettings("English review")).composeString(header).orElse(null);
+    } catch (RuntimeException error) {
+      throw new IllegalArgumentException(
+          "invalid English review frontmatter: " + error.getMessage(), error);
+    }
+    if (!(root instanceof MappingNode mapping)) {
+      throw new IllegalArgumentException("English review frontmatter must be a mapping");
+    }
+    List<NodeTuple> matches = mapping.getValue().stream()
+        .filter(tuple -> tuple.getKeyNode() instanceof ScalarNode key
+            && "translationStatus".equals(key.getValue()))
+        .toList();
+    if (matches.size() != 1) {
+      throw new IllegalArgumentException(
+          "English review must contain exactly one translationStatus field");
+    }
+    NodeTuple match = matches.getFirst();
+    if (!(match.getValueNode() instanceof ScalarNode value)) {
+      throw new IllegalArgumentException("translationStatus must be a scalar");
+    }
+    int keyEnd = markIndex(header, match.getKeyNode().getEndMark());
+    int valueStart = markIndex(header, value.getStartMark());
+    int valueEnd = markIndex(header, value.getEndMark());
+    if (valueStart < keyEnd) {
+      throw new IllegalArgumentException(
+          "English review must use an explicit translationStatus key and value");
+    }
+    if (valueStart >= valueEnd) {
+      throw new IllegalArgumentException(
+          "translationStatus must have an explicit scalar value");
+    }
+    String rewrittenHeader =
+        header.substring(0, valueStart) + "\"reviewed\"" + header.substring(valueEnd);
+    String reviewed = content.substring(0, frontmatter.headerStart())
+        + rewrittenHeader
+        + content.substring(frontmatter.close());
+    ParsedMarkdown parsed = parseMarkdown(reviewed, "reviewed English review");
+    if (!"reviewed".equals(parsed.metadata().get("translationStatus"))) {
+      throw new IllegalArgumentException("could not set translationStatus to reviewed");
+    }
+    return reviewed;
   }
 
   public static Path replaceEnglishReviewFile(
@@ -181,7 +248,7 @@ public final class ReviewWorkspace {
     }
   }
 
-  private static String rewriteTranslationStatus(String content, String status) {
+  private static Frontmatter frontmatter(String content) {
     if (!content.startsWith("---\n") && !content.startsWith("---\r\n")) {
       throw new IllegalArgumentException("English review must contain YAML frontmatter");
     }
@@ -190,27 +257,7 @@ public final class ReviewWorkspace {
     if (close < 0) {
       throw new IllegalArgumentException("English review must contain closed YAML frontmatter");
     }
-    String header = content.substring(headerStart, close);
-    if (ALIASED_CONTROL_KEY.matcher(header).find()) {
-      throw new IllegalArgumentException(
-          "English review must use an explicit translationStatus key and value");
-    }
-    Matcher matcher = TRANSLATION_STATUS_LINE.matcher(header);
-    if (!matcher.find()) {
-      throw new IllegalArgumentException(
-          "English review must contain exactly one translationStatus field");
-    }
-    int valueStart = matcher.start(2);
-    int valueEnd = matcher.end(2);
-    String value = matcher.group(2).strip();
-    if (value.isEmpty() || value.startsWith("*") || matcher.find()) {
-      throw new IllegalArgumentException(
-          "English review must use an explicit translationStatus key and value");
-    }
-    String rewrittenHeader = header.substring(0, valueStart)
-        + "\"" + status + "\""
-        + header.substring(valueEnd);
-    return content.substring(0, headerStart) + rewrittenHeader + content.substring(close);
+    return new Frontmatter(headerStart, close);
   }
 
   private static TranslationPatch normalizePatch(
@@ -260,26 +307,42 @@ public final class ReviewWorkspace {
 
   private static ParsedMarkdown parseMarkdown(Path path) {
     try {
-      String markdown = Files.readString(path, StandardCharsets.UTF_8);
-      if (!markdown.startsWith("---\n") && !markdown.startsWith("---\r\n")) {
-        throw new IllegalArgumentException("English review must contain YAML frontmatter");
-      }
-      int firstBreak = markdown.indexOf('\n') + 1;
-      int close = findDelimiter(markdown, firstBreak);
-      if (close < 0) {
-        throw new IllegalArgumentException("English review must contain closed YAML frontmatter");
-      }
-      String header = markdown.substring(firstBreak, close);
-      int bodyStart = markdown.indexOf('\n', close);
-      String body = bodyStart < 0 ? "" : markdown.substring(bodyStart + 1);
-      Object loaded = new Load(LoadSettings.builder()
-          .setLabel(path.toString())
-          .setAllowDuplicateKeys(false)
-          .build()).loadFromString(header);
-      return new ParsedMarkdown(stringMap(loaded, "frontmatter"), body);
+      return parseMarkdown(Files.readString(path, StandardCharsets.UTF_8), path.toString());
     } catch (IOException | RuntimeException error) {
       throw new IllegalArgumentException("invalid review translation " + path + ": " + error.getMessage(), error);
     }
+  }
+
+  private static ParsedMarkdown parseMarkdown(String markdown, String label) {
+    Frontmatter frontmatter = frontmatter(markdown);
+    String header = markdown.substring(frontmatter.headerStart(), frontmatter.close());
+    int bodyStart = markdown.indexOf('\n', frontmatter.close());
+    String body = bodyStart < 0 ? "" : markdown.substring(bodyStart + 1);
+    try {
+      Object loaded = new Load(yamlSettings(label)).loadFromString(header);
+      return new ParsedMarkdown(stringMap(loaded, "frontmatter"), body);
+    } catch (RuntimeException error) {
+      throw new IllegalArgumentException(
+          "invalid " + label + " frontmatter: " + error.getMessage(), error);
+    }
+  }
+
+  private static LoadSettings yamlSettings(String label) {
+    return LoadSettings.builder()
+        .setLabel(label)
+        .setAllowDuplicateKeys(false)
+        .build();
+  }
+
+  private static int markIndex(String source, Optional<Mark> mark) {
+    if (mark.isEmpty()) {
+      throw new IllegalArgumentException("translationStatus YAML location is unavailable");
+    }
+    int codePointIndex = mark.get().getIndex();
+    if (codePointIndex < 0 || codePointIndex > source.codePointCount(0, source.length())) {
+      throw new IllegalArgumentException("translationStatus YAML location is invalid");
+    }
+    return source.offsetByCodePoints(0, codePointIndex);
   }
 
   private static int findDelimiter(String markdown, int start) {
@@ -448,24 +511,147 @@ public final class ReviewWorkspace {
       String content,
       byte[] expectedContent) {
     validateExistingLeaf(target);
+    Path temporary = null;
+    boolean retainTemporary = false;
     try {
       Files.createDirectories(target.getParent());
       validateExpectedContent(target, expectedContent);
-      Path temporary = Files.createTempFile(
+      temporary = Files.createTempFile(
           target.getParent(), "." + target.getFileName() + ".", ".tmp");
-      try {
-        Files.writeString(temporary, content, StandardCharsets.UTF_8);
-        validateExpectedContent(target, expectedContent);
+      Files.writeString(temporary, content, StandardCharsets.UTF_8);
+      try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.WRITE)) {
+        channel.force(true);
+      }
+      if (expectedContent == null) {
         Files.move(
             temporary,
             target,
             StandardCopyOption.ATOMIC_MOVE,
             StandardCopyOption.REPLACE_EXISTING);
-      } finally {
-        Files.deleteIfExists(temporary);
+      } else {
+        guardedExchange(target, temporary, content.getBytes(StandardCharsets.UTF_8), expectedContent);
       }
+    } catch (ConcurrentReviewUpdateException error) {
+      retainTemporary = temporary != null && temporary.equals(error.preservedPath());
+      throw error;
     } catch (IOException error) {
       throw new IllegalStateException("cannot replace review file " + target, error);
+    } finally {
+      if (temporary != null && !retainTemporary) {
+        try {
+          Files.deleteIfExists(temporary);
+        } catch (IOException ignored) {
+          // The replacement result is already determined; stale temporary cleanup is best effort.
+        }
+      }
+    }
+  }
+
+  private static void guardedExchange(
+      Path target,
+      Path temporary,
+      byte[] payload,
+      byte[] expectedContent) throws IOException {
+    validateExpectedContent(target, expectedContent);
+    exchangePaths(target, temporary);
+    byte[] displaced;
+    try {
+      displaced = Files.readAllBytes(temporary);
+    } catch (IOException error) {
+      Path preserved = preserveTemporary(temporary, target);
+      throw new ConcurrentReviewUpdateException(
+          "displaced review file could not be verified; preserved at " + preserved, true, preserved);
+    }
+    if (!Arrays.equals(displaced, expectedContent)) {
+      Path preserved = rollbackExchange(target, temporary, payload);
+      throw new ConcurrentReviewUpdateException(
+          "guarded review file changed at the atomic commit boundary",
+          false,
+          preserved);
+    }
+    boolean targetIsPayload = Arrays.equals(Files.readAllBytes(target), payload);
+    boolean displacedIsExpected = Arrays.equals(Files.readAllBytes(temporary), expectedContent);
+    if (targetIsPayload && displacedIsExpected) {
+      return;
+    }
+    if (targetIsPayload) {
+      Path preserved = rollbackExchange(target, temporary, payload);
+      throw new ConcurrentReviewUpdateException(
+          "displaced review file changed before final commit verification",
+          false,
+          preserved);
+    }
+    Path preserved = preserveTemporary(temporary, target);
+    throw new ConcurrentReviewUpdateException(
+        "review file changed immediately after atomic exchange; displaced bytes preserved at "
+            + preserved,
+        true,
+        preserved);
+  }
+
+  private static Path rollbackExchange(Path target, Path temporary, byte[] payload)
+      throws IOException {
+    try {
+      exchangePaths(target, temporary);
+    } catch (IOException rollbackError) {
+      Path preserved = preserveTemporary(temporary, target);
+      throw new ConcurrentReviewUpdateException(
+          "guarded review update conflicted and atomic rollback failed; preserved at " + preserved,
+          true,
+          preserved);
+    }
+    if (Arrays.equals(Files.readAllBytes(temporary), payload)) {
+      return null;
+    }
+    return preserveTemporary(temporary, target);
+  }
+
+  private static Path preserveTemporary(Path temporary, Path target) {
+    try {
+      Path directory = Files.createTempDirectory(
+          target.getParent(), "." + target.getFileName() + ".astro-export-conflict-");
+      Path preserved = directory.resolve(target.getFileName());
+      Files.move(temporary, preserved);
+      return preserved;
+    } catch (IOException error) {
+      throw new ConcurrentReviewUpdateException(
+          "conflicting review bytes remain in temporary file " + temporary,
+          true,
+          temporary,
+          error);
+    }
+  }
+
+  private static void exchangePaths(Path first, Path second) throws IOException {
+    if (first.getFileSystem() != FileSystems.getDefault()
+        || second.getFileSystem() != FileSystems.getDefault()) {
+      throw new IOException("atomic path exchange requires the default local filesystem");
+    }
+    String firstPath = first.toAbsolutePath().toString();
+    String secondPath = second.toAbsolutePath().toString();
+    int result;
+    try {
+      NativeLibrary libc = NativeLibrary.getInstance(Platform.C_LIBRARY_NAME);
+      if (Platform.isMac()) {
+        Function exchange = libc.getFunction("renamex_np");
+        result = exchange.invokeInt(new Object[] {
+            firstPath, secondPath, EXCHANGE_FLAG
+        });
+      } else if (Platform.isLinux()) {
+        Function exchange = libc.getFunction("renameat2");
+        result = exchange.invokeInt(new Object[] {
+            AT_FDCWD, firstPath, AT_FDCWD, secondPath, EXCHANGE_FLAG
+        });
+      } else {
+        throw new IOException(
+            "atomic path exchange is unsupported on " + System.getProperty("os.name"));
+      }
+    } catch (UnsatisfiedLinkError error) {
+      throw new IOException("atomic path exchange is unavailable", error);
+    }
+    if (result != 0) {
+      int errorNumber = Native.getLastError();
+      throw new IOException("atomic path exchange failed with errno " + errorNumber);
     }
   }
 
@@ -588,6 +774,8 @@ public final class ReviewWorkspace {
 
   private record ParsedMarkdown(Map<String, Object> metadata, String body) { }
 
+  private record Frontmatter(int headerStart, int close) { }
+
   private static final class ReviewIoException extends RuntimeException {
     ReviewIoException(Throwable cause) {
       super(cause);
@@ -595,8 +783,35 @@ public final class ReviewWorkspace {
   }
 
   public static final class ConcurrentReviewUpdateException extends IllegalStateException {
+    private final boolean committed;
+    private final Path preservedPath;
+
     ConcurrentReviewUpdateException(String message) {
+      this(message, false, null);
+    }
+
+    ConcurrentReviewUpdateException(String message, boolean committed, Path preservedPath) {
       super(message);
+      this.committed = committed;
+      this.preservedPath = preservedPath;
+    }
+
+    ConcurrentReviewUpdateException(
+        String message,
+        boolean committed,
+        Path preservedPath,
+        Throwable cause) {
+      super(message, cause);
+      this.committed = committed;
+      this.preservedPath = preservedPath;
+    }
+
+    public boolean committed() {
+      return committed;
+    }
+
+    public Path preservedPath() {
+      return preservedPath;
     }
   }
 }

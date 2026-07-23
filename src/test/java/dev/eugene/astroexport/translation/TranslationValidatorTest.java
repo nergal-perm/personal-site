@@ -586,7 +586,7 @@ final class TranslationValidatorTest {
         metadata,
         "",
         "b".repeat(64),
-        null);
+        metadata);
   }
 
   private static ManifestEntry referenceTokenEntry() {
