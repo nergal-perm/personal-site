@@ -8,6 +8,7 @@ import dev.eugene.astroexport.model.ManifestLink;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
+import dev.eugene.astroexport.translation.TranslationValidator;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -27,7 +28,7 @@ public final class ReportBuilder {
         "- Files matched by `rg`: " + result.matched(),
         "- Confirmed `publish: true` frontmatter: " + result.confirmed(),
         "- Included: " + result.included().size(),
-        "- Excluded after declaring `publish`: " + result.unqualifiedVaultPaths().size(),
+        "- Excluded after declaring `publish`: " + result.excluded().size(),
         "",
         "## Included (" + result.included().size() + ")",
         ""));
@@ -36,20 +37,17 @@ public final class ReportBuilder {
           + "` (`" + note.publicContentType() + "`)");
     }
     lines.add("");
-    lines.add("## Excluded (" + result.unqualifiedVaultPaths().size() + ")");
+    lines.add("## Excluded (" + result.excluded().size() + ")");
     lines.add("");
-    for (String path : result.unqualifiedVaultPaths()) {
-      lines.add("- `" + path + "`");
+    for (SelectionResult.Exclusion item : result.excluded()) {
+      lines.add("- `" + item.vaultPath() + "` — " + item.reason());
     }
     return String.join("\n", lines) + "\n";
   }
 
   public static String buildManifestReport(SelectionResult selection, ManifestResult manifest) {
-    long reviewTranslations = manifest.englishEntries().stream()
-        .filter(entry -> {
-          Object status = entry.metadata().get("translationStatus");
-          return "review".equals(status) || "reviewed".equals(status);
-        })
+    long reviewTranslations = manifest.translationUses().stream()
+        .filter(use -> "review".equals(use.origin()))
         .count();
     ArrayList<String> lines = new ArrayList<>(List.of(
         "# Astro export dry-run",
@@ -59,7 +57,7 @@ public final class ReportBuilder {
         "- Files matched by `rg`: " + selection.matched(),
         "- Confirmed `publish: true` frontmatter: " + selection.confirmed(),
         "- Included by selector: " + selection.included().size(),
-        "- Excluded by selector: " + selection.unqualifiedVaultPaths().size(),
+        "- Excluded by selector: " + selection.excluded().size(),
         "- Normalized RU records: " + manifest.entries().size(),
         "- Generated EN records: " + manifest.englishEntries().size(),
         "- Review translations: " + reviewTranslations,
@@ -103,12 +101,35 @@ public final class ReportBuilder {
       lines.add("- `" + asset + "`");
     }
     lines.add("");
-    lines.add("## Selector exclusions (" + selection.unqualifiedVaultPaths().size() + ")");
+    lines.add("## Selector exclusions (" + selection.excluded().size() + ")");
     lines.add("");
-    for (String path : selection.unqualifiedVaultPaths()) {
-      lines.add("- `" + path + "`");
+    for (SelectionResult.Exclusion item : selection.excluded()) {
+      lines.add("- `" + item.vaultPath() + "` — " + item.reason());
     }
     return String.join("\n", lines) + "\n";
+  }
+
+  public static String buildBlockedManifestReport(
+      SelectionResult selection,
+      TranslationValidator.TranslationValidationException error) {
+    return String.join("\n", List.of(
+        "# Astro export dry-run",
+        "",
+        "## Summary",
+        "",
+        "- Files matched by `rg`: " + selection.matched(),
+        "- Confirmed `publish: true` frontmatter: " + selection.confirmed(),
+        "- Included by selector: " + selection.included().size(),
+        "- Excluded by selector: " + selection.excluded().size(),
+        "- Normalized RU records: " + selection.included().size(),
+        "- Generated EN records: 0",
+        "- Manifest blocked: 0",
+        "- Translation blockers: 1",
+        "",
+        "## Translation blockers (1)",
+        "",
+        "- `" + error.sourcePath() + "` — `" + error.publicId() + "` — " + error.reason(),
+        ""));
   }
 
   public static String buildWriteReport(
@@ -166,7 +187,7 @@ public final class ReportBuilder {
       lines.add("- Files matched by `rg`: " + selection.matched());
       lines.add("- Confirmed `publish: true` frontmatter: " + selection.confirmed());
       lines.add("- Included by selector: " + selection.included().size());
-      lines.add("- Excluded by selector: " + selection.unqualifiedVaultPaths().size());
+      lines.add("- Excluded by selector: " + selection.excluded().size());
     }
     if (manifest != null) {
       lines.add("- Manifest records before staging: " + (manifest.entries().size() + manifest.englishEntries().size()));
@@ -192,7 +213,7 @@ public final class ReportBuilder {
       lines.add("- Files matched by `rg`: " + selection.matched());
       lines.add("- Confirmed `publish: true` frontmatter: " + selection.confirmed());
       lines.add("- Included by selector: " + selection.included().size());
-      lines.add("- Excluded by selector: " + selection.unqualifiedVaultPaths().size());
+      lines.add("- Excluded by selector: " + selection.excluded().size());
     }
     if (manifest != null) {
       lines.add("- Manifest records prepared: " + (manifest.entries().size() + manifest.englishEntries().size()));

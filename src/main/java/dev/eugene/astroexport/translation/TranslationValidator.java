@@ -3,6 +3,7 @@ package dev.eugene.astroexport.translation;
 import dev.eugene.astroexport.markdown.MarkdownScanner;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
+import dev.eugene.astroexport.model.TranslationUse;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -24,6 +25,7 @@ public final class TranslationValidator {
 
   public static ManifestResult buildEnglishManifest(ManifestResult russian, Path reviewRoot) {
     List<ManifestEntry> entries = new ArrayList<>();
+    List<TranslationUse> uses = new ArrayList<>();
     for (ManifestEntry entry : russian.entries()) {
       Target target = target(entry);
       validateRussianEnvelope(entry, target.publicId());
@@ -42,9 +44,19 @@ public final class TranslationValidator {
         fail(entry, target.publicId(), "stale review: sourceHash does not match translation sourceHash");
       }
       entries.add(englishEntry(entry, target, patch));
+      uses.add(new TranslationUse(
+          target.publicId(),
+          patch.origin(),
+          reviewRoot.resolve(target.collection()).resolve(target.publicId()).resolve("en.md").toString()));
     }
     return new ManifestResult(
-        entries, russian.retainedLinks(), russian.strippedLinks(), russian.assets());
+        entries,
+        List.of(),
+        russian.retainedLinks(),
+        russian.strippedLinks(),
+        russian.assets(),
+        russian.resolvedAssets(),
+        uses);
   }
 
   private static ManifestEntry englishEntry(
@@ -587,7 +599,7 @@ public final class TranslationValidator {
     private final String publicId;
     private final String reason;
 
-    TranslationValidationException(String sourcePath, String publicId, String reason) {
+    public TranslationValidationException(String sourcePath, String publicId, String reason) {
       super(sourcePath + ": " + publicId + ": " + reason);
       this.sourcePath = sourcePath;
       this.publicId = publicId;

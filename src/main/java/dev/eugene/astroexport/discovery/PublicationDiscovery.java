@@ -49,7 +49,7 @@ public final class PublicationDiscovery {
   public SelectionResult select(Path vault) {
     List<String> candidates = findCandidates(vault);
     List<Note> included = new ArrayList<>();
-    List<String> unqualified = new ArrayList<>();
+    List<SelectionResult.Exclusion> excluded = new ArrayList<>();
     int confirmed = 0;
 
     for (String vaultPath : candidates) {
@@ -71,7 +71,7 @@ public final class PublicationDiscovery {
       String publicCollection = stringValue(metadata.get("publicCollection"));
       String publicContentType = stringValue(metadata.get("publicContentType"));
       if (publicId.isEmpty() || publicCollection.isEmpty() || publicContentType.isEmpty()) {
-        unqualified.add(vaultPath);
+        excluded.add(new SelectionResult.Exclusion(path, missingPublicationField(publicId, publicCollection, publicContentType), vaultPath));
         continue;
       }
 
@@ -87,7 +87,20 @@ public final class PublicationDiscovery {
           publicContentType,
           aliases(metadata.get("aliases"))));
     }
-    return new SelectionResult(List.copyOf(included), List.copyOf(unqualified), candidates.size(), confirmed);
+    return new SelectionResult(List.copyOf(included), List.copyOf(excluded), candidates.size(), confirmed);
+  }
+
+  private static String missingPublicationField(
+      String publicId,
+      String publicCollection,
+      String publicContentType) {
+    if (publicId.isEmpty()) {
+      return "missing publicId";
+    }
+    if (publicCollection.isEmpty()) {
+      return "missing publicCollection";
+    }
+    return "missing publicContentType";
   }
 
   private static String stringValue(Object value) {

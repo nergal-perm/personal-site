@@ -12,6 +12,8 @@ import dev.eugene.astroexport.model.ManifestLink;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
+import dev.eugene.astroexport.model.TranslationUse;
+import dev.eugene.astroexport.translation.TranslationValidator;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +55,7 @@ final class ReportBuilderTest {
         List.of());
     SelectionResult result = new SelectionResult(
         List.of(included),
-        List.of("blog/Draft.md"),
+        List.of(new SelectionResult.Exclusion(Path.of("/vault/blog/Draft.md"), "missing publicCollection", "blog/Draft.md")),
         3,
         2);
 
@@ -65,19 +67,23 @@ final class ReportBuilderTest {
     assertTrue(report.contains("## Included (1)"));
     assertTrue(report.contains("`blog/Essay.md` → `blog/essay` (`essay`)"));
     assertTrue(report.contains("## Excluded (1)"));
-    assertTrue(report.contains("`blog/Draft.md`"));
+    assertTrue(report.contains("`blog/Draft.md` — missing publicCollection"));
   }
 
   @Test
   void manifestReportListsTargetsAndLinkDecisions() {
-    SelectionResult selection = new SelectionResult(List.of(), List.of(), 2, 2);
+    SelectionResult selection = new SelectionResult(
+        List.of(),
+        List.of(new SelectionResult.Exclusion(Path.of("/vault/blog/Draft.md"), "missing publicContentType", "blog/Draft.md")),
+        2,
+        2);
     ManifestResult manifest = new ManifestResult(
         List.of(
             new ManifestEntry("blog/editorial/now.md", "src/data/pages/ru/now.json", "/ru/now/", Map.of("id", "now"), ""),
             new ManifestEntry("blog/Essay.md", "src/content/blog/ru/essay.md", "/ru/essays/essay/", Map.of("id", "essay"), "")),
         List.of(
-            new ManifestEntry("blog/editorial/now.md", "src/data/pages/en/now.json", "/en/now/", Map.of("id", "now", "translationStatus", "reviewed"), ""),
-            new ManifestEntry("blog/Essay.md", "src/content/blog/en/essay.md", "/en/essays/essay/", Map.of("id", "essay", "translationStatus", "reviewed"), "")),
+            new ManifestEntry("blog/editorial/now.md", "src/data/pages/en/now.json", "/en/now/", Map.of("id", "now", "translationStatus", "generated"), ""),
+            new ManifestEntry("blog/Essay.md", "src/content/blog/en/essay.md", "/en/essays/essay/", Map.of("id", "essay", "translationStatus", "generated"), "")),
         List.of(new ManifestLink(
             "blog/editorial/now.md",
             "The Lean Startup",
@@ -86,7 +92,10 @@ final class ReportBuilderTest {
             "/ru/library/book-the-lean-startup/")),
         List.of(new ManifestLink("blog/editorial/now.md", "Private Note", "body")),
         List.of("cover.png"),
-        List.of());
+        List.of(),
+        List.of(
+            new TranslationUse("now", "review", "review/editorial/now/en.md"),
+            new TranslationUse("essay", "review", "review/blog/essay/en.md")));
 
     String report = ReportBuilder.buildManifestReport(selection, manifest);
 
@@ -104,6 +113,40 @@ final class ReportBuilderTest {
     assertTrue(report.contains("`The Lean Startup` → `/ru/library/book-the-lean-startup/` (`body`)"));
     assertTrue(report.contains("`Private Note` (`body`)"));
     assertTrue(report.contains("`cover.png`"));
+    assertTrue(report.contains("`blog/Draft.md` — missing publicContentType"));
+  }
+
+  @Test
+  void translationBlockerHasSeparateReportSectionWithSourceAndPublicId() {
+    SelectionResult selection = new SelectionResult(
+        List.of(new Note(
+            Path.of("/vault/blog/Essay.md"),
+            "blog/Essay.md",
+            "Essay",
+            Map.of(
+                "publicId", "essay",
+                "publicCollection", "blog",
+                "publicContentType", "essay"),
+            "",
+            true,
+            "essay",
+            "blog",
+            "essay",
+            List.of())),
+        List.of(),
+        1,
+        1);
+    TranslationValidator.TranslationValidationException error =
+        new TranslationValidator.TranslationValidationException(
+            "blog/Essay.md", "essay", "missing translation fixture");
+
+    String report = ReportBuilder.buildBlockedManifestReport(selection, error);
+
+    assertTrue(report.contains("Manifest blocked: 0"));
+    assertTrue(report.contains("Translation blockers: 1"));
+    assertTrue(report.contains("## Translation blockers (1)"));
+    assertTrue(report.contains("`blog/Essay.md` — `essay` — missing translation fixture"));
+    assertFalse(report.contains("## Blocking errors"));
   }
 
   @Test

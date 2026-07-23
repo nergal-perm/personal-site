@@ -245,6 +245,12 @@ public final class SiteWriter {
         preflightLiveLayout(site, binding);
       }
       preflightLiveLayout(site, binding);
+      for (String relative : TreeHasher.MANAGED_ROOTS) {
+        if (!Files.isDirectory(site.resolve(relative), LinkOption.NOFOLLOW_LINKS)
+            || Files.isSymbolicLink(site.resolve(relative))) {
+          throw new WriterException("installed managed trees do not match staged evidence");
+        }
+      }
       if (!TreeHasher.hashManagedTrees(site).equals(binding.managedTreeHashes())) {
         throw new WriterException("installed managed trees do not match staged evidence");
       }
