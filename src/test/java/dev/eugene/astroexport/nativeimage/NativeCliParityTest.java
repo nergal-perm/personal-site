@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.cli.AstroExportCommand;
 import dev.eugene.astroexport.cli.CommandServices;
 import dev.eugene.astroexport.fs.SiteWriter;
@@ -24,12 +26,15 @@ import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 final class NativeCliParityTest {
+  private static final ObjectMapper JSON = new ObjectMapper();
   private static final List<String> MANAGED_ROOTS = List.of(
       "public/assets/vault",
       "src/content",
@@ -134,6 +139,30 @@ final class NativeCliParityTest {
   }
 
   @Test
+  void nativeReflectionMetadataCoversEveryPicocliCommandField() throws Exception {
+    Path root = Path.of("").toAbsolutePath().normalize();
+    Map<String, Set<String>> fieldsByType = nativeReflectionFields(root.resolve(
+        "src/main/resources/META-INF/native-image/dev.eugene/astro-export/reachability-metadata.json"));
+
+    assertEquals(Set.of("spec", "vault", "out", "dryRun", "report", "review"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand"));
+    assertEquals(Set.of("spec", "parent", "vault", "out", "dryRun", "report", "review"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$BuildFromReviewCommand"));
+    assertEquals(Set.of("parent", "overrides", "review"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MigrateOverridesCommand"));
+    assertEquals(Set.of("parent", "vault", "note", "review", "jobs", "json"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$PrepareCommand"));
+    assertEquals(Set.of("parent", "vault", "note", "review", "json"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$InspectPublicationCommand"));
+    assertEquals(Set.of("parent", "vault", "note", "review", "jobs", "json"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MarkReviewedCommand"));
+    assertEquals(Set.of("parent", "vault", "review", "jobs", "json"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$RefreshPublicationQueueCommand"));
+    assertEquals(Set.of("parent", "out"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$WritePublicationContractCommand"));
+  }
+
+  @Test
   void nativeBuildSupportDocumentsAgentClasspathAndCutoverGates() throws Exception {
     Path root = Path.of("").toAbsolutePath().normalize();
     String pom = Files.readString(root.resolve("pom.xml"));
@@ -169,6 +198,34 @@ final class NativeCliParityTest {
         exitCode,
         out.toString(StandardCharsets.UTF_8),
         err.toString(StandardCharsets.UTF_8));
+  }
+
+  private static Map<String, Set<String>> nativeReflectionFields(Path path) throws Exception {
+    Map<String, Object> metadata = JSON.readValue(
+        Files.readString(path, StandardCharsets.UTF_8),
+        new TypeReference<LinkedHashMap<String, Object>>() { });
+    List<?> reflection = (List<?>) metadata.get("reflection");
+    LinkedHashMap<String, Set<String>> fieldsByType = new LinkedHashMap<>();
+    for (Object item : reflection) {
+      if (!(item instanceof Map<?, ?> entry)) {
+        continue;
+      }
+      Object type = entry.get("type");
+      if (!(type instanceof String typeName) || !typeName.startsWith("dev.eugene.astroexport.cli.")) {
+        continue;
+      }
+      LinkedHashSet<String> fields = new LinkedHashSet<>();
+      Object fieldEntries = entry.get("fields");
+      if (fieldEntries instanceof List<?> list) {
+        for (Object fieldItem : list) {
+          if (fieldItem instanceof Map<?, ?> field && field.get("name") instanceof String name) {
+            fields.add(name);
+          }
+        }
+      }
+      fieldsByType.put(typeName, fields);
+    }
+    return fieldsByType;
   }
 
   private static Path writeFixtureVault(Path vault) throws Exception {

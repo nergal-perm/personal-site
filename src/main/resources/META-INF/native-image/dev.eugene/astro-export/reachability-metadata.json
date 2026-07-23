@@ -39,6 +39,21 @@
           "name": "parent"
         },
         {
+          "name": "vault"
+        },
+        {
+          "name": "out"
+        },
+        {
+          "name": "dryRun"
+        },
+        {
+          "name": "report"
+        },
+        {
+          "name": "review"
+        },
+        {
           "name": "spec"
         }
       ],
@@ -54,6 +69,18 @@
       "fields": [
         {
           "name": "parent"
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "note"
+        },
+        {
+          "name": "review"
+        },
+        {
+          "name": "json"
         }
       ],
       "methods": [
@@ -68,6 +95,21 @@
       "fields": [
         {
           "name": "parent"
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "note"
+        },
+        {
+          "name": "review"
+        },
+        {
+          "name": "jobs"
+        },
+        {
+          "name": "json"
         }
       ],
       "methods": [
@@ -82,6 +124,12 @@
       "fields": [
         {
           "name": "parent"
+        },
+        {
+          "name": "overrides"
+        },
+        {
+          "name": "review"
         }
       ],
       "methods": [
@@ -96,6 +144,21 @@
       "fields": [
         {
           "name": "parent"
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "note"
+        },
+        {
+          "name": "review"
+        },
+        {
+          "name": "jobs"
+        },
+        {
+          "name": "json"
         }
       ],
       "methods": [
@@ -110,6 +173,18 @@
       "fields": [
         {
           "name": "parent"
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "review"
+        },
+        {
+          "name": "jobs"
+        },
+        {
+          "name": "json"
         }
       ],
       "methods": [
@@ -124,6 +199,9 @@
       "fields": [
         {
           "name": "parent"
+        },
+        {
+          "name": "out"
         }
       ],
       "methods": [

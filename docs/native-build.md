@@ -31,6 +31,7 @@ src/main/resources/META-INF/native-image/dev.eugene/astro-export/resource-config
 ```
 
 `resource-config.json` keeps the packaged search templates and the line-break iterator resource traced during the live dry-run.
+`reachability-metadata.json` also explicitly lists every picocli root and subcommand field annotated with `@Option`, `@Spec`, or `@ParentCommand`. The tracing-agent help/root dry-run flow does not visit all subcommand option bindings, so this manual completion is required for native CLI parity.
 
 ## Build
 
@@ -43,7 +44,7 @@ env JAVA_HOME=/Users/eugene/.sdkman/candidates/java/25.0.4-graal PATH=/Users/eug
 Evidence:
 
 ```text
-target/astro-export: executable, 31,990,592 bytes
+target/astro-export: executable, 32,420,528 bytes
 native-image: BUILD SUCCESS
 ```
 
@@ -52,6 +53,10 @@ Smoke commands:
 ```bash
 target/astro-export --help
 target/astro-export --vault /Users/eugene/Documents/personal-wiki/knowledge-base --dry-run --report /private/tmp/astro-export-java-dry-run.md
+target/astro-export prepare --vault /private/tmp/astro-export-java-missing-vault --note missing.md --json
+target/astro-export inspect-publication --vault /private/tmp/astro-export-java-missing-vault --note missing.md --json
+target/astro-export mark-reviewed --vault /private/tmp/astro-export-java-missing-vault --note missing.md --json
+target/astro-export refresh-publication-queue --vault /private/tmp/astro-export-java-missing-vault --json
 ```
 
 Results:
@@ -60,6 +65,10 @@ Results:
 --help exit code: 0
 default native dry-run exit code: 1
 default native dry-run report: /private/tmp/astro-export-java-dry-run.md
+prepare missing-vault JSON probe exit code: 1, status: metadata_blocked, diagnostics: 1, no MissingReflectionRegistrationError
+inspect-publication missing-vault JSON probe exit code: 1, status: metadata_blocked, diagnostics: 1, no MissingReflectionRegistrationError
+mark-reviewed missing-vault JSON probe exit code: 1, status: metadata_blocked, diagnostics: 1, no MissingReflectionRegistrationError
+refresh-publication-queue missing-vault JSON probe exit code: 1, status: refresh_failed, diagnostics: 1, no MissingReflectionRegistrationError
 ```
 
 The default Java dry-run uses the Java repo-local `review/` directory, which is empty in this checkout. For oracle parity, the Java run was pointed at the same review workspace as the Python exporter:
