@@ -312,6 +312,33 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void candidateValidationFailureScrubsTemporaryValidationPath() throws Exception {
+    Fixture fixture = fixture();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      Files.writeString(job.resolve("candidate.en.md"), """
+          ---
+          title: [unterminated
+          ---
+          English body.
+          """);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    String diagnostic = result.diagnostics().stream()
+        .map(item -> item.message())
+        .reduce("", (left, right) -> left + "\n" + right);
+    assertTrue(diagnostic.contains("candidate.en.md"), diagnostic);
+    assertFalse(diagnostic.contains(".candidate-review-"), diagnostic);
+    String source = Files.readString(fixture.source());
+    assertTrue(source.contains("candidate.en.md"), source);
+    assertFalse(source.contains(".candidate-review-"), source);
+  }
+
+  @Test
   void candidateInternalRussianRouteIsRejected() throws Exception {
     Fixture fixture = fixture();
     Path prior = priorEnglish(fixture);
@@ -385,6 +412,37 @@ final class PrepareWorkflowTest {
     assertFalse(jobPrior.contains("secret.md"));
     assertFalse(jobPrior.contains("/srv/private"));
     assertTrue(jobPrior.contains("[publication path removed]"));
+  }
+
+  @Test
+  void cleanPriorEnglishEntersJobByteForByte() throws Exception {
+    Fixture fixture = fixture();
+    Path prior = priorEnglish(fixture);
+    byte[] exact = """
+        ---
+        # Preserve this translator note.
+        title: 'Prior English title'
+        description: "Prior: English description."
+        translationProfile: human-review-v1
+        translationStatus: reviewed
+        translatedAt: 2026-07-01
+        sourceHash: old
+        ---
+        Prior English body with intentional formatting.
+        """.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    Files.write(prior, exact);
+    byte[][] jobPrior = new byte[1][];
+    RecordingRunner runner = new RecordingRunner(job -> {
+      jobPrior[0] = Files.readAllBytes(job.resolve("en.md"));
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertArrayEquals(exact, jobPrior[0]);
   }
 
   @Test

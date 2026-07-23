@@ -848,21 +848,30 @@ public final class PrepareWorkflow {
       Path jobsRoot,
       Target target) throws IOException {
     Path validationRoot = Files.createTempDirectory(jobsRoot, ".candidate-review-");
+    Path validationPath =
+        validationRoot.resolve(target.collection()).resolve(target.publicId()).resolve("en.md");
     try {
-      ReviewWorkspace.replaceEnglishReviewFile(
-          validationRoot, candidate, target.collection(), target.publicId());
-      TranslationValidator.buildEnglishManifest(
-          new ManifestResult(List.of(entry), List.of(), List.of(), List.of()),
-          validationRoot);
-      String generated = ReviewWorkspace.setGeneratedReviewStatus(candidate);
-      ReviewWorkspace.replaceEnglishReviewFile(
-          validationRoot, generated, target.collection(), target.publicId());
-      TranslationValidator.buildEnglishManifest(
-          new ManifestResult(List.of(entry), List.of(), List.of(), List.of()),
-          validationRoot);
-      return generated;
-    } finally {
-      deleteTree(validationRoot);
+      try {
+        ReviewWorkspace.replaceEnglishReviewFile(
+            validationRoot, candidate, target.collection(), target.publicId());
+        TranslationValidator.buildEnglishManifest(
+            new ManifestResult(List.of(entry), List.of(), List.of(), List.of()),
+            validationRoot);
+        String generated = ReviewWorkspace.setGeneratedReviewStatus(candidate);
+        ReviewWorkspace.replaceEnglishReviewFile(
+            validationRoot, generated, target.collection(), target.publicId());
+        TranslationValidator.buildEnglishManifest(
+            new ManifestResult(List.of(entry), List.of(), List.of(), List.of()),
+            validationRoot);
+        return generated;
+      } finally {
+        deleteTree(validationRoot);
+      }
+    } catch (RuntimeException | IOException error) {
+      String message = safeMessage(error)
+          .replace(validationPath.toString(), "candidate.en.md")
+          .replace(validationRoot.toString(), "candidate.en.md");
+      throw new IllegalArgumentException(message, error);
     }
   }
 
@@ -1309,8 +1318,8 @@ public final class PrepareWorkflow {
     try {
       FrontmatterDocument parsed = FrontmatterDocument.parse(
           Path.of("en.md"), "en.md", value);
-      if (parsed.metadata().isEmpty() && value.startsWith("---")) {
-        return null;
+      if (!priorNeedsSanitization(parsed.metadata(), parsed.body())) {
+        return value.getBytes(StandardCharsets.UTF_8);
       }
       Map<String, Object> metadata = sanitizeMap(parsed.metadata());
       String body = redactPaths(parsed.body());
@@ -1328,9 +1337,7 @@ public final class PrepareWorkflow {
   private static Map<String, Object> sanitizeMap(Map<String, Object> source) {
     LinkedHashMap<String, Object> result = new LinkedHashMap<>();
     for (Map.Entry<String, Object> entry : source.entrySet()) {
-      String normalized = entry.getKey().replace("_", "").replace("-", "")
-          .toLowerCase(java.util.Locale.ROOT);
-      if (normalized.equals("path") || normalized.endsWith("path")) {
+      if (isPathFieldName(entry.getKey())) {
         continue;
       }
       result.put(redactPaths(entry.getKey()), sanitizeValue(entry.getValue()));
@@ -1353,6 +1360,39 @@ public final class PrepareWorkflow {
       return list.stream().map(PrepareWorkflow::sanitizeValue).toList();
     }
     return value;
+  }
+
+  private static boolean priorNeedsSanitization(
+      Map<String, Object> metadata,
+      String body) {
+    return containsPrivatePath(body) || valueNeedsSanitization(metadata);
+  }
+
+  private static boolean valueNeedsSanitization(Object value) {
+    if (value instanceof String text) {
+      return containsPrivatePath(text);
+    }
+    if (value instanceof Map<?, ?> map) {
+      for (Map.Entry<?, ?> entry : map.entrySet()) {
+        String key = String.valueOf(entry.getKey());
+        if (isPathFieldName(key)
+            || containsPrivatePath(key)
+            || valueNeedsSanitization(entry.getValue())) {
+          return true;
+        }
+      }
+      return false;
+    }
+    if (value instanceof List<?> list) {
+      return list.stream().anyMatch(PrepareWorkflow::valueNeedsSanitization);
+    }
+    return false;
+  }
+
+  private static boolean isPathFieldName(String value) {
+    String normalized = value.replace("_", "").replace("-", "")
+        .toLowerCase(java.util.Locale.ROOT);
+    return normalized.equals("path") || normalized.endsWith("path");
   }
 
   private static String redactPaths(String value) {
