@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.model.ManifestLink;
+import java.lang.reflect.Method;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -24,6 +25,17 @@ final class ManifestBuilderTest {
     assertEquals("## Определение\n\nОпределение.\n", entry.body());
     assertEquals("src/content/concepts/ru/organisation.md", entry.targetPath());
     assertEquals("/ru/concepts/organisation/", entry.route());
+  }
+
+  @Test
+  void preservesNonmatchingAndIndentedConceptH1Headings() {
+    String nonmatching = "# Other title\n\n## Определение\n\nОпределение.\n";
+    String indented = "    # Organisation\n\n## Определение\n\nОпределение.\n";
+
+    assertEquals(nonmatching, only(builder.buildRussianManifest(selection(
+        note("concepts/Organisation.md", "Organisation", "organisation", "concepts", "concept", Map.of("description", "Описание."), nonmatching)))).body());
+    assertEquals(indented, only(builder.buildRussianManifest(selection(
+        note("concepts/Organisation.md", "Organisation", "organisation", "concepts", "concept", Map.of("description", "Описание."), indented)))).body());
   }
 
   @Test
@@ -73,6 +85,32 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void omitsExplicitNullCollectionMetadata() {
+    Map<String, Object> musicExtra = nullableMap("artist", "Artist", "albumTitle", "Album", "format", null, "streamingUrl", null, "bandcampEmbedUrl", null);
+    Note musicWithNulls = note("reviews/Album.md", "Album", "album", "music", "album", musicExtra, "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
+    Note musicWithoutOptionals = note("reviews/Album.md", "Album", "album", "music", "album", Map.of("artist", "Artist", "albumTitle", "Album"), "## Контекст записи\n\nКонтекст.\n\n## Личная связь\n\nСвязь.");
+    Map<String, Object> musicMetadata = only(builder.buildRussianManifest(selection(musicWithNulls))).metadata();
+    assertEquals(only(builder.buildRussianManifest(selection(musicWithoutOptionals))).metadata(), musicMetadata);
+    for (String field : List.of("format", "streamingUrl", "bandcampEmbedUrl")) {
+      assertFalse(musicMetadata.containsKey(field));
+    }
+
+    Map<String, Object> bookExtra = nullableMap("author", "Автор", "readingStatus", null, "status", "reading", "use", null, "boundary", null, "selectedQuote", null);
+    Map<String, Object> bookMetadata = only(builder.buildRussianManifest(selection(
+        note("bibliography/Book.md", "Книга", "book", "bibliography", "book", bookExtra, "")))).metadata();
+    assertEquals("reading", bookMetadata.get("readingStatus"));
+    for (String field : List.of("use", "boundary", "selectedQuote")) {
+      assertFalse(bookMetadata.containsKey(field));
+    }
+
+    Map<String, Object> claimExtra = nullableMap("statement", "Тезис.", "supports", null, "sources", null);
+    Map<String, Object> claimMetadata = only(builder.buildRussianManifest(selection(
+        note("claims/Claim.md", "Тезис", "claim", "blog", "claim", claimExtra, "")))).metadata();
+    assertFalse(claimMetadata.containsKey("supports"));
+    assertFalse(claimMetadata.containsKey("sources"));
+  }
+
+  @Test
   void rewritesPublicBodyLinksRecordsProvenanceAndCollectsAssets() {
     Note source = note("blog/Source.md", "Source", "source", "blog", "note", Map.of(), "[[Public|ссылка]] ![[cover.png]] [[Private|скрыто]]");
     Note target = note("blog/Public.md", "Public", "public", "blog", "essay", Map.of(), "");
@@ -91,6 +129,18 @@ final class ManifestBuilderTest {
     Note first = note("blog/First.md", "Shared", "first", "blog", "note", Map.of(), "");
     Note second = note("blog/Second.md", "Shared", "second", "blog", "note", Map.of(), "");
     assertThrows(ManifestBuilder.ManifestValidationException.class, () -> builder.buildRussianManifest(selection(source, first, second)));
+  }
+
+  @Test
+  void reportsBodyLinkAmbiguityWithThePythonFieldPrefix() {
+    Note source = note("blog/Source.md", "Источник", "source", "blog", "note", Map.of(), "[[Общее]]");
+    Note first = note("blog/First.md", "Общее", "first", "blog", "note", Map.of(), "");
+    Note second = note("blog/Second.md", "Общее", "second", "blog", "note", Map.of(), "");
+
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(source, first, second)));
+    assertEquals("link Общее", error.fieldName());
+    assertEquals("is ambiguous; use a publicId or vault path", error.reason());
   }
 
   @Test
@@ -151,6 +201,26 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void reportsAmbiguousCurrentTargetsAsEditorialTextLinks() {
+    Note home = note("editorial/Home.md", "Главная", "home", "editorial", "curated_page", Map.of("editorialPage", "home"),
+        homeWithLinkedCurrentCards().replace("[[Study source|Текущий фокус]]", "[[Общее|Текущий фокус]]"));
+    Note first = note("blog/First.md", "Общее", "first", "blog", "essay", Map.of(), "");
+    Note second = note("blog/Second.md", "Общее", "second", "blog", "essay", Map.of(), "");
+
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(home, first, second)));
+    assertEquals("editorial text link Общее", error.fieldName());
+    assertEquals("is ambiguous; use a publicId or vault path", error.reason());
+
+    Note unresolved = note("editorial/Home.md", "Главная", "home", "editorial", "curated_page", Map.of("editorialPage", "home"),
+        homeWithLinkedCurrentCards().replace("[[Study source|Текущий фокус]]", "[[Неизвестно|Текущий фокус]]"));
+    ManifestBuilder.ManifestValidationException unresolvedError = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(unresolved)));
+    assertEquals("current[0].target", unresolvedError.fieldName());
+    assertEquals("must resolve to exactly one published entry", unresolvedError.reason());
+  }
+
+  @Test
   void validatesAutomaticCollectionShowcaseTargetsAndFiltersUnpublishedEditorialReferences() {
     Note essays = note("editorial/Essays.md", "Эссе", "essays", "editorial", "curated_page", Map.of("editorialPage", "essays"),
         "## Кратко\n\nКратко.\n\n## Eyebrow\n\nТексты.\n\n## Принцип списка\n\nПринцип.\n\nПодсказка поиска:: Искать\n\n## Витрина\n\n### [[Book source]]\n\nТекст.");
@@ -205,6 +275,30 @@ final class ManifestBuilderTest {
         new ManifestLink("editorial/Home.md", "prototype-item", "editorial"),
         new ManifestLink("editorial/Home.md", "prototype-path", "editorial"),
         new ManifestLink("editorial/Home.md", "prototype-route", "editorial")), stripped);
+  }
+
+  @Test
+  void keepsEditorialReferenceFieldsStructuralUntilEditorialFiltering() {
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("id", "home");
+    metadata.put("title", "Главная");
+    metadata.put("featured", "[[public-id]]");
+    metadata.put("primary", "[[private-id]]");
+    metadata.put("selected", List.of("[[public-id]]", "[[private-id]]"));
+    List<ManifestLink> retained = new java.util.ArrayList<>();
+    List<ManifestLink> stripped = new java.util.ArrayList<>();
+
+    resolveEditorialMetadata(metadata, List.of(referenceNote("public-id")), retained, stripped);
+
+    assertEquals("[[public-id]]", metadata.get("featured"));
+    assertEquals("[[private-id]]", metadata.get("primary"));
+    assertEquals(List.of("[[public-id]]", "[[private-id]]"), metadata.get("selected"));
+    assertEquals(List.of(), retained);
+    assertEquals(List.of(), stripped);
+
+    ManifestBuilder.filterEditorialReferences("editorial/Home.md", metadata, List.of(referenceNote("public-id")), stripped);
+    assertEquals(List.of("[[public-id]]", "[[private-id]]", "[[public-id]]", "[[private-id]]"),
+        stripped.stream().map(ManifestLink::target).toList());
   }
 
   @Test
@@ -330,6 +424,16 @@ final class ManifestBuilderTest {
   }
 
   @Test
+  void hashesNestedIntegerAndDecimalMetadataLikePythonJson() {
+    Map<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("sources", List.of(Map.of("page", 12, "weight", 1.25)));
+    metadata.put("selectedQuote", Map.of("text", "Цитата.", "score", 0.5));
+
+    assertEquals("c985ffddbbee1e97b5ac82ca893d6e53860dac96bd2d541dcb0e2116be4f8770",
+        ManifestBuilder.sourceHash(metadata, "Тело."));
+  }
+
+  @Test
   void resolvesClaimSourceReferencesAndRichTextWithProvenance() {
     Note source = note("claims/Source.md", "Источник", "source", "blog", "claim", Map.of(
         "statement", "Тезис.", "sources", List.of(Map.of("link", "[[Книга]]", "evidence", "См. [[Опубликованный]].", "locator", "Введение"))), "");
@@ -341,6 +445,20 @@ final class ManifestBuilderTest {
     assertEquals(Map.of("label", "Книга", "target", "book"), sourceRecord.get("link"));
     assertEquals(List.of(Map.of("kind", "text", "value", "См. "), Map.of("kind", "reference", "target", "published"), Map.of("kind", "text", "value", ".")), sourceRecord.get("evidence"));
     assertEquals(2, result.retainedLinks().stream().filter(link -> link.kind().equals("frontmatter")).count());
+  }
+
+  @Test
+  void recordsClaimProvenanceBeforeGenericFrontmatterLinks() {
+    Note claim = note("claims/Claim.md", "Тезис", "claim", "blog", "claim", Map.of(
+        "statement", "Тезис.", "supports", List.of("[[Связь]]"),
+        "sources", List.of(Map.of("link", "[[Приватный источник]]")),
+        "links", List.of("front-id", "private-front")), "");
+    Note relation = note("claims/Relation.md", "Связь", "relation", "blog", "claim", Map.of("statement", "Связь."), "");
+    Note front = note("blog/Front.md", "Фронт", "front-id", "blog", "note", Map.of(), "");
+
+    var result = builder.buildRussianManifest(selection(claim, relation, front));
+    assertEquals(List.of("Связь", "front-id"), result.retainedLinks().stream().map(ManifestLink::target).toList());
+    assertEquals(List.of("Приватный источник", "private-front"), result.strippedLinks().stream().map(ManifestLink::target).toList());
   }
 
   @Test
@@ -381,6 +499,22 @@ final class ManifestBuilderTest {
     return new Note(Path.of(path), path, title, metadata, body, true, id, collection, type, List.of());
   }
   private static Note referenceNote(String id) { return new Note(Path.of(id + ".md"), id + ".md", id, Map.of(), "", true, id, "blog", "note", List.of()); }
+  private void resolveEditorialMetadata(Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) {
+    try {
+      Method method = ManifestBuilder.class.getDeclaredMethod("resolveEditorialMetadata", String.class, Map.class, List.class, List.class, List.class);
+      method.setAccessible(true);
+      method.invoke(builder, "editorial/Home.md", metadata, notes, retained, stripped);
+    } catch (ReflectiveOperationException error) {
+      throw new AssertionError(error);
+    }
+  }
+  private static Map<String, Object> nullableMap(Object... values) {
+    Map<String, Object> result = new LinkedHashMap<>();
+    for (int index = 0; index < values.length; index += 2) {
+      result.put((String) values[index], values[index + 1]);
+    }
+    return result;
+  }
   private void assertSelectedQuoteError(Object selectedQuote, String field) {
     ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
         () -> builder.buildRussianManifest(selection(note("bibliography/Book.md", "Книга", "book", "bibliography", "book", Map.of("author", "Автор", "selectedQuote", selectedQuote), ""))));

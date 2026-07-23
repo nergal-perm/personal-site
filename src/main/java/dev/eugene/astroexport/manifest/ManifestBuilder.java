@@ -30,7 +30,10 @@ import java.util.regex.Pattern;
 public final class ManifestBuilder {
   private static final Set<String> TOPICS = Set.of("systems", "software", "ai-work", "thinking", "reading", "music", "personal-systems");
   private static final Set<String> WORKFLOW_FIELDS = Set.of("publicWorkflowStatus", "publicTranslationStatus", "publicWorkflowUpdated", "publicWorkflowDiagnostic");
-  private static final Set<String> STRUCTURAL_EDITORIAL_FIELDS = Set.of("id", "type", "date", "status", "topics", "links", "pinned", "target", "route", "number", "sourceHash", "language", "sourceLanguage", "translationStatus", "key", "layout");
+  private static final Set<String> STRUCTURAL_EDITORIAL_FIELDS = Set.of(
+      "id", "type", "date", "status", "topics", "links", "featured", "primary", "selected",
+      "pinned", "target", "route", "number", "sourceHash", "language", "sourceLanguage",
+      "translationStatus", "key", "layout");
   private static final Pattern LEADING_H1 = Pattern.compile("\\A(?:[ \\t]*\\R)* {0,3}#[ \\t]+([^\\r\\n]+)(?:\\R|\\z)");
   private static final Pattern ATX_CLOSER = Pattern.compile("[ \\t]+(?<!\\\\)#+[ \\t]*$");
   private static final Pattern SCALAR_LINK = Pattern.compile("^\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]$");
@@ -43,12 +46,21 @@ public final class ManifestBuilder {
   private final EditorialParser editorialParser = new EditorialParser();
 
   public ManifestResult buildRussianManifest(SelectionResult selection) {
-    List<Note> notes = selection.included().stream().map(this::sanitize).sorted(Comparator.comparing(Note::vaultPath)).toList();
+    List<Note> notes = selection.included().stream()
+        .map(this::sanitize)
+        .sorted(Comparator.comparing(Note::vaultPath))
+        .toList();
     List<ManifestEntry> entries = new ArrayList<>();
-    for (Note note : notes) entries.add(normalize(note));
+    for (Note note : notes) {
+      entries.add(normalize(note));
+    }
     Map<String, ManifestEntry> entriesByPath = new LinkedHashMap<>();
-    for (ManifestEntry entry : entries) entriesByPath.put(entry.sourcePath(), entry);
-    List<ManifestLink> retained = new ArrayList<>(); List<ManifestLink> stripped = new ArrayList<>(); Set<String> assets = new LinkedHashSet<>();
+    for (ManifestEntry entry : entries) {
+      entriesByPath.put(entry.sourcePath(), entry);
+    }
+    List<ManifestLink> retained = new ArrayList<>();
+    List<ManifestLink> stripped = new ArrayList<>();
+    Set<String> assets = new LinkedHashSet<>();
     for (Note note : notes) {
       ManifestEntry entry = entriesByPath.get(note.vaultPath());
       LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(entry.metadata());
@@ -60,18 +72,35 @@ public final class ManifestBuilder {
       } else {
         try {
           dev.eugene.astroexport.links.ManifestLink links = linkProcessor.processLinks(copy(note, body), notes);
-          body = (String) links.body(); assets.addAll(links.assets());
-          for (LinkProcessor.ResolvedLink link : links.retained()) retained.add(new ManifestLink(entry.sourcePath(), link.target(), "body", link.publicId(), link.route()));
-          for (String target : links.stripped()) stripped.add(new ManifestLink(entry.sourcePath(), target, "body"));
-        } catch (LinkProcessor.TransclusionException error) { throw new ManifestTransclusionException(entry.sourcePath(), error.getMessage());
-        } catch (LinkProcessor.ManifestValidationException error) { throw new ManifestValidationException(entry.sourcePath(), linkTarget(error.getMessage()), "is ambiguous; use a publicId or vault path"); }
+          body = (String) links.body();
+          assets.addAll(links.assets());
+          for (LinkProcessor.ResolvedLink link : links.retained()) {
+            retained.add(new ManifestLink(entry.sourcePath(), link.target(), "body", link.publicId(), link.route()));
+          }
+          for (String target : links.stripped()) {
+            stripped.add(new ManifestLink(entry.sourcePath(), target, "body"));
+          }
+        } catch (LinkProcessor.TransclusionException error) {
+          throw new ManifestTransclusionException(entry.sourcePath(), error.getMessage());
+        } catch (LinkProcessor.ManifestValidationException error) {
+          throw new ManifestValidationException(
+              entry.sourcePath(),
+              "link " + linkTarget(error.getMessage()),
+              "is ambiguous; use a publicId or vault path");
+        }
+      }
+      if (note.publicCollection().equals("blog") && "claim".equals(metadata.get("contentType"))) {
+        resolveClaimLinks(entry.sourcePath(), metadata, notes, retained, stripped);
       }
       resolveFrontmatterLinks(entry.sourcePath(), metadata, notes, retained, stripped);
-      if (note.publicCollection().equals("blog") && "claim".equals(metadata.get("contentType"))) resolveClaimLinks(entry.sourcePath(), metadata, notes, retained, stripped);
       metadata.put("sourceHash", sourceHash(metadata, body));
       entriesByPath.put(entry.sourcePath(), new ManifestEntry(entry.sourcePath(), entry.targetPath(), entry.route(), metadata, body));
     }
-    return new ManifestResult(notes.stream().map(note -> entriesByPath.get(note.vaultPath())).toList(), retained, stripped, assets.stream().sorted().toList());
+    return new ManifestResult(
+        notes.stream().map(note -> entriesByPath.get(note.vaultPath())).toList(),
+        retained,
+        stripped,
+        assets.stream().sorted().toList());
   }
 
   private ManifestEntry normalize(Note note) {
@@ -131,7 +160,32 @@ public final class ManifestBuilder {
   private static String targetPath(Note note) { return note.publicCollection().equals("editorial") ? "src/data/pages/ru/" + note.publicId().strip() + ".json" : "src/content/" + note.publicCollection() + "/ru/" + note.publicId().strip() + ".md"; }
   private static String route(Note note) { if (note.publicCollection().equals("editorial")) return note.publicId().equals("home") ? "/ru/" : "/ru/" + note.publicId() + "/"; String section = switch (note.publicContentType()) { case "essay" -> "essays"; case "claim" -> "claims"; case "note" -> "notes"; case "album" -> "music"; case "book" -> "library"; case "concept" -> "concepts"; default -> throw new ManifestValidationException(note.vaultPath(), "publicContentType", "must be a supported publication type"); }; return "/ru/" + section + "/" + note.publicId() + "/"; }
 
-  private static void musicMetadata(Note note, Map<String, Object> metadata) { Map<String, Object> fm = note.frontmatter(); metadata.put("reviewType", note.publicContentType()); metadata.put("artist", string(fm.get("artist"))); metadata.put("work", firstValid(note, "work", "albumTitle")); metadata.put("context", MarkdownScanner.section(note.body(), "Контекст записи").orElse("")); metadata.put("association", MarkdownScanner.section(note.body(), "Личная связь").orElse("")); metadata.put("listenFor", MarkdownScanner.listItems(note.body(), "Что слушать")); Object format = fm.get("format"); if (format != null) metadata.put("format", format); String release = normalizeDate(fm.get("releaseDate")); if (release != null) metadata.put("releaseDate", release); if (fm.containsKey("genreTags")) metadata.put("genreTags", stringList(note, "genreTags")); else metadata.put("genreTags", List.of()); for (String field : List.of("streamingUrl", "bandcampEmbedUrl")) if (fm.containsKey(field)) metadata.put(field, fm.get(field)); MarkdownScanner.section(note.body(), "Рекомендация как забота").ifPresent(value -> metadata.put("care", value)); }
+  private static void musicMetadata(Note note, Map<String, Object> metadata) {
+    Map<String, Object> frontmatter = note.frontmatter();
+    metadata.put("reviewType", note.publicContentType());
+    metadata.put("artist", string(frontmatter.get("artist")));
+    metadata.put("work", firstValid(note, "work", "albumTitle"));
+    metadata.put("context", MarkdownScanner.section(note.body(), "Контекст записи").orElse(""));
+    metadata.put("association", MarkdownScanner.section(note.body(), "Личная связь").orElse(""));
+    metadata.put("listenFor", MarkdownScanner.listItems(note.body(), "Что слушать"));
+
+    Object format = frontmatter.get("format");
+    if (format != null) {
+      metadata.put("format", format);
+    }
+    String release = normalizeDate(frontmatter.get("releaseDate"));
+    if (release != null) {
+      metadata.put("releaseDate", release);
+    }
+    metadata.put("genreTags", stringList(note, "genreTags"));
+    for (String field : List.of("streamingUrl", "bandcampEmbedUrl")) {
+      Object value = frontmatter.get(field);
+      if (value != null) {
+        metadata.put(field, value);
+      }
+    }
+    MarkdownScanner.section(note.body(), "Рекомендация как забота").ifPresent(value -> metadata.put("care", value));
+  }
   private static void bookMetadata(Note note, Map<String, Object> metadata) {
     Map<String, Object> frontmatter = note.frontmatter();
     Object authors = firstValidRaw(note, "authors", "author");
@@ -154,16 +208,29 @@ public final class ManifestBuilder {
       String value = normalizeDate(frontmatter.get(field));
       if (value != null) metadata.put(field, value);
     }
-    if (frontmatter.containsKey("readingStatus")) {
-      metadata.put("readingStatus", String.valueOf(frontmatter.get("readingStatus")).strip());
-    } else if (frontmatter.containsKey("status")) {
+    Object readingStatus = frontmatter.get("readingStatus");
+    if (readingStatus != null) {
+      metadata.put("readingStatus", String.valueOf(readingStatus).strip());
+    } else if (frontmatter.get("status") != null) {
       metadata.put("readingStatus", String.valueOf(frontmatter.get("status")).strip());
     }
     for (String field : List.of("use", "boundary", "selectedQuote")) {
-      if (frontmatter.containsKey(field)) metadata.put(field, frontmatter.get(field));
+      Object value = frontmatter.get(field);
+      if (value != null) {
+        metadata.put(field, value);
+      }
     }
   }
-  private static void claimMetadata(Note note, Map<String, Object> metadata) { Map<String, Object> fm = note.frontmatter(); metadata.put("statement", firstValid(note, "statement", "description")); for (String field : List.of("claimKinds", "supports", "opposes", "assumes", "refines", "contradicts", "sources")) if (fm.containsKey(field)) metadata.put(field, fm.get(field)); }
+  private static void claimMetadata(Note note, Map<String, Object> metadata) {
+    Map<String, Object> frontmatter = note.frontmatter();
+    metadata.put("statement", firstValid(note, "statement", "description"));
+    for (String field : List.of("claimKinds", "supports", "opposes", "assumes", "refines", "contradicts", "sources")) {
+      Object value = frontmatter.get(field);
+      if (value != null) {
+        metadata.put(field, value);
+      }
+    }
+  }
   private static String firstValid(Note note, String... fields) { return firstValidRaw(note, fields).toString().strip(); }
   private static Object firstValidRaw(Note note, String... fields) { for (String field : fields) { Object value = note.frontmatter().get(field); if (value instanceof String text && !text.strip().isEmpty()) return value; if (value instanceof List<?> list && list.stream().anyMatch(item -> item instanceof String text && !text.strip().isEmpty())) return value; } throw new ManifestValidationException(note.vaultPath(), String.join(" / ", fields), "must be a non-empty string"); }
 
@@ -249,7 +316,15 @@ public final class ManifestBuilder {
       if (!(rawTarget instanceof String target) || target.strip().isEmpty()) {
         throw new ManifestValidationException(path, "current[" + index + "].target", "must be a non-empty string");
       }
-      Note resolved = resolveNote(notes, target, path, "current[" + index + "].target");
+      Note resolved;
+      try {
+        resolved = resolveNote(notes, target, path, "current[" + index + "].target");
+      } catch (ManifestValidationException error) {
+        throw new ManifestValidationException(
+            path,
+            "editorial text link " + target,
+            "is ambiguous; use a publicId or vault path");
+      }
       if (resolved == null) {
         throw new ManifestValidationException(path, "current[" + index + "].target", "must resolve to exactly one published entry");
       }

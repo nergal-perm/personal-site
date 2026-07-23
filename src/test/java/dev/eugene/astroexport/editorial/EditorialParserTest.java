@@ -90,6 +90,24 @@ final class EditorialParserTest {
   }
 
   @Test
+  void rejectsTheCompleteOptionalShowcaseMalformedRowMatrix() {
+    List<List<String>> cases = List.of(
+        List.of("## Витрина\n", "showcase"),
+        List.of("## Витрина\n\n### [[Book]]\n", "showcase[0].text"),
+        List.of("## Витрина\n\n### Не ссылка\n\nТекст.\n", "showcase[0].target"),
+        List.of("## Витрина\n\n### [[Book]]\n\nТекст.\n\n- список\n", "showcase[0].text"),
+        List.of("## Витрина\n\n### [[Book]]\n\nТекст.\n\n1. список\n", "showcase[0].text"),
+        List.of("## Витрина\n\n### [[Book]]\n\n#### Подзаголовок\n", "showcase[0].text"),
+        List.of("## Витрина\n\n### [[Book]]\n\n> цитата\n", "showcase[0].text"));
+
+    for (List<String> item : cases) {
+      EditorialParser.ManifestValidationException error = assertThrows(EditorialParser.ManifestValidationException.class,
+          () -> parser.normalize("editorial/library.md", "library", frontmatter("library"), base() + item.getFirst(), common()));
+      assertEquals(item.get(1), error.fieldName());
+    }
+  }
+
+  @Test
   void preservesHomeCurrentWikilinkTargetAndDisplayLabelBeforeManifestResolution() {
     Map<String, Object> metadata = parser.normalize("editorial/home.md", "home", frontmatter("home"),
         homeBody().replace("Тема", "[[study-target|Текущий фокус]]"), common());
