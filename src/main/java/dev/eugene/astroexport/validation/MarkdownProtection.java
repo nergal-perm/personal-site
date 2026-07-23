@@ -31,6 +31,18 @@ final class MarkdownProtection {
     return ranges(body).stream().anyMatch(range -> range.start() <= offset && offset < range.end());
   }
 
+  static String stripObsidianComments(String body) {
+    StringBuilder result = new StringBuilder(body.length());
+    int cursor = 0;
+    for (Range range : ranges(body)) {
+      result.append(body, cursor, range.start());
+      if (range.kind() != Kind.OBSIDIAN_COMMENT) result.append(body, range.start(), range.end());
+      cursor = range.end();
+    }
+    result.append(body, cursor, body.length());
+    return result.toString();
+  }
+
   private static List<Range> ranges(String body) {
     List<Range> ranges = new ArrayList<>();
     int cursor = 0;
@@ -50,7 +62,7 @@ final class MarkdownProtection {
     int obsidianStart = body.indexOf("%%", cursor);
     if (obsidianStart >= 0 && (candidate == null || obsidianStart < candidate.start())) {
       int closing = body.indexOf("%%", obsidianStart + 2);
-      return new Range(obsidianStart, closing < 0 ? body.length() : closing + 2);
+      return new Range(obsidianStart, closing < 0 ? body.length() : closing + 2, Kind.OBSIDIAN_COMMENT);
     }
     return candidate;
   }
@@ -64,10 +76,10 @@ final class MarkdownProtection {
       while (closing.find(opening.end())) {
         String closingFence = closing.group(1);
         if (closingFence.charAt(0) == fence.charAt(0) && closingFence.length() >= fence.length()) {
-          return new Range(opening.start(), closing.end());
+          return new Range(opening.start(), closing.end(), Kind.FENCED_CODE);
         }
       }
-      return new Range(opening.start(), body.length());
+      return new Range(opening.start(), body.length(), Kind.FENCED_CODE);
     }
     return null;
   }
@@ -76,12 +88,15 @@ final class MarkdownProtection {
     var opening = RAW_HTML_PRE_OPEN.matcher(body);
     if (!opening.find(cursor)) return null;
     var closing = RAW_HTML_PRE_CLOSE.matcher(body);
-    return new Range(opening.start(), closing.find(opening.end()) ? closing.end() : body.length());
+    return new Range(opening.start(), closing.find(opening.end()) ? closing.end() : body.length(), Kind.RAW_HTML_PRE);
   }
 
   private static Range patternRange(Pattern pattern, String body, int cursor) {
     var match = pattern.matcher(body);
-    return match.find(cursor) ? new Range(match.start(), match.end()) : null;
+    if (!match.find(cursor)) return null;
+    Kind kind = pattern == HTML_COMMENT ? Kind.HTML_COMMENT
+        : pattern == INLINE_CODE ? Kind.INLINE_CODE : Kind.ESCAPED_WIKILINK;
+    return new Range(match.start(), match.end(), kind);
   }
 
   private static Range earliest(Range... ranges) {
@@ -90,5 +105,6 @@ final class MarkdownProtection {
     return earliest;
   }
 
-  private record Range(int start, int end) { }
+  private enum Kind { FENCED_CODE, HTML_COMMENT, OBSIDIAN_COMMENT, INLINE_CODE, RAW_HTML_PRE, ESCAPED_WIKILINK }
+  private record Range(int start, int end, Kind kind) { }
 }

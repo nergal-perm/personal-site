@@ -120,10 +120,11 @@ public final class PreflightService {
   }
 
   private static String resolveBody(Note note, Map<String, LinkResolution> links) {
-    var matcher = WIKILINK.matcher(note.body());
+    String body = MarkdownProtection.stripObsidianComments(note.body());
+    var matcher = WIKILINK.matcher(body);
     StringBuffer result = new StringBuffer();
     while (matcher.find()) {
-      if (MarkdownProtection.contains(note.body(), matcher.start())) {
+      if (MarkdownProtection.contains(body, matcher.start())) {
         matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(matcher.group()));
         continue;
       }
@@ -184,11 +185,17 @@ public final class PreflightService {
   }
 
   private static List<Map<String, String>> editorialTokens(String text, Map<String, LinkResolution> links) {
+    text = MarkdownProtection.stripObsidianComments(text);
     List<Map<String, String>> tokens = new ArrayList<>();
     var matcher = WIKILINK.matcher(text);
     int cursor = 0;
     while (matcher.find()) {
       appendText(tokens, text.substring(cursor, matcher.start()));
+      if (MarkdownProtection.contains(text, matcher.start())) {
+        appendText(tokens, matcher.group());
+        cursor = matcher.end();
+        continue;
+      }
       LinkResolution resolution = links.get(matcher.group("target").strip());
       if (resolution != null && resolution.ambiguous()) throw new ManifestFailure("link", "public link " + matcher.group("target").strip() + " is ambiguous");
       PublicLink link = resolution == null ? null : resolution.link();
@@ -284,10 +291,13 @@ public final class PreflightService {
     return List.of();
   }
   private static List<String> aliases(Object value) { return strings(value); }
-  private static String label(java.util.regex.Matcher matcher, String target) { return matcher.group("label") == null ? target.substring(target.lastIndexOf('/') + 1).strip() : matcher.group("label").strip(); }
+  private static String label(java.util.regex.Matcher matcher, String target) {
+    if (matcher.group("label") != null) return matcher.group("label").strip();
+    return target.substring(target.lastIndexOf('/') + 1).strip().replaceFirst("^\\d{12}\\s+", "");
+  }
   private static String headingFragment(String heading) {
     if (heading == null || heading.isBlank()) return "";
-    String value = heading.substring(1).strip().toLowerCase(Locale.ROOT).replaceAll("[^\\w\\s-]", "")
+    String value = heading.substring(1).strip().toLowerCase(Locale.ROOT).replaceAll("[^\\p{L}\\p{N}_\\s-]", "")
         .replaceAll("[\\s_-]+", "-").replaceAll("^-+|-+$", "");
     return value.isEmpty() ? "" : "#" + value;
   }

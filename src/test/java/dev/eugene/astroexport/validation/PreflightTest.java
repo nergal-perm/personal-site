@@ -178,7 +178,7 @@ final class PreflightTest {
       var result = preflight.preflight(vault, "blog/Active.md");
 
       assertTrue(result.ready(), body);
-      assertEquals(body, result.entry().orElseThrow().body(), body);
+      assertEquals(body.startsWith("%%") ? "\n" : body, result.entry().orElseThrow().body(), body);
     }
   }
 
@@ -202,6 +202,39 @@ final class PreflightTest {
 
     assertTrue(fragmentResult.ready());
     assertEquals("Read [Peer](/ru/notes/peer/#a-section).", fragmentResult.entry().orElseThrow().body());
+
+    makeNote(fragmentVault, "blog/Cyrillic.md", publicNote("cyrillic"), "Read [[Peer#Раздел 1]].");
+    var cyrillic = preflight.preflight(fragmentVault, "blog/Cyrillic.md");
+    assertTrue(cyrillic.ready());
+    assertEquals("Read [Peer](/ru/notes/peer/#раздел-1).", cyrillic.entry().orElseThrow().body());
+  }
+
+  @Test
+  void stripsTimestampPrefixesFromFallbackLabelsAndProtectsEditorialShowcaseText() throws Exception {
+    Path labelVault = Files.createTempDirectory("astro-export-vault");
+    makeNote(labelVault, "blog/Active.md", publicNote("active"), "Read [[blog/202301010000 Note]].");
+    var label = preflight.preflight(labelVault, "blog/Active.md");
+    assertTrue(label.ready());
+    assertEquals("Read Note.", label.entry().orElseThrow().body());
+
+    Path editorialVault = Files.createTempDirectory("astro-export-vault");
+    makeNote(editorialVault, "blog/editorial/essays.md", "id: essays\npublish: true\npublicId: essays\n"
+        + "publicCollection: editorial\npublicContentType: curated_page\neditorialPage: essays", """
+        ## Витрина
+
+        ### [[Peer Essay]]
+
+        Escaped \\[[Peer Essay]] and [[Peer Essay]].
+        """);
+    makeNote(editorialVault, "blog/Peer Essay.md", publicNote("peer-essay", "essay"));
+
+    var editorial = preflight.preflight(editorialVault, "blog/editorial/essays.md");
+    assertTrue(editorial.ready());
+    assertEquals(List.of(java.util.Map.of("target", "peer-essay", "text", List.of(
+        java.util.Map.of("kind", "text", "value", "Escaped \\[[Peer Essay]] and "),
+        java.util.Map.of("kind", "reference", "target", "peer-essay"),
+        java.util.Map.of("kind", "text", "value", ".")))),
+        editorial.entry().orElseThrow().metadata().get("showcase"));
   }
 
   @Test
