@@ -275,8 +275,14 @@ final class ManifestBuilderTest {
   }
 
   @Test
-  void rejectsTypedBibliographyFieldsAndSelectedQuoteShapes() {
-    for (String field : List.of("publication", "readingStatus", "use", "boundary")) {
+  void stringifiesBibliographyPublicationAndReadingStatusAndRejectsNonStringUseAndBoundary() {
+    Note book = note("bibliography/Book.md", "Книга", "book", "bibliography", "book", Map.of(
+        "author", "Автор", "publication", 2024, "readingStatus", 42), "");
+    Map<String, Object> metadata = only(builder.buildRussianManifest(selection(book))).metadata();
+    assertEquals("2024", metadata.get("publication"));
+    assertEquals("42", metadata.get("readingStatus"));
+
+    for (String field : List.of("use", "boundary")) {
       Map<String, Object> extra = new LinkedHashMap<>(Map.of("author", "Автор"));
       extra.put(field, 42);
       ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
@@ -335,6 +341,36 @@ final class ManifestBuilderTest {
     assertEquals(Map.of("label", "Книга", "target", "book"), sourceRecord.get("link"));
     assertEquals(List.of(Map.of("kind", "text", "value", "См. "), Map.of("kind", "reference", "target", "published"), Map.of("kind", "text", "value", ".")), sourceRecord.get("evidence"));
     assertEquals(2, result.retainedLinks().stream().filter(link -> link.kind().equals("frontmatter")).count());
+  }
+
+  @Test
+  void rejectsEmbeddedClaimReferenceLinksWithFieldSpecificDiagnostics() {
+    Note relation = note("claims/Relation.md", "Тезис", "relation", "blog", "claim", Map.of(
+        "statement", "Тезис.", "supports", List.of("![[Книга]]")), "");
+    ManifestBuilder.ManifestValidationException relationError = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(relation)));
+    assertEquals("supports[0]", relationError.fieldName());
+    assertEquals("must not be an embed", relationError.reason());
+
+    Note source = note("claims/Source.md", "Тезис", "source", "blog", "claim", Map.of(
+        "statement", "Тезис.", "sources", List.of(Map.of("link", "![[Книга]]"))), "");
+    ManifestBuilder.ManifestValidationException sourceError = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(source)));
+    assertEquals("sources[0].link", sourceError.fieldName());
+    assertEquals("must not be an embed", sourceError.reason());
+  }
+
+  @Test
+  void reportsAmbiguousShowcaseTargetsWithTheShowcaseResolutionDiagnostic() {
+    Note essays = note("editorial/Essays.md", "Эссе", "essays", "editorial", "curated_page", Map.of("editorialPage", "essays"),
+        "## Кратко\n\nКратко.\n\n## Eyebrow\n\nТексты.\n\n## Принцип списка\n\nПринцип.\n\nПодсказка поиска:: Искать\n\n## Витрина\n\n### [[Общее]]\n\nТекст.");
+    Note first = note("blog/First.md", "Общее", "first", "blog", "essay", Map.of(), "");
+    Note second = note("blog/Second.md", "Общее", "second", "blog", "essay", Map.of(), "");
+
+    ManifestBuilder.ManifestValidationException error = assertThrows(ManifestBuilder.ManifestValidationException.class,
+        () -> builder.buildRussianManifest(selection(essays, first, second)));
+    assertEquals("showcase[0].target", error.fieldName());
+    assertEquals("must resolve to exactly one published entry", error.reason());
   }
 
   private static dev.eugene.astroexport.model.ManifestEntry only(dev.eugene.astroexport.model.ManifestResult result) { return result.entries().getFirst(); }

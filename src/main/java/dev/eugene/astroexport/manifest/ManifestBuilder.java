@@ -34,6 +34,7 @@ public final class ManifestBuilder {
   private static final Pattern LEADING_H1 = Pattern.compile("\\A(?:[ \\t]*\\R)* {0,3}#[ \\t]+([^\\r\\n]+)(?:\\R|\\z)");
   private static final Pattern ATX_CLOSER = Pattern.compile("[ \\t]+(?<!\\\\)#+[ \\t]*$");
   private static final Pattern SCALAR_LINK = Pattern.compile("^\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]$");
+  private static final Pattern SCALAR_EMBED = Pattern.compile("^!\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?\\]\\]$");
   private static final Pattern BOOK_DESCRIPTION = Pattern.compile("(?is)<div\\s+class=[\"']book-description[\"'][^>]*>.*?<p>(.*?)</p>");
   private static final Pattern HTML_TAG = Pattern.compile("<[^>]+>");
   private static final ObjectMapper HASH_JSON = new ObjectMapper();
@@ -141,7 +142,7 @@ public final class ManifestBuilder {
 
     Object publication = frontmatter.get("publication");
     if (publication != null) {
-      metadata.put("publication", publication);
+      metadata.put("publication", String.valueOf(publication).strip());
     } else {
       String publisher = string(frontmatter.get("publisher"));
       String published = string(frontmatter.get("published"));
@@ -154,9 +155,9 @@ public final class ManifestBuilder {
       if (value != null) metadata.put(field, value);
     }
     if (frontmatter.containsKey("readingStatus")) {
-      metadata.put("readingStatus", frontmatter.get("readingStatus"));
+      metadata.put("readingStatus", String.valueOf(frontmatter.get("readingStatus")).strip());
     } else if (frontmatter.containsKey("status")) {
-      metadata.put("readingStatus", frontmatter.get("status"));
+      metadata.put("readingStatus", String.valueOf(frontmatter.get("status")).strip());
     }
     for (String field : List.of("use", "boundary", "selectedQuote")) {
       if (frontmatter.containsKey(field)) metadata.put(field, frontmatter.get(field));
@@ -216,10 +217,153 @@ public final class ManifestBuilder {
   private static void validateDate(Note note, Map<String, Object> metadata, String field) { Object value = metadata.get(field); if (value == null) return; if (!(value instanceof String text)) throw new ManifestValidationException(note.vaultPath(), field, "must be a YYYY-MM-DD string"); try { LocalDate.parse(text); } catch (DateTimeParseException error) { throw new ManifestValidationException(note.vaultPath(), field, "must be a real YYYY-MM-DD date"); } }
   private static void validateUrl(Note note, Map<String, Object> metadata, String field) { Object value = metadata.get(field); if (value == null) return; if (!(value instanceof String text) || !text.matches("https?://[^/]+(?:/.*)?")) throw new ManifestValidationException(note.vaultPath(), field, "must be an http(s) URL"); }
 
-  private void resolveEditorialMetadata(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) { for (Map.Entry<String, Object> entry : new ArrayList<>(metadata.entrySet())) metadata.put(entry.getKey(), entry.getKey().equals("title") ? entry.getValue() : tokenizeEditorial(path, entry.getKey(), entry.getValue(), notes, retained, stripped)); resolveCurrentTargets(path, metadata, notes, retained); }
-  @SuppressWarnings("unchecked") private static void resolveCurrentTargets(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained) { if (!(metadata.get("current") instanceof List<?> current)) return; for (int index = 0; index < current.size(); index++) { if (!(current.get(index) instanceof Map<?, ?> raw)) throw new ManifestValidationException(path, "current[" + index + "]", "must be an object"); Map<String, Object> item = (Map<String, Object>) raw; if (!item.containsKey("target")) continue; Object rawTarget = item.get("target"); if (!(rawTarget instanceof String target) || target.strip().isEmpty()) throw new ManifestValidationException(path, "current[" + index + "].target", "must be a non-empty string"); Note resolved = resolveNote(notes, target, path, "current[" + index + "].target"); if (resolved == null) throw new ManifestValidationException(path, "current[" + index + "].target", "must resolve to exactly one published entry"); Object layout = item.get("layout"); if ("book".equals(layout) && !"book".equals(resolved.publicContentType())) throw new ManifestValidationException(path, "current[" + index + "].target", "must reference a book"); if ("album".equals(layout) && !"album".equals(resolved.publicContentType())) throw new ManifestValidationException(path, "current[" + index + "].target", "must reference an album"); item.put("target", resolved.publicId()); retained.add(new ManifestLink(path, target, "editorial", resolved.publicId(), route(resolved))); } }
-  @SuppressWarnings("unchecked") private Object tokenizeEditorial(String path, String key, Object value, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) { if (value instanceof String text) { if (STRUCTURAL_EDITORIAL_FIELDS.contains(key) || !text.contains("[[")) return text; try { dev.eugene.astroexport.links.ManifestLink tokens = linkProcessor.tokenizeEditorialText(text, notes); for (LinkProcessor.ResolvedLink link : tokens.retained()) retained.add(new ManifestLink(path, link.target(), "editorial-text", link.publicId(), link.route())); for (String target : tokens.stripped()) stripped.add(new ManifestLink(path, target, "editorial-text")); return tokens.body(); } catch (LinkProcessor.ManifestValidationException error) { throw new ManifestValidationException(path, "editorial text link " + linkTarget(error.getMessage()), "is ambiguous; use a publicId or vault path"); } } if (value instanceof List<?> list) { List<Object> result = new ArrayList<>(); for (Object item : list) result.add(tokenizeEditorial(path, key, item, notes, retained, stripped)); return result; } if (value instanceof Map<?, ?> map) { LinkedHashMap<String, Object> result = new LinkedHashMap<>(); for (Map.Entry<?, ?> item : map.entrySet()) result.put(item.getKey().toString(), tokenizeEditorial(path, item.getKey().toString(), item.getValue(), notes, retained, stripped)); return result; } return value; }
-  @SuppressWarnings("unchecked") private void resolvePins(String path, Map<String, Object> metadata, List<Note> notes) { Object raw = metadata.get("showcase"); if (!(raw instanceof List<?> showcases)) return; List<String> pins = new ArrayList<>(); String expected = Map.of("notes", "note", "library", "book", "music", "album", "essays", "essay", "claims", "claim", "concepts", "concept").get(metadata.get("id")); for (int i = 0; i < showcases.size(); i++) { if (!(showcases.get(i) instanceof Map<?, ?> map) || !map.containsKey("target")) throw new ManifestValidationException(path, "showcase[" + i + "]", "must contain exactly target and text"); String target = map.get("target").toString(); Note resolved = resolveNote(notes, target, path, "showcase[" + i + "].target"); if (resolved == null) throw new ManifestValidationException(path, "showcase[" + i + "].target", "must resolve to exactly one published entry"); if (expected != null && !expected.equals(resolved.publicContentType())) throw new ManifestValidationException(path, "showcase[" + i + "].target", "must reference a " + expected); if (!pins.add(resolved.publicId())) throw new ManifestValidationException(path, "showcase[" + i + "].target", "must not duplicate an earlier pin"); ((Map<String, Object>) map).put("target", resolved.publicId()); } metadata.put("pinned", pins); }
+  private void resolveEditorialMetadata(
+      String path,
+      Map<String, Object> metadata,
+      List<Note> notes,
+      List<ManifestLink> retained,
+      List<ManifestLink> stripped) {
+    for (Map.Entry<String, Object> entry : new ArrayList<>(metadata.entrySet())) {
+      if (!entry.getKey().equals("title")) {
+        metadata.put(entry.getKey(), tokenizeEditorial(path, entry.getKey(), entry.getValue(), notes, retained, stripped));
+      }
+    }
+    resolveCurrentTargets(path, metadata, notes, retained);
+  }
+
+  @SuppressWarnings("unchecked")
+  private static void resolveCurrentTargets(
+      String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained) {
+    if (!(metadata.get("current") instanceof List<?> current)) {
+      return;
+    }
+    for (int index = 0; index < current.size(); index++) {
+      if (!(current.get(index) instanceof Map<?, ?> raw)) {
+        throw new ManifestValidationException(path, "current[" + index + "]", "must be an object");
+      }
+      Map<String, Object> item = (Map<String, Object>) raw;
+      if (!item.containsKey("target")) {
+        continue;
+      }
+      Object rawTarget = item.get("target");
+      if (!(rawTarget instanceof String target) || target.strip().isEmpty()) {
+        throw new ManifestValidationException(path, "current[" + index + "].target", "must be a non-empty string");
+      }
+      Note resolved = resolveNote(notes, target, path, "current[" + index + "].target");
+      if (resolved == null) {
+        throw new ManifestValidationException(path, "current[" + index + "].target", "must resolve to exactly one published entry");
+      }
+      Object layout = item.get("layout");
+      if ("book".equals(layout) && !"book".equals(resolved.publicContentType())) {
+        throw new ManifestValidationException(path, "current[" + index + "].target", "must reference a book");
+      }
+      if ("album".equals(layout) && !"album".equals(resolved.publicContentType())) {
+        throw new ManifestValidationException(path, "current[" + index + "].target", "must reference an album");
+      }
+      item.put("target", resolved.publicId());
+      retained.add(new ManifestLink(path, target, "editorial", resolved.publicId(), route(resolved)));
+    }
+  }
+
+  private Object tokenizeEditorial(
+      String path,
+      String key,
+      Object value,
+      List<Note> notes,
+      List<ManifestLink> retained,
+      List<ManifestLink> stripped) {
+    if (value instanceof String text) {
+      return tokenizeEditorialText(path, key, text, notes, retained, stripped);
+    }
+    if (value instanceof List<?> list) {
+      List<Object> result = new ArrayList<>();
+      for (Object item : list) {
+        result.add(tokenizeEditorial(path, key, item, notes, retained, stripped));
+      }
+      return result;
+    }
+    if (value instanceof Map<?, ?> map) {
+      LinkedHashMap<String, Object> result = new LinkedHashMap<>();
+      for (Map.Entry<?, ?> item : map.entrySet()) {
+        String nestedKey = item.getKey().toString();
+        result.put(nestedKey, tokenizeEditorial(path, nestedKey, item.getValue(), notes, retained, stripped));
+      }
+      return result;
+    }
+    return value;
+  }
+
+  private Object tokenizeEditorialText(
+      String path,
+      String key,
+      String text,
+      List<Note> notes,
+      List<ManifestLink> retained,
+      List<ManifestLink> stripped) {
+    if (STRUCTURAL_EDITORIAL_FIELDS.contains(key) || !text.contains("[[")) {
+      return text;
+    }
+    try {
+      dev.eugene.astroexport.links.ManifestLink tokens = linkProcessor.tokenizeEditorialText(text, notes);
+      for (LinkProcessor.ResolvedLink link : tokens.retained()) {
+        retained.add(new ManifestLink(path, link.target(), "editorial-text", link.publicId(), link.route()));
+      }
+      for (String target : tokens.stripped()) {
+        stripped.add(new ManifestLink(path, target, "editorial-text"));
+      }
+      return tokens.body();
+    } catch (LinkProcessor.ManifestValidationException error) {
+      throw new ManifestValidationException(
+          path,
+          "editorial text link " + linkTarget(error.getMessage()),
+          "is ambiguous; use a publicId or vault path");
+    }
+  }
+
+  @SuppressWarnings("unchecked")
+  private void resolvePins(String path, Map<String, Object> metadata, List<Note> notes) {
+    Object raw = metadata.get("showcase");
+    if (!(raw instanceof List<?> showcases)) {
+      return;
+    }
+    List<String> pins = new ArrayList<>();
+    String expected = Map.of(
+        "notes", "note",
+        "library", "book",
+        "music", "album",
+        "essays", "essay",
+        "claims", "claim",
+        "concepts", "concept").get(metadata.get("id"));
+    for (int index = 0; index < showcases.size(); index++) {
+      if (!(showcases.get(index) instanceof Map<?, ?> rawShowcase) || !rawShowcase.containsKey("target")) {
+        throw new ManifestValidationException(path, "showcase[" + index + "]", "must contain exactly target and text");
+      }
+      Map<String, Object> showcase = (Map<String, Object>) rawShowcase;
+      String target = String.valueOf(showcase.get("target"));
+      String targetField = "showcase[" + index + "].target";
+      Note resolved = resolveShowcaseTarget(notes, target, path, targetField);
+      if (expected != null && !expected.equals(resolved.publicContentType())) {
+        throw new ManifestValidationException(path, targetField, "must reference a " + expected);
+      }
+      if (!pins.add(resolved.publicId())) {
+        throw new ManifestValidationException(path, targetField, "must not duplicate an earlier pin");
+      }
+      showcase.put("target", resolved.publicId());
+    }
+    metadata.put("pinned", pins);
+  }
+
+  private static Note resolveShowcaseTarget(List<Note> notes, String target, String path, String field) {
+    try {
+      Note resolved = resolveNote(notes, target, path, field);
+      if (resolved != null) {
+        return resolved;
+      }
+    } catch (ManifestValidationException ignored) {
+      // Showcase references intentionally share one public diagnostic for absent and ambiguous targets.
+    }
+    throw new ManifestValidationException(path, field, "must resolve to exactly one published entry");
+  }
   static void filterEditorialReferences(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> stripped) {
     Set<String> publicIds = notes.stream().map(Note::publicId).collect(java.util.stream.Collectors.toSet());
     for (String field : List.of("featured", "primary")) {
@@ -258,9 +402,13 @@ public final class ManifestBuilder {
   }
   private static void resolveFrontmatterLinks(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) {
     Object raw = metadata.get("links");
-    if (!(raw instanceof List<?> links)) return;
+    if (!(raw instanceof List<?> links)) {
+      return;
+    }
     Map<String, Note> byPublicId = new LinkedHashMap<>();
-    for (Note note : notes) byPublicId.put(note.publicId(), note);
+    for (Note note : notes) {
+      byPublicId.put(note.publicId(), note);
+    }
     List<String> kept = new ArrayList<>();
     for (Object value : links) {
       String target = value.toString();
@@ -274,21 +422,112 @@ public final class ManifestBuilder {
     }
     metadata.put("links", kept);
   }
-  @SuppressWarnings("unchecked") private void resolveClaimLinks(String path, Map<String, Object> metadata, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped) { for (String field : List.of("supports", "opposes", "assumes", "refines", "contradicts")) { if (!(metadata.get(field) instanceof List<?> values)) continue; List<Object> result = new ArrayList<>(); for (Object value : values) result.add(resolveClaimReference(path, value, notes, retained, stripped, field)); metadata.put(field, result); }
+  private void resolveClaimLinks(
+      String path,
+      Map<String, Object> metadata,
+      List<Note> notes,
+      List<ManifestLink> retained,
+      List<ManifestLink> stripped) {
+    for (String field : List.of("supports", "opposes", "assumes", "refines", "contradicts")) {
+      if (!(metadata.get(field) instanceof List<?> values)) {
+        continue;
+      }
+      List<Object> result = new ArrayList<>();
+      for (int index = 0; index < values.size(); index++) {
+        result.add(resolveClaimReference(path, values.get(index), notes, retained, stripped, field + "[" + index + "]"));
+      }
+      metadata.put(field, result);
+    }
     if (!(metadata.get("sources") instanceof List<?> values)) return;
     List<Map<String, Object>> sources = new ArrayList<>();
     for (int index = 0; index < values.size(); index++) {
       if (!(values.get(index) instanceof Map<?, ?> raw)) throw new ManifestValidationException(path, "sources[" + index + "]", "must be an object");
-      LinkedHashMap<String, Object> source = new LinkedHashMap<>(); raw.forEach((key, value) -> source.put(key.toString(), value));
-      if (source.containsKey("link")) source.put("link", resolveClaimReference(path, source.get("link"), notes, retained, stripped, "sources[" + index + "].link"));
-      for (String field : List.of("evidence", "locator")) if (source.containsKey(field)) source.put(field, tokenizeClaimText(path, source.get(field), notes, retained, stripped, "sources[" + index + "]." + field));
+      LinkedHashMap<String, Object> source = new LinkedHashMap<>();
+      raw.forEach((key, value) -> source.put(key.toString(), value));
+      if (source.containsKey("link")) {
+        source.put("link", resolveClaimReference(path, source.get("link"), notes, retained, stripped, "sources[" + index + "].link"));
+      }
+      for (String field : List.of("evidence", "locator")) {
+        if (source.containsKey(field)) {
+          source.put(field, tokenizeClaimText(path, source.get(field), notes, retained, stripped, "sources[" + index + "]." + field));
+        }
+      }
       sources.add(source);
     }
     metadata.put("sources", sources);
   }
-  private Object tokenizeClaimText(String path, Object value, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped, String field) { if (!(value instanceof String text)) throw new ManifestValidationException(path, field, "must be a string"); try { dev.eugene.astroexport.links.ManifestLink tokens = linkProcessor.tokenizeEditorialText(text, notes); for (LinkProcessor.ResolvedLink link : tokens.retained()) retained.add(new ManifestLink(path, link.target(), "frontmatter", link.publicId(), link.route())); for (String target : tokens.stripped()) stripped.add(new ManifestLink(path, target, "frontmatter")); return tokens.body(); } catch (LinkProcessor.ManifestValidationException error) { throw new ManifestValidationException(path, "frontmatter link " + linkTarget(error.getMessage()), "is ambiguous; use a publicId or vault path"); } }
-  private Object resolveClaimReference(String path, Object value, List<Note> notes, List<ManifestLink> retained, List<ManifestLink> stripped, String field) { if (!(value instanceof String source) || source.strip().isEmpty()) throw new ManifestValidationException(path, field, "must be a non-empty string"); Matcher match = SCALAR_LINK.matcher(source.strip()); if (!match.matches()) return Map.of("label", source.strip()); String target = match.group(1).strip(); Note resolved = resolveNote(notes, target, path, "frontmatter link " + target); String label = match.group(2) == null ? target.substring(target.lastIndexOf('/') + 1) : match.group(2).strip(); if (resolved == null) { stripped.add(new ManifestLink(path, target, "frontmatter")); return Map.of("label", label); } retained.add(new ManifestLink(path, target, "frontmatter", resolved.publicId(), route(resolved))); return Map.of("label", label, "target", resolved.publicId()); }
-  private static Note resolveNote(List<Note> notes, String target, String path, String field) { List<Note> exact = notes.stream().filter(note -> target.equals(note.publicId()) || target.equals(note.vaultPath().replaceFirst("\\.md$", ""))).toList(); List<Note> candidates = exact.isEmpty() ? notes.stream().filter(note -> target.equals(note.title()) || target.equals(string(note.frontmatter().get("title"))) || note.aliases().contains(target)).toList() : exact; if (candidates.size() > 1) throw new ManifestValidationException(path, field, "is ambiguous; use a publicId or vault path"); return candidates.isEmpty() ? null : candidates.getFirst(); }
+  private Object tokenizeClaimText(
+      String path,
+      Object value,
+      List<Note> notes,
+      List<ManifestLink> retained,
+      List<ManifestLink> stripped,
+      String field) {
+    if (!(value instanceof String text)) {
+      throw new ManifestValidationException(path, field, "must be a string");
+    }
+    try {
+      dev.eugene.astroexport.links.ManifestLink tokens = linkProcessor.tokenizeEditorialText(text, notes);
+      for (LinkProcessor.ResolvedLink link : tokens.retained()) {
+        retained.add(new ManifestLink(path, link.target(), "frontmatter", link.publicId(), link.route()));
+      }
+      for (String target : tokens.stripped()) {
+        stripped.add(new ManifestLink(path, target, "frontmatter"));
+      }
+      return tokens.body();
+    } catch (LinkProcessor.ManifestValidationException error) {
+      throw new ManifestValidationException(
+          path,
+          "frontmatter link " + linkTarget(error.getMessage()),
+          "is ambiguous; use a publicId or vault path");
+    }
+  }
+
+  private Object resolveClaimReference(
+      String path,
+      Object value,
+      List<Note> notes,
+      List<ManifestLink> retained,
+      List<ManifestLink> stripped,
+      String field) {
+    if (!(value instanceof String source) || source.strip().isEmpty()) {
+      throw new ManifestValidationException(path, field, "must be a non-empty string");
+    }
+    String reference = source.strip();
+    if (SCALAR_EMBED.matcher(reference).matches()) {
+      throw new ManifestValidationException(path, field, "must not be an embed");
+    }
+    Matcher match = SCALAR_LINK.matcher(reference);
+    if (!match.matches()) {
+      return Map.of("label", reference);
+    }
+    String target = match.group(1).strip();
+    Note resolved = resolveNote(notes, target, path, "frontmatter link " + target);
+    String label = match.group(2) == null
+        ? target.substring(target.lastIndexOf('/') + 1)
+        : match.group(2).strip();
+    if (resolved == null) {
+      stripped.add(new ManifestLink(path, target, "frontmatter"));
+      return Map.of("label", label);
+    }
+    retained.add(new ManifestLink(path, target, "frontmatter", resolved.publicId(), route(resolved)));
+    return Map.of("label", label, "target", resolved.publicId());
+  }
+
+  private static Note resolveNote(List<Note> notes, String target, String path, String field) {
+    List<Note> exact = notes.stream()
+        .filter(note -> target.equals(note.publicId()) || target.equals(note.vaultPath().replaceFirst("\\.md$", "")))
+        .toList();
+    List<Note> candidates = exact.isEmpty()
+        ? notes.stream()
+            .filter(note -> target.equals(note.title()) || target.equals(string(note.frontmatter().get("title"))) || note.aliases().contains(target))
+            .toList()
+        : exact;
+    if (candidates.size() > 1) {
+      throw new ManifestValidationException(path, field, "is ambiguous; use a publicId or vault path");
+    }
+    return candidates.isEmpty() ? null : candidates.getFirst();
+  }
 
   private static String dateFromId(Object value) { if (value == null) return null; String id = value.toString(); return id.matches("\\d{8}.*") ? id.substring(0, 4) + "-" + id.substring(4, 6) + "-" + id.substring(6, 8) : null; }
   private static String normalizeDate(Object value) { if (value == null || value.toString().isBlank()) return null; String text = unwrap(value.toString()); return text; }
@@ -300,6 +539,34 @@ public final class ManifestBuilder {
   private static String pythonJson(Object value) throws Exception { if (value == null || value instanceof String || value instanceof Character || value instanceof Boolean || value instanceof Number) return HASH_JSON.writeValueAsString(value); if (value instanceof Map<?, ?> map) { List<String> entries = new ArrayList<>(); map.entrySet().stream().sorted(Comparator.comparing(entry -> entry.getKey().toString())).forEach(entry -> { try { entries.add(pythonJson(entry.getKey().toString()) + ": " + pythonJson(entry.getValue())); } catch (Exception error) { throw new JsonEncodingException(error); } }); return "{" + String.join(", ", entries) + "}"; } if (value instanceof List<?> list) { List<String> values = new ArrayList<>(); for (Object item : list) values.add(pythonJson(item)); return "[" + String.join(", ", values) + "]"; } return HASH_JSON.writeValueAsString(value.toString()); }
   private static final class JsonEncodingException extends RuntimeException { JsonEncodingException(Exception cause) { super(cause); } }
 
-  public static final class ManifestValidationException extends IllegalArgumentException { private final String sourcePath; private final String fieldName; private final String reason; public ManifestValidationException(String sourcePath, String fieldName, String reason) { super(sourcePath + ": " + fieldName + " " + reason); this.sourcePath = sourcePath; this.fieldName = fieldName; this.reason = reason; } public String sourcePath() { return sourcePath; } public String fieldName() { return fieldName; } public String reason() { return reason; } }
-  public static final class ManifestTransclusionException extends IllegalArgumentException { public ManifestTransclusionException(String sourcePath, String target) { super(sourcePath + ": unpublished transclusion " + target); } }
+  public static final class ManifestValidationException extends IllegalArgumentException {
+    private final String sourcePath;
+    private final String fieldName;
+    private final String reason;
+
+    public ManifestValidationException(String sourcePath, String fieldName, String reason) {
+      super(sourcePath + ": " + fieldName + " " + reason);
+      this.sourcePath = sourcePath;
+      this.fieldName = fieldName;
+      this.reason = reason;
+    }
+
+    public String sourcePath() {
+      return sourcePath;
+    }
+
+    public String fieldName() {
+      return fieldName;
+    }
+
+    public String reason() {
+      return reason;
+    }
+  }
+
+  public static final class ManifestTransclusionException extends IllegalArgumentException {
+    public ManifestTransclusionException(String sourcePath, String target) {
+      super(sourcePath + ": unpublished transclusion " + target);
+    }
+  }
 }
