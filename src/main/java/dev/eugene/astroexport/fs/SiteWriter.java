@@ -244,31 +244,34 @@ public final class SiteWriter {
       StoreChecker storeChecker,
       ForwardBoundaryHook forwardBoundaryHook) {
     StageBinding binding = claimStage(staged);
+    Path site;
+    LiveLayoutBinding liveLayout;
     try {
-      Path site = canonicalSiteRoot(siteRoot, storeChecker);
+      site = canonicalSiteRoot(siteRoot, storeChecker);
       if (!site.equals(binding.siteRoot())) {
         throw new WriterException("staged site belongs to " + binding.siteRoot() + ", not requested site " + site);
       }
       verifyStaged(binding);
-      preflightLiveLayout(site, binding, storeChecker);
+      liveLayout = bindLiveLayout(site, binding, storeChecker);
       if (validator == null) {
         throw new WriterException("validate callback must be callable");
       }
       validator.accept(binding.temp().path());
       verifyStaged(binding);
-      preflightLiveLayout(site, binding, storeChecker);
+      verifyLiveLayout(site, binding, liveLayout, storeChecker);
     } catch (Exception error) {
       WriterException primary = writerError(error, "staged validation failed: " + error.getMessage());
       throw cleanupWithPrimary(primary, List.of(binding.temp()), false, List.of(), cleanupHook);
     }
 
-    Path site = binding.siteRoot();
     List<Path> createdAncestors = new ArrayList<>();
     OwnedPath backupOwned = null;
     List<String> backedUp = new ArrayList<>();
     try {
+      verifyLiveLayout(site, binding, liveLayout, storeChecker);
       createdAncestors = createLiveAncestors(site);
-      preflightLiveLayout(site, binding, storeChecker);
+      bindCreatedAncestors(site, createdAncestors, liveLayout, storeChecker);
+      verifyLiveLayout(site, binding, liveLayout, storeChecker);
       Path backupRoot = Files.createTempDirectory(
           site.getParent(),
           "." + site.getFileName() + ".astro-export-backup-");
@@ -279,8 +282,18 @@ public final class SiteWriter {
         if (Files.exists(source, LinkOption.NOFOLLOW_LINKS)) {
           Path destination = backupRoot.resolve(relative);
           Files.createDirectories(destination.getParent());
-          if (backupMover.move(source, destination, relative)) {
+          PathIdentity expectedSource = liveLayout.requiredIdentity(relative);
+          if (backupMover.move(
+              source,
+              destination,
+              relative,
+              liveLayout.parentIdentity(relative),
+              pathIdentity(destination.getParent()))) {
+            if (!identityMatches(destination, expectedSource)) {
+              throw new WriterException("backed-up managed tree ownership does not match live source: " + relative);
+            }
             backedUp.add(relative);
+            liveLayout.markAbsent(relative);
           }
         }
       }
@@ -290,7 +303,7 @@ public final class SiteWriter {
           : backedUpRoots(backupOwned.path());
       List<String> rollbackErrors = backupOwned == null
           ? List.of()
-          : rollback(site, backupOwned.path(), reconciled, false, rollbackHook, Map.of());
+          : rollback(site, backupOwned.path(), reconciled, false, rollbackHook, Map.of(), liveLayout);
       List<String> ancestorErrors = rollbackErrors.isEmpty()
           ? cleanupAncestors(createdAncestors)
           : List.of();
@@ -316,11 +329,11 @@ public final class SiteWriter {
     LinkedHashMap<String, PathIdentity> installedRoots = new LinkedHashMap<>();
     try {
       for (String relative : TreeHasher.MANAGED_ROOTS) {
-        preflightLiveLayout(site, binding, storeChecker);
-        moveManagedTree(site, binding, relative, mover, storeChecker, forwardBoundaryHook, installedRoots);
-        preflightLiveLayout(site, binding, storeChecker);
+        verifyLiveLayout(site, binding, liveLayout, storeChecker);
+        moveManagedTree(site, binding, liveLayout, relative, mover, storeChecker, forwardBoundaryHook, installedRoots);
+        verifyLiveLayout(site, binding, liveLayout, storeChecker);
       }
-      preflightLiveLayout(site, binding, storeChecker);
+      verifyLiveLayout(site, binding, liveLayout, storeChecker);
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         if (!Files.isDirectory(site.resolve(relative), LinkOption.NOFOLLOW_LINKS)
             || Files.isSymbolicLink(site.resolve(relative))) {
@@ -337,7 +350,8 @@ public final class SiteWriter {
           backedUpRoots(backupOwned.path()),
           true,
           rollbackHook,
-          installedRoots);
+          installedRoots,
+          liveLayout);
       List<String> ancestorErrors = rollbackErrors.isEmpty()
           ? cleanupAncestors(createdAncestors)
           : List.of();
@@ -493,10 +507,83 @@ public final class SiteWriter {
     }
   }
 
+  private static LiveLayoutBinding bindLiveLayout(
+      Path site,
+      StageBinding binding,
+      StoreChecker storeChecker) {
+    preflightLiveLayout(site, binding, storeChecker);
+    LinkedHashMap<String, PathIdentity> identities = new LinkedHashMap<>();
+    LinkedHashSet<String> absent = new LinkedHashSet<>();
+    for (String relative : concat(LIVE_ANCESTORS, TreeHasher.MANAGED_ROOTS)) {
+      Path path = site.resolve(relative);
+      if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+        identities.put(relative, pathIdentity(path));
+      } else {
+        absent.add(relative);
+      }
+    }
+    return new LiveLayoutBinding(binding.siteIdentity(), identities, absent);
+  }
+
+  private static void verifyLiveLayout(
+      Path site,
+      StageBinding binding,
+      LiveLayoutBinding liveLayout,
+      StoreChecker storeChecker) {
+    if (!identityMatches(site, binding.siteIdentity())) {
+      throw new WriterException("site ownership changed after staging: " + site);
+    }
+    if (!identityMatches(site.getParent(), binding.siteParentIdentity())) {
+      throw new WriterException("site parent ownership changed after staging: " + site.getParent());
+    }
+    storeChecker.sameStore(site, site.getParent(), "site and parent device mismatch for " + site);
+    storeChecker.sameStore(binding.temp().path(), site, "staging and live layout device mismatch");
+    for (String relative : concat(LIVE_ANCESTORS, TreeHasher.MANAGED_ROOTS)) {
+      Path path = site.resolve(relative);
+      PathIdentity expected = liveLayout.identity(relative);
+      if (expected == null) {
+        if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+          throw new WriterException("live layout ownership changed after validation: " + path);
+        }
+        continue;
+      }
+      if (!identityMatches(path, expected)) {
+        throw new WriterException("live layout ownership changed after validation: " + path);
+      }
+      if (Files.isSymbolicLink(path)) {
+        throw new WriterException("live layout symlink is not allowed: " + path);
+      }
+      if (!Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+        throw new WriterException("live layout ancestor is not a directory: " + path);
+      }
+      storeChecker.sameStore(path, site, "live layout device mismatch for " + path);
+    }
+  }
+
+  private static void bindCreatedAncestors(
+      Path site,
+      List<Path> createdAncestors,
+      LiveLayoutBinding liveLayout,
+      StoreChecker storeChecker) {
+    for (Path path : createdAncestors) {
+      String relative = site.relativize(path).toString().replace('\\', '/');
+      if (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+        throw new WriterException("created live layout ancestor is not a directory: " + path);
+      }
+      storeChecker.sameStore(path, site, "live layout device mismatch for " + path);
+      liveLayout.bind(relative, pathIdentity(path));
+    }
+  }
+
   private static List<String> concat(List<String> first, List<String> second) {
     ArrayList<String> combined = new ArrayList<>(first);
     combined.addAll(second);
     return combined;
+  }
+
+  private static String parentRelative(String relative) {
+    int separator = relative.lastIndexOf('/');
+    return separator < 0 ? "" : relative.substring(0, separator);
   }
 
   private static List<Path> createLiveAncestors(Path site) throws IOException {
@@ -518,6 +605,7 @@ public final class SiteWriter {
   private static void moveManagedTree(
       Path site,
       StageBinding binding,
+      LiveLayoutBinding liveLayout,
       String relative,
       PathMover mover,
       StoreChecker storeChecker,
@@ -526,19 +614,21 @@ public final class SiteWriter {
     Path source = binding.temp().path().resolve(relative);
     Path destination = site.resolve(relative);
     PathIdentity sourceIdentity = pathIdentity(source);
+    PathIdentity sourceParentIdentity = pathIdentity(source.getParent());
     if (!sourceIdentity.directory() || sourceIdentity.symlink()) {
       throw new WriterException("staged managed tree is not a real directory: " + relative);
     }
     forwardBoundaryHook.beforeMove(relative, source, destination);
-    preflightLiveLayout(site, binding, storeChecker);
+    verifyLiveLayout(site, binding, liveLayout, storeChecker);
     if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
       throw new WriterException("managed target unexpectedly exists before install: " + destination);
     }
     try {
-      mover.move(source, destination);
+      mover.move(source, destination, sourceParentIdentity, liveLayout.parentIdentity(relative));
     } catch (IOException | RuntimeException error) {
       if (identityMatches(destination, sourceIdentity)) {
         installedRoots.put(relative, sourceIdentity);
+        liveLayout.bind(relative, sourceIdentity);
       }
       throw error;
     }
@@ -546,6 +636,7 @@ public final class SiteWriter {
       throw new WriterException("installed managed tree ownership does not match staged source: " + relative);
     }
     installedRoots.put(relative, sourceIdentity);
+    liveLayout.bind(relative, sourceIdentity);
   }
 
   private static List<String> cleanupAncestors(List<Path> created) {
@@ -569,12 +660,13 @@ public final class SiteWriter {
       List<String> backedUp,
       boolean removeAllLive,
       RollbackHook rollbackHook,
-      Map<String, PathIdentity> removableTargets) {
+      Map<String, PathIdentity> removableTargets,
+      LiveLayoutBinding liveLayout) {
     List<String> errors = new ArrayList<>();
     if (removeAllLive) {
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         try {
-          removeManagedTree(site, relative, removableTargets.get(relative));
+          removeManagedTree(site, relative, removableTargets.get(relative), liveLayout);
         } catch (Exception error) {
           errors.add("cannot remove partial target " + relative + ": " + error.getMessage());
         }
@@ -594,9 +686,14 @@ public final class SiteWriter {
           if (expected == null) {
             throw new WriterException("managed target ownership changed before restore: " + relative);
           }
-          removeManagedTree(site, relative, expected);
+          removeManagedTree(site, relative, expected, liveLayout);
         }
-        movePathConfined(source, target);
+        PathIdentity sourceIdentity = pathIdentity(source);
+        movePathConfined(source, target, pathIdentity(source.getParent()), liveLayout.parentIdentity(relative));
+        if (!identityMatches(target, sourceIdentity)) {
+          throw new WriterException("restored managed tree ownership does not match backup: " + relative);
+        }
+        liveLayout.bind(relative, sourceIdentity);
       } catch (Exception error) {
         errors.add("cannot restore backup " + relative + ": " + error.getMessage());
       }
@@ -610,19 +707,25 @@ public final class SiteWriter {
         .toList();
   }
 
-  private static void removeManagedTree(Path site, String relative, PathIdentity expectedRootIdentity) throws IOException {
+  private static void removeManagedTree(
+      Path site,
+      String relative,
+      PathIdentity expectedRootIdentity,
+      LiveLayoutBinding liveLayout) throws IOException {
     Path cursor = site;
     for (String part : relative.split("/")) {
       cursor = cursor.resolve(part);
       if (Files.isSymbolicLink(cursor)) {
-        deletePathConfined(cursor);
+        String cursorRelative = site.relativize(cursor).toString().replace('\\', '/');
+        deletePathConfined(cursor, liveLayout.parentIdentity(cursorRelative));
         return;
       }
       if (!Files.exists(cursor, LinkOption.NOFOLLOW_LINKS)) {
         return;
       }
       if (!Files.isDirectory(cursor, LinkOption.NOFOLLOW_LINKS) && !cursor.equals(site.resolve(relative))) {
-        deletePathConfined(cursor);
+        String cursorRelative = site.relativize(cursor).toString().replace('\\', '/');
+        deletePathConfined(cursor, liveLayout.parentIdentity(cursorRelative));
         return;
       }
     }
@@ -633,7 +736,8 @@ public final class SiteWriter {
     if (!identityMatches(root, expectedRootIdentity)) {
       throw new WriterException("managed target ownership changed before removal: " + relative);
     }
-    deleteTree(root);
+    deleteTree(root, expectedRootIdentity, liveLayout.parentIdentity(relative));
+    liveLayout.markAbsent(relative);
   }
 
   private static Path canonicalSiteRoot(Path siteRoot) {
@@ -1223,11 +1327,14 @@ public final class SiteWriter {
   }
 
   private static void deletePathConfined(Path path) throws IOException {
+    deletePathConfined(path, pathIdentity(path.getParent()));
+  }
+
+  private static void deletePathConfined(Path path, PathIdentity expectedParentIdentity) throws IOException {
     if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
       return;
     }
-    PathIdentity parentIdentity = pathIdentity(path.getParent());
-    try (SecureDirectoryStream<Path> parent = openSecureDirectory(path.getParent(), parentIdentity)) {
+    try (SecureDirectoryStream<Path> parent = openSecureDirectory(path.getParent(), expectedParentIdentity)) {
       BasicFileAttributes attributes = attributes(parent, path.getFileName());
       if (attributes.isDirectory() && !attributes.isSymbolicLink()) {
         parent.deleteDirectory(path.getFileName());
@@ -1268,8 +1375,14 @@ public final class SiteWriter {
   }
 
   private static void movePathConfined(Path source, Path destination) throws IOException {
-    PathIdentity sourceParentIdentity = pathIdentity(source.getParent());
-    PathIdentity destinationParentIdentity = pathIdentity(destination.getParent());
+    movePathConfined(source, destination, pathIdentity(source.getParent()), pathIdentity(destination.getParent()));
+  }
+
+  private static void movePathConfined(
+      Path source,
+      Path destination,
+      PathIdentity sourceParentIdentity,
+      PathIdentity destinationParentIdentity) throws IOException {
     try (SecureDirectoryStream<Path> sourceParent = openSecureDirectory(source.getParent(), sourceParentIdentity);
         SecureDirectoryStream<Path> destinationParent = openSecureDirectory(destination.getParent(), destinationParentIdentity)) {
       sourceParent.move(source.getFileName(), destinationParent, destination.getFileName());
@@ -1362,6 +1475,38 @@ public final class SiteWriter {
       String fileStoreType) { }
 
   record OwnedPath(Path path, String kind, PathIdentity identity, PathIdentity parentIdentity) { }
+
+  record LiveLayoutBinding(
+      PathIdentity siteIdentity,
+      LinkedHashMap<String, PathIdentity> identities,
+      LinkedHashSet<String> absent) {
+    PathIdentity identity(String relative) {
+      return identities.get(relative);
+    }
+
+    PathIdentity requiredIdentity(String relative) {
+      PathIdentity identity = identities.get(relative);
+      if (identity == null) {
+        throw new WriterException("live layout ownership is not bound: " + relative);
+      }
+      return identity;
+    }
+
+    PathIdentity parentIdentity(String relative) {
+      String parent = parentRelative(relative);
+      return parent.isEmpty() ? siteIdentity : requiredIdentity(parent);
+    }
+
+    void bind(String relative, PathIdentity identity) {
+      absent.remove(relative);
+      identities.put(relative, identity);
+    }
+
+    void markAbsent(String relative) {
+      identities.remove(relative);
+      absent.add(relative);
+    }
+  }
 
   record StageBinding(
       String capability,
@@ -1458,8 +1603,30 @@ public final class SiteWriter {
   interface PathMover {
     void move(Path source, Path destination) throws IOException;
 
+    default void move(
+        Path source,
+        Path destination,
+        PathIdentity sourceParentIdentity,
+        PathIdentity destinationParentIdentity) throws IOException {
+      move(source, destination);
+    }
+
     static PathMover filesMove() {
-      return SiteWriter::movePathConfined;
+      return new PathMover() {
+        @Override
+        public void move(Path source, Path destination) throws IOException {
+          movePathConfined(source, destination);
+        }
+
+        @Override
+        public void move(
+            Path source,
+            Path destination,
+            PathIdentity sourceParentIdentity,
+            PathIdentity destinationParentIdentity) throws IOException {
+          movePathConfined(source, destination, sourceParentIdentity, destinationParentIdentity);
+        }
+      };
     }
   }
 
@@ -1467,10 +1634,33 @@ public final class SiteWriter {
   interface BackupMover {
     boolean move(Path source, Path destination, String relative) throws IOException;
 
+    default boolean move(
+        Path source,
+        Path destination,
+        String relative,
+        PathIdentity sourceParentIdentity,
+        PathIdentity destinationParentIdentity) throws IOException {
+      return move(source, destination, relative);
+    }
+
     static BackupMover filesMove() {
-      return (source, destination, relative) -> {
-        movePathConfined(source, destination);
-        return true;
+      return new BackupMover() {
+        @Override
+        public boolean move(Path source, Path destination, String relative) throws IOException {
+          movePathConfined(source, destination);
+          return true;
+        }
+
+        @Override
+        public boolean move(
+            Path source,
+            Path destination,
+            String relative,
+            PathIdentity sourceParentIdentity,
+            PathIdentity destinationParentIdentity) throws IOException {
+          movePathConfined(source, destination, sourceParentIdentity, destinationParentIdentity);
+          return true;
+        }
       };
     }
   }

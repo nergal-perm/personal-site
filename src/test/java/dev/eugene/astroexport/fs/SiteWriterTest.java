@@ -407,6 +407,37 @@ final class SiteWriterTest {
   }
 
   @Test
+  void sameDeviceRealDirectorySwapAfterValidationIsRejectedBeforeBackup() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path originalPublic = sample.site.resolve("public-original");
+    Path replacementPublic = Files.createDirectory(temp.resolve("replacement-public"));
+    Files.createDirectories(replacementPublic.resolve("assets/vault"));
+    Files.writeString(replacementPublic.resolve("assets/vault/replacement.txt"), "replacement must survive\n");
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(sample.site, staged, root -> {
+            uncheckedMove(sample.site.resolve("public"), originalPublic);
+            uncheckedMove(replacementPublic, sample.site.resolve("public"));
+          }));
+
+      assertTrue(error.getMessage().toLowerCase().contains("ownership"));
+      assertEquals("replacement must survive\n",
+          Files.readString(sample.site.resolve("public/assets/vault/replacement.txt")));
+      assertEquals("old tree 1\n", Files.readString(originalPublic.resolve("assets/vault/old-1.txt")));
+      assertEquals(List.of(), temporarySiblings(sample.site));
+    } finally {
+      deleteTree(sample.site.resolve("public"));
+      if (Files.exists(originalPublic)) {
+        Files.move(originalPublic, sample.site.resolve("public"));
+      }
+      deleteTree(replacementPublic);
+    }
+  }
+
+  @Test
   void validatorCannotRemoveAnEmptyRequiredDirectory() throws Exception {
     Sample sample = sampleExport();
     seedLiveTrees(sample.site);
@@ -828,6 +859,7 @@ final class SiteWriterTest {
     Path outside = Files.createDirectory(temp.resolve("outside"));
     Files.writeString(outside.resolve("sentinel.txt"), "outside\n");
     Path movedSrc = sample.site.resolve("src-swapped-original");
+    java.util.ArrayList<Path> recoveryPaths = new java.util.ArrayList<>();
 
     try {
       SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
@@ -841,8 +873,14 @@ final class SiteWriterTest {
       assertTrue(error.getMessage().toLowerCase().contains("symlink"));
       assertEquals(List.of("sentinel.txt"), Files.list(outside).map(path -> path.getFileName().toString()).toList());
       assertTrue(Files.isDirectory(movedSrc));
-      assertEquals(before, managedState(sample.site));
-      assertEquals(List.of(), temporarySiblings(sample.site));
+      for (String recoveryPath : error.recoveryPaths()) {
+        recoveryPaths.add(Path.of(recoveryPath));
+      }
+      assertTrue(recoveryPaths.stream().anyMatch(
+          recovery -> Files.exists(recovery.resolve("src/content/old-2.txt"))));
+      assertTrue(recoveryPaths.stream().anyMatch(
+          recovery -> Files.exists(recovery.resolve("src/data/pages/old-3.txt"))));
+      assertEquals(before.get("public/assets/vault"), managedState(sample.site).get("public/assets/vault"));
     } finally {
       if (Files.isSymbolicLink(sample.site.resolve("src"))) {
         Files.deleteIfExists(sample.site.resolve("src"));
@@ -851,6 +889,9 @@ final class SiteWriterTest {
         Files.move(movedSrc, sample.site.resolve("src"));
       } else {
         deleteTree(movedSrc);
+      }
+      for (Path recoveryPath : recoveryPaths) {
+        deleteTree(recoveryPath);
       }
     }
   }
@@ -864,6 +905,7 @@ final class SiteWriterTest {
     Path outside = Files.createDirectory(temp.resolve("forward-outside"));
     Files.createDirectories(outside.resolve("assets"));
     Path movedPublic = sample.site.resolve("public-swapped-original");
+    java.util.ArrayList<Path> recoveryPaths = new java.util.ArrayList<>();
 
     try {
       SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
@@ -886,8 +928,13 @@ final class SiteWriterTest {
       assertTrue(error.getMessage().toLowerCase().contains("symlink")
           || error.getMessage().toLowerCase().contains("ownership"));
       assertFalse(Files.exists(outside.resolve("assets/vault")));
-      assertEquals(before, managedState(sample.site));
-      assertEquals(List.of(), temporarySiblings(sample.site));
+      for (String recoveryPath : error.recoveryPaths()) {
+        recoveryPaths.add(Path.of(recoveryPath));
+      }
+      assertTrue(recoveryPaths.stream().anyMatch(
+          recovery -> Files.exists(recovery.resolve("public/assets/vault/old-1.txt"))));
+      assertEquals(before.get("src/content"), managedState(sample.site).get("src/content"));
+      assertEquals(before.get("src/data/pages"), managedState(sample.site).get("src/data/pages"));
     } finally {
       if (Files.isSymbolicLink(sample.site.resolve("public"))) {
         Files.deleteIfExists(sample.site.resolve("public"));
@@ -897,6 +944,62 @@ final class SiteWriterTest {
       } else {
         deleteTree(movedPublic);
       }
+      for (Path recoveryPath : recoveryPaths) {
+        deleteTree(recoveryPath);
+      }
+    }
+  }
+
+  @Test
+  void defaultForwardMoveRejectsSameDeviceRealDirectoryAncestorSwap() throws Exception {
+    Sample sample = sampleExport();
+    seedLiveTrees(sample.site);
+    Map<String, Map<String, ByteBuffer>> before = managedState(sample.site);
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest);
+    Path replacementPublic = Files.createDirectory(temp.resolve("forward-replacement-public"));
+    Files.createDirectories(replacementPublic.resolve("assets"));
+    Files.writeString(replacementPublic.resolve("sentinel.txt"), "replacement must survive\n");
+    Path movedPublic = sample.site.resolve("public-swapped-original");
+    java.util.ArrayList<Path> recoveryPaths = new java.util.ArrayList<>();
+
+    try {
+      SiteWriter.WriterException error = assertThrows(SiteWriter.WriterException.class,
+          () -> SiteWriter.replaceManagedTrees(
+              sample.site,
+              staged,
+              root -> { },
+              SiteWriter.PathMover.filesMove(),
+              SiteWriter.BackupMover.filesMove(),
+              SiteWriter.RollbackHook.noop(),
+              SiteWriter.CleanupHook.deleteOwnedTemp(),
+              SiteWriter.StoreChecker.filesStore(),
+              (relative, source, destination) -> {
+                if (relative.equals("public/assets/vault")) {
+                  Files.move(sample.site.resolve("public"), movedPublic);
+                  Files.move(replacementPublic, sample.site.resolve("public"));
+                }
+              }));
+
+      assertTrue(error.getMessage().toLowerCase().contains("ownership"));
+      assertFalse(Files.exists(sample.site.resolve("public/assets/vault")));
+      assertEquals("replacement must survive\n", Files.readString(sample.site.resolve("public/sentinel.txt")));
+      assertFalse(error.recoveryPaths().isEmpty());
+      for (String recoveryPath : error.recoveryPaths()) {
+        recoveryPaths.add(Path.of(recoveryPath));
+      }
+      assertTrue(recoveryPaths.stream().anyMatch(
+          recovery -> Files.exists(recovery.resolve("public/assets/vault/old-1.txt"))));
+    } finally {
+      deleteTree(sample.site.resolve("public"));
+      if (Files.exists(movedPublic) && !Files.exists(sample.site.resolve("public"))) {
+        Files.move(movedPublic, sample.site.resolve("public"));
+      } else {
+        deleteTree(movedPublic);
+      }
+      for (Path recoveryPath : recoveryPaths) {
+        deleteTree(recoveryPath);
+      }
+      deleteTree(replacementPublic);
     }
   }
 
@@ -1351,6 +1454,14 @@ final class SiteWriterTest {
   private static void uncheckedDeleteTree(Path root) {
     try {
       deleteTree(root);
+    } catch (IOException error) {
+      throw new RuntimeException(error);
+    }
+  }
+
+  private static void uncheckedMove(Path source, Path target) {
+    try {
+      Files.move(source, target);
     } catch (IOException error) {
       throw new RuntimeException(error);
     }
