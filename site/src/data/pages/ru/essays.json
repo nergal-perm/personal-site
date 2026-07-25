@@ -1,0 +1,34 @@
+{
+  "eyebrow": "Письмо · модели · практика",
+  "id": "essays",
+  "language": "ru",
+  "links": [
+    "album-suite-to-be-you-and-me"
+  ],
+  "listPrincipleText": "Описание формулирует реальную идею, а не рекламирует клик.",
+  "listPrincipleTitle": "Принцип списка",
+  "pinned": [
+    "essay-tdd-fractality"
+  ],
+  "searchPlaceholder": "Искать по идее, а не по ключевому слову…",
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "essay-tdd-fractality",
+      "text": "Выбранный текст даёт язык для остальных материалов. Границы, архитектура и обратные связи."
+    }
+  ],
+  "sourceHash": "c82f51b74b778b055b4c1016c6d094c9716b10237cadd3b7e67e882f121395c4",
+  "sourceLanguage": "ru",
+  "summary": "Тексты об инженерии, системах, работе с ИИ и практике мышления. Сначала — маршрут, затем — архив.",
+  "title": "Эссе",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "personal-systems"
+  ],
+  "translationStatus": "source",
+  "type": "index"
+}

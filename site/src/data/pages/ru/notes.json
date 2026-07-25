@@ -1,0 +1,31 @@
+{
+  "conceptsAction": "Открыть концепты",
+  "eyebrow": "Наблюдения · модели · связи",
+  "groups": [
+    "Рабочие заметки",
+    "Концепты",
+    "Книги и модели"
+  ],
+  "heading": "Три типа заметок",
+  "id": "notes",
+  "language": "ru",
+  "libraryAction": "Открыть библиотеку",
+  "links": [
+    "library",
+    "concepts"
+  ],
+  "pinned": [],
+  "searchable": false,
+  "showcase": [],
+  "sourceHash": "5dff0355b15d288ba633adb869a02743ccff895efce34de88737c2cbeb87cac0",
+  "sourceLanguage": "ru",
+  "summary": "Более короткие наблюдения, рабочие модели и связующие концепты — с видимым статусом и датой существенного изменения.",
+  "title": "Заметки",
+  "topics": [
+    "personal-systems",
+    "thinking",
+    "reading"
+  ],
+  "translationStatus": "source",
+  "type": "index"
+}

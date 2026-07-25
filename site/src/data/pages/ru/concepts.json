@@ -1,0 +1,23 @@
+{
+  "eyebrow": "Определения · отношения · применение",
+  "id": "concepts",
+  "language": "ru",
+  "links": [
+    "notes"
+  ],
+  "pinned": [],
+  "primaryLabel": "Базовый концепт",
+  "searchable": false,
+  "showcase": [],
+  "sourceHash": "ac8c6fccda33d40c83cb1540567f9c619402f3d0efe2bb582116a97c1638bcfe",
+  "sourceLanguage": "ru",
+  "summary": "Связующий слой сайта: компактные определения, объяснимые отношения и пути к материалам, где концепт что-то меняет.",
+  "title": "Концепты",
+  "topics": [
+    "thinking",
+    "systems",
+    "ai-work"
+  ],
+  "translationStatus": "source",
+  "type": "index"
+}

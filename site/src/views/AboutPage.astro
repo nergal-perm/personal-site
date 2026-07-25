@@ -1,0 +1,46 @@
+---
+// renderAbout() прототипа: введение, три принципа и колофон с переходом на работы и сейчас.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import RichText from '../components/RichText.astro';
+import { plainText } from '../lib/rich-text';
+import { type Language } from '../lib/site';
+import { getEntry, tryGetEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const page = (await getEntry(language, 'about')).data;
+const authoredLinks = new Set(Array.isArray(page.links) ? page.links : []);
+const claimsEntry = await tryGetEntry(language, authoredLinks.has('claims') ? 'claims' : undefined);
+---
+
+<Base language={language} title={plainText(page.title)} description={plainText(page.summary)} active="about" pageKind="about">
+  <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
+
+  <section class="shell about-lead">
+    <p><RichText language={language} value={page.lead} /></p>
+  </section>
+
+  <section class="shell principles-list">
+    {page.principles.map(([title, text]: [any, any], index: number) => (
+      <article>
+        <span>{String(index + 1).padStart(2, '0')}</span>
+        <div>
+          <h2><RichText language={language} value={title} /></h2>
+          <p><RichText language={language} value={text} /></p>
+        </div>
+      </article>
+    ))}
+  </section>
+
+  <aside class="shell colophon">
+    <strong>Colophon</strong>
+    <p><RichText language={language} value={page.colophon} /></p>
+    {claimsEntry && <div>
+      {claimsEntry && <a href={claimsEntry.url}>{language === 'ru' ? 'Тезисы' : 'Claims'} →</a>}
+    </div>}
+  </aside>
+</Base>

@@ -1,0 +1,38 @@
+---
+// renderNow() прототипа: текущие фокусы внимания и ссылки на текущие материалы.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import { type Language } from '../lib/site';
+import { getEntry, tryGetEntry, type SiteEntry } from '../lib/registry';
+import RichText from '../components/RichText.astro';
+import { plainText } from '../lib/rich-text';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const page = (await getEntry(language, 'now')).data;
+const actions = (
+  await Promise.all(
+    (Array.isArray(page.links) ? page.links : []).map((id: string) => tryGetEntry(language, id)),
+  )
+).filter((entry): entry is SiteEntry => Boolean(entry));
+---
+
+<Base language={language} title={plainText(page.title)} description={plainText(page.summary)} active="now" pageKind="now">
+  <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
+  <div class="shell now-stamp"><RichText language={language} value={page.updatedLabel} /></div>
+  {Array.isArray(page.sections) && page.sections.length > 0 && <section class="shell now-grid">
+    {page.sections.map((section: any) => (
+      <article>
+        <div class="eyebrow"><RichText language={language} value={section.label} /></div>
+        <h2><RichText language={language} value={section.title} /></h2>
+        <p><RichText language={language} value={section.text} /></p>
+      </article>
+    ))}
+  </section>}
+  {actions.length > 0 && <div class="shell collection-links">
+    {actions.map((entry) => <a href={entry.url}>{entry.title} →</a>)}
+  </div>}
+</Base>

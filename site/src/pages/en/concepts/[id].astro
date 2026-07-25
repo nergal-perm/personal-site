@@ -1,0 +1,28 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import { getEntry } from '../../../lib/registry';
+import ConceptPage from '../../../views/ConceptPage.astro';
+
+export async function getStaticPaths() {
+  const concepts = await getCollection('concepts');
+  const items = concepts.filter((entry) => entry.data.language === 'en');
+  return items.map((entry) => {
+    const slug = entry.id.replace(/^en\//, '');
+    return {
+      params: { id: slug },
+      props: { contentEntry: entry },
+    };
+  });
+}
+
+interface Props {
+  contentEntry: CollectionEntry<'concepts'>;
+}
+
+const { id } = Astro.params;
+const { contentEntry } = Astro.props;
+const entry = await getEntry('en', id);
+const { Content } = await render(contentEntry);
+const hasBody = Boolean(contentEntry.body?.trim());
+---
+<ConceptPage language="en" entry={entry} Content={Content} hasBody={hasBody} />

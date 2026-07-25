@@ -1,0 +1,28 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import { getEntry } from '../../../lib/registry';
+import ClaimPage from '../../../views/ClaimPage.astro';
+
+export async function getStaticPaths() {
+  const blog = await getCollection('blog');
+  const claims = blog.filter((entry) => entry.data.language === 'ru' && entry.data.contentType === 'claim');
+  return claims.map((entry) => {
+    const slug = entry.id.replace(/^ru\//, '');
+    return {
+      params: { id: slug },
+      props: { contentEntry: entry },
+    };
+  });
+}
+
+interface Props {
+  contentEntry: CollectionEntry<'blog'>;
+}
+
+const { id } = Astro.params;
+const { contentEntry } = Astro.props;
+const entry = await getEntry('ru', id);
+const { Content } = await render(contentEntry);
+const hasBody = Boolean(contentEntry.body?.trim());
+---
+<ClaimPage language="ru" entry={entry} Content={Content} hasBody={hasBody} />

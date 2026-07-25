@@ -1,0 +1,46 @@
+---
+// renderNotesIndex() прототипа: фильтруемый список заметок + переходы в библиотеку и концепты.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import ArticleRow from '../components/ArticleRow.astro';
+import RichText from '../components/RichText.astro';
+import ShowcaseSidebar from '../components/ShowcaseSidebar.astro';
+import CollectionSearchControls from '../components/CollectionSearchControls.astro';
+import { plainText } from '../lib/rich-text';
+import { UI, type Language } from '../lib/site';
+import { getCollectionEntries, getEntry, tryGetEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const labels = UI[language];
+const page = (await getEntry(language, 'notes')).data;
+const authoredLinks = new Set(Array.isArray(page.links) ? page.links : []);
+const items = await getCollectionEntries(language, 'note', page.pinned ?? []);
+const [library, concepts] = await Promise.all([
+  tryGetEntry(language, authoredLinks.has('library') ? 'library' : undefined),
+  tryGetEntry(language, authoredLinks.has('concepts') ? 'concepts' : undefined),
+]);
+const showcase = Array.isArray(page.showcase) ? page.showcase : [];
+---
+
+<Base language={language} title={plainText(page.title)} description={plainText(page.summary)} active="notes" pageKind="notes-index">
+  <PageHeader language={language} eyebrow={page.eyebrow} title={page.title} lead={page.summary} />
+  <div class:list={['shell', 'index-layout', { 'index-layout--single': showcase.length === 0 }]}>
+    <ShowcaseSidebar language={language} title={page.showcaseTitle ?? labels.startHere} items={showcase} />
+    <section class="index-main" aria-label={plainText(page.title)}>
+      <CollectionSearchControls language={language} collectionType="note" placeholder={page.searchPlaceholder ?? ''} resultsId="notes-results" />
+      <div id="notes-results" class="article-list" aria-live="polite">
+      {items.map((entry) => (
+        <ArticleRow language={language} entry={entry} showType={false} />
+      ))}
+      </div>
+    </section>
+  </div>
+  {(library || concepts) && <div class="shell collection-links">
+    {library && <a href={library.url}><RichText language={language} value={page.libraryAction} /> →</a>}
+    {concepts && <a href={concepts.url}><RichText language={language} value={page.conceptsAction} /> →</a>}
+  </div>}
+</Base>

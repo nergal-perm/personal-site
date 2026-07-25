@@ -1,0 +1,28 @@
+---
+import { getCollection, render, type CollectionEntry } from 'astro:content';
+import { getEntry } from '../../../lib/registry';
+import EssayPage from '../../../views/EssayPage.astro';
+
+export async function getStaticPaths() {
+  const blog = await getCollection('blog');
+  const essays = blog.filter((entry) => entry.data.language === 'ru' && entry.data.contentType === 'essay');
+  return essays.map((entry) => {
+    const slug = entry.id.replace(/^ru\//, '');
+    return {
+      params: { id: slug },
+      props: { contentEntry: entry },
+    };
+  });
+}
+
+interface Props {
+  contentEntry: CollectionEntry<'blog'>;
+}
+
+const { id } = Astro.params;
+const { contentEntry } = Astro.props;
+const entry = await getEntry('ru', id);
+const { Content, headings } = await render(contentEntry);
+const hasBody = Boolean(contentEntry.body?.trim());
+---
+<EssayPage language="ru" entry={entry} Content={Content} headings={headings} hasBody={hasBody} />

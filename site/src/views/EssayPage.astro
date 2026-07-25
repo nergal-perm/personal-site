@@ -1,0 +1,146 @@
+---
+// renderArticle() прототипа: rail с оглавлением, тело с секциями,
+// process figure, callouts, закрывающий блок и связанные материалы.
+import Base from '../layouts/Base.astro';
+import MetaStrip from '../components/MetaStrip.astro';
+import ProcessFigure from '../components/ProcessFigure.astro';
+import Callout from '../components/Callout.astro';
+import RelatedStrip from '../components/RelatedStrip.astro';
+import { UI, type Language } from '../lib/site';
+import { resolveLinks, type SiteEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  entry: SiteEntry;
+  Content: any;
+  headings: { depth: number; slug: string; text: string }[];
+  hasBody: boolean;
+}
+
+const { language, entry, Content, headings, hasBody } = Astro.props;
+const labels = UI[language];
+const data = entry.data;
+const label = `${entry.typeLabel} · ${entry.topicLabels[0]}`;
+const related = await resolveLinks(language, entry.links);
+const structuredSections = data.sections ?? [];
+const railItems = hasBody
+  ? headings
+      .filter((heading) => heading.depth === 2)
+      .map((heading, index) => ({
+        id: heading.slug,
+        number: String(index + 1).padStart(2, '0'),
+        title: heading.text,
+      }))
+  : structuredSections;
+const hasLeftRail = railItems.length > 0 || related.length > 0;
+const hasSources = data.sources?.length > 0;
+const closingItems = [
+  { number: '01', label: labels.whatChanged, value: data.closing?.changed },
+  { number: '02', label: labels.limits, value: data.closing?.limits },
+  { number: '03', label: labels.next, value: data.closing?.next },
+].filter((item) => Boolean(item.value));
+---
+
+<Base language={language} title={entry.title} description={entry.summary} active="essays" pageKind="article">
+  <article class="post">
+    <header class="post-header shell">
+      <div class="labels">
+        <span class="label" data-component="label">{label}</span>
+        {entry.topicLabels.map((topic) => (
+          <span data-component="label" class="label label--topic">{topic}</span>
+        ))}
+      </div>
+      <h1 id="page-title" tabindex="-1">{entry.title}</h1>
+      <p class="post-abstract">{data.abstract ?? entry.summary}</p>
+      <MetaStrip language={language} date={entry.date} updated={entry.updated} readTime={entry.readTime} />
+      {data.why && (
+        <p class="why-note">
+          <strong>{language === 'ru' ? 'Зачем существует этот текст' : 'Why this exists'}</strong>
+          {data.why}
+        </p>
+      )}
+    </header>
+
+    <div class:list={['shell post-layout', { 'post-layout--no-left-rail': !hasLeftRail }]}>
+      {hasLeftRail && (
+        <aside class="post-rail post-rail--left">
+          {railItems.length > 0 && (
+            <div class="post-rail__on-page">
+              <strong>{labels.onPage}</strong>
+              <ol>
+                {railItems.map((section: any) => (
+                  <li>
+                    <a href={`#${section.id}`}><span>{section.number}</span>{section.title}</a>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+          {related.length > 0 && (
+            <div class="rail-related">
+              <strong>{labels.related}</strong>
+              {related.map((item) => (
+                <a href={item.url}>{item.title}</a>
+              ))}
+            </div>
+          )}
+        </aside>
+      )}
+
+      <div class:list={['post-body', { 'markdown-content': hasBody }]}>
+        {hasBody ? (
+          <Content />
+        ) : (
+          structuredSections.map((section: any) => (
+            <section id={section.id}>
+              <div class="numbered-heading"><span>{section.number}</span><h2>{section.title}</h2></div>
+              {section.paragraphs.map((paragraph: string) => (
+                <p>{paragraph}</p>
+              ))}
+              {section.steps && (
+                <ProcessFigure language={language} steps={section.steps} figureCaption={section.figureCaption} />
+              )}
+              {section.callout && (
+                <Callout kind={section.callout.kind} label={section.callout.label} text={section.callout.text} />
+              )}
+            </section>
+          ))
+        )}
+      </div>
+
+      <aside class="post-rail post-rail--right">
+        <div class="revision-stamp" data-component="revision-metadata">
+          REV 03<br />{entry.updated || entry.date}
+        </div>
+        {hasSources && (
+          <div>
+            <strong>{labels.sources}</strong>
+            <ol>
+              {data.sources.map((source: string) => (
+                <li>{source}</li>
+              ))}
+            </ol>
+          </div>
+        )}
+        <div>
+          <strong>{language === 'ru' ? 'Детали статьи' : 'Article details'}</strong>
+          <dl>
+            <dt>{language === 'ru' ? 'Тип' : 'Type'}</dt><dd>{entry.typeLabel}</dd>
+            <dt>{language === 'ru' ? 'Статус' : 'Status'}</dt><dd>{entry.status}</dd>
+            <dt>{language === 'ru' ? 'Язык' : 'Language'}</dt><dd>{language === 'ru' ? labels.source : labels.translation}</dd>
+          </dl>
+        </div>
+      </aside>
+    </div>
+
+    {closingItems.length > 0 && (
+      <section class="shell post-closing" style={`--closing-columns: ${closingItems.length}`}>
+        {closingItems.map((item) => (
+          <div><span>{item.number}</span><strong>{item.label}</strong><p>{item.value}</p></div>
+        ))}
+        <p class="feedback-note">{labels.usefulFeedback}</p>
+      </section>
+    )}
+    <RelatedStrip language={language} links={entry.links} />
+  </article>
+</Base>

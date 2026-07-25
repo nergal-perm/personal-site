@@ -1,0 +1,32 @@
+{
+  "eyebrow": "Arguments and central ideas",
+  "id": "claims",
+  "language": "en",
+  "links": [],
+  "pinned": [
+    "startup-management-uncertainty"
+  ],
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "startup-management-uncertainty",
+      "text": "A good starting example: one central idea, an explicit false opposition dissolved, a link to the Cynefin model, and a clear boundary of use."
+    }
+  ],
+  "sourceHash": "2c7cfa9b2bc22a747ffe25cc7ec20f95efece46734941d3e1f3a4d76f49f3904",
+  "sourceLanguage": "ru",
+  "summary": "Small argument clusters around one central idea: statement, grounds, relations, and boundaries of use.",
+  "title": "Claims",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "reading"
+  ],
+  "translatedAt": "2026-07-16",
+  "translationOf": "claims",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "index"
+}

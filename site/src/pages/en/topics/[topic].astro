@@ -1,0 +1,13 @@
+---
+import { TOPICS, type TopicKey } from '../../../lib/site';
+import TopicPage from '../../../views/TopicPage.astro';
+
+export async function getStaticPaths() {
+  return Object.keys(TOPICS).map((topic) => ({
+    params: { topic },
+  }));
+}
+
+const { topic } = Astro.params;
+---
+<TopicPage language="en" topic={topic as TopicKey} />

@@ -1,0 +1,20 @@
+---
+import { getCollection } from 'astro:content';
+import { getEntry } from '../../../lib/registry';
+import AlbumPage from '../../../views/AlbumPage.astro';
+
+export async function getStaticPaths() {
+  const music = await getCollection('music');
+  const albums = music.filter((entry) => entry.data.language === 'en');
+  return albums.map((entry) => {
+    const slug = entry.id.replace(/^en\//, '');
+    return {
+      params: { id: slug },
+    };
+  });
+}
+
+const { id } = Astro.params;
+const entry = await getEntry('en', id);
+---
+<AlbumPage language="en" entry={entry} />

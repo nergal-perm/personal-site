@@ -1,0 +1,17 @@
+---
+// Data-driven typographic cover used by the library index and book page.
+interface Props {
+  title: string;
+  authors: string[];
+  size?: 'default' | 'large';
+}
+
+const { title, authors, size = 'default' } = Astro.props;
+const authorLine = authors.join(' · ');
+---
+
+<span class:list={['book-cover', { 'book-cover--large': size === 'large' }]}>
+  <small>{authorLine}</small>
+  <strong>{title}</strong>
+  <i></i>
+</span>

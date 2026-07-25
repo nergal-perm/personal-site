@@ -1,0 +1,30 @@
+---
+// renderProcessFigure() прототипа — фигура пяти переходов в эссе.
+import type { Language } from '../lib/site';
+
+interface Props {
+  language: Language;
+  steps: [string, string][];
+  figureCaption?: string;
+}
+
+const { language, steps, figureCaption } = Astro.props;
+const ariaLabel =
+  language === 'ru'
+    ? 'Пять наблюдаемых переходов от рамки до фиксации'
+    : 'Five observable transitions from framing to capture';
+---
+
+<figure class="process-figure" data-component="figure">
+  <div class="process-diagram" data-component="system-diagram" role="img" aria-label={ariaLabel}>
+    {steps.map(([title], index) => (
+      <span><b>{String(index + 1).padStart(2, '0')}</b>{title}</span>
+    ))}
+  </div>
+  <ol>
+    {steps.map(([title, text]) => (
+      <li><strong>{title}</strong><span>{text}</span></li>
+    ))}
+  </ol>
+  {figureCaption && <figcaption>{figureCaption}</figcaption>}
+</figure>

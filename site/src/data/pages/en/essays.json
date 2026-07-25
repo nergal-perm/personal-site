@@ -1,0 +1,37 @@
+{
+  "eyebrow": "Writing · models · practice",
+  "id": "essays",
+  "language": "en",
+  "links": [
+    "album-suite-to-be-you-and-me"
+  ],
+  "listPrincipleText": "The description states a real idea instead of advertising a click.",
+  "listPrincipleTitle": "List principle",
+  "pinned": [
+    "essay-tdd-fractality"
+  ],
+  "searchPlaceholder": "Search by idea, not by keyword…",
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "essay-tdd-fractality",
+      "text": "A selected essay provides language for the rest of the material: boundaries, architecture, and feedback loops."
+    }
+  ],
+  "sourceHash": "c82f51b74b778b055b4c1016c6d094c9716b10237cadd3b7e67e882f121395c4",
+  "sourceLanguage": "ru",
+  "summary": "Writing on engineering, systems, AI-assisted work, and thinking practice. A route first, then the archive.",
+  "title": "Essays",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "personal-systems"
+  ],
+  "translatedAt": "2026-07-15",
+  "translationOf": "essays",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "index"
+}

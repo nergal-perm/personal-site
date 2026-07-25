@@ -1,0 +1,28 @@
+---
+// renderPageHeader() прототипа.
+import MetaStrip from './MetaStrip.astro';
+import type { Language } from '../lib/site';
+import RichText from './RichText.astro';
+import type { RichTextValue } from '../lib/rich-text';
+
+interface Props {
+  language: Language;
+  eyebrow: RichTextValue;
+  title: RichTextValue;
+  lead: RichTextValue;
+  date?: string;
+  updated?: string;
+  readTime?: number;
+}
+
+const { language, eyebrow, title, lead, date, updated, readTime } = Astro.props;
+---
+
+<header class="page-header shell">
+  <div class="eyebrow"><RichText language={language} value={eyebrow} /></div>
+  <h1 id="page-title" tabindex="-1"><RichText language={language} value={title} /></h1>
+  <p class="page-lead"><RichText language={language} value={lead} /></p>
+  {(date || updated) && (
+    <MetaStrip language={language} date={date} updated={updated} readTime={readTime} />
+  )}
+</header>

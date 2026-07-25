@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const css = await readFile(new URL('../src/styles/global.css', import.meta.url), 'utf8');
+const home = await readFile(new URL('../src/views/Home.astro', import.meta.url), 'utf8');
+const musicIndex = await readFile(new URL('../src/views/MusicIndex.astro', import.meta.url), 'utf8');
+const albumPage = await readFile(new URL('../src/views/AlbumPage.astro', import.meta.url), 'utf8');
+const bandcampPlayer = await readFile(new URL('../src/components/BandcampPlayer.astro', import.meta.url), 'utf8').catch(() => '');
+const schema = await readFile(new URL('../src/content.config.ts', import.meta.url), 'utf8');
+const russianAlbum = await readFile(new URL('../src/content/music/ru/album-suite-to-be-you-and-me.md', import.meta.url), 'utf8');
+const englishAlbum = await readFile(new URL('../src/content/music/en/album-suite-to-be-you-and-me.md', import.meta.url), 'utf8');
+
+assert.match(css, /body\[data-page-kind="home"\] \.home-overview \{[\s\S]*?height: auto;/, 'desktop homepage must allow the reference-led editorial composition to extend beyond one viewport');
+assert.match(css, /\.home-overview__hero-grid::before/, 'hero must include the reference-inspired coordinate grid');
+assert.match(css, /\.home-overview__hero-grid::after/, 'hero must include the reference-inspired topographic detail');
+assert.doesNotMatch(css, /body\[data-page-kind="home"\] \.site-header__inner/, 'home must inherit the shared masthead shell geometry');
+assert.doesNotMatch(css, /body\[data-page-kind="home"\] \.primary-nav/, 'home must inherit shared primary navigation spacing');
+assert.doesNotMatch(css, /body\[data-page-kind="home"\] \.site-utilities/, 'home must inherit shared utility navigation spacing');
+assert.doesNotMatch(css, /body\[data-page-kind="home"\] \{\s*--header-height:/, 'home must inherit the shared masthead height');
+assert.match(css, /home-overview__intro h1 \{[\s\S]*?width: min\(35ch, 76vw\)/, 'hero headline must reserve a two-line desktop measure');
+assert.match(css, /home-overview__intro \{[\s\S]*?background: linear-gradient\(90deg, var\(--paper\) 0 18%, rgba\(242, 239, 231, 0\.94\) 28%, rgba\(242, 239, 231, 0\) 53%\)/, 'hero image must use the extended leftward fade');
+assert.match(schema, /bandcampEmbedUrl: z\.string\(\)\.url\(\)\.optional\(\)/, 'music entries must support an optional Bandcamp embed URL');
+assert.match(schema, /const music = defineCollection\(/, 'music content must have its own collection');
+assert.match(schema, /base: '\.\/src\/content\/music'/, 'music collection must load Markdown from the music directory');
+assert.doesNotMatch(schema, /const reviews = defineCollection\(/, 'legacy collection name must not remain');
+assert.match(musicIndex, /album\.data\.bandcampEmbedUrl \?/, 'music index must render an embed when Bandcamp is available');
+assert.match(albumPage, /data\.bandcampEmbedUrl \?/, 'album page must render an embed when Bandcamp is available');
+assert.match(musicIndex, /<BandcampPlayer/, 'music index must use the shared Bandcamp player');
+assert.match(albumPage, /<BandcampPlayer/, 'album page must use the shared Bandcamp player');
+assert.doesNotMatch(home, /<BandcampPlayer|bandcampEmbedUrl/, 'home must retain a cover-only music card');
+assert.match(home, /album\.data\.cover \?/, 'home music card must prefer the album cover frontmatter');
+assert.match(home, /src=\{album\.data\.cover\}/, 'home music card must render the cover URL from frontmatter');
+assert.match(russianAlbum, /date: 2026-07-07/, 'album note must retain its own site publication date');
+assert.match(englishAlbum, /date: 2026-07-07/, 'translated album note must retain its own site publication date');
+assert.match(russianAlbum, /releaseDate: 2020-03-06/, 'album note must record the music release date separately');
+assert.match(englishAlbum, /releaseDate: 2020-03-06/, 'translated album note must record the music release date separately');
+assert.match(musicIndex, /album\.data\.releaseDate/, 'music index must expose the music release date');
+assert.match(musicIndex, /album\.date/, 'music index must expose the site publication date');
+assert.match(albumPage, /data\.releaseDate/, 'album page must expose the music release date');
+assert.match(albumPage, /entry\.date/, 'album page must expose the site publication date');
+assert.match(bandcampPlayer, /sandbox="allow-scripts allow-same-origin allow-popups"/, 'Bandcamp player must be sandboxed');
+assert.match(bandcampPlayer, /block-size: 100%/, 'Bandcamp player must fill the available media height');
+assert.match(bandcampPlayer, /aspect-ratio: 1/, 'Bandcamp player must remain square without vertical cropping');
+
+console.log('home layout source contract passed');

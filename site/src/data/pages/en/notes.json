@@ -1,0 +1,34 @@
+{
+  "conceptsAction": "Open concepts",
+  "eyebrow": "Observations · models · connections",
+  "groups": [
+    "Working notes",
+    "Concepts",
+    "Books and models"
+  ],
+  "heading": "Three kinds of notes",
+  "id": "notes",
+  "language": "en",
+  "libraryAction": "Open library",
+  "links": [
+    "library",
+    "concepts"
+  ],
+  "pinned": [],
+  "searchable": false,
+  "showcase": [],
+  "sourceHash": "5dff0355b15d288ba633adb869a02743ccff895efce34de88737c2cbeb87cac0",
+  "sourceLanguage": "ru",
+  "summary": "Shorter observations, working models, and connective concepts—with visible status and substantive update dates.",
+  "title": "Notes",
+  "topics": [
+    "personal-systems",
+    "thinking",
+    "reading"
+  ],
+  "translatedAt": "2026-07-15",
+  "translationOf": "notes",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "index"
+}

@@ -1,0 +1,66 @@
+{
+  "current": [
+    {
+      "key": "studying",
+      "label": "Studying",
+      "layout": "text",
+      "text": "How to preserve enough traces for good review without turning every task into reporting.",
+      "title": "Observable AI-assisted work"
+    },
+    {
+      "key": "building",
+      "label": "Building",
+      "layout": "text",
+      "text": "Less internal complexity, clearer provenance for materials, and ordinary routes for readers.",
+      "title": "A public surface for a connected archive"
+    },
+    {
+      "key": "reading",
+      "label": "Reading",
+      "layout": "book",
+      "target": "book-the-lean-startup",
+      "text": "Innovation management, a fast Build-Measure-Learn cycle, and how it applies to my team's processes.",
+      "title": "The Lean Startup"
+    },
+    {
+      "key": "listening",
+      "label": "Listening",
+      "layout": "album",
+      "target": "album-suite-to-be-you-and-me",
+      "text": "Music as a reminder of connection, distance, tenderness, and support.",
+      "title": "Suite to Be You and Me"
+    }
+  ],
+  "currentTitle": "Now",
+  "eyebrow": "Systems · engineering · writing · music",
+  "heroImageAlt": "A calm sea horizon in soft morning light, coastal grass, and rocks",
+  "heroTitle": "I turn complex systems into maps, tools, and artifacts.",
+  "id": "home",
+  "language": "en",
+  "lead": "I write about software engineering, AI-assisted work, personal systems, slow reading, and music—without hype, promises of transformation, or decorative complexity.",
+  "links": [
+    "concepts",
+    "essays",
+    "book-the-lean-startup",
+    "album-suite-to-be-you-and-me",
+    "about"
+  ],
+  "searchable": false,
+  "sourceHash": "4ee15ee2d694c2884e1f1733449a4ecc90799f9f50f0ac6404aa764358a894a7",
+  "sourceLanguage": "ru",
+  "summary": "Maps, tools, and writing about complex systems, engineering, AI-assisted work, reading, and music.",
+  "title": "Quiet systems, living signal",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "reading",
+    "music"
+  ],
+  "translatedAt": "2026-07-17",
+  "translationOf": "home",
+  "translationProfile": "codex-manual-v1",
+  "translationStatus": "generated",
+  "type": "home"
+}

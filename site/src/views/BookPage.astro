@@ -1,0 +1,83 @@
+---
+// renderBook() прототипа: библиография, центральная идея, пересказ, граница.
+import Base from '../layouts/Base.astro';
+import BookCover from '../components/BookCover.astro';
+import Callout from '../components/Callout.astro';
+import RelatedStrip from '../components/RelatedStrip.astro';
+import { UI, type Language } from '../lib/site';
+import { type SiteEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  entry: SiteEntry;
+  Content: any;
+  headings: { depth: number; slug: string; text: string }[];
+  hasBody: boolean;
+}
+
+const { language, entry, Content, headings, hasBody } = Astro.props;
+const labels = UI[language];
+const data = entry.data;
+const label = [entry.typeLabel, entry.topicLabels[0]].filter(Boolean).join(' · ');
+const quoteLabel =
+  data.selectedQuote?.kind === 'quote' ? labels.selectedIdeaQuote : labels.selectedIdea;
+const railItems = headings
+  .filter((heading) => heading.depth === 3)
+  .map((heading, index) => ({
+    id: heading.slug,
+    number: String(index + 1).padStart(2, '0'),
+    title: heading.text,
+  }));
+---
+
+<Base language={language} title={entry.title} description={entry.summary} active="library" pageKind="book">
+  <article class="book-page">
+    <header class="shell book-hero">
+      {data.cover ? (
+        <img class="book-cover book-cover--large book-cover--image" src={data.cover} alt={`${language === 'ru' ? 'Обложка' : 'Cover of'} ${entry.title}`} loading="eager" decoding="async" />
+      ) : (
+        <BookCover title={entry.title} authors={data.authors} size="large" />
+      )}
+      <div>
+        <div class="eyebrow">{label}</div>
+        <h1 id="page-title" tabindex="-1">{entry.title}</h1>
+        <p>{entry.summary}</p>
+        <dl>
+          <div><dt>{language === 'ru' ? 'Автор' : 'Author'}</dt><dd>{data.authors.join(', ')}</dd></div>
+          {data.publication && <div><dt>{language === 'ru' ? 'Издание' : 'Publication'}</dt><dd>{data.publication}</dd></div>}
+          {data.readingStatus && <div><dt>{language === 'ru' ? 'Статус' : 'Status'}</dt><dd>{data.readingStatus}</dd></div>}
+        </dl>
+      </div>
+    </header>
+    <div class:list={['shell', 'book-layout', { 'book-layout--no-left-rail': railItems.length === 0 }]}>
+      {railItems.length > 0 && (
+        <aside class="post-rail post-rail--left">
+          <div class="post-rail__on-page">
+            <strong>{labels.onPage}</strong>
+            <ol>
+              {railItems.map((section) => (
+                <li><a href={`#${section.id}`}><span>{section.number}</span>{section.title}</a></li>
+              ))}
+            </ol>
+          </div>
+        </aside>
+      )}
+      <div class:list={['book-body', 'post-body', { 'markdown-content': hasBody }]}>
+        {hasBody && <Content />}
+      {data.selectedQuote && (
+        <blockquote>
+          <strong>{quoteLabel}</strong>
+          <p>
+            {data.selectedQuote.kind === 'paraphrase'
+              ? `${language === 'ru' ? 'Пересказ' : 'Paraphrase'}: ${data.selectedQuote.text}`
+              : data.selectedQuote.text}
+          </p>
+        </blockquote>
+      )}
+      {data.use && <section><span>01</span><div><h2>{labels.use}</h2><p>{data.use}</p></div></section>}
+      {data.boundary && <Callout kind="boundary" label={labels.boundary} text={data.boundary} />}
+      </div>
+    </div>
+    <RelatedStrip language={language} links={entry.links} />
+  </article>
+</Base>

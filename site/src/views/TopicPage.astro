@@ -1,0 +1,32 @@
+---
+// TopicPage: страница со списком всех материалов по конкретной теме.
+import Base from '../layouts/Base.astro';
+import PageHeader from '../components/PageHeader.astro';
+import ArticleRow from '../components/ArticleRow.astro';
+import { TOPICS, UI, type Language, type TopicKey } from '../lib/site';
+import { getSearchableEntries, sortRows } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  topic: TopicKey;
+}
+
+const { language, topic } = Astro.props;
+const labels = UI[language];
+const topicLabel = TOPICS[topic][language];
+
+const searchable = await getSearchableEntries(language);
+const topicEntries = searchable.filter((entry) => entry.topics.includes(topic));
+const sortedEntries = sortRows(topicEntries, 'latest', language);
+---
+
+<Base language={language} title={topicLabel} description={`${labels.topicPage}: ${topicLabel}`} active="" pageKind="topic">
+  <PageHeader language={language} eyebrow={labels.topicPage} title={topicLabel} lead="" />
+  <section class="section shell">
+    <div class="article-list">
+      {sortedEntries.map((entry) => (
+        <ArticleRow language={language} entry={entry} />
+      ))}
+    </div>
+  </section>
+</Base>

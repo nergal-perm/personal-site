@@ -1,0 +1,29 @@
+{
+  "eyebrow": "Чтение · модели · связи",
+  "id": "library",
+  "language": "ru",
+  "links": [
+    "notes"
+  ],
+  "pinned": [
+    "book-the-lean-startup"
+  ],
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "book-the-lean-startup",
+      "text": "Книга, с которой удобно начать: она превращает неопределённость в проверяемые гипотезы, короткие циклы и наблюдаемые результаты."
+    }
+  ],
+  "sourceHash": "d876d893fbec8276037893d265a51e2594f83a19c1fc04324ccbfe7e14d188d0",
+  "sourceLanguage": "ru",
+  "summary": "Книги как рабочие модели: библиография, статус чтения, выбранная мысль и связи с эссе, кейсами и концептами.",
+  "title": "Библиотека",
+  "topics": [
+    "reading",
+    "thinking",
+    "systems"
+  ],
+  "translationStatus": "source",
+  "type": "index"
+}

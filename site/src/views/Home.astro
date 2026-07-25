@@ -1,0 +1,234 @@
+---
+// renderHome() прототипа — desktop overview из шести паттернов data-home-pattern.
+import Base from '../layouts/Base.astro';
+import AlbumCover from '../components/AlbumCover.astro';
+import BookCover from '../components/BookCover.astro';
+import RichText from '../components/RichText.astro';
+import { plainText } from '../lib/rich-text';
+import { type Language } from '../lib/site';
+import { getEntry, tryGetEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+}
+
+const { language } = Astro.props;
+const page = (await getEntry(language, 'home')).data;
+const current = (
+  await Promise.all(
+    (Array.isArray(page.current) ? page.current : []).map(async (item: any) => {
+      if (!item?.target) return item;
+      const entry = await tryGetEntry(language, item?.target);
+      return entry ? { ...item, entry } : undefined;
+    }),
+  )
+).filter((item) => Boolean(item));
+const hasFeatures = current.length > 0;
+---
+
+<Base language={language} title={plainText(page.title)} description={plainText(page.summary)} active="home" pageKind="home">
+  <section class="home-overview">
+    <div class="home-overview__hero" data-home-pattern="hero" data-component="hero">
+      <div class="shell home-overview__hero-grid">
+        <div class="home-overview__intro">
+          <h1 id="page-title" tabindex="-1"><RichText language={language} value={page.heroTitle} /></h1>
+          <div class="hero-underline" aria-hidden="true"></div>
+          <p><RichText language={language} value={page.lead} /></p>
+        </div>
+        <figure class="home-hero-media" data-component="hero-image">
+          <img
+            src="/assets/signal-and-tide-coast-panorama.png"
+            alt={plainText(page.heroImageAlt)}
+            width="2172"
+            height="724"
+            decoding="async"
+            fetchpriority="high"
+            data-image-archetype="signal-and-tide"
+          />
+        </figure>
+      </div>
+    </div>
+
+    {hasFeatures && <div class="shell home-overview__features" aria-label={plainText(page.currentTitle)}>
+      {current.map((item) => (
+        <article class:list={['home-module', 'home-module--current', `home-module--${item.key}`]} data-home-pattern={item.key}>
+          <div class="eyebrow">
+            <svg class="eyebrow-icon" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true">
+              {item.key === 'listening' ? (
+                <>
+                  <path d="M6 11V3.5l7-1.5v9" />
+                  <circle cx="4" cy="11" r="2" />
+                  <circle cx="11" cy="9.5" r="2" />
+                </>
+              ) : item.key === 'reading' ? (
+                <>
+                  <path d="M3 2.5h6.5A2.5 2.5 0 0 1 12 5v8.5H5.5A2.5 2.5 0 0 0 3 16V2.5z" />
+                  <path d="M12 5h1.5A1.5 1.5 0 0 1 15 6.5v7H5.5" />
+                </>
+              ) : item.key === 'building' ? (
+                <>
+                  <path d="M2 12.5h12" />
+                  <path d="M4 12.5v-7l4-2 4 2v7" />
+                  <path d="M6.5 12.5V8h3v4.5" />
+                </>
+              ) : (
+                <>
+                  <circle cx="8" cy="8" r="7" />
+                  <circle cx="8" cy="8" r="2" />
+                  <path d="M8 1v2M8 13v2M1 8h2M13 8h2" />
+                </>
+              )}
+            </svg>
+            <RichText language={language} value={item.label} />
+          </div>
+          <h2 class="home-module__title">
+            {Array.isArray(item.title) ? (
+              <RichText language={language} value={item.title} />
+            ) : item.entry ? (
+              <a href={item.entry.url}><RichText language={language} value={item.title} /></a>
+            ) : (
+              <RichText language={language} value={item.title} />
+            )}
+          </h2>
+          <p class="home-module__copy"><RichText language={language} value={item.text} /></p>
+          {item.entry && (item.layout === 'book' || item.layout === 'album') && <div class="home-module__media">
+            {item.layout === 'book' ? (
+              item.entry.data.cover ? (
+                <img
+                  src={item.entry.data.cover}
+                  alt={item.entry.title}
+                  loading="lazy"
+                  decoding="async"
+                />
+              ) : (
+                <BookCover title={item.entry.title} authors={item.entry.data.authors ?? []} />
+              )
+            ) : item.entry.data.cover ? (
+              <img
+                src={item.entry.data.cover}
+                alt={`${item.entry.data.work} — ${item.entry.data.artist}`}
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <AlbumCover alt={item.entry.title} />
+            )}
+          </div>}
+        </article>
+      ))}
+    </div>}
+
+  </section>
+</Base>
+
+<style>
+  /* Линия-акцент под заголовком */
+  .hero-underline {
+    width: 48px;
+    height: 4px;
+    background-color: var(--amber);
+    margin-top: clamp(16px, 2.2vw, 24px);
+    margin-bottom: clamp(16px, 2.2vw, 24px);
+    flex-shrink: 0;
+  }
+
+  /* Вводный блок Hero */
+  .home-overview__intro h1 {
+    font-family: var(--serif) !important;
+    font-size: clamp(28px, 3.2vw, 42px) !important;
+    line-height: 1.15 !important;
+    font-weight: 540;
+  }
+
+  .home-overview__intro p {
+    font-family: var(--sans) !important;
+    font-size: clamp(11.5px, 0.95vw, 13.5px) !important;
+    line-height: 1.55 !important;
+    color: var(--muted-ink) !important;
+  }
+
+  /* Иконки в заголовках */
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    text-transform: uppercase;
+    font-family: var(--mono) !important;
+    font-size: 7.5px !important;
+    letter-spacing: 0.05em !important;
+    color: var(--muted) !important;
+  }
+
+  .eyebrow-icon {
+    flex-shrink: 0;
+    color: var(--sea-glass);
+  }
+
+  /* Overrides for homepage card headers and copy to make them compact and evenly distributed */
+  .home-module__title {
+    font-family: var(--serif);
+    font-size: clamp(15px, 1.3vw, 18px) !important;
+    font-weight: 540;
+    line-height: 1.2 !important;
+    height: auto !important;
+    margin-top: 4px !important;
+    margin-bottom: 8px !important;
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    overflow: visible !important;
+  }
+
+  .home-module__copy {
+    font-family: var(--sans);
+    font-size: clamp(10.5px, 0.82vw, 11.5px) !important;
+    line-height: 1.45 !important;
+    height: auto !important;
+    margin-bottom: 12px !important;
+    display: block !important;
+    -webkit-line-clamp: unset !important;
+    overflow: visible !important;
+    color: var(--muted) !important;
+  }
+
+  .focus-underline {
+    width: 24px;
+    height: 3px;
+    background-color: var(--amber);
+    margin-top: 12px;
+    margin-bottom: 12px;
+    flex-shrink: 0;
+  }
+
+  /* Модуль эссе */
+  .home-module--essays strong {
+    font-family: var(--serif) !important;
+    font-size: clamp(11px, 0.9vw, 13px) !important;
+    font-weight: 540;
+    line-height: 1.25 !important;
+  }
+
+  .home-module--essays time {
+    font-family: var(--mono) !important;
+    font-size: 7.5px !important;
+    color: var(--muted) !important;
+  }
+
+  /* Модуль музыки */
+  .home-module__music-work {
+    font-family: var(--sans) !important;
+    font-size: clamp(10.5px, 0.82vw, 11.5px) !important;
+    color: var(--text) !important;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+
+  .now-playing-label {
+    font-family: var(--mono);
+    font-size: 7px;
+    font-weight: bold;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin-bottom: clamp(6px, 0.8vw, 12px);
+  }
+
+</style>

@@ -1,0 +1,29 @@
+{
+  "eyebrow": "Аргументы и центральные идеи",
+  "id": "claims",
+  "language": "ru",
+  "links": [],
+  "pinned": [
+    "startup-management-uncertainty"
+  ],
+  "searchable": false,
+  "showcase": [
+    {
+      "target": "startup-management-uncertainty",
+      "text": "Хороший стартовый пример тезиса: одна центральная идея, явное снятие ложного противопоставления, связь с Кеневин-моделью и понятная граница применимости."
+    }
+  ],
+  "sourceHash": "2c7cfa9b2bc22a747ffe25cc7ec20f95efece46734941d3e1f3a4d76f49f3904",
+  "sourceLanguage": "ru",
+  "summary": "Короткие аргументные кластеры вокруг одной центральной идеи: формулировка, основание, связи и границы применимости.",
+  "title": "Тезисы",
+  "topics": [
+    "systems",
+    "software",
+    "ai-work",
+    "thinking",
+    "reading"
+  ],
+  "translationStatus": "source",
+  "type": "index"
+}

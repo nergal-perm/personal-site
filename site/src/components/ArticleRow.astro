@@ -1,0 +1,27 @@
+---
+// renderArticleRow() прототипа — строка материала в списках и результатах.
+import { UI, formatDate, type Language } from '../lib/site';
+import type { SiteEntry } from '../lib/registry';
+
+interface Props {
+  language: Language;
+  entry: SiteEntry;
+  showType?: boolean;
+}
+
+const { language, entry, showType = true } = Astro.props;
+const labels = UI[language];
+---
+
+<a class:list={['article-row', { 'article-row--no-type': !showType }]} data-component="article-row" href={entry.url}>
+  {showType && <span class="article-row__type">{entry.typeLabel}</span>}
+  <span class="article-row__main">
+    <strong>{entry.title}</strong>
+    <span>{entry.summary}</span>
+  </span>
+  <span class="article-row__topic">{entry.topicLabels[0] || ''}</span>
+  <span class="article-row__date">
+    {entry.date ? formatDate(entry.date, language) : ''}
+    {entry.readTime && <small>{entry.readTime} min {labels.read}</small>}
+  </span>
+</a>
