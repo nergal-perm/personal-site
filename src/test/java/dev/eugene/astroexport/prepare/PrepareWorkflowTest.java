@@ -14,6 +14,7 @@ import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.process.CodexRunner;
+import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -85,6 +86,61 @@ final class PrepareWorkflowTest {
         List.of("created", "running", "running", "succeeded"),
         ((List<Map<String, Object>>) journal.get("history")).stream()
             .map(event -> event.get("state")).toList());
+  }
+
+  @Test
+  void promptIncludesUnifiedDiffOfRussianSourceWhenPublishedSnapshotDiffers() throws Exception {
+    Fixture fixture = fixture();
+    ReviewWorkspace.writePublishedSnapshot(
+        fixture.review(), "blog", "essay",
+        """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Old Russian body.
+        """,
+        """
+        ---
+        sourceHash: old
+        translationStatus: reviewed
+        translatedAt: 2026-07-01
+        translationProfile: human-review-v1
+        title: Prior English title
+        description: Prior English description.
+        ---
+        Old English body.
+        """);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    workflow(runner).prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertTrue(runner.prompt.contains("<source-diff>"));
+    assertTrue(runner.prompt.contains("-Old Russian body."));
+    assertTrue(runner.prompt.contains("+Russian body."));
+  }
+
+  @Test
+  void promptOmitsDiffSectionWhenNoPublishedSnapshotExists() throws Exception {
+    Fixture fixture = fixture();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    workflow(runner).prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertFalse(runner.prompt.contains("<source-diff>"));
   }
 
   @Test

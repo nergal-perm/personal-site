@@ -11,6 +11,7 @@ import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.review.ReviewWorkspace;
+import dev.eugene.astroexport.translation.TranslationDiff;
 import dev.eugene.astroexport.translation.TranslationProjection;
 import dev.eugene.astroexport.translation.TranslationValidator;
 import dev.eugene.astroexport.validation.PreflightService;
@@ -44,6 +45,7 @@ import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
@@ -382,6 +384,14 @@ public final class PrepareWorkflow {
             now);
       }
 
+      Optional<String> publishedRu = ReviewWorkspace.readPublishedRu(
+          reviewRoot, target.collection(), target.publicId());
+      Optional<String> publishedEn = ReviewWorkspace.readPublishedEn(
+          reviewRoot, target.collection(), target.publicId());
+      String ruDiff = publishedRu
+          .map(previous -> TranslationDiff.unifiedDiff(previous, normalizedRu))
+          .orElse("");
+
       String candidateTemplate;
       try {
         candidateTemplate = ioHooks.candidateTemplate(entry, now);
@@ -417,7 +427,7 @@ public final class PrepareWorkflow {
       String jobId = newJobId(now);
       Path jobDirectory = publicationJobs.resolve(jobId);
       JobJournal journal = null;
-      String prompt = prompt(candidateTemplate, sourceHash);
+      String prompt = prompt(candidateTemplate, sourceHash, ruDiff);
       Map<String, String> inputHashes;
       try {
         if (!bounded(jobsRoot, jobDirectory)) {
@@ -855,7 +865,18 @@ public final class PrepareWorkflow {
     return new Fresh(freshEntry, staleMessage, after);
   }
 
-  private static String prompt(String candidateTemplate, String sourceHash) {
+  private static String prompt(String candidateTemplate, String sourceHash, String ruDiff) {
+    String diffSection = ruDiff.isBlank() ? "" : """
+
+        The following unified diff shows what changed in the Russian source since the last
+        published version. Focus your edits on the corresponding English passages only;
+        keep every other passage consistent with the previous English translation supplied
+        above as en.md.
+
+        <source-diff>
+        %s
+        </source-diff>
+        """.formatted(ruDiff);
     return """
         # Bounded Russian-to-English publication translation
 
@@ -889,7 +910,8 @@ public final class PrepareWorkflow {
         <candidate-template>
         %s
         </candidate-template>
-        """.formatted(sourceHash, candidateTemplate);
+        %s
+        """.formatted(sourceHash, candidateTemplate, diffSection);
   }
 
   private static String candidateTemplate(ManifestEntry entry, Instant now) {
