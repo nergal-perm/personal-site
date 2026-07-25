@@ -385,13 +385,24 @@ public final class PrepareWorkflow {
             now);
       }
 
-      Optional<String> publishedRu = ReviewWorkspace.readPublishedRu(
-          reviewRoot, target.collection(), target.publicId());
-      Optional<String> publishedEn = ReviewWorkspace.readPublishedEn(
-          reviewRoot, target.collection(), target.publicId());
-      String ruDiff = publishedRu
-          .map(previous -> TranslationDiff.unifiedDiff(body(previous), body(normalizedRu)))
-          .orElse("");
+      Optional<String> publishedRu;
+      Optional<String> publishedEn;
+      String ruDiff;
+      try {
+        publishedRu = ReviewWorkspace.readPublishedRu(
+            reviewRoot, target.collection(), target.publicId());
+        publishedEn = ReviewWorkspace.readPublishedEn(
+            reviewRoot, target.collection(), target.publicId());
+        ruDiff = publishedRu
+            .map(previous -> TranslationDiff.unifiedDiff(body(previous), body(normalizedRu)))
+            .orElse("");
+      } catch (RuntimeException error) {
+        // Published-snapshot diffing is best-effort scope guidance, not a hard requirement;
+        // a corrupt or unparseable published snapshot must never block or crash prepare.
+        publishedRu = Optional.empty();
+        publishedEn = Optional.empty();
+        ruDiff = "";
+      }
 
       String candidateTemplate;
       try {
@@ -701,10 +712,17 @@ public final class PrepareWorkflow {
             now);
       }
 
+      List<PublicationDiagnostic> scopeDiagnostics;
+      try {
+        scopeDiagnostics = scopeDiagnostics(publishedRu, publishedEn, normalizedRu, generated);
+      } catch (RuntimeException error) {
+        // The scope check is best-effort review guidance; a failure here (e.g. a corrupt
+        // published snapshot) must never turn a working translation into a blocking failure.
+        scopeDiagnostics = List.of();
+      }
+
       try {
         journal.transition("succeeded", "Generated translation is ready for review.", null);
-        List<PublicationDiagnostic> scopeDiagnostics = scopeDiagnostics(
-            publishedRu, publishedEn, normalizedRu, generated);
         return new PrepareResult(
             "ready_for_review",
             committed.entry(),
@@ -878,7 +896,11 @@ public final class PrepareWorkflow {
     }
     int ruChanged = TranslationDiff.changedParagraphCount(
         body(publishedRu.get()), body(normalizedRu));
-    if (ruChanged == 0) {
+    // Body-only paragraph counting misses frontmatter-only source edits (e.g. a translated
+    // `description:` leaf). Fall back to a whole-document comparison so a source change that
+    // never touches the body can still surface a scope mismatch.
+    boolean sourceChanged = ruChanged > 0 || !publishedRu.get().equals(normalizedRu);
+    if (!sourceChanged) {
       return List.of();
     }
     int enChanged = TranslationDiff.changedParagraphCount(

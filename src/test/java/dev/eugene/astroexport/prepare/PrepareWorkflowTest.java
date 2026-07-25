@@ -15,6 +15,7 @@ import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.review.ReviewWorkspace;
+import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -308,6 +309,159 @@ final class PrepareWorkflowTest {
 
     assertEquals("ready_for_review", result.status());
     assertTrue(result.diagnostics().isEmpty());
+  }
+
+  @Test
+  void prepareDegradesGracefullyWhenPublishedRuSnapshotIsCorrupt() throws Exception {
+    Fixture fixture = fixture();
+    Path publishedRu = fixture.review().resolve("blog/essay/published/ru.md");
+    Files.createDirectories(publishedRu.getParent());
+    Files.writeString(publishedRu, """
+        ---
+        title: [Unclosed flow sequence
+        ---
+        Corrupt Russian body.
+        """);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertTrue(result.diagnostics().stream().noneMatch(PublicationDiagnostic::blocking));
+  }
+
+  @Test
+  void prepareKeepsScopeDiagnosticNonBlockingWhenPublishedEnSnapshotIsCorrupt() throws Exception {
+    Fixture fixture = fixture();
+    Files.writeString(fixture.source(), """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two edited.
+
+        Paragraph three.
+        """);
+    Path publishedDirectory = fixture.review().resolve("blog/essay/published");
+    Files.createDirectories(publishedDirectory);
+    Files.writeString(publishedDirectory.resolve("ru.md"), """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two.
+
+        Paragraph three.
+        """);
+    Files.writeString(publishedDirectory.resolve("en.md"), """
+        ---
+        translationStatus: [Unclosed flow sequence
+        ---
+        Corrupt English body.
+        """);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "English one changed.\n\nEnglish two changed.\n\nEnglish three changed.\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertTrue(result.diagnostics().stream().noneMatch(PublicationDiagnostic::blocking));
+  }
+
+  @Test
+  void flagsScopeDiagnosticWhenOnlyFrontmatterChangedInSourceButEnglishBodyChangedSubstantially()
+      throws Exception {
+    Fixture fixture = fixture();
+    Files.writeString(fixture.source(), """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Updated Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two.
+
+        Paragraph three.
+        """);
+    ReviewWorkspace.writePublishedSnapshot(
+        fixture.review(), "blog", "essay",
+        """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two.
+
+        Paragraph three.
+        """,
+        """
+        ---
+        sourceHash: old
+        translationStatus: reviewed
+        translatedAt: 2026-07-01
+        translationProfile: human-review-v1
+        title: Russian title
+        description: Russian description.
+        ---
+        English one.
+
+        English two.
+
+        English three.
+        """);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "English one changed.\n\nEnglish two changed.\n\nEnglish three changed.\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertEquals(1, result.diagnostics().size());
+    assertEquals("translation-scope", result.diagnostics().getFirst().field());
+    assertFalse(result.diagnostics().getFirst().blocking());
   }
 
   @Test
