@@ -56,6 +56,7 @@ import org.snakeyaml.engine.v2.common.FlowStyle;
 /** Prepares one bounded Codex translation job and guarded review draft. */
 public final class PrepareWorkflow {
   public static final Duration CODEX_TIMEOUT = Duration.ofSeconds(900);
+  private static final int SCOPE_SLACK_PARAGRAPHS = 1;
   private static final Set<String> ALLOWED_JOB_FILES = Set.of(
       "ru.md",
       "en.md",
@@ -702,10 +703,12 @@ public final class PrepareWorkflow {
 
       try {
         journal.transition("succeeded", "Generated translation is ready for review.", null);
+        List<PublicationDiagnostic> scopeDiagnostics = scopeDiagnostics(
+            publishedRu, publishedEn, normalizedRu, generated);
         return new PrepareResult(
             "ready_for_review",
             committed.entry(),
-            List.of(),
+            scopeDiagnostics,
             List.of(),
             reviewDirectory,
             jobId);
@@ -863,6 +866,35 @@ public final class PrepareWorkflow {
               + "inspect the note and run prepare again.";
     }
     return new Fresh(freshEntry, staleMessage, after);
+  }
+
+  private static List<PublicationDiagnostic> scopeDiagnostics(
+      Optional<String> publishedRu,
+      Optional<String> publishedEn,
+      String normalizedRu,
+      byte[] generated) {
+    if (publishedRu.isEmpty() || publishedEn.isEmpty()) {
+      return List.of();
+    }
+    int ruChanged = TranslationDiff.changedParagraphCount(
+        body(publishedRu.get()), body(normalizedRu));
+    if (ruChanged == 0) {
+      return List.of();
+    }
+    int enChanged = TranslationDiff.changedParagraphCount(
+        body(publishedEn.get()), body(new String(generated, StandardCharsets.UTF_8)));
+    if (enChanged <= ruChanged + SCOPE_SLACK_PARAGRAPHS) {
+      return List.of();
+    }
+    return List.of(new PublicationDiagnostic(
+        "translation-scope",
+        "Generated translation changed " + enChanged + " paragraph(s) but the Russian "
+            + "source only changed " + ruChanged + "; review for unrelated rewrites.",
+        false));
+  }
+
+  private static String body(String markdown) {
+    return FrontmatterDocument.parse(Path.of("scope.md"), "scope.md", markdown).body();
   }
 
   private static String prompt(String candidateTemplate, String sourceHash, String ruDiff) {

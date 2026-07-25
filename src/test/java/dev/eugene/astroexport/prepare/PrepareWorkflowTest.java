@@ -131,6 +131,145 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void flagsNonBlockingScopeDiagnosticWhenGeneratedTranslationChangesMoreThanTheRussianSource()
+      throws Exception {
+    Fixture fixture = fixture();
+    Files.writeString(fixture.source(), """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two edited.
+
+        Paragraph three.
+        """);
+    ReviewWorkspace.writePublishedSnapshot(
+        fixture.review(), "blog", "essay",
+        """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two.
+
+        Paragraph three.
+        """,
+        """
+        ---
+        sourceHash: old
+        translationStatus: reviewed
+        translatedAt: 2026-07-01
+        translationProfile: human-review-v1
+        title: Russian title
+        description: Russian description.
+        ---
+        English one.
+
+        English two.
+
+        English three.
+        """);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "English one changed.\n\nEnglish two changed.\n\nEnglish three changed.\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertEquals(1, result.diagnostics().size());
+    assertEquals("translation-scope", result.diagnostics().getFirst().field());
+    assertFalse(result.diagnostics().getFirst().blocking());
+  }
+
+  @Test
+  void omitsScopeDiagnosticWhenGeneratedChangeMatchesRussianScope() throws Exception {
+    Fixture fixture = fixture();
+    Files.writeString(fixture.source(), """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two edited.
+
+        Paragraph three.
+        """);
+    ReviewWorkspace.writePublishedSnapshot(
+        fixture.review(), "blog", "essay",
+        """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two.
+
+        Paragraph three.
+        """,
+        """
+        ---
+        sourceHash: old
+        translationStatus: reviewed
+        translatedAt: 2026-07-01
+        translationProfile: human-review-v1
+        title: Russian title
+        description: Russian description.
+        ---
+        English one.
+
+        English two.
+
+        English three.
+        """);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "English one.\n\nEnglish two changed.\n\nEnglish three.\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertTrue(result.diagnostics().isEmpty());
+  }
+
+  @Test
   void promptOmitsDiffSectionWhenNoPublishedSnapshotExists() throws Exception {
     Fixture fixture = fixture();
     RecordingRunner runner = new RecordingRunner(job -> {

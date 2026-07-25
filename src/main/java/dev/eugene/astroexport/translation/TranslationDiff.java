@@ -27,7 +27,9 @@ public final class TranslationDiff {
   /** Count of paragraphs (blank-line-delimited blocks) that differ between the two revisions. */
   public static int changedParagraphCount(String previous, String current) {
     Patch<String> patch = DiffUtils.diff(paragraphs(previous), paragraphs(current));
-    return patch.getDeltas().size();
+    return patch.getDeltas().stream()
+        .mapToInt(delta -> Math.max(delta.getSource().size(), delta.getTarget().size()))
+        .sum();
   }
 
   private static List<String> paragraphs(String text) {
