@@ -131,6 +131,47 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void sourceDiffExcludesFrontmatterReserializationNoise() throws Exception {
+    Fixture fixture = fixture();
+    ReviewWorkspace.writePublishedSnapshot(
+        fixture.review(), "blog", "essay",
+        """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Old Russian body.
+        """,
+        """
+        ---
+        sourceHash: old
+        translationStatus: reviewed
+        translatedAt: 2026-07-01
+        translationProfile: human-review-v1
+        title: Prior English title
+        description: Prior English description.
+        ---
+        Old English body.
+        """);
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    workflow(runner).prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertTrue(runner.prompt.contains("<source-diff>"));
+    assertFalse(runner.prompt.contains("-publicId: essay"));
+  }
+
+  @Test
   void flagsNonBlockingScopeDiagnosticWhenGeneratedTranslationChangesMoreThanTheRussianSource()
       throws Exception {
     Fixture fixture = fixture();

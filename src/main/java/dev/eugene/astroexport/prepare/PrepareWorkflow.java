@@ -390,7 +390,7 @@ public final class PrepareWorkflow {
       Optional<String> publishedEn = ReviewWorkspace.readPublishedEn(
           reviewRoot, target.collection(), target.publicId());
       String ruDiff = publishedRu
-          .map(previous -> TranslationDiff.unifiedDiff(previous, normalizedRu))
+          .map(previous -> TranslationDiff.unifiedDiff(body(previous), body(normalizedRu)))
           .orElse("");
 
       String candidateTemplate;
