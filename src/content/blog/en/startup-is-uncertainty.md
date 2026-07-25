@@ -4,91 +4,95 @@ claimKinds:
 - definitional
 contentType: claim
 date: '2026-07-10'
-description: A startup is defined by extreme uncertainty, not by size, age, industry,
-  or a garage.
+description: A startup is defined by a condition—extreme uncertainty—not by its size,
+  age, industry, or a garage
 id: startup-is-uncertainty
 language: en
 links: []
 publish: true
-sourceHash: df05079bd663b2b0b3518e0d306948e5932b2857ffee1bf382e4c9fd5c07d878
+sourceHash: 0e7dfc25f6ed60fa147aab78ca391552dc8578bd5fe7e5be903f9518fbb261e4
 sourceLanguage: ru
 sources:
 - attestation: explicit
   confidence: high
   evidence:
   - kind: text
-    value: '"A human institution designed to create new products and services under
-      conditions of extreme uncertainty ... entrepreneurs are everywhere and the Lean
+    value: '“a human institution designed to create new products and services under
+      conditions of extreme uncertainty… entrepreneurs are everywhere and the Lean
       Startup approach can work in any size company, even a very large enterprise,
-      in any sector or industry" (principle 1). Principle 2 adds: "entrepreneur" should
-      be a job title in every modern company that depends on innovation for future
-      growth.'
+      in any sector or industry” (principle 1); continued in principle 2: “I believe
+      ‘entrepreneur’ should be considered a job title in all modern companies that
+      depend on innovation for their future growth”.'
   link:
     label: The Lean Startup
     target: book-the-lean-startup
   locator:
   - kind: text
-    value: Introduction, The Lean Startup Method, principles 1-2
+    value: Introduction, The Lean Startup Method, principles 1–2
 - attestation: implicit_assumption
   confidence: medium
   evidence:
   - kind: text
-    value: Cynefin defines a domain by the character of its environment and connections,
-      not by organizational attributes, and prescribes a protocol by domain. The note
-      does not discuss startups; the connection is made here.
+    value: Cynefin defines a domain by the nature of its environment and connections,
+      not by an organization’s attributes, and prescribes a protocol for each domain.
+      The note says nothing about startups—the connection is made here.
   link:
-    label: Connectedness and Complexity - Cynefin
+    label: 02. Связанность и сложность - Cynefin
   locator:
   - kind: text
     value: Cynefin domains
-statement: A startup is defined by extreme uncertainty, not by size, age, industry,
-  or a garage.
+statement: A startup is defined by a condition—extreme uncertainty—not by its size,
+  age, industry, or a garage
 supports:
-- label: A startup rejects predictable-domain management, not management itself
+- label: A startup does not abolish management, but management for the predictable
   target: startup-management-uncertainty
 tags: []
-title: A startup is defined by extreme uncertainty, not by size, age, industry, or
-  a garage
+title: A startup is defined by uncertainty, not by size
 topics: []
-translatedAt: '2026-07-18'
+translatedAt: '2026-07-20'
 translationOf: startup-is-uncertainty
 translationProfile: codex-agent-v1
-translationStatus: generated
+translationStatus: reviewed
 ---
 
-Ries defines a startup by its operating condition, not by its attributes. His
-definition contains no size, age, industry, or garage. Each of its three
-elements matters: a **human institution** (not merely a product, because the
-organization itself has to be built and managed), **new products and services** (not the
-optimization of existing ones), and **extreme uncertainty**, the condition that
-actually defines the category.
+Ries’s definition is built around an operating condition rather than attributes:
+it contains neither size, age, industry, nor a garage. All three elements matter:
+**an institution** (not a product—a startup is an organization that must be built
+and managed), **new products and services** (not the optimization of what already
+exists), and **extreme uncertainty** (the defining condition itself).
 
-Several consequences follow from defining a startup by condition:
+The element “institution” yields an independent argument: a startup is an
+organization, a group of people, and an organization must be built and managed—
+management is necessary to a startup by definition, before any discussion of
+uncertainty. This institutional move independently supports
+[A startup does not abolish management, but management for the predictable](/en/claims/startup-management-uncertainty/).
 
-- "Entrepreneurs are everywhere." Intrapreneurship is legitimate, and
-  "entrepreneur" becomes a job title inside any company that depends on
-  innovation for future growth, as principle 2 explicitly proposes.
-- The boundary between a startup and a mature company is not drawn by revenue.
-  It follows the share of work conducted under uncertainty. The same
-  organization can contain both modes at once and therefore needs both kinds of
-  management at once. See [A startup rejects predictable-domain management, not management itself](/en/claims/startup-management-uncertainty/).
-- Ries writes that "as the world becomes more uncertain, it gets harder and
-  harder to predict the future." Startup-type activity therefore expands even
-  inside long-established organizations, creating a bridge to *Organization
-  3.0* and the AI-native agenda.
+Consequences of defining it through a condition:
 
-One qualification: the introduction asserts this broad reach but does not prove
-it. Its only evidence there for applicability beyond software startups is the
-growth of the movement. That demonstrates adoption, not effectiveness. The same
-evidentiary limit appears in [Lean Startup's case rests on the genre it debunks](/en/claims/lean-startup-based-on-the-busted-myth/).
+- “Entrepreneurs are everywhere”: intrapreneurship is legitimate, and
+  “entrepreneur” is a job title in the organizational structure of companies that
+  depend on innovation (principle 2).
+- The boundary between “startup / mature company” is drawn not by revenue but by
+  the share of activity conducted under uncertainty. The same organization contains
+  both modes at once—and therefore needs both kinds of management simultaneously.
+- Trend: “as the world becomes more uncertain, it gets harder and harder
+  to predict the future”—the share of startup activity grows even in old
+  organizations; a bridge to [Organization 3.0](/en/concepts/org-3-0/) and the
+  AI-native agenda.
 
-[ET] The definition can also be carried down to the personal scale. Projects
-conducted under high uncertainty are startup-like by type and require the same
-protocol of hypotheses and experiments; compare the idea behind
-*Hypothesis-Driven Life*.
+Qualification: in the introduction, this expanded scope is asserted rather than
+proven—the only evidence there for applicability beyond software startups is the
+growth of the movement, that is, adoption rather than effectiveness (see
+[Lean Startup is grounded in the genre it itself debunks](/en/claims/lean-startup-based-on-the-busted-myth/)).
 
-### How this supports [A startup rejects predictable-domain management, not management itself](/en/claims/startup-management-uncertainty/)
+[ET] Personal level: the definition also extends to personal activity—projects
+under conditions of high uncertainty are “startup-like” in type and require the
+same protocol of hypotheses and experiments; compare the concept of the
+Hypothesis-Driven Life project.
 
-It supplies the condition from which the management dilemma follows: if a
-startup is defined by uncertainty, predictable-domain management is inapplicable
-by definition. The choice is then between chaos and experimental discipline.
+### How it supports [A startup does not abolish management, but management for the predictable](/en/claims/startup-management-uncertainty/)
+
+It supplies the condition from which the management dilemma follows logically:
+if a startup is defined by uncertainty, then management for the predictable is
+inapplicable to it by definition—and the choice is between chaos and experimental
+discipline.

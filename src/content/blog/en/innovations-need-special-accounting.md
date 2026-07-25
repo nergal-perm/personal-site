@@ -8,24 +8,24 @@ claimKinds:
 - causal
 contentType: claim
 date: '2026-07-10'
-description: If innovation's progress is validated learning, it needs its own accounting;
-  conventional reporting does not record it.
+description: If innovation progress is validated knowledge, it needs its own accounting
+  — traditional reporting does not record it
 id: innovations-need-special-accounting
 language: en
 links: []
 publish: true
-sourceHash: fd6a4a34b8ea4b5d507697a273622ba0967bf2474453459d80cf233b25e3fae8
+sourceHash: 87b5c1ef3ea0d9b76e81907b0086c5520c71efbd9b290415b4ab8744536f01f2
 sourceLanguage: ru
 sources:
 - attestation: explicit
   confidence: high
   evidence:
   - kind: text
-    value: '"To improve entrepreneurial outcomes and hold innovators accountable,
+    value: '«To improve entrepreneurial outcomes and hold innovators accountable,
       we need to focus on the boring stuff: how to measure progress, how to set up
       milestones, and how to prioritize work. This requires a new kind of accounting
-      designed for startups - and the people who hold them accountable" (principle
-      5, innovation accounting).'
+      designed for startups—and the people who hold them accountable» (principle 5,
+      innovation accounting).'
   link:
     label: The Lean Startup
     target: book-the-lean-startup
@@ -36,60 +36,80 @@ sources:
   confidence: medium
   evidence:
   - kind: text
-    value: The precedent for redesigning accounting is that Balanced Scorecard measures
-      work only when they are connected to strategic objectives and to each other;
-      an arbitrary collection of KPIs is not accounting. The note does not address
-      uncertainty or hypotheses; the extension is made here.
+    value: 'A precedent for redesigning accounting: Balanced Scorecard metrics work
+      only when tied to strategic objectives and interconnected—a random set of KPIs
+      is not accounting. The note says nothing about uncertainty or hypotheses; that
+      line of reasoning is extended here.'
   link:
-    label: The connection between Balanced Scorecard and KPI
+    label: Svyaz' SSP i KPI.ztk
   locator:
   - kind: text
-    value: The connection between Balanced Scorecard and KPI
-statement: If innovation's progress is validated learning, it needs its own accounting;
-  conventional reporting does not record it.
+    value: The relationship between the Balanced Scorecard and KPIs
+statement: If innovation progress is validated knowledge, it needs its own accounting
+  — traditional reporting does not record it
 tags: []
-title: Innovation needs its own accounting of progress
+title: Innovation Needs Its Own Progress Accounting
 topics: []
-translatedAt: '2026-07-17'
+translatedAt: '2026-07-20'
 translationOf: innovations-need-special-accounting
-translationProfile: codex-manual-v1
-translationStatus: generated
+translationProfile: codex-agent-v1
+translationStatus: reviewed
 ---
 
-Conventional reporting is blind to startup progress. Business-plan milestones
-and financial measures assume a predictable business model - the management of
-the predictable - while early-stage revenue is close to zero and tells us almost
-nothing. The startup's main output, validated knowledge, does not appear on the
-balance sheet at all. Accounting therefore has to be redesigned, not abolished.
-Accountability remains; its unit changes.
+Traditional reporting is blind to a startup’s progress: business-plan milestones
+and financial metrics presuppose a predictable business model (managing the
+predictable), while at an early stage revenue is near zero and uninformative.
+The principal asset being produced—validated knowledge—is absent from the
+balance sheet altogether. So accounting must be redesigned, not abolished:
+accountability remains; the unit changes.
 
-There is a precedent for this kind of redesign. The Balanced Scorecard rebuilt
-accounting around strategy: measures are meaningful only when they are tied to
-objectives and connected to one another. Ries's innovation accounting is the
-next move of the same kind: accounting for uncertainty, where measures are
-tied to hypotheses and their tests.
+There has already been a precedent for such a redesign: the BSC (Balanced
+Scorecard) rebuilt accounting “around strategy”—metrics are meaningful only
+when they are tied to objectives and interconnected (Svyaz' SSP i KPI.ztk).
+Ries’s innovation accounting is the next step in the same move: accounting
+“around uncertainty,” where metrics are tied to hypotheses and their testing.
 
-The negative pole is vanity metrics: numbers that grow without any increase in
-knowledge, such as downloads or gross registrations. Goodhart's law describes
-how the corruption happens: once a measure becomes a target, it stops being a
-trustworthy measure. Innovation accounting therefore measures the outcomes of
-experiments - confirmation or rejection of hypotheses - rather than activity.
-Activity is easy to simulate. There is little point in simulating the rejection
-of your own hypothesis. This is the same trap as substituting a metric for the
-telos.
+The negative pole is vanity metrics: numbers that rise without an increase in
+knowledge (downloads, total registrations). The mechanism of corruption is
+described by Goodhart’s law: a metric that
+becomes a target ceases to be reliable. Innovation accounting therefore measures
+the outcomes of experiments—confirmation or refutation of hypotheses—rather
+than activity: activity is easy to simulate; there is no point in simulating a
+refutation of one’s own hypothesis. Cf. the trap of “substituting the telos
+with a metric” in Телос.
 
-Accountability is a language shared by the innovator and the person demanding
-an account: the principle is addressed to sponsors too. Without a common
-accounting system, a sponsor falls back on familiar measures and either kills
-promising experiments because revenue is zero or finances a theater of
-activity.
+There are two layers to blindness to progress-as-knowledge. The
+institutional layer—described above—is that reporting does not record knowledge.
+The psychological layer—deeper—is the habit of measuring progress in tangible
+units (features, releases, revenue), which impedes the very *perception* of
+learning as progress because knowledge is intangible. The layers are
+independent: reporting can be redesigned and still yield a team that does not
+“feel” that it has worked. It is this mechanism that makes the prediction of
+team resistance during the introduction of learning milestones come true—the
+familiar unit has been taken away, while the new one does not feel like work
+(see [The theory of managing uncertainty is falsifiable at the process level, not by outcomes](/en/claims/management-of-unpredictable-is-predictable/)).
 
-The bridge is observability. [ET] Validated learning is an *observable*
-reduction in uncertainty, and the new accounting system institutionalizes that
-observability. Principle 5 is principle 3 turned into reporting.
+> [ET] Personal level: the working maxim “prefer visible evidence of
+completion” is the same pull toward tangible units, merely put in one’s own
+service. The practical implication is not to fight the habit, but to feed it
+the right unit—to make knowledge tangible (a written hypothesis, a recorded
+experimental outcome, an entry in the learning ledger), so that the visible
+evidence of completion is an artifact of learning rather than an artifact of
+busyness.
 
-### Assumes [A startup exists to learn how to build a sustainable business](/en/claims/startup-goal-is-to-learn/)
+Accountability is a language between the innovator and the person who holds
+them to account (“…and the people who hold them accountable”): the principle is
+addressed to sponsors as well. Without a shared accounting system, a sponsor
+measures what is familiar—and either kills viable experiments because they have
+zero revenue or funds a theater of activity.
 
-The demand for new accounting rests on this teleology. Only if progress is
-knowledge is conventional reporting incomplete. Reject that teleology and
+A bridge from observability: the [ET] clarification in the note on the goal of
+a startup—that verifiable learning is an *observable* reduction in
+uncertainty—and the new accounting is precisely what institutionalizes that
+observability: principle 5 is principle 3 turned into reporting.
+
+### Assumes that [A startup exists to learn how to build a sustainable business](/en/claims/startup-goal-is-to-learn/)
+
+The demand for new accounting rests on a teleology: only if progress is
+knowledge is traditional reporting incomplete. Reject the teleology, and
 principle 5 collapses into ordinary management accounting.

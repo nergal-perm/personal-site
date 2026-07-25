@@ -5,25 +5,24 @@ authors:
 - Eric Ries
 cover: https://encrypted-tbn1.gstatic.com/images?q=tbn:ANd9GcSpSgdBf6DMMNKigaopdgjYhze-PTCmLGK4TVedJElHdvnZ6i9Q
 date: '2025-02-05'
-description: 'The book presents the Lean Startup method: build a product as a series
-  of testable hypotheses, shorten the build-measure-learn cycle, use MVPs and validated
-  learning, and make persevere-or-pivot decisions from data about the behavior of
-  real users.'
-end: '2025-02-04'
+description: 'The book articulates the Lean Startup method: build a product as a series
+  of testable hypotheses, shorten the build-measure-learn cycle, use an MVP and validated
+  learning, and decide whether to persevere or pivot using data about the behavior
+  of real users.'
 id: book-the-lean-startup
 language: en
 links: []
 publication: Crown Business · 2011
 publish: true
-readingStatus: 👁️‍🗨️
-sourceHash: d0a9484c5eda4c107173498e7a5efe87e04c6966c03891389558ccaf27d580ad
+readingStatus: reading
+sourceHash: ede6b7a854c090d6c718404b1c27c76d8e68da26b6839b20cdc05346781cc82d
 sourceLanguage: ru
-start: '2025-02-04'
-status: 👁️‍🗨️
+start: '2026-07-09'
+status: reading
 tags: []
 title: The Lean Startup
 topics: []
-translatedAt: '2026-07-19'
+translatedAt: '2026-07-20'
 translationOf: book-the-lean-startup
 translationProfile: codex-agent-v1
 translationStatus: reviewed
@@ -31,32 +30,28 @@ translationStatus: reviewed
 
 ### Introduction
 
-The introduction is structured around the contrast between two of Ries’s stories—the failure of his first startup and IMVU’s success. From the failure he draws a diagnosis: the myth-making industry sells the story “talent + persistence + the right product,” but [Startup success can be engineered—the right process can be learned](/en/claims/learnable-startup-process/)—what matters are precisely the “boring things,” process rather than genes. The first instinctive response to market failure was an engineering one—and [Market failure is instinctively treated with engineering tools](/en/claims/engineering-fix-to-market-failure/)—which only multiplies the losses. Hence the central move of the introduction: [A startup does not reject management; it rejects management for the predictable](/en/claims/startup-management-uncertainty/)—entrepreneurship is a kind of management, but management of a different, experimental kind, because [A startup is defined by uncertainty, not size](/en/claims/startup-is-uncertainty/)—which means that the method applies both in a garage and in a corporation.
+The introduction is built on the contrast between two of Ries's stories—the failure of his first startup and the success of IMVU. From the failure, he draws a diagnosis: the mythmaking industry sells the story of “talent + persistence + the right product,” yet [Startup Success Is Constructed—the Right Process Can Be Learned](/en/claims/learnable-startup-process/): what matters are precisely the “boring things,” process rather than genes. The first instinctive response to market failure was an engineering one—and [Market Failure Is Instinctively Treated with Engineering Means](/en/claims/engineering-fix-to-market-failure/), which only multiplies losses. Hence the introduction's central move: [A Startup Does Not Abolish Management, but the Management of the Predictable](/en/claims/startup-management-uncertainty/). Entrepreneurship is a kind of management, but management of a different, experimental kind, because [A Startup Is Defined by Uncertainty, Not Size](/en/claims/startup-is-uncertainty/); the method therefore applies both in a garage and in a corporation.
 
-IMVU’s methods worked before there was any theory, but [A working practice without a shared language cannot be transferred](/en/claims/method-needs-language-to-transfer/)—this very lack of transferability made Ries look for a conceptual framework, which he found in Toyota’s lean manufacturing. The core of the resulting method:
+IMVU's methods worked before there was any theory, but [A Working Practice Cannot Be Transferred Without a Common Language](/en/claims/method-needs-language-to-transfer/). It was this lack of transferability that drove Ries to seek a conceptual framework, which he found in Toyota's lean manufacturing. The core of the resulting method is as follows:
 
-- [A startup exists to learn how to build a sustainable business](/en/claims/startup-goal-is-to-learn/)—validated knowledge, rather than a product or revenue, is the goal and measure of progress;
-- [Users’ opinions are data, not commands](/en/claims/users-opinion-is-just-data/)—the focus is on what customers want, “without asking them”: experiments are run on customers rather than their wishes being fulfilled;
-- the “Build-Measure-Learn” cycle must be run as quickly as possible, and the output of each turn is a “pivot or persevere” decision; without this decision, the loop degenerates into rapid development;
-- [Waste in innovation is work that produces no learning](/en/claims/work-without-learning-is-waste/)—the method’s mission is to eliminate the principal waste: products that nobody needs;
-- [Innovation needs its own progress accounting](/en/claims/innovations-need-special-accounting/)—because progress is measured in knowledge, traditional reporting does not record it; innovation accounting is needed.
+- [A Startup Exists to Learn How to Build a Sustainable Business](/en/claims/startup-goal-is-to-learn/)—validated knowledge, rather than a product or revenue, is both the goal and the measure of progress;
+- [Users' Opinions Are Data, Not Commands](/en/claims/users-opinion-is-just-data/)—the focus is on what customers want, “without asking them”: customers are subjected to experiments rather than having their wishes fulfilled;
+- the “Build-Measure-Learn” cycle must be run as quickly as possible, and each turn must yield a “pivot or persevere” decision; without that decision, the loop degenerates into rapid development;
+- [Waste in Innovation Is Work That Produces No Learning](/en/claims/work-without-learning-is-waste/)—the method's mission is to eliminate the principal waste: products that nobody needs;
+- [Innovation Needs Its Own Progress Accounting](/en/claims/innovations-need-special-accounting/)—because progress is measured in knowledge, conventional reporting does not register it, so innovation accounting is needed.
 
-Critical qualification: [The Lean Startup is grounded in the genre it itself debunks](/en/claims/lean-startup-based-on-the-busted-myth/)—the method’s key evidence, the story of IMVU’s success, itself belongs to the genre of success stories that Ries exposed a page earlier as a product of selection bias.
+A critical caveat: [Lean Startup Is Grounded in the Genre It Itself Debunks](/en/claims/lean-startup-based-on-the-busted-myth/). The method's key evidence, the story of IMVU's success, itself belongs to the genre of success stories that Ries had exposed a page earlier as the product of a sampling error.
 
 ### 1. Start
 
-- **S01** [claim:: A startup is the construction of an organization (institution), an association of people, and therefore requires management] [kind::definitional, causal]
-- **S02** [claim:: The effects of higher labor productivity outweigh the effect of reducing the number of jobs] [kind:: factual]
-- **S03** [claim:: Productivity growth created excess capacity that firms do not know what to do with; some of it is wasted unproductively—for example, in failed startups] [kind::factual]
-- **S04** [claim:: The Lean movement is a change in thinking about production; it is based on individual workers’ contributions, smaller batch sizes, just-in-time, inventory control, faster processing cycles, and reducing unproductive waste] [kind:: definitional]
-- **S05** [claim:: Progress in a startup is measured in “validated learning”] [kind:: normative]
-- **S06** [claim:: A theory of entrepreneurial management should make it possible to put forward testable assumptions / predictions] [kind:: normative]
-- **S07** [claim:: The habit of measuring progress in tangible units hinders the perception of learning / knowledge / “validated learning” as units of progress (because knowledge is intangible)] [kind::causal]
-- **S08** [claim:: The goal of a startup is to identify the right product as early as possible] [kind:: normative]
-- **S09** [claim:: Startups spend most of their time tuning the “engine of growth”—making improvements to the product, marketing, or processes] [kind::factual, normative]
-- **S10** [claim:: Continuous “steering” based on market feedback is a metaphor for the startup’s operating mode] [kind:: assumption]
-- **S11** [claim:: A working engine + “steering” make it possible to scale and grow the business with maximum acceleration] [kind::normative, causal]
-- **S12** [claim:: The vision of the end goal determines the strategy, which determines the product] [kind:: normative]
-- **S13** [claim:: Vision changes less often than strategy, and strategy changes less often than product] [kind:: normative]
-- **S14** [claim:: In classical management, the inability to achieve (deliver) stated results is either a planning failure or an execution failure. But in either case, it is a failure] [kind:: definitional]
-- **S15** [claim:: In startup management, failure is a necessary step, because the necessary knowledge is obtained from failures] [kind:: normative]
+The chapter opens with an institutional argument: a startup is the building of an organization, an association of people, and management is therefore necessary to it by definition, even before any discussion of uncertainty. This is a second, independent route to the conclusion that “[A Startup Does Not Abolish Management, but the Management of the Predictable](/en/claims/startup-management-uncertainty/),” complementing the argument from the condition set out in [A Startup Is Defined by Uncertainty, Not Size](/en/claims/startup-is-uncertainty/).
+
+The roots of the Lean Startup method are macroeconomic: during the twentieth century, the effects of productivity growth outweighed job losses, leaving the economy with excess capacity that firms squander—including in failed startups. The general four-stage mechanism of this macroeconomic process is developed in [Structural Shifts from Increased Productivity](/en/concepts/structural-shifts-of-increased-productivity/). Thus the question of where to direct the surplus becomes the method's entry point: [Waste in Innovation Is Work That Produces No Learning](/en/claims/work-without-learning-is-waste/), and the method supplies the answer—the surplus must be directed toward producing knowledge.
+
+The chapter recounts the Lean movement itself as background material—a change in how production is understood: workers' contribution, small batches, just-in-time, and waste reduction. In the repository, this is covered by the cluster “This Is Lean,” “Resource and Flow Efficiency,” and “Work in Progress.”
+
+The chapter then repeats and reinforces the introduction's thesis that startup progress is measured by validated knowledge, through two moves. The first is a claim to scientific status: a theory of entrepreneurial management must make testable predictions, and it does—but [A Theory of Managing Uncertainty Is Falsifiable at the Process Level, Not the Outcome Level](/en/claims/management-of-unpredictable-is-predictable/). The management of the unpredictable is itself predictable; its predictions concern the behavior of organizations, not the fate of products. The second is a mechanism of resistance: the habit of measuring progress in tangible units makes intangible knowledge hard to recognize as progress—a psychological layer of blindness recorded in [Innovation Needs Its Own Progress Accounting](/en/claims/innovations-need-special-accounting/). The same mechanism also makes the prediction of teams' complaints come true.
+
+The chapter narrows the startup's telos in product terms and in tempo: identify the right product—what customers want and will pay for—as early as possible. The mode for achieving this goal is the metaphor of a car: [A Startup Is Steered by Feedback, Not Driven by a Pre-Launch Calculation](/en/claims/startup-is-feedback-driven/). Day-to-day work is tuning the engine of growth through product, marketing, and process improvements; a mistaken assumption is not a catastrophe but the next turn of the steering wheel; when the engine works and steering has been mastered, one presses the accelerator and scales with maximum acceleration. The cost of the opposite mode is **achieved failure**: the disciplined execution of a mistaken plan.
+
+The levels of management form a pyramid: vision determines strategy, strategy determines product, and the pace of change is inversely related to height—product is optimized continuously, strategy changes through a pivot, and vision is preserved. [The Vision–Strategy–Product Hierarchy Is Built Along a Gradient of Falsifiability](/en/claims/vision-strategy-product-as-falsifiability-gradient/), and vision remains the method's unfalsifiable core. The chapter's final scene places two frames of failure face to face: for a CFO, failure to deliver a result is a failure of planning or execution, and in either case someone is to blame; for an intrapreneur, a failed experiment is a necessary step from which knowledge is extracted (the management₁ dichotomy appears in [A Startup Does Not Abolish Management, but the Management of the Predictable](/en/claims/startup-management-uncertainty/), and the recalculation of the cost of failure in [A Startup Exists to Learn How to Build a Sustainable Business](/en/claims/startup-goal-is-to-learn/)).
