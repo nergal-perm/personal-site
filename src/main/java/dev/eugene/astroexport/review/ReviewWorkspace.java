@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.model.ManifestEntry;
+import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
@@ -237,6 +238,20 @@ public final class ReviewWorkspace {
     Path directory = reviewRoot.resolve(collection).resolve(publicId).resolve("published");
     replaceAtomically(directory.resolve("ru.md"), ru);
     replaceAtomically(directory.resolve("en.md"), en);
+  }
+
+  public static void snapshotPublished(Path reviewRoot, ManifestResult manifest) {
+    for (ManifestEntry entry : manifest.entries()) {
+      Target target = target(entry);
+      Path directory = reviewRoot.resolve(target.collection()).resolve(target.publicId());
+      try {
+        String ru = Files.readString(directory.resolve("ru.md"), StandardCharsets.UTF_8);
+        String en = Files.readString(directory.resolve("en.md"), StandardCharsets.UTF_8);
+        writePublishedSnapshot(reviewRoot, target.collection(), target.publicId(), ru, en);
+      } catch (IOException error) {
+        throw new IllegalStateException("cannot snapshot published review " + directory, error);
+      }
+    }
   }
 
   public static Optional<String> readPublishedRu(Path reviewRoot, String collection, String publicId) {

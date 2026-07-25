@@ -468,6 +468,58 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void buildFromReviewWritesPublishedSnapshotOfRuAndEnAfterSuccessfulWrite() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Published body.");
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path out = writeAstroRoot(temp.resolve("astro"));
+    Path report = temp.resolve("write-report.md");
+    CommandServices services = CommandServices.defaults()
+        .withGateRunner(invocation -> new SiteWriter.GateResult(0, "gate ok\n", ""));
+
+    CommandFixture.Result result = run(new AstroExportCommand(services),
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", out.toString(),
+        "--report", report.toString(),
+        "--review", review.toString());
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    Path publishedRu = review.resolve("blog/essay/published/ru.md");
+    Path publishedEn = review.resolve("blog/essay/published/en.md");
+    assertTrue(Files.isRegularFile(publishedRu));
+    assertTrue(Files.isRegularFile(publishedEn));
+    assertEquals(
+        Files.readString(review.resolve("blog/essay/ru.md")),
+        Files.readString(publishedRu));
+    assertEquals(
+        Files.readString(review.resolve("blog/essay/en.md")),
+        Files.readString(publishedEn));
+  }
+
+  @Test
+  void dryRunBuildFromReviewDoesNotWritePublishedSnapshot() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Not yet published.");
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path report = temp.resolve("dry-run-report.md");
+
+    CommandFixture.Result result = run(new AstroExportCommand(CommandServices.defaults()),
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--dry-run",
+        "--report", report.toString(),
+        "--review", review.toString());
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    assertFalse(Files.exists(review.resolve("blog/essay/published")));
+  }
+
+  @Test
   void writeModeRejectsMissingOutInvalidAstroRootAndReportUnderOutBeforeSelection() throws Exception {
     Path vault = temp.resolve("vault");
     Files.createDirectories(vault);

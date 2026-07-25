@@ -210,6 +210,19 @@ public final class AstroExportCommand implements Callable<Integer> {
       return 1;
     }
 
+    try {
+      services.snapshotPublished(reviewRoot, manifest);
+    } catch (Exception error) {
+      String text = ReportBuilder.buildCommittedWriteErrorReport(
+          new SiteWriter.WriterException(
+              error.getMessage() == null ? error.toString() : error.getMessage(), true, List.of()),
+          selection,
+          manifest,
+          result);
+      emitReport(reportPath, text, error);
+      return 1;
+    }
+
     String text;
     try {
       text = ReportBuilder.buildWriteReport(selection, manifest, result);

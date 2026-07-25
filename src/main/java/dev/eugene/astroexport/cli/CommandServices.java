@@ -51,6 +51,7 @@ public final class CommandServices {
   private final MigrateOverridesAction migrateOverridesAction;
   private final WriteRuReviewAction writeRuReviewAction;
   private final ReplaceEnglishReviewAction replaceEnglishReviewAction;
+  private final SnapshotPublishedAction snapshotPublishedAction;
 
   private CommandServices(
       Clock clock,
@@ -66,7 +67,8 @@ public final class CommandServices {
       PreflightObserver preflightObserver,
       MigrateOverridesAction migrateOverridesAction,
       WriteRuReviewAction writeRuReviewAction,
-      ReplaceEnglishReviewAction replaceEnglishReviewAction) {
+      ReplaceEnglishReviewAction replaceEnglishReviewAction,
+      SnapshotPublishedAction snapshotPublishedAction) {
     this.clock = clock;
     this.selectionAction = selectionAction;
     this.manifestAction = manifestAction;
@@ -81,6 +83,7 @@ public final class CommandServices {
     this.migrateOverridesAction = migrateOverridesAction;
     this.writeRuReviewAction = writeRuReviewAction;
     this.replaceEnglishReviewAction = replaceEnglishReviewAction;
+    this.snapshotPublishedAction = snapshotPublishedAction;
   }
 
   public static CommandServices defaults() {
@@ -100,7 +103,8 @@ public final class CommandServices {
         (vault, note) -> { },
         ReviewWorkspace::migrateOverrides,
         ReviewWorkspace::writeRuReviewFile,
-        ReviewWorkspace::replaceEnglishReviewFile);
+        ReviewWorkspace::replaceEnglishReviewFile,
+        ReviewWorkspace::snapshotPublished);
   }
 
   public CommandServices withClock(Clock replacement) {
@@ -143,7 +147,8 @@ public final class CommandServices {
         replacement,
         migrateOverridesAction,
         writeRuReviewAction,
-        replaceEnglishReviewAction);
+        replaceEnglishReviewAction,
+        snapshotPublishedAction);
   }
 
   public CommandServices withReplaceEnglishReviewAction(ReplaceEnglishReviewAction replacement) {
@@ -161,6 +166,26 @@ public final class CommandServices {
         preflightObserver,
         migrateOverridesAction,
         writeRuReviewAction,
+        replacement,
+        snapshotPublishedAction);
+  }
+
+  public CommandServices withSnapshotPublishedAction(SnapshotPublishedAction replacement) {
+    return new CommandServices(
+        clock,
+        selectionAction,
+        manifestAction,
+        englishManifestAction,
+        prepareAction,
+        writeSiteAction,
+        gateRunner,
+        workflowState,
+        publicationValidator,
+        preflightService,
+        preflightObserver,
+        migrateOverridesAction,
+        writeRuReviewAction,
+        replaceEnglishReviewAction,
         replacement);
   }
 
@@ -186,7 +211,8 @@ public final class CommandServices {
         preflightObserver,
         migrateOverridesAction,
         writeRuReviewAction,
-        replaceEnglishReviewAction);
+        replaceEnglishReviewAction,
+        snapshotPublishedAction);
   }
 
   public Clock clock() {
@@ -238,6 +264,10 @@ public final class CommandServices {
       byte[] expected,
       List<WorkflowStateService.SnapshotGuard> guards) throws IOException {
     return replaceEnglishReviewAction.replace(review, content, collection, publicId, expected, guards);
+  }
+
+  public void snapshotPublished(Path reviewRoot, ManifestResult manifest) {
+    snapshotPublishedAction.snapshot(reviewRoot, manifest);
   }
 
   public Consumer<Path> astroGate(Path siteRoot) {
@@ -446,6 +476,11 @@ public final class CommandServices {
         String publicId,
         byte[] expected,
         List<WorkflowStateService.SnapshotGuard> guards) throws IOException;
+  }
+
+  @FunctionalInterface
+  public interface SnapshotPublishedAction {
+    void snapshot(Path reviewRoot, ManifestResult manifest);
   }
 
   public record CliPreflight(
