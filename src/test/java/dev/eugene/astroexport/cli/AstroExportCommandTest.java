@@ -500,6 +500,35 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void buildFromReviewReportsCommittedWriteErrorWhenSnapshotPublishedFails() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Published body.");
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path out = writeAstroRoot(temp.resolve("astro"));
+    Path report = temp.resolve("write-report.md");
+    CommandServices services = CommandServices.defaults()
+        .withGateRunner(invocation -> new SiteWriter.GateResult(0, "gate ok\n", ""))
+        .withSnapshotPublishedAction((reviewRoot, manifest) -> {
+          throw new RuntimeException("boom");
+        });
+
+    CommandFixture.Result result = run(new AstroExportCommand(services),
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", out.toString(),
+        "--report", report.toString(),
+        "--review", review.toString());
+
+    assertEquals(1, result.exitCode(), result.stderr());
+    String reportText = Files.readString(report);
+    assertTrue(reportText.startsWith("# Astro export committed with errors\n"));
+    assertTrue(reportText.contains("Status: committed-with-errors"));
+    assertTrue(reportText.contains("boom"));
+  }
+
+  @Test
   void dryRunBuildFromReviewDoesNotWritePublishedSnapshot() throws Exception {
     Path vault = temp.resolve("vault");
     writeBlogNote(vault, "Not yet published.");
