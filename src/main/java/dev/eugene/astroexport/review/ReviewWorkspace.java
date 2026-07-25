@@ -228,6 +228,36 @@ public final class ReviewWorkspace {
     return replaceEnglishReviewFile(reviewRoot, content, collection, publicId, null);
   }
 
+  public static void writePublishedSnapshot(
+      Path reviewRoot,
+      String collection,
+      String publicId,
+      String ru,
+      String en) {
+    Path directory = reviewRoot.resolve(collection).resolve(publicId).resolve("published");
+    replaceAtomically(directory.resolve("ru.md"), ru);
+    replaceAtomically(directory.resolve("en.md"), en);
+  }
+
+  public static Optional<String> readPublishedRu(Path reviewRoot, String collection, String publicId) {
+    return readIfExists(reviewRoot.resolve(collection).resolve(publicId).resolve("published/ru.md"));
+  }
+
+  public static Optional<String> readPublishedEn(Path reviewRoot, String collection, String publicId) {
+    return readIfExists(reviewRoot.resolve(collection).resolve(publicId).resolve("published/en.md"));
+  }
+
+  private static Optional<String> readIfExists(Path path) {
+    if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+      return Optional.empty();
+    }
+    try {
+      return Optional.of(Files.readString(path, StandardCharsets.UTF_8));
+    } catch (IOException error) {
+      throw new IllegalStateException("cannot read published snapshot " + path, error);
+    }
+  }
+
   private static Path migrateEditorialJson(Path source, Path reviewRoot) {
     try {
       Map<String, Object> payload = JSON.readValue(

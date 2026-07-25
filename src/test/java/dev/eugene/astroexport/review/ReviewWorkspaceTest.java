@@ -16,6 +16,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
@@ -533,6 +534,29 @@ final class ReviewWorkspaceTest {
     assertEquals(1, markdown.split("## Сейчас", -1).length - 1);
     assertTrue(markdown.endsWith(body + "\n"));
     assertFalse(markdown.contains("\ncurrent:"));
+  }
+
+  @Test
+  void writesAndReadsPublishedSnapshotPair() throws Exception {
+    Path review = temp.resolve("review");
+
+    ReviewWorkspace.writePublishedSnapshot(review, "blog", "essay", "ru content\n", "en content\n");
+
+    assertEquals(Optional.of("ru content\n"), ReviewWorkspace.readPublishedRu(review, "blog", "essay"));
+    assertEquals(Optional.of("en content\n"), ReviewWorkspace.readPublishedEn(review, "blog", "essay"));
+    assertTrue(Files.isRegularFile(review.resolve("blog/essay/published/ru.md")));
+    assertTrue(Files.isRegularFile(review.resolve("blog/essay/published/en.md")));
+
+    ReviewWorkspace.writePublishedSnapshot(review, "blog", "essay", "ru v2\n", "en v2\n");
+    assertEquals(Optional.of("ru v2\n"), ReviewWorkspace.readPublishedRu(review, "blog", "essay"));
+    assertEquals(Optional.of("en v2\n"), ReviewWorkspace.readPublishedEn(review, "blog", "essay"));
+  }
+
+  @Test
+  void readPublishedReturnsEmptyWhenNoSnapshotExists() {
+    Path review = temp.resolve("review");
+    assertEquals(Optional.empty(), ReviewWorkspace.readPublishedRu(review, "blog", "never-published"));
+    assertEquals(Optional.empty(), ReviewWorkspace.readPublishedEn(review, "blog", "never-published"));
   }
 
   private static ManifestEntry contentEntry() {
