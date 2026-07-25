@@ -1,0 +1,9 @@
+{
+  "id": "astro-publication-workflow",
+  "name": "Подготовка публикаций для Astro",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Проверяет текущую заметку и управляет внешним переводом через локальный Astro exporter.",
+  "author": "Eugene",
+  "isDesktopOnly": true
+}
