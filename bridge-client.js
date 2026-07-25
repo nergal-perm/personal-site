@@ -1,4 +1,5 @@
 const path = require("node:path");
+const os = require("node:os");
 const { spawn: defaultSpawn } = require("node:child_process");
 
 const COMMANDS = Object.freeze({
@@ -7,6 +8,33 @@ const COMMANDS = Object.freeze({
   "mark-reviewed": { note: true, jobs: true },
   "refresh-publication-queue": { note: false, jobs: true },
 });
+
+// GUI-launched hosts (Obsidian via Finder/Dock, not a terminal) inherit macOS's
+// minimal login PATH, which omits Homebrew and other user-installed bin
+// directories. The exporter shells out to CLI dependencies (e.g. ripgrep)
+// resolved through PATH, so those directories must be added explicitly here.
+const EXTRA_UNIX_BIN_DIRS = Object.freeze([
+  "/opt/homebrew/bin",
+  "/opt/homebrew/sbin",
+  "/usr/local/bin",
+  "/usr/local/sbin",
+]);
+
+function buildChildEnv(sourceEnv, homeDir, platform) {
+  if (platform === "win32") {
+    return { ...sourceEnv };
+  }
+  const extraDirs = [...EXTRA_UNIX_BIN_DIRS, path.join(homeDir, ".local", "bin")];
+  const segments = (sourceEnv.PATH || "").split(path.delimiter).filter(Boolean);
+  const seen = new Set(segments);
+  for (const dir of extraDirs) {
+    if (!seen.has(dir)) {
+      segments.push(dir);
+      seen.add(dir);
+    }
+  }
+  return { ...sourceEnv, PATH: segments.join(path.delimiter) };
+}
 
 class BridgeClientError extends Error {
   constructor(code, message) {
@@ -21,9 +49,9 @@ class BridgeClientError extends Error {
   }
 }
 
-function spawnFailureMessage(uvExecutable) {
+function spawnFailureMessage(exporterBinary) {
   return "Не удалось запустить exporter через " +
-    `${uvExecutable}. Проверьте путь к uv и каталог exporter-а.`;
+    `${exporterBinary}. Проверьте путь к бинарнику exporter-а.`;
 }
 
 function validateNotePath(notePath) {
@@ -93,11 +121,15 @@ function createBridgeClient({
   spawn = defaultSpawn,
   exporterRoot,
   vaultPath,
-  uvExecutable = "uv",
+  exporterBinary,
+  env = process.env,
+  homeDir = os.homedir(),
+  platform = process.platform,
 }) {
-  if (!exporterRoot || !vaultPath || !uvExecutable) {
-    throw new TypeError("exporterRoot, vaultPath and uvExecutable are required");
+  if (!exporterRoot || !vaultPath || !exporterBinary) {
+    throw new TypeError("exporterRoot, vaultPath and exporterBinary are required");
   }
+  const childEnv = buildChildEnv(env, homeDir, platform);
 
   return {
     run(command, notePath = null) {
@@ -116,8 +148,6 @@ function createBridgeClient({
       }
 
       const args = [
-        "run",
-        "astro-export",
         command,
         "--vault",
         vaultPath,
@@ -132,16 +162,17 @@ function createBridgeClient({
       return new Promise((resolve, reject) => {
         let child;
         try {
-          child = spawn(uvExecutable, args, {
+          child = spawn(exporterBinary, args, {
             cwd: exporterRoot,
             shell: false,
             windowsHide: true,
+            env: childEnv,
           });
         } catch (_error) {
           reject(
             new BridgeClientError(
               "spawn_failed",
-              spawnFailureMessage(uvExecutable),
+              spawnFailureMessage(exporterBinary),
             ),
           );
           return;
@@ -162,7 +193,7 @@ function createBridgeClient({
           reject(
             new BridgeClientError(
               "spawn_failed",
-              spawnFailureMessage(uvExecutable),
+              spawnFailureMessage(exporterBinary),
             ),
           );
         });

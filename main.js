@@ -1,12 +1,11 @@
 const path = require("node:path");
-const fs = require("node:fs");
-const os = require("node:os");
 
 // Obsidian evaluates a plugin's main.js through a host-level require, not a
 // module loader rooted at this plugin directory. Keep local dependencies in
 // this entrypoint instead of adding a relative runtime require here.
 const { createBridgeClient } = (() => {
   const nodePath = require("node:path");
+  const nodeOs = require("node:os");
   const { spawn: defaultSpawn } = require("node:child_process");
 
   const BRIDGE_COMMANDS = Object.freeze({
@@ -15,6 +14,33 @@ const { createBridgeClient } = (() => {
     "mark-reviewed": { note: true, jobs: true },
     "refresh-publication-queue": { note: false, jobs: true },
   });
+
+  // GUI-launched hosts (Obsidian via Finder/Dock, not a terminal) inherit macOS's
+  // minimal login PATH, which omits Homebrew and other user-installed bin
+  // directories. The exporter shells out to CLI dependencies (e.g. ripgrep)
+  // resolved through PATH, so those directories must be added explicitly here.
+  const EXTRA_UNIX_BIN_DIRS = Object.freeze([
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+  ]);
+
+  function buildChildEnv(sourceEnv, homeDir, platform) {
+    if (platform === "win32") {
+      return { ...sourceEnv };
+    }
+    const extraDirs = [...EXTRA_UNIX_BIN_DIRS, nodePath.join(homeDir, ".local", "bin")];
+    const segments = (sourceEnv.PATH || "").split(nodePath.delimiter).filter(Boolean);
+    const seen = new Set(segments);
+    for (const dir of extraDirs) {
+      if (!seen.has(dir)) {
+        segments.push(dir);
+        seen.add(dir);
+      }
+    }
+    return { ...sourceEnv, PATH: segments.join(nodePath.delimiter) };
+  }
 
   class BridgeClientError extends Error {
     constructor(code, message) {
@@ -29,9 +55,9 @@ const { createBridgeClient } = (() => {
     }
   }
 
-  function spawnFailureMessage(uvExecutable) {
+  function spawnFailureMessage(exporterBinary) {
     return "Не удалось запустить exporter через " +
-      `${uvExecutable}. Проверьте путь к uv и каталог exporter-а.`;
+      `${exporterBinary}. Проверьте путь к бинарнику exporter-а.`;
   }
 
   function validateNotePath(notePath) {
@@ -101,11 +127,15 @@ const { createBridgeClient } = (() => {
     spawn = defaultSpawn,
     exporterRoot,
     vaultPath,
-    uvExecutable = "uv",
+    exporterBinary,
+    env = process.env,
+    homeDir = nodeOs.homedir(),
+    platform = process.platform,
   }) {
-    if (!exporterRoot || !vaultPath || !uvExecutable) {
-      throw new TypeError("exporterRoot, vaultPath and uvExecutable are required");
+    if (!exporterRoot || !vaultPath || !exporterBinary) {
+      throw new TypeError("exporterRoot, vaultPath and exporterBinary are required");
     }
+    const childEnv = buildChildEnv(env, homeDir, platform);
 
     return {
       run(command, notePath = null) {
@@ -124,8 +154,6 @@ const { createBridgeClient } = (() => {
         }
 
         const args = [
-          "run",
-          "astro-export",
           command,
           "--vault",
           vaultPath,
@@ -140,16 +168,17 @@ const { createBridgeClient } = (() => {
         return new Promise((resolve, reject) => {
           let child;
           try {
-            child = spawn(uvExecutable, args, {
+            child = spawn(exporterBinary, args, {
               cwd: exporterRoot,
               shell: false,
               windowsHide: true,
+              env: childEnv,
             });
           } catch (_error) {
             reject(
               new BridgeClientError(
                 "spawn_failed",
-                spawnFailureMessage(uvExecutable),
+                spawnFailureMessage(exporterBinary),
               ),
             );
             return;
@@ -170,7 +199,7 @@ const { createBridgeClient } = (() => {
             reject(
               new BridgeClientError(
                 "spawn_failed",
-                spawnFailureMessage(uvExecutable),
+                spawnFailureMessage(exporterBinary),
               ),
             );
           });
@@ -233,14 +262,7 @@ const COMMANDS = [
   },
 ];
 
-function defaultUvExecutable() {
-  try {
-    const userLocalUv = path.join(os.homedir(), ".local", "bin", "uv");
-    return fs.existsSync(userLocalUv) ? userLocalUv : "uv";
-  } catch (_error) {
-    return "uv";
-  }
-}
+const DEFAULT_EXPORTER_BINARY = "/Users/eugene/Dev/astro-export-java/target/astro-export";
 
 function localDiagnostic(message) {
   return { field: "bridge", message, blocking: true };
@@ -308,7 +330,7 @@ class PublicationWorkflowSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Каталог exporter-а")
-      .setDesc("Локальный каталог tools/astro-export.")
+      .setDesc("Локальный каталог с рабочей областью exporter-а (review, .publication-jobs).")
       .addText((text) => text
         .setPlaceholder("/path/to/tools/astro-export")
         .setValue(this.plugin.settings.exporterRoot)
@@ -318,13 +340,13 @@ class PublicationWorkflowSettingTab extends PluginSettingTab {
         }));
 
     new Setting(containerEl)
-      .setName("Команда uv")
-      .setDesc("Имя команды или абсолютный путь к uv.")
+      .setName("Бинарник exporter-а")
+      .setDesc("Абсолютный путь к нативному бинарнику astro-export (GraalVM).")
       .addText((text) => text
-        .setPlaceholder("uv")
-        .setValue(this.plugin.settings.uvExecutable)
+        .setPlaceholder(DEFAULT_EXPORTER_BINARY)
+        .setValue(this.plugin.settings.exporterBinary)
         .onChange(async (value) => {
-          this.plugin.settings.uvExecutable = value.trim();
+          this.plugin.settings.exporterBinary = value.trim();
           await this.plugin.saveSettings();
         }));
   }
@@ -336,7 +358,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
     const saved = (await this.loadData()) || {};
     this.settings = {
       exporterRoot: saved.exporterRoot || path.resolve(vaultPath, "../tools/astro-export"),
-      uvExecutable: saved.uvExecutable || defaultUvExecutable(),
+      exporterBinary: saved.exporterBinary || DEFAULT_EXPORTER_BINARY,
     };
     this.vaultPath = vaultPath;
     this.resetBridgeClient();
@@ -355,14 +377,14 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
     this.bridgeClient = createBridgeClient({
       exporterRoot: this.settings.exporterRoot,
       vaultPath: this.vaultPath,
-      uvExecutable: this.settings.uvExecutable,
+      exporterBinary: this.settings.exporterBinary,
     });
   }
 
   async saveSettings() {
     await this.saveData({
       exporterRoot: this.settings.exporterRoot,
-      uvExecutable: this.settings.uvExecutable,
+      exporterBinary: this.settings.exporterBinary,
     });
     this.resetBridgeClient();
   }
@@ -493,6 +515,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
         `метаданные заблокированы: ${summary.metadata_blocked || 0}; ` +
         `переводится: ${summary.translating || 0}; ` +
         `готово к проверке: ${summary.ready_for_review || 0}; ` +
+        `готово к публикации: ${summary.ready_to_publish || 0}; ` +
         `ошибка перевода: ${summary.translation_failed || 0}; ` +
         `устарело: ${summary.stale || 0}; ` +
         `обновлено: ${result.updated || 0}; без изменений: ${result.unchanged || 0}.`,

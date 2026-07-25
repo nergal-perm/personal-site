@@ -58,13 +58,17 @@ function fakeSpawnResult({ stdout = "", stderr = "", exitCode = 0, error = null 
   return { spawn, calls };
 }
 
-function clientWith(fake) {
+function clientWith(fake, overrides = {}) {
   const { createBridgeClient } = bridgeExports();
   return createBridgeClient({
     spawn: fake.spawn,
     exporterRoot: "/Users/example/Personal Wiki/tools/astro-export",
     vaultPath: "/Users/example/Personal Wiki/knowledge-base",
-    uvExecutable: "/opt/homebrew/bin/uv",
+    exporterBinary: "/Users/example/Dev/astro-export-java/target/astro-export",
+    env: { PATH: "/usr/bin:/bin" },
+    homeDir: "/Users/example",
+    platform: "darwin",
+    ...overrides,
   });
 }
 
@@ -78,10 +82,8 @@ test("prepare preserves every argument boundary and disables the shell", async (
   assert.deepEqual(result, payload);
   assert.equal(fake.calls.length, 1);
   assert.deepEqual(fake.calls[0], {
-    executable: "/opt/homebrew/bin/uv",
+    executable: "/Users/example/Dev/astro-export-java/target/astro-export",
     args: [
-      "run",
-      "astro-export",
       "prepare",
       "--vault",
       "/Users/example/Personal Wiki/knowledge-base",
@@ -97,9 +99,57 @@ test("prepare preserves every argument boundary and disables the shell", async (
       cwd: "/Users/example/Personal Wiki/tools/astro-export",
       shell: false,
       windowsHide: true,
+      env: {
+        PATH: "/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/local/sbin:/Users/example/.local/bin",
+      },
     },
   });
   assert.equal(fake.calls[0].args.some((argument) => argument.includes("touch pwned")), false);
+});
+
+test("PATH is widened with Homebrew and user-local bin directories so GUI-launched hosts can find CLI dependencies like rg", async () => {
+  const fake = fakeSpawnResult({ stdout: JSON.stringify(response("prepare")) });
+  const client = clientWith(fake, {
+    env: { PATH: "/usr/bin:/bin", CUSTOM_VAR: "kept" },
+  });
+
+  await client.run("prepare", "concepts/Current.md");
+
+  const { env } = fake.calls[0].options;
+  assert.equal(env.CUSTOM_VAR, "kept");
+  assert.deepEqual(env.PATH.split(":"), [
+    "/usr/bin",
+    "/bin",
+    "/opt/homebrew/bin",
+    "/opt/homebrew/sbin",
+    "/usr/local/bin",
+    "/usr/local/sbin",
+    "/Users/example/.local/bin",
+  ]);
+});
+
+test("PATH augmentation does not duplicate directories already present", async () => {
+  const fake = fakeSpawnResult({ stdout: JSON.stringify(response("prepare")) });
+  const client = clientWith(fake, {
+    env: { PATH: "/usr/bin:/opt/homebrew/bin" },
+  });
+
+  await client.run("prepare", "concepts/Current.md");
+
+  const pathEntries = fake.calls[0].options.env.PATH.split(":");
+  assert.equal(pathEntries.filter((entry) => entry === "/opt/homebrew/bin").length, 1);
+});
+
+test("PATH is left untouched on Windows hosts", async () => {
+  const fake = fakeSpawnResult({ stdout: JSON.stringify(response("prepare")) });
+  const client = clientWith(fake, {
+    env: { PATH: "C:\\Windows\\System32" },
+    platform: "win32",
+  });
+
+  await client.run("prepare", "concepts/Current.md");
+
+  assert.equal(fake.calls[0].options.env.PATH, "C:\\Windows\\System32");
 });
 
 test("refresh-publication-queue never sends a current-note path", async () => {
@@ -130,8 +180,6 @@ test("refresh-publication-queue never sends a current-note path", async () => {
 
   assert.equal(fake.calls[0].args.includes("--note"), false);
   assert.deepEqual(fake.calls[0].args, [
-    "run",
-    "astro-export",
     "refresh-publication-queue",
     "--vault",
     "/Users/example/Personal Wiki/knowledge-base",
@@ -199,7 +247,7 @@ test("a spawn failure becomes a local diagnostic", async () => {
       assert.equal(error.code, "spawn_failed");
       assert.equal(error.diagnostic.field, "bridge");
       assert.match(error.diagnostic.message, /не удалось запустить exporter/i);
-      assert.match(error.diagnostic.message, /\/opt\/homebrew\/bin\/uv/);
+      assert.match(error.diagnostic.message, /\/Users\/example\/Dev\/astro-export-java\/target\/astro-export/);
       return true;
     },
   );
@@ -552,37 +600,26 @@ test("desktop manifest, four Russian command labels and local defaults are regis
   );
   assert.deepEqual(plugin.settings, {
     exporterRoot: "/Users/example/Personal Wiki/tools/astro-export",
-    uvExecutable: "uv",
+    exporterBinary: "/Users/eugene/Dev/astro-export-java/target/astro-export",
   });
   assert.equal(plugin.settingTabs.length, 1);
 });
 
-test("default uv uses the standard user-local binary without overriding saved settings", async () => {
-  const localUv = "/Users/example/.local/bin/uv";
-  const localHarness = loadPluginHarness({
-    homeDirectory: "/Users/example",
-    existsSync: (candidate) => candidate === localUv,
-  });
-  const localPlugin = new localHarness.PluginClass(localHarness.app);
-  await localPlugin.onload();
-  assert.equal(localPlugin.settings.uvExecutable, localUv);
+test("default exporter binary is the local GraalVM build without overriding saved settings", async () => {
+  const defaultHarness = loadPluginHarness();
+  const defaultPlugin = new defaultHarness.PluginClass(defaultHarness.app);
+  await defaultPlugin.onload();
+  assert.equal(
+    defaultPlugin.settings.exporterBinary,
+    "/Users/eugene/Dev/astro-export-java/target/astro-export",
+  );
 
   const explicitHarness = loadPluginHarness({
-    savedData: { uvExecutable: "/custom/tools/uv" },
-    homeDirectory: "/Users/example",
-    existsSync: () => true,
+    savedData: { exporterBinary: "/custom/tools/astro-export" },
   });
   const explicitPlugin = new explicitHarness.PluginClass(explicitHarness.app);
   await explicitPlugin.onload();
-  assert.equal(explicitPlugin.settings.uvExecutable, "/custom/tools/uv");
-
-  const fallbackHarness = loadPluginHarness({
-    homeDirectory: "/Users/example",
-    existsSync: () => false,
-  });
-  const fallbackPlugin = new fallbackHarness.PluginClass(fallbackHarness.app);
-  await fallbackPlugin.onload();
-  assert.equal(fallbackPlugin.settings.uvExecutable, "uv");
+  assert.equal(explicitPlugin.settings.exporterBinary, "/custom/tools/astro-export");
 });
 
 test("note commands accept only the active Markdown TFile", async () => {
@@ -663,7 +700,7 @@ test("blocked review validation opens a field checklist without optimistic succe
   );
 });
 
-test("refresh sends no note and reports the five-state summary", async () => {
+test("refresh sends no note and reports the six-state summary", async () => {
   const harness = loadPluginHarness();
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -678,11 +715,12 @@ test("refresh sends no note and reports the five-state summary", async () => {
           metadata_blocked: 2,
           translating: 1,
           ready_for_review: 3,
-          translation_failed: 4,
-          stale: 5,
+          ready_to_publish: 4,
+          translation_failed: 5,
+          stale: 6,
         },
-        updated: 6,
-        unchanged: 7,
+        updated: 7,
+        unchanged: 8,
         uncertain: 0,
       });
     },
@@ -693,8 +731,9 @@ test("refresh sends no note and reports the five-state summary", async () => {
   assert.deepEqual(bridgeCalls, [["refresh-publication-queue"]]);
   const finished = harness.notices.map(({ message }) => message).join("\n");
   assert.match(finished, /готово к проверке: 3/);
-  assert.match(finished, /устарело: 5/);
-  assert.match(finished, /обновлено: 6/);
+  assert.match(finished, /готово к публикации: 4/);
+  assert.match(finished, /устарело: 6/);
+  assert.match(finished, /обновлено: 7/);
 });
 
 test("community plugin enablement retains the live list and adds only this plugin", () => {
