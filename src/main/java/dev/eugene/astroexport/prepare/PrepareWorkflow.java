@@ -57,6 +57,9 @@ import org.snakeyaml.engine.v2.common.FlowStyle;
 public final class PrepareWorkflow {
   public static final Duration CODEX_TIMEOUT = Duration.ofSeconds(900);
   private static final int SCOPE_SLACK_PARAGRAPHS = 1;
+  private static final Set<String> VOLATILE_SCOPE_FRONTMATTER_FIELDS = Set.of(
+      "route", "targetPath", "sourceHash", "translationStatus", "translatedAt",
+      "translationProfile");
   private static final Set<String> ALLOWED_JOB_FILES = Set.of(
       "ru.md",
       "en.md",
@@ -897,9 +900,12 @@ public final class PrepareWorkflow {
     int ruChanged = TranslationDiff.changedParagraphCount(
         body(publishedRu.get()), body(normalizedRu));
     // Body-only paragraph counting misses frontmatter-only source edits (e.g. a translated
-    // `description:` leaf). Fall back to a whole-document comparison so a source change that
-    // never touches the body can still surface a scope mismatch.
-    boolean sourceChanged = ruChanged > 0 || !publishedRu.get().equals(normalizedRu);
+    // `description:` leaf). Compare frontmatter fields that matter for translation as a
+    // fallback, ignoring volatile control/routing fields (route, targetPath, sourceHash,
+    // translationStatus, translatedAt, translationProfile) that are re-serialized on every
+    // publish and never reflect a meaningful source change.
+    boolean sourceChanged = ruChanged > 0
+        || meaningfulFrontmatterChanged(publishedRu.get(), normalizedRu);
     if (!sourceChanged) {
       return List.of();
     }
@@ -916,7 +922,19 @@ public final class PrepareWorkflow {
   }
 
   private static String body(String markdown) {
-    return FrontmatterDocument.parse(Path.of("scope.md"), "scope.md", markdown).body();
+    return frontmatterDocument(markdown).body();
+  }
+
+  private static boolean meaningfulFrontmatterChanged(String publishedRu, String normalizedRu) {
+    Map<String, Object> before = new LinkedHashMap<>(frontmatterDocument(publishedRu).metadata());
+    Map<String, Object> after = new LinkedHashMap<>(frontmatterDocument(normalizedRu).metadata());
+    VOLATILE_SCOPE_FRONTMATTER_FIELDS.forEach(before::remove);
+    VOLATILE_SCOPE_FRONTMATTER_FIELDS.forEach(after::remove);
+    return !before.equals(after);
+  }
+
+  private static FrontmatterDocument frontmatterDocument(String markdown) {
+    return FrontmatterDocument.parse(Path.of("scope.md"), "scope.md", markdown);
   }
 
   private static String prompt(String candidateTemplate, String sourceHash, String ruDiff) {

@@ -465,6 +465,69 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void omitsScopeDiagnosticWhenPublishedSnapshotOnlyDiffersInVolatileReserializationFields()
+      throws Exception {
+    String sourceMarkdown = """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Paragraph one.
+
+        Paragraph two.
+
+        Paragraph three.
+        """;
+
+    // Prime a first workspace so the published snapshot is captured via the real
+    // ReviewWorkspace.writeRuReviewFile/serializeContent code path (route + targetPath
+    // populated), instead of a hand-typed string that might not match production output.
+    Path primerVault = temp.resolve("primer-vault");
+    Path primerSource = primerVault.resolve("blog/Essay.md");
+    Files.createDirectories(primerSource.getParent());
+    Files.writeString(primerSource, sourceMarkdown);
+    Path primerReview = temp.resolve("primer-review");
+    RecordingRunner primerRunner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "English one.\n\nEnglish two.\n\nEnglish three.\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    workflow(primerRunner).prepare(
+        primerVault, "blog/Essay.md", primerReview, temp.resolve("primer-jobs"));
+    String realisticRu = Files.readString(primerReview.resolve("blog/essay/ru.md"));
+    String realisticEn = Files.readString(primerReview.resolve("blog/essay/en.md"));
+    assertTrue(realisticRu.contains("route:"));
+    assertTrue(realisticRu.contains("targetPath:"));
+
+    // Fixture under test: the same Russian source, published from the realistic snapshot
+    // above. Nothing meaningful changed; only volatile re-serialization fields (targetPath
+    // is stripped from the normalized copy used for comparison, sourceHash/translatedAt/
+    // translationStatus/translationProfile live only on the English side) differ.
+    Fixture fixture = fixture();
+    Files.writeString(fixture.source(), sourceMarkdown);
+    ReviewWorkspace.writePublishedSnapshot(
+        fixture.review(), "blog", "essay", realisticRu, realisticEn);
+
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "English one changed.\n\nEnglish two changed.\n\nEnglish three changed.\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertTrue(result.diagnostics().stream()
+        .noneMatch(diagnostic -> "translation-scope".equals(diagnostic.field())));
+  }
+
+  @Test
   void promptOmitsDiffSectionWhenNoPublishedSnapshotExists() throws Exception {
     Fixture fixture = fixture();
     RecordingRunner runner = new RecordingRunner(job -> {
