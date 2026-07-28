@@ -99,11 +99,18 @@ public final class PublishedSnapshotStore {
   }
 
   private final class FilePendingSnapshot implements PendingSnapshot {
+    private enum OwnershipState {
+      STAGED_NEW,
+      FIRST_PUBLICATION_VISIBLE,
+      REPLACEMENT_VISIBLE_WITH_DISPLACED,
+      COMMITTED
+    }
+
     private final Path published;
     private final Path staging;
     private final byte[] russian;
     private final byte[] english;
-    private boolean committed;
+    private OwnershipState ownershipState = OwnershipState.STAGED_NEW;
     private boolean closed;
 
     private FilePendingSnapshot(
@@ -122,8 +129,12 @@ public final class PublishedSnapshotStore {
       if (closed) {
         throw new IllegalStateException("published snapshot staging is closed");
       }
-      if (committed) {
+      if (ownershipState == OwnershipState.COMMITTED) {
         throw new IllegalStateException("published snapshot is already committed");
+      }
+      if (ownershipState != OwnershipState.STAGED_NEW) {
+        throw new IllegalStateException(
+            "published snapshot commit cannot be retried after an incomplete rollback");
       }
       List<WorkflowStateService.SnapshotGuard> checkedGuards =
           List.copyOf(Objects.requireNonNull(guards, "guards"));
@@ -136,24 +147,29 @@ public final class PublishedSnapshotStore {
         if (replacement) {
           validatePublishedLayout(published);
           atomicExchange.exchange(published, staging);
+          ownershipState = OwnershipState.REPLACEMENT_VISIBLE_WITH_DISPLACED;
         } else {
           Files.move(staging, published, StandardCopyOption.ATOMIC_MOVE);
+          ownershipState = OwnershipState.FIRST_PUBLICATION_VISIBLE;
         }
 
         try {
           ioHooks.afterVisibleCommit(published);
         } catch (IOException error) {
-          rollback(replacement, error);
+          rollback(error);
           throw commitFailure(published, error);
+        } catch (RuntimeException error) {
+          rollback(error);
+          throw error;
         }
 
         if (!guardsMatch(checkedGuards)
             || !visiblePairMatches(published, russian, english)) {
           ConcurrentPublishedSnapshotException error = concurrentUpdate();
-          rollback(replacement, error);
+          rollback(error);
           throw error;
         }
-        committed = true;
+        ownershipState = OwnershipState.COMMITTED;
 
         if (!replacement) {
           return new CommitResult(List.of());
@@ -177,7 +193,7 @@ public final class PublishedSnapshotStore {
         return;
       }
       closed = true;
-      if (committed) {
+      if (ownershipState != OwnershipState.STAGED_NEW) {
         return;
       }
       try {
@@ -188,13 +204,17 @@ public final class PublishedSnapshotStore {
       }
     }
 
-    private void rollback(boolean replacement, Exception failure) {
+    private void rollback(Throwable failure) {
       try {
-        if (replacement) {
-          atomicExchange.exchange(published, staging);
-        } else {
-          Files.move(published, staging, StandardCopyOption.ATOMIC_MOVE);
+        switch (ownershipState) {
+          case REPLACEMENT_VISIBLE_WITH_DISPLACED ->
+              atomicExchange.exchange(published, staging);
+          case FIRST_PUBLICATION_VISIBLE ->
+              Files.move(published, staging, StandardCopyOption.ATOMIC_MOVE);
+          default -> throw new IllegalStateException(
+              "published snapshot rollback has no visible candidate");
         }
+        ownershipState = OwnershipState.STAGED_NEW;
       } catch (IOException rollbackError) {
         rollbackError.addSuppressed(failure);
         throw commitFailure(published, rollbackError);
