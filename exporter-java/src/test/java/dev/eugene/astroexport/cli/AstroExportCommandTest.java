@@ -16,6 +16,7 @@ import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
+import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.review.PublishedSnapshotStore;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.testsupport.CommandFixture;
@@ -228,6 +229,78 @@ final class AstroExportCommandTest {
     assertEquals(0, refreshPayload.get("updated"));
     assertEquals(1, refreshPayload.get("unchanged"));
     assertEquals(0, refreshPayload.get("uncertain"));
+  }
+
+  @Test
+  void approvedRussianSnapshotScopesTheNextPreparePromptToTheSmallEdit()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(
+        vault,
+        "Paragraph one.\n\nParagraph two.\n\nParagraph three.");
+    Path review = temp.resolve("review");
+    Path jobs = temp.resolve("jobs");
+    ManifestEntry versionOne = currentBlogEntry(vault);
+    writeBlogReviewEn(review, versionOne.translationSourceHash(), "generated");
+
+    CommandFixture.Result approved = runMarkReviewed(
+        command(), vault, review, jobs);
+    assertEquals(0, approved.exitCode(), approved.stderr());
+
+    Files.writeString(
+        source,
+        Files.readString(source)
+            .replace("Paragraph two.", "Paragraph two edited."));
+
+    String[] prompt = {null};
+    PrepareWorkflow.TranslationRunner runner = (workdir, instructions, timeout) -> {
+      prompt[0] = instructions;
+      Map<String, Object> journal = JSON.readValue(
+          Files.readString(workdir.resolve("job.json")),
+          new TypeReference<LinkedHashMap<String, Object>>() { });
+      Files.writeString(workdir.resolve("candidate.en.md"), """
+          ---
+          sourceHash: %s
+          translationStatus: generated
+          translatedAt: 2026-07-28
+          translationProfile: fake-codex-v1
+          title: English title
+          description: English description.
+          ---
+          English paragraph one.
+
+          English paragraph two edited.
+
+          English paragraph three.
+          """.formatted(journal.get("sourceHash")));
+      return new CodexRunner.Run(0, "", "", false);
+    };
+    CommandServices services = CommandServices.defaults()
+        .withPrepareAction((actualVault, note, actualReview, actualJobs, resolver) ->
+            new PrepareWorkflow(
+                runner,
+                Clock.fixed(
+                    Instant.parse("2026-07-28T12:00:00Z"),
+                    ZoneOffset.UTC))
+                .prepare(actualVault, note, actualReview, actualJobs));
+
+    CommandFixture.Result prepared = run(
+        new AstroExportCommand(services),
+        "prepare",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", review.toString(),
+        "--jobs", jobs.toString(),
+        "--json");
+
+    assertEquals(0, prepared.exitCode(), prepared.stderr());
+    assertTrue(prompt[0].contains("<source-diff>"));
+    assertTrue(prompt[0].contains("-Paragraph two."));
+    assertTrue(prompt[0].contains("+Paragraph two edited."));
+    assertFalse(prompt[0].contains("-Paragraph one."));
+    assertFalse(prompt[0].contains("+Paragraph one."));
+    assertFalse(prompt[0].contains("-Paragraph three."));
+    assertFalse(prompt[0].contains("+Paragraph three."));
   }
 
   @Test
