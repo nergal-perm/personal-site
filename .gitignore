@@ -1,3 +1,4 @@
 .migration-backup/
 obsidian-plugin/data.json
 e2e/.review/
+.DS_Store
