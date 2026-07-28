@@ -295,12 +295,17 @@ final class AstroExportCommandTest {
 
     assertEquals(0, prepared.exitCode(), prepared.stderr());
     assertTrue(prompt[0].contains("<source-diff>"));
-    assertTrue(prompt[0].contains("-Paragraph two."));
-    assertTrue(prompt[0].contains("+Paragraph two edited."));
-    assertFalse(prompt[0].contains("-Paragraph one."));
-    assertFalse(prompt[0].contains("+Paragraph one."));
-    assertFalse(prompt[0].contains("-Paragraph three."));
-    assertFalse(prompt[0].contains("+Paragraph three."));
+    assertTrue(prompt[0].contains("</source-diff>"));
+    String sourceDiff = prompt[0].substring(
+        prompt[0].indexOf("<source-diff>") + "<source-diff>".length(),
+        prompt[0].indexOf("</source-diff>"));
+    List<String> contentChanges = sourceDiff.lines()
+        .filter(line -> (line.startsWith("-") && !line.startsWith("---"))
+            || (line.startsWith("+") && !line.startsWith("+++")))
+        .toList();
+    assertEquals(List.of(
+        "-Paragraph two.",
+        "+Paragraph two edited."), contentChanges);
   }
 
   @Test
