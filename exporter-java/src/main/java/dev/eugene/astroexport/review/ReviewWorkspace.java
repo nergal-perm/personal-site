@@ -52,9 +52,6 @@ public final class ReviewWorkspace {
       new PublishedSnapshotStore();
   private static final ObjectMapper JSON = new ObjectMapper()
       .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION.mappedFeature());
-  private static final Dump YAML_DUMP = new Dump(DumpSettings.builder()
-      .setDefaultFlowStyle(FlowStyle.BLOCK)
-      .build());
 
   private ReviewWorkspace() { }
 
@@ -279,20 +276,6 @@ public final class ReviewWorkspace {
         pending.close();
       }
     };
-  }
-
-  public static void snapshotPublished(Path reviewRoot, ManifestResult manifest) {
-    for (ManifestEntry entry : manifest.entries()) {
-      Target target = target(entry);
-      Path directory = reviewRoot.resolve(target.collection()).resolve(target.publicId());
-      try {
-        String ru = Files.readString(directory.resolve("ru.md"), StandardCharsets.UTF_8);
-        String en = Files.readString(directory.resolve("en.md"), StandardCharsets.UTF_8);
-        writePublishedSnapshot(reviewRoot, target.collection(), target.publicId(), ru, en);
-      } catch (IOException error) {
-        throw new IllegalStateException("cannot snapshot published review " + directory, error);
-      }
-    }
   }
 
   public static Optional<String> readPublishedRu(Path reviewRoot, String collection, String publicId) {
@@ -604,7 +587,9 @@ public final class ReviewWorkspace {
   }
 
   private static String serializeMarkdown(Map<String, Object> metadata, String body) {
-    String yaml = YAML_DUMP.dumpToString(metadata);
+    String yaml = new Dump(DumpSettings.builder()
+        .setDefaultFlowStyle(FlowStyle.BLOCK)
+        .build()).dumpToString(metadata);
     String content = body == null ? "" : body.strip();
     return "---\n" + yaml + "---\n" + (content.isEmpty() ? "" : content + "\n");
   }

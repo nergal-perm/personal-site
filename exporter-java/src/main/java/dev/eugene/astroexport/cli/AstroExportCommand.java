@@ -12,6 +12,7 @@ import dev.eugene.astroexport.model.PublicationKind;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.report.ReportBuilder;
+import dev.eugene.astroexport.review.PublishedSnapshotStore;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.translation.TranslationValidator;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
@@ -206,19 +207,6 @@ public final class AstroExportCommand implements Callable<Integer> {
       return 1;
     } catch (Exception error) {
       String text = ReportBuilder.buildBlockedWriteReport(error, selection, manifest);
-      emitReport(reportPath, text, error);
-      return 1;
-    }
-
-    try {
-      services.snapshotPublished(reviewRoot, manifest);
-    } catch (Exception error) {
-      String text = ReportBuilder.buildCommittedWriteErrorReport(
-          new SiteWriter.WriterException(
-              error.getMessage() == null ? error.toString() : error.getMessage(), true, List.of()),
-          selection,
-          manifest,
-          result);
       emitReport(reportPath, text, error);
       return 1;
     }
@@ -566,8 +554,28 @@ public final class AstroExportCommand implements Callable<Integer> {
       byte[] reviewedBytes = "reviewed".equals(pair.translationStatus())
           ? pair.content()
           : reviewed.getBytes(StandardCharsets.UTF_8);
-      Path english = englishPath(reviewRoot, target);
+      ReviewWorkspace.PendingPublishedSnapshot pendingSnapshot;
       try {
+        pendingSnapshot = services.stageApprovedSnapshot(
+            reviewRoot, stable.preflight().entry(), reviewedBytes);
+      } catch (RuntimeException error) {
+        emitJson(bridge("mark-reviewed", false,
+                freshPairWorkflowStatus(pair.translationStatus()))
+            .note(note)
+            .identity(identity)
+            .diagnostics(List.of(new PublicationDiagnostic(
+                "published-snapshot",
+                "Could not stage the approved publication baseline ("
+                    + error.getClass().getSimpleName()
+                    + "); the previous baseline was not changed.")))
+            .workspaceHealth(stable.preflight().workspaceHealth())
+            .pairFreshness("fresh")
+            .translationStatus(pair.translationStatus())
+            .build());
+        return 1;
+      }
+      Path english = englishPath(reviewRoot, target);
+      try (pendingSnapshot) {
         StablePreflight beforeEnglishCommit = stablePreflight(vaultRoot, note, stable.preflight().note().path());
         if (!beforeEnglishCommit.preflight().ready()
             || !identity.samePublicIdentity(identityFromPreflight(beforeEnglishCommit.preflight(), reviewRoot))
@@ -598,6 +606,75 @@ public final class AstroExportCommand implements Callable<Integer> {
         setWorkflowIfChanged(current.preflight(), "ready_to_publish", "reviewed", "",
             services.clock().instant(), stable.sourceSnapshot(),
             List.of(new WorkflowStateService.SnapshotGuard(english, reviewedBytes)));
+
+        StablePreflight approved = stablePreflight(
+            vaultRoot, note, current.preflight().note().path());
+        String stagedHash = requiredTranslationSourceHash(stable.preflight().entry());
+        String approvedHash =
+            requiredTranslationSourceHash(approved.preflight().entry());
+        if (!approved.preflight().ready()
+            || !identity.samePublicIdentity(
+                identityFromPreflight(approved.preflight(), reviewRoot))
+            || !stagedHash.equals(approvedHash)
+            || !Arrays.equals(readSafeRegularFile(english), reviewedBytes)) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "source projection or English review changed before published snapshot commit");
+        }
+
+        ReviewWorkspace.PublishedSnapshotResult published;
+        try {
+          published = pendingSnapshot.commit(List.of(
+              new WorkflowStateService.SnapshotGuard(
+                  approved.preflight().note().path(),
+                  approved.sourceSnapshot()),
+              new WorkflowStateService.SnapshotGuard(english, reviewedBytes)));
+        } catch (PublishedSnapshotStore.ConcurrentPublishedSnapshotException error) {
+          emitJson(bridge("mark-reviewed", false, "stale")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "published-snapshot",
+                  "Source or English review changed at the published snapshot "
+                      + "commit boundary; inspect both and retry.")))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .pairFreshness("fresh")
+              .translationStatus("reviewed")
+              .build());
+          return 1;
+        } catch (RuntimeException error) {
+          emitJson(bridge("mark-reviewed", false, "ready_to_publish")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "published-snapshot",
+                  "English review is approved, but the published baseline was not "
+                      + "updated (" + error.getClass().getSimpleName()
+                      + "); invoke Mark current translation reviewed again.")))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .pairFreshness("fresh")
+              .translationStatus("reviewed")
+              .build());
+          return 1;
+        }
+
+        List<PublicationDiagnostic> snapshotDiagnostics =
+            published.recoveryPaths().stream()
+                .map(path -> new PublicationDiagnostic(
+                    "published-snapshot-cleanup",
+                    "Approved baseline was saved, but the displaced previous snapshot "
+                        + "could not be removed; recovery path: " + path,
+                    false))
+                .toList();
+
+        emitJson(bridge("mark-reviewed", true, "ready_to_publish")
+            .note(note)
+            .identity(identity)
+            .diagnostics(snapshotDiagnostics)
+            .workspaceHealth(stable.preflight().workspaceHealth())
+            .pairFreshness("fresh")
+            .translationStatus("reviewed")
+            .build());
+        return 0;
       } catch (ReviewWorkspace.ConcurrentReviewUpdateException
           | WorkflowStateService.ConcurrentFileUpdateException error) {
         ReviewPairState durablePair = reviewPairState(stable.preflight().entry(), reviewRoot);
@@ -627,15 +704,6 @@ public final class AstroExportCommand implements Callable<Integer> {
             .build());
         return 1;
       }
-
-      emitJson(bridge("mark-reviewed", true, "ready_to_publish")
-          .note(note)
-          .identity(identity)
-          .workspaceHealth(stable.preflight().workspaceHealth())
-          .pairFreshness("fresh")
-          .translationStatus("reviewed")
-          .build());
-      return 0;
     } catch (LockBusyException error) {
       emitJson(bridge("mark-reviewed", false, "translating")
           .note(note)

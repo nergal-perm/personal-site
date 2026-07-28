@@ -18,7 +18,9 @@ import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.testsupport.CommandFixture;
+import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -193,6 +195,12 @@ final class AstroExportCommandTest {
     assertEquals("reviewed", payload.get("translationStatus"));
     String reviewed = Files.readString(review.resolve("blog/essay/en.md"));
     assertTrue(reviewed.contains("translationStatus: \"reviewed\""));
+    Path publishedRu = review.resolve("blog/essay/published/ru.md");
+    Path publishedEn = review.resolve("blog/essay/published/en.md");
+    assertEquals(
+        ReviewWorkspace.renderRuReview(currentBlogEntry(vault)),
+        Files.readString(publishedRu));
+    assertEquals(reviewed, Files.readString(publishedEn));
     String sourceText = Files.readString(source);
     assertTrue(sourceText.contains("publicWorkflowStatus: \"ready_to_publish\""));
     assertTrue(sourceText.contains("publicTranslationStatus: \"reviewed\""));
@@ -468,64 +476,121 @@ final class AstroExportCommandTest {
   }
 
   @Test
-  void buildFromReviewWritesPublishedSnapshotOfRuAndEnAfterSuccessfulWrite() throws Exception {
+  void snapshotFailureReturnsReadyToPublishAndRetryCompletesTheBaseline()
+      throws Exception {
     Path vault = temp.resolve("vault");
-    writeBlogNote(vault, "Published body.");
+    Path source = writeBlogNote(vault);
     Path review = temp.resolve("review");
     ManifestEntry entry = currentBlogEntry(vault);
     writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
-    Path out = writeAstroRoot(temp.resolve("astro"));
-    Path report = temp.resolve("write-report.md");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "old ru\n", "old en\n");
+    AtomicInteger stages = new AtomicInteger();
     CommandServices services = CommandServices.defaults()
-        .withGateRunner(invocation -> new SiteWriter.GateResult(0, "gate ok\n", ""));
+        .withStageApprovedSnapshotAction((root, current, english) -> {
+          ReviewWorkspace.PendingPublishedSnapshot real =
+              ReviewWorkspace.stageApprovedSnapshot(root, current, english);
+          if (stages.incrementAndGet() > 1) return real;
+          return failingCommit(real, new IllegalStateException("disk full"));
+        });
 
-    CommandFixture.Result result = run(new AstroExportCommand(services),
-        "build-from-review",
-        "--vault", vault.toString(),
-        "--out", out.toString(),
-        "--report", report.toString(),
-        "--review", review.toString());
+    CommandFixture.Result failed = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> failedPayload = json(failed.stdout());
+    assertEquals(1, failed.exitCode());
+    assertEquals(false, failedPayload.get("ok"));
+    assertEquals("ready_to_publish", failedPayload.get("status"));
+    assertEquals("published-snapshot", firstDiagnosticField(failedPayload));
+    assertEquals("old ru\n",
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
+    assertTrue(Files.readString(source)
+        .contains("publicWorkflowStatus: \"ready_to_publish\""));
 
-    assertEquals(0, result.exitCode(), result.stderr());
-    Path publishedRu = review.resolve("blog/essay/published/ru.md");
-    Path publishedEn = review.resolve("blog/essay/published/en.md");
-    assertTrue(Files.isRegularFile(publishedRu));
-    assertTrue(Files.isRegularFile(publishedEn));
+    CommandFixture.Result retried = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    assertEquals(0, retried.exitCode(), retried.stderr());
     assertEquals(
-        Files.readString(review.resolve("blog/essay/ru.md")),
-        Files.readString(publishedRu));
-    assertEquals(
-        Files.readString(review.resolve("blog/essay/en.md")),
-        Files.readString(publishedEn));
+        ReviewWorkspace.renderRuReview(currentBlogEntry(vault)),
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
   }
 
   @Test
-  void buildFromReviewReportsCommittedWriteErrorWhenSnapshotPublishedFails() throws Exception {
+  void sourceChangeAtPublishedCommitReturnsStaleAndPreservesOldPair()
+      throws Exception {
     Path vault = temp.resolve("vault");
-    writeBlogNote(vault, "Published body.");
+    Path source = writeBlogNote(vault);
     Path review = temp.resolve("review");
     ManifestEntry entry = currentBlogEntry(vault);
     writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
-    Path out = writeAstroRoot(temp.resolve("astro"));
-    Path report = temp.resolve("write-report.md");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "old ru\n", "old en\n");
     CommandServices services = CommandServices.defaults()
-        .withGateRunner(invocation -> new SiteWriter.GateResult(0, "gate ok\n", ""))
-        .withSnapshotPublishedAction((reviewRoot, manifest) -> {
-          throw new RuntimeException("boom");
+        .withStageApprovedSnapshotAction((root, current, english) -> {
+          ReviewWorkspace.PendingPublishedSnapshot real =
+              ReviewWorkspace.stageApprovedSnapshot(root, current, english);
+          return new ReviewWorkspace.PendingPublishedSnapshot() {
+            @Override
+            public ReviewWorkspace.PublishedSnapshotResult commit(
+                List<WorkflowStateService.SnapshotGuard> guards) {
+              try {
+                Files.writeString(
+                    source,
+                    Files.readString(source)
+                        .replace("Text.", "Changed at snapshot boundary."));
+              } catch (IOException error) {
+                throw new java.io.UncheckedIOException(error);
+              }
+              return real.commit(guards);
+            }
+
+            @Override
+            public void close() {
+              real.close();
+            }
+          };
         });
 
-    CommandFixture.Result result = run(new AstroExportCommand(services),
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("stale", payload.get("status"));
+    assertEquals("old ru\n",
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
+    assertEquals("old en\n",
+        Files.readString(review.resolve("blog/essay/published/en.md")));
+  }
+
+  @Test
+  void buildFromReviewDoesNotCreateOrReplaceApprovedSnapshot() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Exported body.");
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "approved ru\n", "approved en\n");
+    Path out = writeAstroRoot(temp.resolve("astro"));
+
+    CommandFixture.Result result = run(
+        new AstroExportCommand(CommandServices.defaults()
+            .withGateRunner(invocation ->
+                new SiteWriter.GateResult(0, "gate ok\n", ""))),
         "build-from-review",
         "--vault", vault.toString(),
         "--out", out.toString(),
-        "--report", report.toString(),
+        "--report", temp.resolve("report.md").toString(),
         "--review", review.toString());
 
-    assertEquals(1, result.exitCode(), result.stderr());
-    String reportText = Files.readString(report);
-    assertTrue(reportText.startsWith("# Astro export committed with errors\n"));
-    assertTrue(reportText.contains("Status: committed-with-errors"));
-    assertTrue(reportText.contains("boom"));
+    assertEquals(0, result.exitCode(), result.stderr());
+    assertEquals(
+        "approved ru\n",
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
+    assertEquals(
+        "approved en\n",
+        Files.readString(review.resolve("blog/essay/published/en.md")));
   }
 
   @Test
@@ -696,6 +761,45 @@ final class AstroExportCommandTest {
         exitCode,
         out.toString(StandardCharsets.UTF_8),
         err.toString(StandardCharsets.UTF_8));
+  }
+
+  private static ReviewWorkspace.PendingPublishedSnapshot failingCommit(
+      ReviewWorkspace.PendingPublishedSnapshot delegate,
+      RuntimeException failure) {
+    return new ReviewWorkspace.PendingPublishedSnapshot() {
+      @Override
+      public ReviewWorkspace.PublishedSnapshotResult commit(
+          List<WorkflowStateService.SnapshotGuard> guards) {
+        throw failure;
+      }
+
+      @Override
+      public void close() {
+        delegate.close();
+      }
+    };
+  }
+
+  private static CommandFixture.Result runMarkReviewed(
+      AstroExportCommand command,
+      Path vault,
+      Path review,
+      Path jobs) {
+    return run(
+        command,
+        "mark-reviewed",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", review.toString(),
+        "--jobs", jobs.toString(),
+        "--json");
+  }
+
+  @SuppressWarnings("unchecked")
+  private static String firstDiagnosticField(Map<String, Object> payload) {
+    List<Map<String, Object>> diagnostics =
+        (List<Map<String, Object>>) payload.get("diagnostics");
+    return String.valueOf(diagnostics.getFirst().get("field"));
   }
 
   private static Map<String, Object> json(String stdout) throws Exception {
