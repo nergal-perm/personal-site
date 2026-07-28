@@ -700,6 +700,62 @@ test("blocked review validation opens a field checklist without optimistic succe
   );
 });
 
+test("successful review reports the saved approved version with one bridge call", async () => {
+  const harness = loadPluginHarness();
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+  harness.app.workspace.activeFile = new harness.FakeTFile("concepts/Current.md");
+  const bridgeCalls = [];
+  plugin.bridgeClient = {
+    async run(...args) {
+      bridgeCalls.push(args);
+      return response("mark-reviewed", {
+        status: "ready_to_publish",
+        translationStatus: "reviewed",
+      });
+    },
+  };
+
+  await command(plugin, "mark-current-translation-reviewed").callback();
+
+  assert.deepEqual(bridgeCalls, [["mark-reviewed", "concepts/Current.md"]]);
+  assert.ok(harness.notices.some(
+    ({ message }) => message === "Перевод проверен; одобренная версия сохранена.",
+  ));
+});
+
+test("published snapshot failure shows diagnostics without approval success", async () => {
+  const harness = loadPluginHarness();
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+  harness.app.workspace.activeFile = new harness.FakeTFile("concepts/Current.md");
+  plugin.bridgeClient = {
+    async run() {
+      return response("mark-reviewed", {
+        ok: false,
+        status: "ready_to_publish",
+        translationStatus: "reviewed",
+        diagnostics: [{
+          field: "published-snapshot",
+          message: "Approved baseline was not updated; retry.",
+          blocking: true,
+        }],
+      });
+    },
+  };
+
+  await command(plugin, "mark-current-translation-reviewed").callback();
+
+  assert.match(harness.modals.at(-1).contentEl.text(), /published-snapshot/);
+  assert.equal(
+    harness.notices.some(
+      ({ message }) => message ===
+        "Перевод проверен; одобренная версия сохранена.",
+    ),
+    false,
+  );
+});
+
 test("refresh sends no note and reports the six-state summary", async () => {
   const harness = loadPluginHarness();
   const plugin = new harness.PluginClass(harness.app);

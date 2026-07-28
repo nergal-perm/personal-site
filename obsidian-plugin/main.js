@@ -493,7 +493,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
         this.showBlocked(result, "Перевод не отмечен как проверенный");
         return;
       }
-      new Notice("Перевод отмечен как проверенный.");
+      new Notice("Перевод проверен; одобренная версия сохранена.");
     } catch (error) {
       this.showBridgeError(error);
     } finally {
