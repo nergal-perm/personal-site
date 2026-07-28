@@ -532,28 +532,32 @@ public final class AstroExportCommand implements Callable<Integer> {
         return 1;
       }
 
-      String original;
-      String reviewed;
-      try {
-        original = decode(pair.content());
-        reviewed = ReviewWorkspace.setReviewedStatusPreservingContent(original);
-      } catch (IllegalArgumentException error) {
-        emitJson(bridge("mark-reviewed", false, "translation_failed")
-            .note(note)
-            .identity(identity)
-            .diagnostics(List.of(new PublicationDiagnostic(
-                "review",
-                "Could not mark English review as reviewed: "
-                    + error.getClass().getSimpleName() + ": " + error.getMessage())))
-            .workspaceHealth(stable.preflight().workspaceHealth())
-            .pairFreshness("fresh")
-            .translationStatus(pair.translationStatus())
-            .build());
-        return 1;
+      String reviewed = null;
+      byte[] reviewedBytes;
+      if ("reviewed".equals(pair.translationStatus())) {
+        reviewedBytes = pair.content();
+      } else {
+        try {
+          reviewed = ReviewWorkspace.setReviewedStatusPreservingContent(
+              decode(pair.content()));
+          reviewedBytes = reviewed.getBytes(StandardCharsets.UTF_8);
+        } catch (IllegalArgumentException error) {
+          emitJson(bridge("mark-reviewed", false, "translation_failed")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "review",
+                  "Could not mark English review as reviewed: "
+                      + error.getClass().getSimpleName() + ": " + error.getMessage())))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .pairFreshness("fresh")
+              .translationStatus(pair.translationStatus())
+              .build());
+          return 1;
+        }
       }
-      byte[] reviewedBytes = "reviewed".equals(pair.translationStatus())
-          ? pair.content()
-          : reviewed.getBytes(StandardCharsets.UTF_8);
+      byte[] stagedRussian = ReviewWorkspace.renderRuReview(
+          stable.preflight().entry()).getBytes(StandardCharsets.UTF_8);
       ReviewWorkspace.PendingPublishedSnapshot pendingSnapshot;
       try {
         pendingSnapshot = services.stageApprovedSnapshot(
@@ -575,6 +579,7 @@ public final class AstroExportCommand implements Callable<Integer> {
         return 1;
       }
       Path english = englishPath(reviewRoot, target);
+      boolean sourceApproved = false;
       try (pendingSnapshot) {
         StablePreflight beforeEnglishCommit = stablePreflight(vaultRoot, note, stable.preflight().note().path());
         if (!beforeEnglishCommit.preflight().ready()
@@ -606,16 +611,16 @@ public final class AstroExportCommand implements Callable<Integer> {
         setWorkflowIfChanged(current.preflight(), "ready_to_publish", "reviewed", "",
             services.clock().instant(), stable.sourceSnapshot(),
             List.of(new WorkflowStateService.SnapshotGuard(english, reviewedBytes)));
+        sourceApproved = true;
 
         StablePreflight approved = stablePreflight(
             vaultRoot, note, current.preflight().note().path());
-        String stagedHash = requiredTranslationSourceHash(stable.preflight().entry());
-        String approvedHash =
-            requiredTranslationSourceHash(approved.preflight().entry());
+        byte[] approvedRussian = ReviewWorkspace.renderRuReview(
+            approved.preflight().entry()).getBytes(StandardCharsets.UTF_8);
         if (!approved.preflight().ready()
             || !identity.samePublicIdentity(
                 identityFromPreflight(approved.preflight(), reviewRoot))
-            || !stagedHash.equals(approvedHash)
+            || !Arrays.equals(stagedRussian, approvedRussian)
             || !Arrays.equals(readSafeRegularFile(english), reviewedBytes)) {
           throw new WorkflowStateService.ConcurrentFileUpdateException(
               "source projection or English review changed before published snapshot commit");
@@ -629,19 +634,32 @@ public final class AstroExportCommand implements Callable<Integer> {
                   approved.sourceSnapshot()),
               new WorkflowStateService.SnapshotGuard(english, reviewedBytes)));
         } catch (PublishedSnapshotStore.ConcurrentPublishedSnapshotException error) {
-          emitJson(bridge("mark-reviewed", false, "stale")
+          pendingSnapshot.close();
+          CurrentPairState currentPair = currentPairStateAfterConflict(
+              vaultRoot,
+              note,
+              stable.preflight().note().path(),
+              reviewRoot,
+              identity);
+          BridgeResponse.Builder response = bridge("mark-reviewed", false, "stale")
               .note(note)
               .identity(identity)
               .diagnostics(List.of(new PublicationDiagnostic(
                   "published-snapshot",
                   "Source or English review changed at the published snapshot "
                       + "commit boundary; inspect both and retry.")))
-              .workspaceHealth(stable.preflight().workspaceHealth())
-              .pairFreshness("fresh")
-              .translationStatus("reviewed")
-              .build());
+              .workspaceHealth(stable.preflight().workspaceHealth());
+          if (currentPair != null) {
+            response
+                .pairFreshness(currentPair.freshness())
+                .translationStatus(currentPair.translationStatus());
+          }
+          emitJson(response.build());
           return 1;
+        } catch (PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
+          throw error;
         } catch (RuntimeException error) {
+          pendingSnapshot.close();
           emitJson(bridge("mark-reviewed", false, "ready_to_publish")
               .note(note)
               .identity(identity)
@@ -675,22 +693,72 @@ public final class AstroExportCommand implements Callable<Integer> {
             .translationStatus("reviewed")
             .build());
         return 0;
+      } catch (PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
+        emitPublishedSnapshotRecovery(
+            note,
+            identity,
+            stable.preflight().workspaceHealth(),
+            error);
+        return 1;
       } catch (ReviewWorkspace.ConcurrentReviewUpdateException
           | WorkflowStateService.ConcurrentFileUpdateException error) {
-        ReviewPairState durablePair = reviewPairState(stable.preflight().entry(), reviewRoot);
-        emitJson(bridge("mark-reviewed", false, "stale")
+        PublishedSnapshotStore.PublishedSnapshotRecoveryException recovery =
+            findPublishedSnapshotRecovery(error);
+        if (recovery != null) {
+          emitPublishedSnapshotRecovery(
+              note,
+              identity,
+              stable.preflight().workspaceHealth(),
+              recovery);
+          return 1;
+        }
+        CurrentPairState currentPair = currentPairStateAfterConflict(
+            vaultRoot,
+            note,
+            stable.preflight().note().path(),
+            reviewRoot,
+            identity);
+        BridgeResponse.Builder response = bridge("mark-reviewed", false, "stale")
             .note(note)
             .identity(identity)
             .diagnostics(List.of(new PublicationDiagnostic(
                 "review",
                 "Source or English review changed at the commit boundary; inspect both and retry."
                     + concurrentReviewRecovery(error))))
-            .workspaceHealth(stable.preflight().workspaceHealth())
-            .pairFreshness(durablePair.freshness())
-            .translationStatus(durablePair.translationStatus())
-            .build());
+            .workspaceHealth(stable.preflight().workspaceHealth());
+        if (currentPair != null) {
+          response
+              .pairFreshness(currentPair.freshness())
+              .translationStatus(currentPair.translationStatus());
+        }
+        emitJson(response.build());
         return 1;
       } catch (IOException | IllegalArgumentException | java.io.UncheckedIOException error) {
+        PublishedSnapshotStore.PublishedSnapshotRecoveryException recovery =
+            findPublishedSnapshotRecovery(error);
+        if (recovery != null) {
+          emitPublishedSnapshotRecovery(
+              note,
+              identity,
+              stable.preflight().workspaceHealth(),
+              recovery);
+          return 1;
+        }
+        if (sourceApproved) {
+          emitJson(bridge("mark-reviewed", false, "ready_to_publish")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "published-snapshot",
+                  "English review and source workflow are approved, but the "
+                      + "published baseline was not updated ("
+                      + error.getClass().getSimpleName()
+                      + "); invoke Mark current translation reviewed again.")))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .translationStatus("reviewed")
+              .build());
+          return 1;
+        }
         emitJson(bridge("mark-reviewed", false, "ready_for_review")
             .note(note)
             .identity(identity)
@@ -1270,6 +1338,78 @@ public final class AstroExportCommand implements Callable<Integer> {
     return "";
   }
 
+  private static String publishedSnapshotRecoveryMessage(
+      PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
+    String paths = error.recoveryPaths().stream()
+        .map(Path::toString)
+        .collect(java.util.stream.Collectors.joining(", "));
+    if (error.disposition()
+        == PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE) {
+      return "Approved baseline ownership is uncertain: the candidate may be visible at "
+          + error.publishedPath() + ", and recovery data remains at " + paths
+          + ". Inspect these paths before any retry.";
+    }
+    return "Approved baseline cleanup is incomplete: an uncommitted staged candidate "
+        + "remains at " + paths + " for published path " + error.publishedPath()
+        + ". Inspect and resolve recovery data before any retry.";
+  }
+
+  private void emitPublishedSnapshotRecovery(
+      String note,
+      PublicationIdentity identity,
+      List<PublicationDiagnostic> workspaceHealth,
+      PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
+    emitJson(bridge("mark-reviewed", false, "recovery_required")
+        .note(note)
+        .identity(identity)
+        .diagnostics(List.of(new PublicationDiagnostic(
+            "published-snapshot-recovery",
+            publishedSnapshotRecoveryMessage(error))))
+        .workspaceHealth(workspaceHealth)
+        .build());
+  }
+
+  private static PublishedSnapshotStore.PublishedSnapshotRecoveryException
+      findPublishedSnapshotRecovery(Throwable error) {
+    if (error
+        instanceof PublishedSnapshotStore.PublishedSnapshotRecoveryException
+            recovery) {
+      return recovery;
+    }
+    for (Throwable suppressed : error.getSuppressed()) {
+      PublishedSnapshotStore.PublishedSnapshotRecoveryException recovery =
+          findPublishedSnapshotRecovery(suppressed);
+      if (recovery != null) {
+        return recovery;
+      }
+    }
+    return null;
+  }
+
+  private CurrentPairState currentPairStateAfterConflict(
+      Path vaultRoot,
+      String note,
+      Path source,
+      Path reviewRoot,
+      PublicationIdentity expectedIdentity) {
+    try {
+      StablePreflight current = stablePreflight(vaultRoot, note, source);
+      if (!current.preflight().ready()
+          || !expectedIdentity.samePublicIdentity(
+              identityFromPreflight(current.preflight(), reviewRoot))) {
+        return null;
+      }
+      ReviewPairState pair =
+          reviewPairState(current.preflight().entry(), reviewRoot);
+      return new CurrentPairState(pair.freshness(), pair.translationStatus());
+    } catch (IOException
+        | IllegalArgumentException
+        | java.io.UncheckedIOException
+        | PublicationDiscovery.PublicationSearchException error) {
+      return null;
+    }
+  }
+
   private static String concurrentWorkflowRecovery(WorkflowStateService.ConcurrentFileUpdateException error) {
     ArrayList<String> details = new ArrayList<>();
     if (error.committed()) {
@@ -1324,6 +1464,8 @@ public final class AstroExportCommand implements Callable<Integer> {
       return sourceSnapshot.clone();
     }
   }
+
+  private record CurrentPairState(String freshness, String translationStatus) { }
 
   private record DerivedRefreshState(
       String status,

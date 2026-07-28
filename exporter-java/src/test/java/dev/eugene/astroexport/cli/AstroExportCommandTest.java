@@ -16,6 +16,7 @@ import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
+import dev.eugene.astroexport.review.PublishedSnapshotStore;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.testsupport.CommandFixture;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
@@ -29,6 +30,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
@@ -258,6 +260,8 @@ final class AstroExportCommandTest {
     Map<String, Object> payload = json(result.stdout());
     assertEquals(false, payload.get("ok"));
     assertEquals("stale", payload.get("status"));
+    assertEquals("stale", payload.get("pairFreshness"));
+    assertEquals(null, payload.get("translationStatus"));
     assertEquals(ByteBuffer.wrap(enBefore), ByteBuffer.wrap(Files.readAllBytes(en)));
     assertFalse(Files.readString(en).contains("translationStatus: \"reviewed\""));
     assertTrue(Files.readString(source).contains("Source changed before English commit."));
@@ -515,6 +519,209 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void incompleteSnapshotRollbackReturnsBlockingRecoveryOutcome()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "old ru\n", "old en\n");
+    Path published = review.resolve("blog/essay/published");
+    Path recovery = review.resolve("blog/essay/.published-stage-recovery");
+    Files.createDirectories(recovery);
+    Files.writeString(recovery.resolve("ru.md"), "old ru\n");
+    Files.writeString(recovery.resolve("en.md"), "old en\n");
+    CommandServices services = CommandServices.defaults()
+        .withStageApprovedSnapshotAction((root, current, english) -> {
+          ReviewWorkspace.PendingPublishedSnapshot real =
+              ReviewWorkspace.stageApprovedSnapshot(root, current, english);
+          return new ReviewWorkspace.PendingPublishedSnapshot() {
+            @Override
+            public ReviewWorkspace.PublishedSnapshotResult commit(
+                List<WorkflowStateService.SnapshotGuard> guards) {
+              real.commit(guards);
+              throw new PublishedSnapshotStore.PublishedSnapshotRecoveryException(
+                  "rollback incomplete",
+                  PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE,
+                  published,
+                  List.of(recovery),
+                  new IOException("rollback failed"));
+            }
+
+            @Override
+            public void close() {
+              real.close();
+            }
+          };
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+    Map<String, Object> diagnostic = firstDiagnostic(payload);
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("recovery_required", payload.get("status"));
+    assertEquals("published-snapshot-recovery", diagnostic.get("field"));
+    assertEquals(true, diagnostic.get("blocking"));
+    assertTrue(String.valueOf(diagnostic.get("message")).contains(published.toString()));
+    assertTrue(String.valueOf(diagnostic.get("message")).contains(recovery.toString()));
+    assertFalse(String.valueOf(diagnostic.get("message")).contains("invoke Mark"));
+    assertFalse("old ru\n".equals(
+        Files.readString(review.resolve("blog/essay/published/ru.md"))));
+  }
+
+  @Test
+  void pendingCleanupFailureOverridesRetryAndReturnsBlockingRecoveryOutcome()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "old ru\n", "old en\n");
+    Path published = review.resolve("blog/essay/published");
+    Path recovery = review.resolve("blog/essay/.published-stage-recovery");
+    Files.createDirectories(recovery);
+    Files.writeString(recovery.resolve("ru.md"), "candidate ru\n");
+    Files.writeString(recovery.resolve("en.md"), "candidate en\n");
+    CommandServices services = CommandServices.defaults()
+        .withStageApprovedSnapshotAction((root, current, english) -> {
+          ReviewWorkspace.PendingPublishedSnapshot real =
+              ReviewWorkspace.stageApprovedSnapshot(root, current, english);
+          return new ReviewWorkspace.PendingPublishedSnapshot() {
+            @Override
+            public ReviewWorkspace.PublishedSnapshotResult commit(
+                List<WorkflowStateService.SnapshotGuard> guards) {
+              throw new IllegalStateException("disk full");
+            }
+
+            @Override
+            public void close() {
+              real.close();
+              throw new PublishedSnapshotStore.PublishedSnapshotRecoveryException(
+                  "cleanup failed",
+                  PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+                  published,
+                  List.of(recovery),
+                  new IOException("cleanup failed"));
+            }
+          };
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+    Map<String, Object> diagnostic = firstDiagnostic(payload);
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("recovery_required", payload.get("status"));
+    assertEquals("published-snapshot-recovery", diagnostic.get("field"));
+    assertEquals(true, diagnostic.get("blocking"));
+    assertTrue(String.valueOf(diagnostic.get("message")).contains(recovery.toString()));
+    assertFalse(String.valueOf(diagnostic.get("message")).contains("invoke Mark"));
+  }
+
+  @Test
+  void suppressedPendingCleanupFailureOverridesFinalPreflightFailure()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path published = review.resolve("blog/essay/published");
+    Path recovery = review.resolve("blog/essay/.published-stage-recovery");
+    Files.createDirectories(recovery);
+    Files.writeString(recovery.resolve("ru.md"), "candidate ru\n");
+    Files.writeString(recovery.resolve("en.md"), "candidate en\n");
+    AtomicInteger preflights = new AtomicInteger();
+    CommandServices services = CommandServices.defaults()
+        .withStageApprovedSnapshotAction((root, current, english) -> {
+          ReviewWorkspace.PendingPublishedSnapshot real =
+              ReviewWorkspace.stageApprovedSnapshot(root, current, english);
+          return new ReviewWorkspace.PendingPublishedSnapshot() {
+            @Override
+            public ReviewWorkspace.PublishedSnapshotResult commit(
+                List<WorkflowStateService.SnapshotGuard> guards) {
+              return real.commit(guards);
+            }
+
+            @Override
+            public void close() {
+              real.close();
+              throw new PublishedSnapshotStore.PublishedSnapshotRecoveryException(
+                  "cleanup failed",
+                  PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+                  published,
+                  List.of(recovery),
+                  new IOException("cleanup failed"));
+            }
+          };
+        })
+        .withPreflightObserver((actualVault, note) -> {
+          if (preflights.incrementAndGet() == 5) {
+            throw new IOException("final preflight failed");
+          }
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+    Map<String, Object> diagnostic = firstDiagnostic(payload);
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("recovery_required", payload.get("status"));
+    assertEquals("published-snapshot-recovery", diagnostic.get("field"));
+    assertEquals(true, diagnostic.get("blocking"));
+    assertTrue(String.valueOf(diagnostic.get("message")).contains(recovery.toString()));
+  }
+
+  @Test
+  void alreadyReviewedRetryUsesValidatedBytesWithoutRewriteParser()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    Path english = review.resolve("blog/essay/en.md");
+    Files.createDirectories(english.getParent());
+    String reviewed = """
+        ---
+        sourceHash: %s
+        title: &status reviewed
+        translationStatus: *status
+        translatedAt: 2026-07-17
+        translationProfile: codex-test-v1
+        description: English description.
+        ---
+        English body.
+        """.formatted(entry.translationSourceHash());
+    Files.writeString(english, reviewed);
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(CommandServices.defaults()),
+        vault,
+        review,
+        temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+
+    assertEquals(0, result.exitCode(), result.stdout() + result.stderr());
+    assertEquals(true, payload.get("ok"));
+    assertEquals("ready_to_publish", payload.get("status"));
+    assertEquals(reviewed, Files.readString(english));
+    assertEquals(
+        reviewed,
+        Files.readString(review.resolve("blog/essay/published/en.md")));
+  }
+
+  @Test
   void sourceChangeAtPublishedCommitReturnsStaleAndPreservesOldPair()
       throws Exception {
     Path vault = temp.resolve("vault");
@@ -557,6 +764,146 @@ final class AstroExportCommandTest {
     assertEquals(1, result.exitCode());
     assertEquals(false, payload.get("ok"));
     assertEquals("stale", payload.get("status"));
+    assertEquals("stale", payload.get("pairFreshness"));
+    assertEquals(null, payload.get("translationStatus"));
+    assertEquals("old ru\n",
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
+    assertEquals("old en\n",
+        Files.readString(review.resolve("blog/essay/published/en.md")));
+  }
+
+  @Test
+  void guardConflictOmitsPairStateWhenFreshPreflightCannotBeEstablished()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(vault);
+    ManifestEntry entry = currentBlogEntry(vault);
+    Path review = temp.resolve("review");
+    Path en = writeBlogReviewEn(
+        review, entry.translationSourceHash(), "generated");
+    byte[] enBefore = Files.readAllBytes(en);
+    CommandServices defaults = CommandServices.defaults();
+    CommandServices services = defaults.withReplaceEnglishReviewAction(
+        (actualReview, content, collection, publicId, expected, guards) -> {
+          Files.delete(source);
+          return defaults.replaceEnglishReview(
+              actualReview,
+              content,
+              collection,
+              publicId,
+              expected,
+              guards);
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("stale", payload.get("status"));
+    assertEquals(null, payload.get("pairFreshness"));
+    assertEquals(null, payload.get("translationStatus"));
+    assertEquals(ByteBuffer.wrap(enBefore), ByteBuffer.wrap(Files.readAllBytes(en)));
+  }
+
+  @Test
+  void invariantRuProjectionChangeAfterStagingReturnsStaleAndPreservesOldPair()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(vault);
+    Files.writeString(source, Files.readString(source)
+        .replace(
+            "publish: true",
+            """
+            publish: true
+            topics: [systems]
+            publicWorkflowStatus: "ready_to_publish"
+            publicTranslationStatus: "reviewed"
+            """));
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "reviewed");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "old ru\n", "old en\n");
+    Clock mutatingClock = new Clock() {
+      @Override
+      public ZoneId getZone() {
+        return ZoneOffset.UTC;
+      }
+
+      @Override
+      public Clock withZone(ZoneId zone) {
+        return this;
+      }
+
+      @Override
+      public Instant instant() {
+        try {
+          Files.writeString(
+              source,
+              Files.readString(source).replace(
+                  "topics: [systems]", "topics: [software]"));
+        } catch (IOException error) {
+          throw new java.io.UncheckedIOException(error);
+        }
+        return Instant.parse("2026-07-28T00:00:00Z");
+      }
+    };
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(
+            CommandServices.defaults().withClock(mutatingClock)),
+        vault,
+        review,
+        temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("stale", payload.get("status"));
+    assertEquals("old ru\n",
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
+    assertEquals("old en\n",
+        Files.readString(review.resolve("blog/essay/published/en.md")));
+    assertTrue(Files.readString(source).contains("topics: [software]"));
+  }
+
+  @Test
+  void finalPreflightFailureAfterSourceApprovalReturnsReadyToPublish()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    Path english = writeBlogReviewEn(
+        review, entry.translationSourceHash(), "generated");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "old ru\n", "old en\n");
+    AtomicInteger preflights = new AtomicInteger();
+    CommandServices services = CommandServices.defaults()
+        .withPreflightObserver((actualVault, note) -> {
+          if (preflights.incrementAndGet() == 5) {
+            throw new IOException("final preflight failed");
+          }
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+    Map<String, Object> diagnostic = firstDiagnostic(payload);
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("ready_to_publish", payload.get("status"));
+    assertEquals("reviewed", payload.get("translationStatus"));
+    assertEquals("published-snapshot", diagnostic.get("field"));
+    assertTrue(String.valueOf(diagnostic.get("message"))
+        .contains("invoke Mark current translation reviewed again"));
+    assertTrue(Files.readString(source)
+        .contains("publicWorkflowStatus: \"ready_to_publish\""));
+    assertTrue(Files.readString(english)
+        .contains("translationStatus: \"reviewed\""));
     assertEquals("old ru\n",
         Files.readString(review.resolve("blog/essay/published/ru.md")));
     assertEquals("old en\n",
@@ -795,11 +1142,15 @@ final class AstroExportCommandTest {
         "--json");
   }
 
-  @SuppressWarnings("unchecked")
   private static String firstDiagnosticField(Map<String, Object> payload) {
+    return String.valueOf(firstDiagnostic(payload).get("field"));
+  }
+
+  @SuppressWarnings("unchecked")
+  private static Map<String, Object> firstDiagnostic(Map<String, Object> payload) {
     List<Map<String, Object>> diagnostics =
         (List<Map<String, Object>>) payload.get("diagnostics");
-    return String.valueOf(diagnostics.getFirst().get("field"));
+    return diagnostics.getFirst();
   }
 
   private static Map<String, Object> json(String stdout) throws Exception {

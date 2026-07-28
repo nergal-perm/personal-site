@@ -98,6 +98,42 @@ public final class PublishedSnapshotStore {
     }
   }
 
+  public enum RecoveryDisposition {
+    CANDIDATE_VISIBLE,
+    STAGED_CANDIDATE
+  }
+
+  public static final class PublishedSnapshotRecoveryException
+      extends IllegalStateException {
+    private final RecoveryDisposition disposition;
+    private final Path publishedPath;
+    private final List<Path> recoveryPaths;
+
+    public PublishedSnapshotRecoveryException(
+        String message,
+        RecoveryDisposition disposition,
+        Path publishedPath,
+        List<Path> recoveryPaths,
+        Throwable cause) {
+      super(message, cause);
+      this.disposition = Objects.requireNonNull(disposition, "disposition");
+      this.publishedPath = Objects.requireNonNull(publishedPath, "publishedPath");
+      this.recoveryPaths = List.copyOf(recoveryPaths);
+    }
+
+    public RecoveryDisposition disposition() {
+      return disposition;
+    }
+
+    public Path publishedPath() {
+      return publishedPath;
+    }
+
+    public List<Path> recoveryPaths() {
+      return recoveryPaths;
+    }
+  }
+
   private final class FilePendingSnapshot implements PendingSnapshot {
     private enum OwnershipState {
       STAGED_NEW,
@@ -199,8 +235,12 @@ public final class PublishedSnapshotStore {
       try {
         ioHooks.deleteTree(staging);
       } catch (IOException error) {
-        throw new IllegalStateException(
-            "cannot clean staged published snapshot " + staging, error);
+        throw new PublishedSnapshotRecoveryException(
+            "cannot clean staged published snapshot " + staging,
+            RecoveryDisposition.STAGED_CANDIDATE,
+            published,
+            List.of(staging),
+            error);
       }
     }
 
@@ -217,7 +257,15 @@ public final class PublishedSnapshotStore {
         ownershipState = OwnershipState.STAGED_NEW;
       } catch (IOException rollbackError) {
         rollbackError.addSuppressed(failure);
-        throw commitFailure(published, rollbackError);
+        List<Path> recoveryPaths = Files.exists(staging, LinkOption.NOFOLLOW_LINKS)
+            ? List.of(staging)
+            : List.of(published);
+        throw new PublishedSnapshotRecoveryException(
+            "published snapshot rollback incomplete: " + published,
+            RecoveryDisposition.CANDIDATE_VISIBLE,
+            published,
+            recoveryPaths,
+            rollbackError);
       }
     }
 

@@ -105,7 +105,8 @@ final class PublishedSnapshotStoreTest {
   }
 
   @Test
-  void rollbackFailurePreservesTheDisplacedPairOnClose() throws Exception {
+  void rollbackFailureReportsCandidateOwnershipAndDisplacedRecoveryPath()
+      throws Exception {
     Path page = existingPair("ru-v1\n", "en-v1\n");
     Path source = temp.resolve("source.md");
     Files.writeString(source, "expected\n");
@@ -127,23 +128,53 @@ final class PublishedSnapshotStoreTest {
           }
         });
 
+    PublishedSnapshotStore.PublishedSnapshotRecoveryException error;
     try (PublishedSnapshotStore.PendingSnapshot pending =
         store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
-      assertThrows(
-          IllegalStateException.class,
+      error = assertThrows(
+          PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
           () -> pending.commit(List.of(
               new WorkflowStateService.SnapshotGuard(source, expected))));
     }
 
     assertPair(page, "ru-v2\n", "en-v2\n");
-    List<Path> displaced;
-    try (var paths = Files.list(page)) {
-      displaced = paths
-          .filter(path -> path.getFileName().toString().startsWith(".published-stage-"))
-          .toList();
-    }
-    assertEquals(1, displaced.size());
-    assertDirectoryPair(displaced.getFirst(), "ru-v1\n", "en-v1\n");
+    assertEquals(
+        PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE,
+        error.disposition());
+    assertEquals(page.resolve("published").toAbsolutePath().normalize(),
+        error.publishedPath());
+    assertEquals(1, error.recoveryPaths().size());
+    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+  }
+
+  @Test
+  void stagedCleanupFailureReportsUncommittedCandidateRecoveryPath()
+      throws Exception {
+    Path page = existingPair("ru-v1\n", "en-v1\n");
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void deleteTree(Path root) throws IOException {
+            throw new IOException("cleanup failed");
+          }
+        });
+    PublishedSnapshotStore.PendingSnapshot pending =
+        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"));
+
+    PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
+        assertThrows(
+            PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
+            pending::close);
+
+    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertEquals(
+        PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+        error.disposition());
+    assertEquals(page.resolve("published").toAbsolutePath().normalize(),
+        error.publishedPath());
+    assertEquals(1, error.recoveryPaths().size());
+    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n");
   }
 
   @Test
