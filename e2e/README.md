@@ -27,6 +27,10 @@ pointed at an existing review workspace, e.g.
 
 ## What this does *not* cover
 
+The harness deliberately does not advance `published/`. That baseline belongs
+only to the human approval action in Obsidian/`mark-reviewed`; the harness
+tests later mechanical export and site-build consumption.
+
 Translating a brand-new note and reviewing it is a human-in-the-loop step
 (Codex-assisted translation + manual review, see the vault's
 `operating-manual/sops/astro-publication.md`) — it isn't scripted here.

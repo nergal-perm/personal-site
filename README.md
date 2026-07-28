@@ -23,11 +23,14 @@ e2e/              End-to-end harness: run the real pipeline against a real vault
    subprocess to prepare a reviewed English/Russian translation pair. See
    `obsidian-plugin/DEPLOY.md` for how this plugin gets into a running
    Obsidian instance.
-3. **exporter-java** (`exporter-java/`) is the CLI itself: validates
-   frontmatter, translates, and writes review files.
-4. Reviewed content is built into the **site** (`site/`) with
-   `astro-export build-from-review`, then `npm run build` / `npm run preview`.
-5. Deploy is currently manual (copy `site/dist/` to the host).
+3. **exporter-java** validates the pair. Successful **Mark current translation
+   reviewed** stores the exact approved page pair at
+   `review/<collection>/<publicId>/published/{ru,en}.md`.
+4. Later Russian edits are diffed against that approved Russian snapshot when
+   the next translation draft is prepared.
+5. `build-from-review`, `npm run build`, preview, and deployment consume
+   reviewed content but never advance the approved baseline.
+6. Deploy is currently manual (copy `site/dist/` to the host).
 
 ## End-to-end testing
 
