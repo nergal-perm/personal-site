@@ -59,12 +59,12 @@ public final class PublishedSnapshotStore {
           staging,
           stagedRussian,
           stagedEnglish);
-    } catch (IOException error) {
+    } catch (IOException | RuntimeException error) {
       if (staging != null) {
         try {
           ioHooks.deleteTree(staging);
-        } catch (IOException cleanupError) {
-          error.addSuppressed(cleanupError);
+        } catch (IOException | RuntimeException cleanupError) {
+          attachSuppressed(error, cleanupError);
           throw new PublishedSnapshotRecoveryException(
               "cannot clean failed staged published snapshot " + staging,
               RecoveryDisposition.STAGED_CANDIDATE,
@@ -72,6 +72,9 @@ public final class PublishedSnapshotStore {
               List.of(staging),
               error);
         }
+      }
+      if (error instanceof RuntimeException runtimeError) {
+        throw runtimeError;
       }
       throw new IllegalStateException("cannot stage published snapshot " + page, error);
     }
@@ -218,7 +221,7 @@ public final class PublishedSnapshotStore {
         }
         try {
           ioHooks.forceDirectory(published.getParent());
-        } catch (IOException error) {
+        } catch (IOException | RuntimeException error) {
           rollback(error);
           throw commitFailure(published, error);
         }
@@ -230,7 +233,7 @@ public final class PublishedSnapshotStore {
         try {
           ioHooks.deleteTree(staging);
           return new CommitResult(List.of());
-        } catch (IOException cleanupError) {
+        } catch (IOException | RuntimeException cleanupError) {
           return new CommitResult(List.of(staging));
         }
       } catch (ConcurrentPublishedSnapshotException error) {
@@ -251,7 +254,7 @@ public final class PublishedSnapshotStore {
       }
       try {
         ioHooks.deleteTree(staging);
-      } catch (IOException error) {
+      } catch (IOException | RuntimeException error) {
         throw new PublishedSnapshotRecoveryException(
             "cannot clean staged published snapshot " + staging,
             RecoveryDisposition.STAGED_CANDIDATE,
@@ -273,8 +276,8 @@ public final class PublishedSnapshotStore {
         }
         ioHooks.forceDirectory(published.getParent());
         ownershipState = OwnershipState.STAGED_NEW;
-      } catch (IOException rollbackError) {
-        rollbackError.addSuppressed(failure);
+      } catch (IOException | RuntimeException rollbackError) {
+        attachSuppressed(rollbackError, failure);
         List<Path> recoveryPaths = Files.exists(staging, LinkOption.NOFOLLOW_LINKS)
             ? List.of(staging)
             : List.of(published);
@@ -379,10 +382,19 @@ public final class PublishedSnapshotStore {
     }
   }
 
-  private static IllegalStateException commitFailure(Path published, IOException error) {
+  private static RuntimeException commitFailure(Path published, Exception error) {
+    if (error instanceof RuntimeException runtimeError) {
+      return runtimeError;
+    }
     return new IllegalStateException(
         "cannot commit published snapshot " + published + ": " + error.getMessage(),
         error);
+  }
+
+  private static void attachSuppressed(Throwable primary, Throwable evidence) {
+    if (primary != evidence) {
+      primary.addSuppressed(evidence);
+    }
   }
 
   private static void forceDirectory(Path directory) throws IOException {

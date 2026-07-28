@@ -1,6 +1,7 @@
 package dev.eugene.astroexport.review;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -377,6 +378,250 @@ final class PublishedSnapshotStoreTest {
         error.getCause().getSuppressed()[0].getMessage());
   }
 
+  @Test
+  void uncheckedStagingForceCleansCandidateAndRethrowsOriginal()
+      throws Exception {
+    Path page = temp.resolve("review/blog/essay").toAbsolutePath().normalize();
+    Files.createDirectories(page);
+    IllegalStateException forceFailure =
+        new IllegalStateException("unchecked stage force failed");
+    AtomicInteger cleanups = new AtomicInteger();
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void forceDirectory(Path directory) {
+            throw forceFailure;
+          }
+
+          @Override
+          public void deleteTree(Path root) throws IOException {
+            cleanups.incrementAndGet();
+            PublishedSnapshotStore.IoHooks.super.deleteTree(root);
+          }
+        });
+
+    IllegalStateException error = assertThrows(
+        IllegalStateException.class,
+        () -> store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n")));
+
+    assertSame(forceFailure, error);
+    assertEquals(1, cleanups.get());
+    assertTrue(stagingDirectories(page).isEmpty());
+  }
+
+  @Test
+  void uncheckedStagingForceAndCleanupFailureReportRecoveryEvidence()
+      throws Exception {
+    Path page = temp.resolve("review/blog/essay").toAbsolutePath().normalize();
+    Files.createDirectories(page);
+    IllegalStateException forceFailure =
+        new IllegalStateException("unchecked stage force failed");
+    IllegalStateException cleanupFailure =
+        new IllegalStateException("unchecked stage cleanup failed");
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void forceDirectory(Path directory) {
+            throw forceFailure;
+          }
+
+          @Override
+          public void deleteTree(Path root) {
+            throw cleanupFailure;
+          }
+        });
+
+    PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
+        assertThrows(
+            PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
+            () -> store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n")));
+
+    assertEquals(
+        PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+        error.disposition());
+    assertEquals(page.resolve("published"), error.publishedPath());
+    assertSame(forceFailure, error.getCause());
+    assertEquals(1, forceFailure.getSuppressed().length);
+    assertSame(cleanupFailure, forceFailure.getSuppressed()[0]);
+    assertEquals(1, error.recoveryPaths().size());
+    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+  }
+
+  @Test
+  void checkedStagingForceAndUncheckedCleanupFailureReportRecoveryEvidence()
+      throws Exception {
+    Path page = temp.resolve("review/blog/essay").toAbsolutePath().normalize();
+    Files.createDirectories(page);
+    IOException forceFailure = new IOException("checked stage force failed");
+    IllegalStateException cleanupFailure =
+        new IllegalStateException("unchecked stage cleanup failed");
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void forceDirectory(Path directory) throws IOException {
+            throw forceFailure;
+          }
+
+          @Override
+          public void deleteTree(Path root) {
+            throw cleanupFailure;
+          }
+        });
+
+    PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
+        assertThrows(
+            PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
+            () -> store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n")));
+
+    assertSame(forceFailure, error.getCause());
+    assertEquals(1, forceFailure.getSuppressed().length);
+    assertSame(cleanupFailure, forceFailure.getSuppressed()[0]);
+    assertEquals(
+        PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+        error.disposition());
+    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+  }
+
+  @Test
+  void uncheckedPageForceRollsBackAndRethrowsOriginal() throws Exception {
+    Path page = existingPair("ru-v1\n", "en-v1\n")
+        .toAbsolutePath()
+        .normalize();
+    IllegalStateException forceFailure =
+        new IllegalStateException("unchecked page force failed");
+    AtomicInteger pageForces = new AtomicInteger();
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void forceDirectory(Path directory) {
+            if (directory.equals(page)
+                && pageForces.incrementAndGet() == 1) {
+              throw forceFailure;
+            }
+          }
+        });
+
+    try (PublishedSnapshotStore.PendingSnapshot pending =
+        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+      IllegalStateException error =
+          assertThrows(IllegalStateException.class, () -> pending.commit(List.of()));
+      assertSame(forceFailure, error);
+    }
+
+    assertEquals(2, pageForces.get());
+    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTrue(stagingDirectories(page).isEmpty());
+  }
+
+  @Test
+  void uncheckedRollbackForceReportsCandidateVisibleRecoveryEvidence()
+      throws Exception {
+    Path page = existingPair("ru-v1\n", "en-v1\n")
+        .toAbsolutePath()
+        .normalize();
+    IllegalStateException visibleForceFailure =
+        new IllegalStateException("unchecked page force failed");
+    IllegalStateException rollbackForceFailure =
+        new IllegalStateException("unchecked rollback force failed");
+    AtomicInteger pageForces = new AtomicInteger();
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void forceDirectory(Path directory) {
+            if (!directory.equals(page)) {
+              return;
+            }
+            if (pageForces.incrementAndGet() == 1) {
+              throw visibleForceFailure;
+            }
+            throw rollbackForceFailure;
+          }
+        });
+
+    PublishedSnapshotStore.PublishedSnapshotRecoveryException error;
+    try (PublishedSnapshotStore.PendingSnapshot pending =
+        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+      error = assertThrows(
+          PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
+          () -> pending.commit(List.of()));
+    }
+
+    assertEquals(2, pageForces.get());
+    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertEquals(
+        PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE,
+        error.disposition());
+    assertEquals(page.resolve("published"), error.publishedPath());
+    assertSame(rollbackForceFailure, error.getCause());
+    assertEquals(1, rollbackForceFailure.getSuppressed().length);
+    assertSame(visibleForceFailure, rollbackForceFailure.getSuppressed()[0]);
+    assertEquals(1, error.recoveryPaths().size());
+    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n");
+  }
+
+  @Test
+  void uncheckedCommittedCleanupReturnsNonBlockingRecoveryPath()
+      throws Exception {
+    Path page = existingPair("ru-v1\n", "en-v1\n")
+        .toAbsolutePath()
+        .normalize();
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void deleteTree(Path root) {
+            throw new IllegalStateException("unchecked committed cleanup failed");
+          }
+        });
+
+    PublishedSnapshotStore.CommitResult result;
+    try (PublishedSnapshotStore.PendingSnapshot pending =
+        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+      result = pending.commit(List.of());
+    }
+
+    assertPair(page, "ru-v2\n", "en-v2\n");
+    assertEquals(1, result.recoveryPaths().size());
+    assertDirectoryPair(result.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+  }
+
+  @Test
+  void uncheckedCloseCleanupReportsStagedCandidateRecovery() throws Exception {
+    Path page = existingPair("ru-v1\n", "en-v1\n")
+        .toAbsolutePath()
+        .normalize();
+    IllegalStateException cleanupFailure =
+        new IllegalStateException("unchecked close cleanup failed");
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void deleteTree(Path root) {
+            throw cleanupFailure;
+          }
+        });
+    PublishedSnapshotStore.PendingSnapshot pending =
+        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"));
+
+    PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
+        assertThrows(
+            PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
+            pending::close);
+
+    assertEquals(
+        PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+        error.disposition());
+    assertEquals(page.resolve("published"), error.publishedPath());
+    assertSame(cleanupFailure, error.getCause());
+    assertEquals(1, error.recoveryPaths().size());
+    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n");
+  }
+
   private static byte[] bytes(String value) {
     return value.getBytes(StandardCharsets.UTF_8);
   }
@@ -401,5 +646,14 @@ final class PublishedSnapshotStoreTest {
       String english) throws IOException {
     assertEquals(russian, Files.readString(directory.resolve("ru.md")));
     assertEquals(english, Files.readString(directory.resolve("en.md")));
+  }
+
+  private static List<Path> stagingDirectories(Path page) throws IOException {
+    try (var paths = Files.list(page)) {
+      return paths
+          .filter(path -> path.getFileName().toString().startsWith(
+              ".published-stage-"))
+          .toList();
+    }
   }
 }
