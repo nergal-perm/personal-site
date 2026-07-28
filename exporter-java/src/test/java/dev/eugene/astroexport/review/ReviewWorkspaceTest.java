@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.FileSystems;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -39,6 +40,16 @@ final class ReviewWorkspaceTest {
     String editorialText = Files.readString(editorial);
     assertFalse(editorialText.contains("\ncurrent:"));
     assertTrue(editorialText.contains("## Сейчас\n\n### Изучаю\n\nНаблюдаемая работа\n\nРусское описание."));
+  }
+
+  @Test
+  void renderedRussianReviewExactlyMatchesTheFileWriter() throws Exception {
+    ManifestEntry entry = contentEntry();
+    Path written = ReviewWorkspace.writeRuReviewFile(temp.resolve("review"), entry);
+
+    assertEquals(
+        ReviewWorkspace.renderRuReview(entry),
+        Files.readString(written));
   }
 
   @Test
@@ -550,6 +561,29 @@ final class ReviewWorkspaceTest {
     ReviewWorkspace.writePublishedSnapshot(review, "blog", "essay", "ru v2\n", "en v2\n");
     assertEquals(Optional.of("ru v2\n"), ReviewWorkspace.readPublishedRu(review, "blog", "essay"));
     assertEquals(Optional.of("en v2\n"), ReviewWorkspace.readPublishedEn(review, "blog", "essay"));
+  }
+
+  @Test
+  void approvedSnapshotUsesManifestEntryInsteadOfMutableOrdinaryRuFile()
+      throws Exception {
+    Path review = temp.resolve("review");
+    ManifestEntry entry = contentEntry();
+    Path ordinary = ReviewWorkspace.writeRuReviewFile(review, entry);
+    Files.writeString(ordinary, "tampered ordinary ru.md\n");
+    byte[] reviewedEnglish = "reviewed English\n".getBytes(StandardCharsets.UTF_8);
+
+    try (ReviewWorkspace.PendingPublishedSnapshot pending =
+        ReviewWorkspace.stageApprovedSnapshot(review, entry, reviewedEnglish)) {
+      ReviewWorkspace.PublishedSnapshotResult result = pending.commit(List.of());
+      assertTrue(result.recoveryPaths().isEmpty());
+    }
+
+    assertEquals(
+        ReviewWorkspace.renderRuReview(entry),
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
+    assertEquals(
+        "reviewed English\n",
+        Files.readString(review.resolve("blog/essay/published/en.md")));
   }
 
   @Test

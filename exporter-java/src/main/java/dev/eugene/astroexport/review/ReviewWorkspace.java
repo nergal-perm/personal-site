@@ -48,6 +48,8 @@ public final class ReviewWorkspace {
   private static final Pattern ALIASED_CONTROL_KEY = Pattern.compile(
       "(?m)^\\*[A-Za-z0-9_-]+[ \\t]*:");
   private static final AtomicExchange ATOMIC_EXCHANGE = new JnaAtomicExchange();
+  private static final PublishedSnapshotStore PUBLISHED_SNAPSHOTS =
+      new PublishedSnapshotStore();
   private static final ObjectMapper JSON = new ObjectMapper()
       .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION.mappedFeature());
   private static final Dump YAML_DUMP = new Dump(DumpSettings.builder()
@@ -56,13 +58,18 @@ public final class ReviewWorkspace {
 
   private ReviewWorkspace() { }
 
-  public static Path writeRuReviewFile(Path reviewRoot, ManifestEntry entry) {
+  public static String renderRuReview(ManifestEntry entry) {
     Target target = target(entry);
-    Path path = reviewRoot.resolve(target.collection()).resolve(target.publicId()).resolve("ru.md");
     String markdown = target.editorial()
         ? serializeEditorial(entry)
         : serializeContent(entry);
-    replaceAtomically(path, clean(markdown));
+    return clean(markdown);
+  }
+
+  public static Path writeRuReviewFile(Path reviewRoot, ManifestEntry entry) {
+    Target target = target(entry);
+    Path path = reviewRoot.resolve(target.collection()).resolve(target.publicId()).resolve("ru.md");
+    replaceAtomically(path, renderRuReview(entry));
     return path;
   }
 
@@ -235,9 +242,43 @@ public final class ReviewWorkspace {
       String publicId,
       String ru,
       String en) {
-    Path directory = reviewRoot.resolve(collection).resolve(publicId).resolve("published");
-    replaceAtomically(directory.resolve("ru.md"), ru);
-    replaceAtomically(directory.resolve("en.md"), en);
+    Path page = reviewRoot.resolve(collection).resolve(publicId);
+    try {
+      Files.createDirectories(page);
+    } catch (IOException error) {
+      throw new IllegalStateException("cannot prepare published snapshot " + page, error);
+    }
+    try (PublishedSnapshotStore.PendingSnapshot pending = PUBLISHED_SNAPSHOTS.stage(
+        page,
+        ru.getBytes(StandardCharsets.UTF_8),
+        en.getBytes(StandardCharsets.UTF_8))) {
+      pending.commit(List.of());
+    }
+  }
+
+  public static PendingPublishedSnapshot stageApprovedSnapshot(
+      Path reviewRoot,
+      ManifestEntry entry,
+      byte[] reviewedEnglish) {
+    Target target = target(entry);
+    Path page = reviewRoot.resolve(target.collection()).resolve(target.publicId());
+    PublishedSnapshotStore.PendingSnapshot pending = PUBLISHED_SNAPSHOTS.stage(
+        page,
+        renderRuReview(entry).getBytes(StandardCharsets.UTF_8),
+        reviewedEnglish);
+    return new PendingPublishedSnapshot() {
+      @Override
+      public PublishedSnapshotResult commit(
+          List<WorkflowStateService.SnapshotGuard> guards) {
+        PublishedSnapshotStore.CommitResult result = pending.commit(guards);
+        return new PublishedSnapshotResult(result.recoveryPaths());
+      }
+
+      @Override
+      public void close() {
+        pending.close();
+      }
+    };
   }
 
   public static void snapshotPublished(Path reviewRoot, ManifestResult manifest) {
@@ -260,6 +301,20 @@ public final class ReviewWorkspace {
 
   public static Optional<String> readPublishedEn(Path reviewRoot, String collection, String publicId) {
     return readIfExists(reviewRoot.resolve(collection).resolve(publicId).resolve("published/en.md"));
+  }
+
+  public interface PendingPublishedSnapshot extends AutoCloseable {
+    PublishedSnapshotResult commit(
+        List<WorkflowStateService.SnapshotGuard> guards);
+
+    @Override
+    void close();
+  }
+
+  public record PublishedSnapshotResult(List<Path> recoveryPaths) {
+    public PublishedSnapshotResult {
+      recoveryPaths = List.copyOf(recoveryPaths);
+    }
   }
 
   private static Optional<String> readIfExists(Path path) {
