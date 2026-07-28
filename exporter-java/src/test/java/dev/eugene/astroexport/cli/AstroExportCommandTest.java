@@ -653,6 +653,48 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void stagingWriteCleanupFailureBeforePendingReturnsBlockingRecovery()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path published = review.resolve("blog/essay/published");
+    Path recovery = review.resolve("blog/essay/.published-stage-recovery");
+    Files.createDirectories(recovery);
+    Files.writeString(recovery.resolve("ru.md"), "candidate ru\n");
+    Files.writeString(recovery.resolve("en.md"), "candidate en\n");
+    IOException writeFailure = new IOException("stage write failed");
+    writeFailure.addSuppressed(new IOException("stage cleanup failed"));
+    CommandServices services = CommandServices.defaults()
+        .withStageApprovedSnapshotAction((root, current, english) -> {
+          throw new PublishedSnapshotStore.PublishedSnapshotRecoveryException(
+              "cannot clean failed staged published snapshot",
+              PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+              published,
+              List.of(recovery),
+              writeFailure);
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+    Map<String, Object> diagnostic = firstDiagnostic(payload);
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("recovery_required", payload.get("status"));
+    assertEquals("published-snapshot-recovery", diagnostic.get("field"));
+    assertEquals(true, diagnostic.get("blocking"));
+    assertTrue(String.valueOf(diagnostic.get("message"))
+        .contains("STAGED_CANDIDATE"));
+    assertTrue(String.valueOf(diagnostic.get("message")).contains(published.toString()));
+    assertTrue(String.valueOf(diagnostic.get("message")).contains(recovery.toString()));
+    assertFalse(String.valueOf(diagnostic.get("message")).contains("invoke Mark"));
+  }
+
+  @Test
   void pendingCleanupFailureOverridesRetryAndReturnsBlockingRecoveryOutcome()
       throws Exception {
     Path vault = temp.resolve("vault");

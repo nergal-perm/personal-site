@@ -53,6 +53,7 @@ public final class PublishedSnapshotStore {
       byte[] stagedEnglish = english.clone();
       writeForced(staging.resolve("ru.md"), stagedRussian);
       writeForced(staging.resolve("en.md"), stagedEnglish);
+      ioHooks.forceDirectory(staging);
       return new FilePendingSnapshot(
           page.resolve("published"),
           staging,
@@ -61,9 +62,15 @@ public final class PublishedSnapshotStore {
     } catch (IOException error) {
       if (staging != null) {
         try {
-          deleteTree(staging);
+          ioHooks.deleteTree(staging);
         } catch (IOException cleanupError) {
           error.addSuppressed(cleanupError);
+          throw new PublishedSnapshotRecoveryException(
+              "cannot clean failed staged published snapshot " + staging,
+              RecoveryDisposition.STAGED_CANDIDATE,
+              page.resolve("published"),
+              List.of(staging),
+              error);
         }
       }
       throw new IllegalStateException("cannot stage published snapshot " + page, error);
@@ -85,6 +92,10 @@ public final class PublishedSnapshotStore {
 
   interface IoHooks {
     default void afterVisibleCommit(Path published) throws IOException { }
+
+    default void forceDirectory(Path directory) throws IOException {
+      PublishedSnapshotStore.forceDirectory(directory);
+    }
 
     default void deleteTree(Path root) throws IOException {
       PublishedSnapshotStore.deleteTree(root);
@@ -205,6 +216,12 @@ public final class PublishedSnapshotStore {
           rollback(error);
           throw error;
         }
+        try {
+          ioHooks.forceDirectory(published.getParent());
+        } catch (IOException error) {
+          rollback(error);
+          throw commitFailure(published, error);
+        }
         ownershipState = OwnershipState.COMMITTED;
 
         if (!replacement) {
@@ -254,6 +271,7 @@ public final class PublishedSnapshotStore {
           default -> throw new IllegalStateException(
               "published snapshot rollback has no visible candidate");
         }
+        ioHooks.forceDirectory(published.getParent());
         ownershipState = OwnershipState.STAGED_NEW;
       } catch (IOException rollbackError) {
         rollbackError.addSuppressed(failure);
@@ -365,6 +383,16 @@ public final class PublishedSnapshotStore {
     return new IllegalStateException(
         "cannot commit published snapshot " + published + ": " + error.getMessage(),
         error);
+  }
+
+  private static void forceDirectory(Path directory) throws IOException {
+    try (FileChannel channel = FileChannel.open(
+        directory,
+        StandardOpenOption.READ)) {
+      channel.force(true);
+    } catch (UnsupportedOperationException error) {
+      throw new IOException("cannot force directory " + directory, error);
+    }
   }
 
   private static void deleteTree(Path root) throws IOException {

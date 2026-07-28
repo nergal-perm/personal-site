@@ -562,6 +562,13 @@ public final class AstroExportCommand implements Callable<Integer> {
       try {
         pendingSnapshot = services.stageApprovedSnapshot(
             reviewRoot, stable.preflight().entry(), reviewedBytes);
+      } catch (PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
+        emitPublishedSnapshotRecovery(
+            note,
+            identity,
+            stable.preflight().workspaceHealth(),
+            error);
+        return 1;
       } catch (RuntimeException error) {
         emitJson(bridge("mark-reviewed", false,
                 freshPairWorkflowStatus(pair.translationStatus()))
@@ -1360,11 +1367,13 @@ public final class AstroExportCommand implements Callable<Integer> {
         .collect(java.util.stream.Collectors.joining(", "));
     if (error.disposition()
         == PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE) {
-      return "Approved baseline ownership is uncertain: the candidate may be visible at "
+      return "Recovery ownership: CANDIDATE_VISIBLE. "
+          + "Approved baseline ownership is uncertain: the candidate may be visible at "
           + error.publishedPath() + ", and recovery data remains at " + paths
           + ". Inspect these paths before any retry.";
     }
-    return "Approved baseline cleanup is incomplete: an uncommitted staged candidate "
+    return "Recovery ownership: STAGED_CANDIDATE. "
+        + "Approved baseline cleanup is incomplete: an uncommitted staged candidate "
         + "remains at " + paths + " for published path " + error.publishedPath()
         + ". Inspect and resolve recovery data before any retry.";
   }
