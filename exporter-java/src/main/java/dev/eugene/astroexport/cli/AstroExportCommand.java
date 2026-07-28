@@ -615,12 +615,15 @@ public final class AstroExportCommand implements Callable<Integer> {
 
         StablePreflight approved = stablePreflight(
             vaultRoot, note, current.preflight().note().path());
-        byte[] approvedRussian = ReviewWorkspace.renderRuReview(
-            approved.preflight().entry()).getBytes(StandardCharsets.UTF_8);
         if (!approved.preflight().ready()
             || !identity.samePublicIdentity(
-                identityFromPreflight(approved.preflight(), reviewRoot))
-            || !Arrays.equals(stagedRussian, approvedRussian)
+                identityFromPreflight(approved.preflight(), reviewRoot))) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "source projection or English review changed before published snapshot commit");
+        }
+        byte[] approvedRussian = ReviewWorkspace.renderRuReview(
+            approved.preflight().entry()).getBytes(StandardCharsets.UTF_8);
+        if (!Arrays.equals(stagedRussian, approvedRussian)
             || !Arrays.equals(readSafeRegularFile(english), reviewedBytes)) {
           throw new WorkflowStateService.ConcurrentFileUpdateException(
               "source projection or English review changed before published snapshot commit");
@@ -771,6 +774,18 @@ public final class AstroExportCommand implements Callable<Integer> {
             .translationStatus("reviewed")
             .build());
         return 1;
+      } catch (RuntimeException error) {
+        PublishedSnapshotStore.PublishedSnapshotRecoveryException recovery =
+            findPublishedSnapshotRecovery(error);
+        if (recovery != null) {
+          emitPublishedSnapshotRecovery(
+              note,
+              identity,
+              stable.preflight().workspaceHealth(),
+              recovery);
+          return 1;
+        }
+        throw error;
       }
     } catch (LockBusyException error) {
       emitJson(bridge("mark-reviewed", false, "translating")

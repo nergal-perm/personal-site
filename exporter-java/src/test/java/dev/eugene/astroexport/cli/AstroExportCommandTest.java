@@ -684,6 +684,91 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void suppressedPendingCleanupFailureOverridesUnexpectedRuntime()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path published = review.resolve("blog/essay/published");
+    Path recovery = review.resolve("blog/essay/.published-stage-recovery");
+    Files.createDirectories(recovery);
+    Files.writeString(recovery.resolve("ru.md"), "candidate ru\n");
+    Files.writeString(recovery.resolve("en.md"), "candidate en\n");
+    CommandServices services = CommandServices.defaults()
+        .withStageApprovedSnapshotAction((root, current, english) -> {
+          ReviewWorkspace.PendingPublishedSnapshot real =
+              ReviewWorkspace.stageApprovedSnapshot(root, current, english);
+          return new ReviewWorkspace.PendingPublishedSnapshot() {
+            @Override
+            public ReviewWorkspace.PublishedSnapshotResult commit(
+                List<WorkflowStateService.SnapshotGuard> guards) {
+              return real.commit(guards);
+            }
+
+            @Override
+            public void close() {
+              real.close();
+              throw new PublishedSnapshotStore.PublishedSnapshotRecoveryException(
+                  "cleanup failed",
+                  PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+                  published,
+                  List.of(recovery),
+                  new IOException("cleanup failed"));
+            }
+          };
+        })
+        .withPreflightObserver((actualVault, note) -> {
+          if (Files.readString(source).contains(
+              "publicWorkflowStatus: \"ready_to_publish\"")) {
+            throw new IllegalStateException(
+                "unexpected final search failure");
+          }
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+    Map<String, Object> diagnostic = firstDiagnostic(payload);
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("recovery_required", payload.get("status"), result.stdout());
+    assertEquals("published-snapshot-recovery", diagnostic.get("field"));
+    assertEquals(true, diagnostic.get("blocking"));
+    assertTrue(String.valueOf(diagnostic.get("message")).contains(recovery.toString()));
+  }
+
+  @Test
+  void unexpectedRuntimeWithoutRecoveryStillPropagates()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    CommandServices services = CommandServices.defaults()
+        .withPreflightObserver((actualVault, note) -> {
+          if (Files.readString(source).contains(
+              "publicWorkflowStatus: \"ready_to_publish\"")) {
+            throw new IllegalStateException(
+                "unexpected final search failure");
+          }
+        });
+
+    IllegalStateException error = assertThrows(
+        IllegalStateException.class,
+        () -> runMarkReviewed(
+            new AstroExportCommand(services),
+            vault,
+            review,
+            temp.resolve("jobs")));
+
+    assertEquals("unexpected final search failure", error.getMessage());
+  }
+
+  @Test
   void alreadyReviewedRetryUsesValidatedBytesWithoutRewriteParser()
       throws Exception {
     Path vault = temp.resolve("vault");
@@ -867,6 +952,69 @@ final class AstroExportCommandTest {
     assertEquals("old en\n",
         Files.readString(review.resolve("blog/essay/published/en.md")));
     assertTrue(Files.readString(source).contains("topics: [software]"));
+  }
+
+  @Test
+  void metadataBlockedFinalPreflightReturnsStaleAndPreservesOldPair()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = writeBlogNote(vault);
+    Files.writeString(source, Files.readString(source)
+        .replace(
+            "publish: true",
+            """
+            publish: true
+            publicWorkflowStatus: "ready_to_publish"
+            publicTranslationStatus: "reviewed"
+            """));
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "reviewed");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "old ru\n", "old en\n");
+    Clock mutatingClock = new Clock() {
+      @Override
+      public ZoneId getZone() {
+        return ZoneOffset.UTC;
+      }
+
+      @Override
+      public Clock withZone(ZoneId zone) {
+        return this;
+      }
+
+      @Override
+      public Instant instant() {
+        try {
+          Files.writeString(
+              source,
+              Files.readString(source).replace(
+                  "publicId: essay", "publicId:"));
+        } catch (IOException error) {
+          throw new java.io.UncheckedIOException(error);
+        }
+        return Instant.parse("2026-07-28T00:00:00Z");
+      }
+    };
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(
+            CommandServices.defaults().withClock(mutatingClock)),
+        vault,
+        review,
+        temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("stale", payload.get("status"));
+    assertEquals(null, payload.get("pairFreshness"));
+    assertEquals(null, payload.get("translationStatus"));
+    assertEquals("old ru\n",
+        Files.readString(review.resolve("blog/essay/published/ru.md")));
+    assertEquals("old en\n",
+        Files.readString(review.resolve("blog/essay/published/en.md")));
+    assertTrue(Files.readString(source).contains("\npublicId:\n"));
   }
 
   @Test
