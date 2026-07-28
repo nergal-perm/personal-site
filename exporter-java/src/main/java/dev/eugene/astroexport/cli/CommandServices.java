@@ -94,7 +94,8 @@ public final class CommandServices {
         discovery::select,
         builder::buildRussianManifest,
         TranslationValidator::buildEnglishManifest,
-        (vault, note, review, jobs) -> new PrepareWorkflow().prepare(vault, note, review, jobs),
+        (vault, note, review, jobs, entryResolver) ->
+            new PrepareWorkflow(entryResolver).prepare(vault, note, review, jobs),
         SiteWriter::writeSiteAtomic,
         CommandServices::runGate,
         new WorkflowStateService(),
@@ -232,7 +233,7 @@ public final class CommandServices {
   }
 
   public PrepareWorkflow.PrepareResult prepare(Path vault, String note, Path review, Path jobs) {
-    return prepareAction.prepare(vault, note, review, jobs);
+    return prepareAction.prepare(vault, note, review, jobs, this::resolvePrepareEntry);
   }
 
   public SiteWriter.WriteResult writeSite(Path siteRoot, ManifestResult manifest, Consumer<Path> validator) {
@@ -364,6 +365,18 @@ public final class CommandServices {
     return new CliPreflight(loaded.note(), entry, List.of(), workspaceHealth);
   }
 
+  private ManifestEntry resolvePrepareEntry(Path vault, String notePath) {
+    CliPreflight resolved = preflight(vault, notePath);
+    if (resolved.ready()) {
+      return resolved.entry();
+    }
+    String diagnostic = resolved.diagnostics().stream()
+        .map(item -> item.field() + ": " + item.message())
+        .reduce((first, second) -> first + "; " + second)
+        .orElse(notePath + ": must be selected for publication");
+    throw new IllegalArgumentException(diagnostic);
+  }
+
   private List<PublicationDiagnostic> workspaceHealth(Path vault, String currentPath, SelectionResult selection) {
     return selection.excluded().stream()
         .filter(exclusion -> !exclusion.vaultPath().equals(currentPath))
@@ -449,7 +462,12 @@ public final class CommandServices {
 
   @FunctionalInterface
   public interface PrepareAction {
-    PrepareWorkflow.PrepareResult prepare(Path vault, String note, Path review, Path jobs);
+    PrepareWorkflow.PrepareResult prepare(
+        Path vault,
+        String note,
+        Path review,
+        Path jobs,
+        PrepareWorkflow.EntryResolver entryResolver);
   }
 
   @FunctionalInterface

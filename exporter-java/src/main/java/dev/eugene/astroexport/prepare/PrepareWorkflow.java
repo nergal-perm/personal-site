@@ -1,6 +1,7 @@
 package dev.eugene.astroexport.prepare;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.astroexport.discovery.PublicationDiscovery;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
@@ -8,7 +9,6 @@ import dev.eugene.astroexport.fs.JnaFileDescriptor;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
-import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.translation.TranslationDiff;
@@ -99,7 +99,7 @@ public final class PrepareWorkflow {
   private final TranslationRunner runner;
   private final Clock clock;
   private final PreflightService preflight = new PreflightService();
-  private final ManifestBuilder manifestBuilder = new ManifestBuilder();
+  private final EntryResolver entryResolver;
   private final WorkflowStateService workflowState;
   private final AtomicExchange atomicExchange;
   private final ExistingEnglishReadHook existingEnglishReadHook;
@@ -109,6 +109,10 @@ public final class PrepareWorkflow {
   private final IoHooks ioHooks;
 
   public PrepareWorkflow() {
+    this(defaultEntryResolver());
+  }
+
+  public PrepareWorkflow(EntryResolver entryResolver) {
     this(
         defaultRunner(),
         Clock.systemUTC(),
@@ -116,7 +120,10 @@ public final class PrepareWorkflow {
         new JnaAtomicExchange(),
         path -> { },
         PrepareWorkflow::preserve,
-        path -> { });
+        path -> { },
+        (target, temporary) -> { },
+        new IoHooks() { },
+        entryResolver);
   }
 
   public PrepareWorkflow(TranslationRunner runner, Clock clock) {
@@ -127,7 +134,10 @@ public final class PrepareWorkflow {
         new JnaAtomicExchange(),
         path -> { },
         PrepareWorkflow::preserve,
-        path -> { });
+        path -> { },
+        (target, temporary) -> { },
+        new IoHooks() { },
+        defaultEntryResolver());
   }
 
   public PrepareWorkflow(
@@ -142,7 +152,10 @@ public final class PrepareWorkflow {
         atomicExchange,
         path -> { },
         PrepareWorkflow::preserve,
-        path -> { });
+        path -> { },
+        (target, temporary) -> { },
+        new IoHooks() { },
+        defaultEntryResolver());
   }
 
   PrepareWorkflow(
@@ -159,7 +172,10 @@ public final class PrepareWorkflow {
         atomicExchange,
         existingEnglishReadHook,
         recoveryFilePreserver,
-        path -> { });
+        path -> { },
+        (target, temporary) -> { },
+        new IoHooks() { },
+        defaultEntryResolver());
   }
 
   PrepareWorkflow(
@@ -178,7 +194,9 @@ public final class PrepareWorkflow {
         existingEnglishReadHook,
         recoveryFilePreserver,
         lockAcquisitionHook,
-        (target, temporary) -> { });
+        (target, temporary) -> { },
+        new IoHooks() { },
+        defaultEntryResolver());
   }
 
   PrepareWorkflow(
@@ -199,7 +217,8 @@ public final class PrepareWorkflow {
         recoveryFilePreserver,
         lockAcquisitionHook,
         firstDraftInstallHook,
-        new IoHooks() { });
+        new IoHooks() { },
+        defaultEntryResolver());
   }
 
   PrepareWorkflow(
@@ -212,8 +231,33 @@ public final class PrepareWorkflow {
       LockAcquisitionHook lockAcquisitionHook,
       FirstDraftInstallHook firstDraftInstallHook,
       IoHooks ioHooks) {
+    this(
+        runner,
+        clock,
+        workflowState,
+        atomicExchange,
+        existingEnglishReadHook,
+        recoveryFilePreserver,
+        lockAcquisitionHook,
+        firstDraftInstallHook,
+        ioHooks,
+        defaultEntryResolver());
+  }
+
+  PrepareWorkflow(
+      TranslationRunner runner,
+      Clock clock,
+      WorkflowStateService workflowState,
+      AtomicExchange atomicExchange,
+      ExistingEnglishReadHook existingEnglishReadHook,
+      RecoveryFilePreserver recoveryFilePreserver,
+      LockAcquisitionHook lockAcquisitionHook,
+      FirstDraftInstallHook firstDraftInstallHook,
+      IoHooks ioHooks,
+      EntryResolver entryResolver) {
     this.runner = runner;
     this.clock = clock;
+    this.entryResolver = entryResolver;
     this.workflowState = workflowState;
     this.atomicExchange = atomicExchange;
     this.existingEnglishReadHook = existingEnglishReadHook;
@@ -236,7 +280,7 @@ public final class PrepareWorkflow {
 
     ManifestEntry entry;
     try {
-      entry = entry(initial);
+      entry = entryResolver.resolve(vault, notePath);
     } catch (RuntimeException error) {
       return metadataBlocked(initial, now, new PublicationDiagnostic(
           "manifest", notePath + ": " + safeMessage(error)));
@@ -828,12 +872,6 @@ public final class PrepareWorkflow {
         new WorkflowStateService.SnapshotGuard(source, snapshot));
   }
 
-  private ManifestEntry entry(PreflightService.Result result) {
-    ManifestResult manifest = manifestBuilder.buildRussianManifest(
-        new SelectionResult(List.of(result.note()), List.of(), 1, 1));
-    return manifest.entries().getFirst();
-  }
-
   private Fresh fresh(
       Path vault,
       String notePath,
@@ -858,7 +896,7 @@ public final class PrepareWorkflow {
               + "fix the note and run prepare again.";
     } else {
       try {
-        freshEntry = entry(result);
+        freshEntry = entryResolver.resolve(vault, notePath);
       } catch (RuntimeException error) {
         staleMessage =
             "Source changed during translation and no longer passes preflight; "
@@ -1781,6 +1819,17 @@ public final class PrepareWorkflow {
     return process::run;
   }
 
+  private static EntryResolver defaultEntryResolver() {
+    PublicationDiscovery discovery = new PublicationDiscovery();
+    ManifestBuilder builder = new ManifestBuilder();
+    return (vault, notePath) -> builder.buildRussianManifest(discovery.select(vault)).entries()
+        .stream()
+        .filter(entry -> entry.sourcePath().equals(notePath))
+        .findFirst()
+        .orElseThrow(() -> new IllegalArgumentException(
+            notePath + ": must be selected for publication"));
+  }
+
   private static void writeDurably(Path path, byte[] payload) throws IOException {
     try (FileChannel channel = FileChannel.open(
         path, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -1899,6 +1948,11 @@ public final class PrepareWorkflow {
   @FunctionalInterface
   public interface TranslationRunner {
     CodexRunner.Run run(Path workdir, String prompt, Duration timeout) throws Exception;
+  }
+
+  @FunctionalInterface
+  public interface EntryResolver {
+    ManifestEntry resolve(Path vault, String notePath);
   }
 
   @FunctionalInterface

@@ -1,6 +1,7 @@
 package dev.eugene.astroexport.prepare;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -10,11 +11,15 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.astroexport.discovery.PublicationDiscovery;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
+import dev.eugene.astroexport.manifest.ManifestBuilder;
+import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.review.ReviewWorkspace;
+import dev.eugene.astroexport.translation.TranslationValidator;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
@@ -583,6 +588,63 @@ final class PrepareWorkflowTest {
         "## Определение\n\nРусское определение."));
     assertTrue(runner.prompt.contains(
         "complete\ntranslated body required by the template"));
+  }
+
+  @Test
+  void generatedReviewStaysFreshWhenSourceLinksAnotherPublishedNote() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path source = vault.resolve("concepts/Startup.md");
+    Path target = vault.resolve("claims/Management.md");
+    Files.createDirectories(source.getParent());
+    Files.createDirectories(target.getParent());
+    Files.writeString(source, """
+        ---
+        title: Startup
+        publish: true
+        publicId: startup
+        publicCollection: concepts
+        publicContentType: concept
+        description: Русское описание.
+        ---
+        ## Определение
+
+        Русское определение со ссылкой на [[Management]].
+        """);
+    Files.writeString(target, """
+        ---
+        title: Management
+        publish: true
+        publicId: management
+        publicCollection: blog
+        publicContentType: claim
+        statement: Русский тезис.
+        ---
+        Русское пояснение.
+        """);
+    Path review = temp.resolve("review");
+    Path jobs = temp.resolve("jobs");
+    RecordingRunner runner = new RecordingRunner(job -> {
+      String normalized = Files.readString(job.resolve("ru.md"));
+      String body = normalized.contains("](/ru/claims/management/)")
+          ? "## Definition\n\nEnglish definition with [Management](/en/claims/management/).\n"
+          : "## Definition\n\nEnglish definition with Management.\n";
+      writeCandidate(job, null, body);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(vault, "concepts/Startup.md", review, jobs);
+
+    assertEquals("ready_for_review", result.status());
+    ManifestResult fullManifest = new ManifestBuilder().buildRussianManifest(
+        new PublicationDiscovery().select(vault));
+    var fullEntry = fullManifest.entries().stream()
+        .filter(entry -> entry.sourcePath().equals("concepts/Startup.md"))
+        .findFirst()
+        .orElseThrow();
+    ManifestResult preparedSource = new ManifestResult(
+        List.of(fullEntry), List.of(), List.of(), List.of());
+    assertDoesNotThrow(() -> TranslationValidator.buildEnglishManifest(preparedSource, review));
   }
 
   @Test

@@ -123,7 +123,7 @@ final class AstroExportCommandTest {
     Path jobs = temp.resolve("jobs");
     CommandServices services = CommandServices.defaults()
         .withClock(Clock.fixed(Instant.parse("2026-07-18T12:30:00Z"), ZoneOffset.UTC))
-        .withPrepareAction((actualVault, note, actualReview, actualJobs) -> {
+        .withPrepareAction((actualVault, note, actualReview, actualJobs, entryResolver) -> {
           assertEquals(vault, actualVault);
           assertEquals("anywhere/Essay.md", note);
           assertEquals(review, actualReview);
@@ -287,7 +287,7 @@ final class AstroExportCommandTest {
     Path vault = temp.resolve("vault");
     writeBlogNote(vault);
     CommandServices services = CommandServices.defaults()
-        .withPrepareAction((actualVault, note, review, jobs) -> new PrepareWorkflow.PrepareResult(
+        .withPrepareAction((actualVault, note, review, jobs, entryResolver) -> new PrepareWorkflow.PrepareResult(
             "metadata_blocked", null, List.of(), List.of(), null, null))
         .withSelectionAction(actualVault -> {
           throw new PublicationDiscovery.PublicationSearchException("expected discovery failure");
