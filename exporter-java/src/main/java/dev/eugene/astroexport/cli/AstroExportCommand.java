@@ -13,6 +13,7 @@ import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.report.ReportBuilder;
 import dev.eugene.astroexport.review.PublishedSnapshotStore;
+import dev.eugene.astroexport.review.ReviewLaunchPlanner;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.translation.TranslationValidator;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
@@ -436,6 +437,27 @@ public final class AstroExportCommand implements Callable<Integer> {
     }
     ReviewPairState pair = reviewPairState(preflight.entry(), reviewRoot);
     boolean fresh = "fresh".equals(pair.freshness());
+    ReviewLaunchPlanner.ReviewPlan reviewPlan = null;
+    if (fresh) {
+      try {
+        reviewPlan = new ReviewLaunchPlanner().plan(
+            reviewRoot,
+            identity.reviewDirectory(),
+            preflight.entry(),
+            pair.content());
+      } catch (ReviewLaunchPlanner.ReviewLaunchException error) {
+        emitJson(bridge("inspect-publication", false, error.status())
+            .note(note)
+            .identity(identity)
+            .diagnostics(List.of(new PublicationDiagnostic(
+                error.field(), error.getMessage())))
+            .workspaceHealth(preflight.workspaceHealth())
+            .pairFreshness(pair.freshness())
+            .translationStatus(pair.translationStatus())
+            .build());
+        return 1;
+      }
+    }
     emitJson(bridge("inspect-publication", fresh,
             fresh ? freshPairWorkflowStatus(pair.translationStatus()) : "stale")
         .note(note)
@@ -444,6 +466,7 @@ public final class AstroExportCommand implements Callable<Integer> {
         .workspaceHealth(preflight.workspaceHealth())
         .pairFreshness(pair.freshness())
         .translationStatus(pair.translationStatus())
+        .reviewPlan(reviewPlan)
         .build());
     return fresh ? 0 : 1;
   }

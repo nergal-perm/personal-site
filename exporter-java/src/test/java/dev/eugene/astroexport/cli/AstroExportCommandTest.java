@@ -54,6 +54,7 @@ final class AstroExportCommandTest {
       "reviewDirectory",
       "pairFreshness",
       "translationStatus",
+      "reviewPlan",
       "diagnostics",
       "workspaceHealth",
       "jobId",
@@ -81,6 +82,7 @@ final class AstroExportCommandTest {
         """);
     Path review = temp.resolve("review");
     ManifestEntry entry = currentBlogEntry(vault);
+    ReviewWorkspace.writeRuReviewFile(review, entry);
     writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
     Map<String, ByteBuffer> beforeVault = treeSnapshot(vault);
     Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
@@ -95,7 +97,7 @@ final class AstroExportCommandTest {
     assertEquals(0, result.exitCode());
     Map<String, Object> payload = json(result.stdout());
     assertIterableEquals(BRIDGE_KEYS, payload.keySet());
-    assertEquals(1, payload.get("schemaVersion"));
+    assertEquals(2, payload.get("schemaVersion"));
     assertEquals("inspect-publication", payload.get("command"));
     assertEquals(true, payload.get("ok"));
     assertEquals("ready_for_review", payload.get("status"));
@@ -105,6 +107,14 @@ final class AstroExportCommandTest {
     assertEquals(review.resolve("blog/essay").toString(), payload.get("reviewDirectory"));
     assertEquals("fresh", payload.get("pairFreshness"));
     assertEquals("generated", payload.get("translationStatus"));
+    Map<?, ?> reviewPlan = (Map<?, ?>) payload.get("reviewPlan");
+    assertEquals("absent", reviewPlan.get("baselineState"));
+    List<?> targets = (List<?>) reviewPlan.get("targets");
+    assertEquals(2, targets.size());
+    assertEquals(target("ru", review.resolve("blog/essay/ru.md"), null),
+        nullableMap((Map<?, ?>) targets.get(0)));
+    assertEquals(target("en", review.resolve("blog/essay/en.md"), null),
+        nullableMap((Map<?, ?>) targets.get(1)));
     assertEquals(List.of(), payload.get("diagnostics"));
     assertEquals(List.of(Map.of(
         "field", "publicId",
@@ -158,6 +168,7 @@ final class AstroExportCommandTest {
     assertEquals("ready_for_review", payload.get("status"));
     assertEquals("fresh", payload.get("pairFreshness"));
     assertEquals("generated", payload.get("translationStatus"));
+    assertEquals(null, payload.get("reviewPlan"));
     assertEquals("job-123", payload.get("jobId"));
     assertEquals(null, payload.get("summary"));
 
@@ -170,6 +181,73 @@ final class AstroExportCommandTest {
         "--json",
         "--out", temp.resolve("astro").toString());
     assertEquals(2, rejected.exitCode());
+  }
+
+  @Test
+  void inspectBridgeReturnsCompletePublishedComparisonPlan() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    ReviewWorkspace.writeRuReviewFile(review, entry);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    ReviewWorkspace.writePublishedSnapshot(
+        review, "blog", "essay", "approved Russian\n", "approved English\n");
+
+    CommandFixture.Result result = run(command(),
+        "inspect-publication",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", review.toString(),
+        "--json");
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    Map<String, Object> payload = json(result.stdout());
+    Map<?, ?> plan = (Map<?, ?>) payload.get("reviewPlan");
+    assertEquals("complete", plan.get("baselineState"));
+    List<?> targets = (List<?>) plan.get("targets");
+    assertEquals(target(
+        "ru",
+        review.resolve("blog/essay/ru.md"),
+        review.resolve("blog/essay/published/ru.md")),
+        nullableMap((Map<?, ?>) targets.get(0)));
+    assertEquals(target(
+        "en",
+        review.resolve("blog/essay/en.md"),
+        review.resolve("blog/essay/published/en.md")),
+        nullableMap((Map<?, ?>) targets.get(1)));
+  }
+
+  @Test
+  void inspectBridgeBlocksPartialPublishedSnapshotWithoutChangingFiles() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    ManifestEntry entry = currentBlogEntry(vault);
+    ReviewWorkspace.writeRuReviewFile(review, entry);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path published = review.resolve("blog/essay/published");
+    Files.createDirectories(published);
+    Files.writeString(published.resolve("ru.md"), "approved Russian\n");
+    Map<String, ByteBuffer> beforeVault = treeSnapshot(vault);
+    Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
+
+    CommandFixture.Result result = run(command(),
+        "inspect-publication",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", review.toString(),
+        "--json");
+
+    assertEquals(1, result.exitCode());
+    Map<String, Object> payload = json(result.stdout());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("published_snapshot_inconsistent", payload.get("status"));
+    assertEquals(null, payload.get("reviewPlan"));
+    assertEquals("published-snapshot", firstDiagnostic(payload).get("field"));
+    assertEquals(true, firstDiagnostic(payload).get("blocking"));
+    assertEquals(beforeVault, treeSnapshot(vault));
+    assertEquals(beforeReview, treeSnapshot(review));
   }
 
   @Test
@@ -443,7 +521,7 @@ final class AstroExportCommandTest {
     assertFalse(result.stderr().contains("Traceback"));
     Map<String, Object> payload = json(result.stdout());
     assertIterableEquals(BRIDGE_KEYS, payload.keySet());
-    assertEquals(1, payload.get("schemaVersion"));
+    assertEquals(2, payload.get("schemaVersion"));
     assertEquals("refresh-publication-queue", payload.get("command"));
     assertEquals(false, payload.get("ok"));
     assertEquals("refresh_failed", payload.get("status"));
@@ -1414,6 +1492,24 @@ final class AstroExportCommandTest {
     return String.valueOf(firstDiagnostic(payload).get("field"));
   }
 
+  private static Map<String, Object> nullableMap(Map<?, ?> source) {
+    LinkedHashMap<String, Object> copy = new LinkedHashMap<>();
+    source.forEach((key, value) -> copy.put(String.valueOf(key), value));
+    return copy;
+  }
+
+  private static Map<String, Object> target(
+      String language,
+      Path proposed,
+      Path published) throws IOException {
+    LinkedHashMap<String, Object> target = new LinkedHashMap<>();
+    target.put("language", language);
+    target.put("proposedPath", proposed.toRealPath().toString());
+    target.put("publishedPath",
+        published == null ? null : published.toRealPath().toString());
+    return target;
+  }
+
   @SuppressWarnings("unchecked")
   private static Map<String, Object> firstDiagnostic(Map<String, Object> payload) {
     List<Map<String, Object>> diagnostics =
@@ -1438,7 +1534,7 @@ final class AstroExportCommandTest {
     assertFalse(result.stderr().contains("Traceback"));
     Map<String, Object> payload = json(result.stdout());
     assertIterableEquals(BRIDGE_KEYS, payload.keySet());
-    assertEquals(1, payload.get("schemaVersion"));
+    assertEquals(2, payload.get("schemaVersion"));
     assertEquals(command, payload.get("command"));
     assertEquals(false, payload.get("ok"));
     assertEquals(status, payload.get("status"));
@@ -1448,6 +1544,7 @@ final class AstroExportCommandTest {
     assertEquals(null, payload.get("reviewDirectory"));
     assertEquals(null, payload.get("pairFreshness"));
     assertEquals(null, payload.get("translationStatus"));
+    assertEquals(null, payload.get("reviewPlan"));
     assertEquals(List.of(Map.of(
         "field", "io",
         "message", "Could not read publication files: PublicationSearchException.",

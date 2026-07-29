@@ -2,6 +2,7 @@ package dev.eugene.astroexport.cli;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.astroexport.review.ReviewLaunchPlanner;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,7 +10,7 @@ import java.util.Map;
 
 /** Stable JSON response shape for Obsidian bridge commands. */
 public final class BridgeResponse {
-  public static final int SCHEMA_VERSION = 1;
+  public static final int SCHEMA_VERSION = 2;
   private static final ObjectMapper JSON = new ObjectMapper();
 
   private final LinkedHashMap<String, Object> payload;
@@ -44,6 +45,7 @@ public final class BridgeResponse {
     private String reviewDirectory;
     private String pairFreshness;
     private String translationStatus;
+    private ReviewLaunchPlanner.ReviewPlan reviewPlan;
     private List<PublicationDiagnostic> diagnostics = List.of();
     private List<PublicationDiagnostic> workspaceHealth = List.of();
     private String jobId;
@@ -87,6 +89,11 @@ public final class BridgeResponse {
 
     public Builder translationStatus(String translationStatus) {
       this.translationStatus = translationStatus;
+      return this;
+    }
+
+    public Builder reviewPlan(ReviewLaunchPlanner.ReviewPlan reviewPlan) {
+      this.reviewPlan = reviewPlan;
       return this;
     }
 
@@ -137,6 +144,7 @@ public final class BridgeResponse {
       values.put("reviewDirectory", reviewDirectory);
       values.put("pairFreshness", pairFreshness);
       values.put("translationStatus", translationStatus);
+      values.put("reviewPlan", reviewPlanPayload(reviewPlan));
       values.put("diagnostics", diagnosticPayloads(diagnostics));
       values.put("workspaceHealth", diagnosticPayloads(workspaceHealth));
       values.put("jobId", jobId);
@@ -155,6 +163,28 @@ public final class BridgeResponse {
         item.put("blocking", diagnostic.blocking());
         return item;
       }).toList();
+    }
+
+    private static Map<String, Object> reviewPlanPayload(
+        ReviewLaunchPlanner.ReviewPlan plan) {
+      if (plan == null) {
+        return null;
+      }
+      LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+      payload.put("baselineState", plan.baselineState());
+      payload.put("targets",
+          plan.targets().stream().map(BridgeResponse.Builder::reviewTargetPayload).toList());
+      return payload;
+    }
+
+    private static Map<String, Object> reviewTargetPayload(
+        ReviewLaunchPlanner.ReviewTarget target) {
+      LinkedHashMap<String, Object> item = new LinkedHashMap<>();
+      item.put("language", target.language());
+      item.put("proposedPath", target.proposedPath().toString());
+      item.put("publishedPath",
+          target.publishedPath() == null ? null : target.publishedPath().toString());
+      return item;
     }
   }
 }
