@@ -90,6 +90,20 @@ const { createBridgeClient } = (() => {
       );
     }
 
+    if (
+      payload !== null &&
+      typeof payload === "object" &&
+      !Array.isArray(payload) &&
+      Number.isInteger(payload.schemaVersion) &&
+      payload.schemaVersion !== 2
+    ) {
+      throw new BridgeClientError(
+        "schema_mismatch",
+        `Exporter вернул версию схемы ${payload.schemaVersion}; ожидается версия 2. ` +
+          "Пересоберите exporter и перезагрузите Obsidian plugin.",
+      );
+    }
+
     const isDiagnostic = (diagnostic) =>
       diagnostic !== null &&
       typeof diagnostic === "object" &&
@@ -101,7 +115,7 @@ const { createBridgeClient } = (() => {
       payload !== null &&
       typeof payload === "object" &&
       !Array.isArray(payload) &&
-      payload.schemaVersion === 1 &&
+      payload.schemaVersion === 2 &&
       payload.command === command &&
       typeof payload.ok === "boolean" &&
       Array.isArray(payload.diagnostics) &&

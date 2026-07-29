@@ -23,7 +23,7 @@ function bridgeExports() {
 
 function response(command, overrides = {}) {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     command,
     ok: true,
     status: "ready_for_review",
@@ -33,6 +33,7 @@ function response(command, overrides = {}) {
     reviewDirectory: "/tmp/review/concepts/boundary-note",
     pairFreshness: "fresh",
     translationStatus: "generated",
+    reviewPlan: null,
     diagnostics: [],
     workspaceHealth: [],
     jobId: "job-1",
@@ -276,6 +277,25 @@ test("malformed or multiple JSON values become a local diagnostic", async () => 
       },
     );
   }
+});
+
+test("schema version mismatch names both observed and expected versions", async () => {
+  const { BridgeClientError } = bridgeExports();
+  const payload = response("inspect-publication", { schemaVersion: 1 });
+  const fake = fakeSpawnResult({ stdout: JSON.stringify(payload) });
+  const client = clientWith(fake);
+
+  await assert.rejects(
+    client.run("inspect-publication", "concepts/Current.md"),
+    (error) => {
+      assert.ok(error instanceof BridgeClientError);
+      assert.equal(error.code, "schema_mismatch");
+      assert.match(error.diagnostic.message, /версию схемы 1/);
+      assert.match(error.diagnostic.message, /ожидается версия 2/);
+      assert.match(error.diagnostic.message, /пересоберите exporter/i);
+      return true;
+    },
+  );
 });
 
 test("malformed diagnostic entries are rejected at the bridge boundary", async () => {
