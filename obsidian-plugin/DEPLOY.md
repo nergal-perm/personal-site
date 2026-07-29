@@ -2,8 +2,8 @@
 
 ## How it's wired up (already done, for reference)
 
-There is no build step and no packaging — Obsidian loads `main.js`,
-`manifest.json`, and `styles.css` directly from a folder under
+There is no build step and no packaging — the shipped files are `main.js`,
+`bridge-client.js`, `manifest.json`, and `styles.css` in a folder under
 `.obsidian/plugins/<plugin-id>/`.
 
 The chain that makes this repo the live source:
@@ -65,3 +65,18 @@ executable. It was updated as part of this migration to point at
 exporter (`mvn -Pnative native:compile` in `exporter-java/`) at a different
 location, update that path via the plugin's settings tab or by editing
 `data.json` directly.
+
+## Zed review windows
+
+The plugin setting **Zed CLI** defaults to:
+
+`/Applications/Zed.app/Contents/MacOS/cli`
+
+The review action opens two new Zed workspace windows. With no approved
+baseline, they contain proposed RU and EN files. With an approved pair, they
+contain published-to-proposed RU and EN diffs. The plugin does not tile or
+position the windows.
+
+The exporter and plugin now share bridge schema version 2. Rebuild the native
+exporter first, then reload the Obsidian plugin. A schema mismatch is
+intentionally blocking and reports which component must be refreshed.

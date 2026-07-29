@@ -23,6 +23,12 @@ e2e/              End-to-end harness: run the real pipeline against a real vault
    subprocess to prepare a reviewed English/Russian translation pair. See
    `obsidian-plugin/DEPLOY.md` for how this plugin gets into a running
    Obsidian instance.
+
+The review action asks the exporter for an explicit two-target review plan.
+Before the first approval it opens proposed `ru.md` and `en.md`; afterward it
+opens published-to-proposed RU and EN diffs. Each target opens in a separate
+new Zed workspace window.
+
 3. **exporter-java** validates the pair. Successful **Mark current translation
    reviewed** stores the exact approved page pair at
    `review/<collection>/<publicId>/published/{ru,en}.md`.
