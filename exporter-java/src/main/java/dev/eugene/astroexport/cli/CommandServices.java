@@ -538,7 +538,10 @@ public final class CommandServices {
     private static final Map<String, String> WORKFLOW_STATUS_DESCRIPTIONS = new LinkedHashMap<>();
     private static final List<Map.Entry<String, String>> AUTHOR_ACTIONS = List.of(
         Map.entry("Prepare current note for public site", "проверяет текущую заметку и готовит валидный английский черновик. Команда не меняет `publish` и не запускает сборку Astro."),
-        Map.entry("Open current translation review", "открывает внешний каталог с `ru.md` и `en.md` для ручной проверки."),
+        Map.entry(
+            "Open current translation review",
+            "проверяет актуальность пары и открывает RU и EN в два новых окна Zed; "
+                + "после первого одобрения открываются сравнения published-to-proposed."),
         Map.entry("Mark current translation reviewed", "после проверки валидирует `en.md`, отмечает перевод как `reviewed` и обновляет состояние заметки."),
         Map.entry("Refresh publication queue", "сверяет опубликованные исходные заметки с внешними переводами и обновляет живую очередь."));
 

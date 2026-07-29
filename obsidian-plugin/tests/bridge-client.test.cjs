@@ -95,6 +95,15 @@ function sequenceSpawn(results) {
   return { spawn, calls };
 }
 
+function findElement(root, predicate) {
+  if (predicate(root)) return root;
+  for (const child of root.children) {
+    const found = findElement(child, predicate);
+    if (found) return found;
+  }
+  return null;
+}
+
 function clientWith(fake, overrides = {}) {
   const { createBridgeClient } = bridgeExports();
   return createBridgeClient({
@@ -385,7 +394,6 @@ function loadPluginHarness({
 } = {}) {
   const notices = [];
   const modals = [];
-  const openedPaths = [];
 
   class FakeElement {
     constructor(text = "") {
@@ -535,21 +543,11 @@ function loadPluginHarness({
     Setting: FakeSetting,
     TFile: FakeTFile,
   };
-  const fakeElectron = {
-    shell: {
-      async openPath(reviewPath) {
-        openedPaths.push(reviewPath);
-        return "";
-      },
-    },
-  };
-
   const mainPath = path.resolve(__dirname, "../main.js");
   delete require.cache[mainPath];
   const originalLoad = Module._load;
   Module._load = function(request, parent, isMain) {
     if (request === "obsidian") return fakeObsidian;
-    if (request === "electron") return fakeElectron;
     if (request === "node:fs") {
       return {
         existsSync,
@@ -574,7 +572,6 @@ function loadPluginHarness({
     FakeTFile,
     modals,
     notices,
-    openedPaths,
     PluginClass,
   };
 }
@@ -598,7 +595,6 @@ function loadShippedMainWithHostRequire() {
       "node:child_process": { spawn() {} },
       "node:fs": fs,
       "node:os": os,
-      electron: { shell: { async openPath() { return ""; } } },
       obsidian: {
         Modal: class {},
         Notice: class {},
@@ -631,6 +627,14 @@ test("shipped main loads when the Obsidian host rejects plugin-relative require"
 
   assert.equal(typeof loaded.pluginModule.exports, "function");
   assert.deepEqual(loaded.relativeRequests, []);
+});
+
+test("shipped review flow has no shell.openPath fallback", () => {
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "../main.js"),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /shell\.openPath/);
 });
 
 test("desktop manifest, four Russian command labels and local defaults are registered", async () => {
@@ -904,8 +908,9 @@ test("note commands accept only the active Markdown TFile", async () => {
   assert.ok(harness.notices.some(({ message }) => /готов/.test(message)));
 });
 
-test("open review uses inspect-publication and only the bridge-confirmed directory", async () => {
-  const harness = loadPluginHarness();
+test("open review inspects the active note and launches the exporter plan", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
   harness.app.workspace.activeFile = new harness.FakeTFile("concepts/Current.md");
@@ -914,15 +919,121 @@ test("open review uses inspect-publication and only the bridge-confirmed directo
     async run(...args) {
       bridgeCalls.push(args);
       return response("inspect-publication", {
-        reviewDirectory: "/external/review/concepts/current",
+        reviewPlan: reviewPlan("complete"),
       });
     },
   };
 
   await command(plugin, "open-current-translation-review").callback();
 
-  assert.deepEqual(bridgeCalls, [["inspect-publication", "concepts/Current.md"]]);
-  assert.deepEqual(harness.openedPaths, ["/external/review/concepts/current"]);
+  assert.deepEqual(bridgeCalls, [
+    ["inspect-publication", "concepts/Current.md"],
+  ]);
+  assert.equal(process.calls.length, 2);
+  assert.ok(harness.notices.some(
+    ({ message }) => message === "Проверка перевода открыта в двух окнах Zed.",
+  ));
+});
+
+test("post-prepare review button re-inspects the prepared note after focus changes", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+  harness.app.workspace.activeFile =
+    new harness.FakeTFile("concepts/Prepared.md");
+  const bridgeCalls = [];
+  plugin.bridgeClient = {
+    async run(commandName, notePath) {
+      bridgeCalls.push([commandName, notePath]);
+      if (commandName === "prepare") {
+        return response("prepare", { note: notePath, reviewPlan: null });
+      }
+      return response("inspect-publication", {
+        note: notePath,
+        reviewPlan: reviewPlan("absent"),
+      });
+    },
+  };
+
+  await command(plugin, "prepare-current-note-for-public-site").callback();
+  const modal = harness.modals.at(-1);
+  const button = findElement(
+    modal.contentEl,
+    (element) => element.ownText === "Открыть проверку",
+  );
+  assert.ok(button);
+  harness.app.workspace.activeFile =
+    new harness.FakeTFile("concepts/Other.md");
+
+  await button.listeners.click();
+
+  assert.deepEqual(bridgeCalls, [
+    ["prepare", "concepts/Prepared.md"],
+    ["inspect-publication", "concepts/Prepared.md"],
+  ]);
+  assert.deepEqual(process.calls.map(({ args }) => args), [
+    ["-n", "/review/blog/essay/ru.md"],
+    ["-n", "/review/blog/essay/en.md"],
+  ]);
+});
+
+test("blocked inspection launches no Zed window and shows exporter diagnostics", async () => {
+  const process = sequenceSpawn([]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+  harness.app.workspace.activeFile = new harness.FakeTFile("concepts/Current.md");
+  plugin.bridgeClient = {
+    async run() {
+      return response("inspect-publication", {
+        ok: false,
+        status: "published_snapshot_inconsistent",
+        reviewPlan: null,
+        diagnostics: [{
+          field: "published-snapshot",
+          message: "Published snapshot is incomplete.",
+          blocking: true,
+        }],
+      });
+    },
+  };
+
+  await command(plugin, "open-current-translation-review").callback();
+
+  assert.equal(process.calls.length, 0);
+  assert.match(harness.modals.at(-1).contentEl.text(), /published-snapshot/);
+  assert.equal(
+    harness.notices.some(({ message }) => /двух окнах Zed/.test(message)),
+    false,
+  );
+});
+
+test("partial Zed launch shows language diagnostics without success", async () => {
+  const process = sequenceSpawn([
+    { exitCode: 0 },
+    { exitCode: 1, stderr: "EN rejected" },
+  ]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+  harness.app.workspace.activeFile = new harness.FakeTFile("concepts/Current.md");
+  plugin.bridgeClient = {
+    async run() {
+      return response("inspect-publication", {
+        reviewPlan: reviewPlan("complete"),
+      });
+    },
+  };
+
+  await command(plugin, "open-current-translation-review").callback();
+
+  assert.equal(process.calls.length, 2);
+  assert.match(harness.modals.at(-1).contentEl.text(), /zed-en/);
+  assert.equal(
+    harness.notices.some(({ message }) => /двух окнах Zed/.test(message)),
+    false,
+  );
 });
 
 test("blocked review validation opens a field checklist without optimistic success", async () => {

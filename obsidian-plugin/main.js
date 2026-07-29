@@ -245,7 +245,6 @@ const { createBridgeClient } = (() => {
   return { createBridgeClient };
 })();
 
-const { shell } = require("electron");
 const {
   Modal,
   Notice,
@@ -426,7 +425,7 @@ class ReviewReadyModal extends Modal {
     this.contentEl.addClass("astro-publication-workflow-ready");
     this.contentEl.createEl("h2", { text: "Английский черновик готов" });
     this.contentEl.createEl("p", {
-      text: "Файлы ru.md и en.md находятся во внешнем каталоге exporter-а.",
+      text: "Откройте русскую и английскую версии для проверки в двух окнах Zed.",
     });
     const button = this.contentEl.createEl("button", {
       text: "Открыть проверку",
@@ -572,34 +571,6 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
     new DiagnosticsModal(this.app, "Ошибка локального exporter-а", [diagnostic]).open();
   }
 
-  hasReviewTarget(result) {
-    return Boolean(
-      result &&
-      typeof result.collection === "string" && result.collection &&
-      typeof result.publicId === "string" && result.publicId &&
-      typeof result.reviewDirectory === "string" && result.reviewDirectory,
-    );
-  }
-
-  async openConfirmedReview(result) {
-    if (!this.hasReviewTarget(result)) {
-      this.showBlocked(
-        { diagnostics: [localDiagnostic("Exporter не подтвердил каталог проверки перевода.")] },
-        "Каталог проверки недоступен",
-      );
-      return false;
-    }
-    const openError = await shell.openPath(result.reviewDirectory);
-    if (openError) {
-      this.showBlocked(
-        { diagnostics: [localDiagnostic("Операционная система не смогла открыть каталог проверки.")] },
-        "Каталог проверки не открыт",
-      );
-      return false;
-    }
-    return true;
-  }
-
   async prepareCurrentNote() {
     const file = this.activeMarkdownNote();
     if (!file) return;
@@ -610,14 +581,42 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
         this.showBlocked(result);
         return;
       }
-      if (!this.hasReviewTarget(result)) {
-        this.showBlocked({ diagnostics: [localDiagnostic("Exporter не вернул каталог проверки.")] });
-        return;
-      }
       new Notice("Английский черновик готов к проверке.");
-      new ReviewReadyModal(this.app, () => this.openConfirmedReview(result)).open();
+      new ReviewReadyModal(
+        this.app,
+        () => this.inspectAndOpenReview(file.path),
+      ).open();
     } catch (error) {
       this.showBridgeError(error);
+    } finally {
+      running.hide();
+    }
+  }
+
+  async inspectAndOpenReview(notePath) {
+    const running = new Notice("Проверка внешнего перевода…", 0);
+    try {
+      const result = await this.bridgeClient.run(
+        "inspect-publication",
+        notePath,
+      );
+      if (!result.ok) {
+        this.showBlocked(result, "Перевод пока нельзя открыть");
+        return false;
+      }
+      const launched = await this.launchReviewPlan(result.reviewPlan);
+      if (!launched.ok) {
+        this.showBlocked(
+          { diagnostics: launched.diagnostics },
+          "Проверка в Zed открыта не полностью",
+        );
+        return false;
+      }
+      new Notice("Проверка перевода открыта в двух окнах Zed.");
+      return true;
+    } catch (error) {
+      this.showBridgeError(error);
+      return false;
     } finally {
       running.hide();
     }
@@ -626,21 +625,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
   async openCurrentReview() {
     const file = this.activeMarkdownNote();
     if (!file) return;
-    const running = new Notice("Проверка внешнего перевода…", 0);
-    try {
-      const result = await this.bridgeClient.run("inspect-publication", file.path);
-      if (!result.ok) {
-        this.showBlocked(result, "Перевод пока нельзя открыть");
-        return;
-      }
-      if (await this.openConfirmedReview(result)) {
-        new Notice("Каталог проверки перевода открыт.");
-      }
-    } catch (error) {
-      this.showBridgeError(error);
-    } finally {
-      running.hide();
-    }
+    await this.inspectAndOpenReview(file.path);
   }
 
   async markCurrentReviewed() {

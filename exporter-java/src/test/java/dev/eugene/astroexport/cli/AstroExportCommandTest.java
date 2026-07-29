@@ -1419,6 +1419,9 @@ final class AstroExportCommandTest {
     assertTrue(text.startsWith("---\ntitle: Подготовка заметок к публикации на Astro-сайте\n"));
     assertTrue(text.contains("### blog/essay"));
     assertTrue(text.contains("| `ready_to_publish` | Английский текст вручную проверен"));
+    assertTrue(text.contains("Open current translation review"));
+    assertTrue(text.contains("два новых окна Zed"));
+    assertFalse(text.contains("открывает внешний каталог"));
     assertTrue(text.endsWith("\n"));
   }
 
