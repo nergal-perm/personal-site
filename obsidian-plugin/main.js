@@ -1,4 +1,6 @@
 const path = require("node:path");
+const fs = require("node:fs");
+const { spawn: spawnProcess } = require("node:child_process");
 
 // Obsidian evaluates a plugin's main.js through a host-level require, not a
 // module loader rooted at this plugin directory. Keep local dependencies in
@@ -277,9 +279,114 @@ const COMMANDS = [
 ];
 
 const DEFAULT_EXPORTER_BINARY = "/Users/eugene/Dev/astro-export-java/target/astro-export";
+const DEFAULT_ZED_CLI = "/Applications/Zed.app/Contents/MacOS/cli";
 
-function localDiagnostic(message) {
-  return { field: "bridge", message, blocking: true };
+function localDiagnostic(message, field = "bridge") {
+  return { field, message, blocking: true };
+}
+
+function validateReviewPlan(plan) {
+  if (!plan || !["absent", "complete"].includes(plan.baselineState)) {
+    throw new Error("Exporter вернул неизвестное состояние published baseline.");
+  }
+  if (!Array.isArray(plan.targets) || plan.targets.length !== 2) {
+    throw new Error("Exporter должен вернуть ровно две цели проверки.");
+  }
+  const expectedLanguages = ["ru", "en"];
+  return plan.targets.map((target, index) => {
+    if (!target || target.language !== expectedLanguages[index]) {
+      throw new Error("Цели проверки должны быть упорядочены как ru, затем en.");
+    }
+    if (
+      typeof target.proposedPath !== "string" ||
+      !path.isAbsolute(target.proposedPath)
+    ) {
+      throw new Error(`Exporter вернул некорректный proposed path для ${target.language}.`);
+    }
+    if (plan.baselineState === "absent" && target.publishedPath !== null) {
+      throw new Error(`Absent baseline не должен содержать published path для ${target.language}.`);
+    }
+    if (
+      plan.baselineState === "complete" &&
+      (typeof target.publishedPath !== "string" ||
+        !path.isAbsolute(target.publishedPath))
+    ) {
+      throw new Error(`Complete baseline требует published path для ${target.language}.`);
+    }
+    return target;
+  });
+}
+
+function zedCliDiagnostic(zedCli) {
+  if (typeof zedCli !== "string" || !path.isAbsolute(zedCli)) {
+    return localDiagnostic("Укажите абсолютный путь к Zed CLI.", "zed");
+  }
+  try {
+    const stats = fs.lstatSync(zedCli);
+    if (!stats.isFile()) {
+      return localDiagnostic("Zed CLI должен быть обычным исполняемым файлом.", "zed");
+    }
+    fs.accessSync(zedCli, fs.constants.X_OK);
+    return null;
+  } catch (_error) {
+    return localDiagnostic(
+      `Zed CLI недоступен или не исполняется: ${zedCli}.`,
+      "zed",
+    );
+  }
+}
+
+function zedArgs(baselineState, target) {
+  return baselineState === "complete"
+    ? ["-n", "--diff", target.publishedPath, target.proposedPath]
+    : ["-n", target.proposedPath];
+}
+
+function runZedTarget(zedCli, baselineState, target) {
+  return new Promise((resolve) => {
+    let child;
+    try {
+      child = spawnProcess(zedCli, zedArgs(baselineState, target), {
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "pipe"],
+      });
+    } catch (_error) {
+      resolve(localDiagnostic(
+        `Не удалось запустить окно Zed для ${target.language.toUpperCase()}.`,
+        `zed-${target.language}`,
+      ));
+      return;
+    }
+    let stderr = "";
+    let settled = false;
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", () => {
+      if (settled) return;
+      settled = true;
+      resolve(localDiagnostic(
+        `Не удалось запустить окно Zed для ${target.language.toUpperCase()}.`,
+        `zed-${target.language}`,
+      ));
+    });
+    child.on("close", (exitCode, signal) => {
+      if (settled) return;
+      settled = true;
+      if (exitCode === 0) {
+        resolve(null);
+        return;
+      }
+      const detail = stderr.trim();
+      resolve(localDiagnostic(
+        `Zed не принял ${target.language.toUpperCase()} review` +
+          `${signal ? `; signal ${signal}` : `; exit ${exitCode}`}` +
+          `${detail ? `: ${detail}` : "."}`,
+        `zed-${target.language}`,
+      ));
+    });
+  });
 }
 
 class DiagnosticsModal extends Modal {
@@ -363,6 +470,17 @@ class PublicationWorkflowSettingTab extends PluginSettingTab {
           this.plugin.settings.exporterBinary = value.trim();
           await this.plugin.saveSettings();
         }));
+
+    new Setting(containerEl)
+      .setName("Zed CLI")
+      .setDesc("Абсолютный путь к CLI внутри Zed.app; каждая языковая версия открывается в новом окне.")
+      .addText((text) => text
+        .setPlaceholder(DEFAULT_ZED_CLI)
+        .setValue(this.plugin.settings.zedCli)
+        .onChange(async (value) => {
+          this.plugin.settings.zedCli = value.trim();
+          await this.plugin.saveSettings();
+        }));
   }
 }
 
@@ -373,6 +491,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
     this.settings = {
       exporterRoot: saved.exporterRoot || path.resolve(vaultPath, "../tools/astro-export"),
       exporterBinary: saved.exporterBinary || DEFAULT_EXPORTER_BINARY,
+      zedCli: saved.zedCli || DEFAULT_ZED_CLI,
     };
     this.vaultPath = vaultPath;
     this.resetBridgeClient();
@@ -399,6 +518,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
     await this.saveData({
       exporterRoot: this.settings.exporterRoot,
       exporterBinary: this.settings.exporterBinary,
+      zedCli: this.settings.zedCli,
     });
     this.resetBridgeClient();
   }
@@ -410,6 +530,32 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
       return null;
     }
     return file;
+  }
+
+  async launchReviewPlan(plan) {
+    let targets;
+    try {
+      targets = validateReviewPlan(plan);
+    } catch (error) {
+      return {
+        ok: false,
+        diagnostics: [localDiagnostic(error.message, "review-plan")],
+      };
+    }
+    const cliFailure = zedCliDiagnostic(this.settings.zedCli);
+    if (cliFailure) {
+      return { ok: false, diagnostics: [cliFailure] };
+    }
+    const diagnostics = [];
+    for (const target of targets) {
+      const diagnostic = await runZedTarget(
+        this.settings.zedCli,
+        plan.baselineState,
+        target,
+      );
+      if (diagnostic) diagnostics.push(diagnostic);
+    }
+    return { ok: diagnostics.length === 0, diagnostics };
   }
 
   showBlocked(result, title = "Подготовка публикации заблокирована") {

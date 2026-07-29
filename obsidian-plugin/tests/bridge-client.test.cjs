@@ -59,6 +59,42 @@ function fakeSpawnResult({ stdout = "", stderr = "", exitCode = 0, error = null 
   return { spawn, calls };
 }
 
+function reviewPlan(baselineState = "absent") {
+  const complete = baselineState === "complete";
+  return {
+    baselineState,
+    targets: [
+      {
+        language: "ru",
+        proposedPath: "/review/blog/essay/ru.md",
+        publishedPath: complete ? "/review/blog/essay/published/ru.md" : null,
+      },
+      {
+        language: "en",
+        proposedPath: "/review/blog/essay/en.md",
+        publishedPath: complete ? "/review/blog/essay/published/en.md" : null,
+      },
+    ],
+  };
+}
+
+function sequenceSpawn(results) {
+  const calls = [];
+  const spawn = (executable, args, options) => {
+    const result = results[calls.length] || { exitCode: 0, stderr: "" };
+    calls.push({ executable, args, options });
+    const child = new EventEmitter();
+    child.stderr = new EventEmitter();
+    process.nextTick(() => {
+      if (result.stderr) child.stderr.emit("data", Buffer.from(result.stderr));
+      if (result.error) child.emit("error", result.error);
+      child.emit("close", result.exitCode, null);
+    });
+    return child;
+  };
+  return { spawn, calls };
+}
+
 function clientWith(fake, overrides = {}) {
   const { createBridgeClient } = bridgeExports();
   return createBridgeClient({
@@ -342,6 +378,9 @@ test("note commands reject absolute, traversal and non-Markdown paths before spa
 function loadPluginHarness({
   savedData = null,
   existsSync = fs.existsSync,
+  lstatSync = () => ({ isFile: () => true }),
+  accessSync = () => {},
+  spawn = fakeSpawnResult().spawn,
   homeDirectory = os.homedir(),
 } = {}) {
   const notices = [];
@@ -511,7 +550,15 @@ function loadPluginHarness({
   Module._load = function(request, parent, isMain) {
     if (request === "obsidian") return fakeObsidian;
     if (request === "electron") return fakeElectron;
-    if (request === "node:fs") return { existsSync };
+    if (request === "node:fs") {
+      return {
+        existsSync,
+        lstatSync,
+        accessSync,
+        constants: fs.constants,
+      };
+    }
+    if (request === "node:child_process") return { spawn };
     if (request === "node:os") return { homedir: () => homeDirectory };
     return originalLoad.call(this, request, parent, isMain);
   };
@@ -621,6 +668,7 @@ test("desktop manifest, four Russian command labels and local defaults are regis
   assert.deepEqual(plugin.settings, {
     exporterRoot: "/Users/example/Personal Wiki/tools/astro-export",
     exporterBinary: "/Users/eugene/Dev/astro-export-java/target/astro-export",
+    zedCli: "/Applications/Zed.app/Contents/MacOS/cli",
   });
   assert.equal(plugin.settingTabs.length, 1);
 });
@@ -640,6 +688,194 @@ test("default exporter binary is the local GraalVM build without overriding save
   const explicitPlugin = new explicitHarness.PluginClass(explicitHarness.app);
   await explicitPlugin.onload();
   assert.equal(explicitPlugin.settings.exporterBinary, "/custom/tools/astro-export");
+});
+
+test("Zed CLI setting has a macOS app default and preserves an explicit value", async () => {
+  const defaultHarness = loadPluginHarness();
+  const defaultPlugin = new defaultHarness.PluginClass(defaultHarness.app);
+  await defaultPlugin.onload();
+  assert.equal(
+    defaultPlugin.settings.zedCli,
+    "/Applications/Zed.app/Contents/MacOS/cli",
+  );
+
+  const explicitHarness = loadPluginHarness({
+    savedData: { zedCli: "/custom/Zed.app/Contents/MacOS/cli" },
+  });
+  const explicitPlugin = new explicitHarness.PluginClass(explicitHarness.app);
+  await explicitPlugin.onload();
+  assert.equal(
+    explicitPlugin.settings.zedCli,
+    "/custom/Zed.app/Contents/MacOS/cli",
+  );
+  explicitPlugin.settings.zedCli = "/saved/Zed.app/Contents/MacOS/cli";
+  await explicitPlugin.saveSettings();
+  assert.equal(
+    explicitPlugin.savedData.zedCli,
+    "/saved/Zed.app/Contents/MacOS/cli",
+  );
+});
+
+test("absent baseline launches proposed RU and EN in separate new workspaces", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const result = await plugin.launchReviewPlan(reviewPlan("absent"));
+
+  assert.deepEqual(result, { ok: true, diagnostics: [] });
+  assert.deepEqual(process.calls.map(({ executable, args, options }) => ({
+    executable, args, options,
+  })), [
+    {
+      executable: "/Applications/Zed.app/Contents/MacOS/cli",
+      args: ["-n", "/review/blog/essay/ru.md"],
+      options: {
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    },
+    {
+      executable: "/Applications/Zed.app/Contents/MacOS/cli",
+      args: ["-n", "/review/blog/essay/en.md"],
+      options: {
+        shell: false,
+        windowsHide: true,
+        stdio: ["ignore", "ignore", "pipe"],
+      },
+    },
+  ]);
+});
+
+test("complete baseline launches published-to-proposed RU and EN diffs", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const result = await plugin.launchReviewPlan(reviewPlan("complete"));
+
+  assert.equal(result.ok, true);
+  assert.deepEqual(process.calls.map(({ args }) => args), [
+    [
+      "-n",
+      "--diff",
+      "/review/blog/essay/published/ru.md",
+      "/review/blog/essay/ru.md",
+    ],
+    [
+      "-n",
+      "--diff",
+      "/review/blog/essay/published/en.md",
+      "/review/blog/essay/en.md",
+    ],
+  ]);
+});
+
+test("missing or non-executable Zed CLI blocks both launches", async () => {
+  for (const harnessOptions of [
+    {
+      savedData: { zedCli: "relative/Zed/cli" },
+    },
+    {
+      lstatSync() {
+        throw Object.assign(new Error("missing"), { code: "ENOENT" });
+      },
+    },
+    {
+      lstatSync() {
+        return { isFile: () => false };
+      },
+    },
+    {
+      accessSync() {
+        throw Object.assign(new Error("denied"), { code: "EACCES" });
+      },
+    },
+  ]) {
+    const process = sequenceSpawn([]);
+    const harness = loadPluginHarness({
+      ...harnessOptions,
+      spawn: process.spawn,
+    });
+    const plugin = new harness.PluginClass(harness.app);
+    await plugin.onload();
+
+    const result = await plugin.launchReviewPlan(reviewPlan("absent"));
+
+    assert.equal(result.ok, false);
+    assert.equal(process.calls.length, 0);
+    assert.equal(result.diagnostics[0].field, "zed");
+  }
+});
+
+test("malformed review plan blocks before Zed preflight", async () => {
+  const process = sequenceSpawn([]);
+  const harness = loadPluginHarness({
+    spawn: process.spawn,
+    lstatSync() {
+      throw new Error("CLI preflight must not run");
+    },
+  });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const malformed = reviewPlan("complete");
+  malformed.targets.reverse();
+  const result = await plugin.launchReviewPlan(malformed);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.diagnostics[0].field, "review-plan");
+  assert.equal(process.calls.length, 0);
+});
+
+test("one failed language still attempts the other and returns no success", async () => {
+  const process = sequenceSpawn([
+    { exitCode: 1, stderr: "RU failed" },
+    { exitCode: 0 },
+  ]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const result = await plugin.launchReviewPlan(reviewPlan("complete"));
+
+  assert.equal(result.ok, false);
+  assert.equal(process.calls.length, 2);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed-ru"]);
+  assert.match(result.diagnostics[0].message, /RU failed/);
+});
+
+test("every malformed plan is rejected before process launch", async () => {
+  const mutations = [
+    (plan) => { plan.baselineState = "unknown"; },
+    (plan) => { plan.targets.pop(); },
+    (plan) => { plan.targets[0].proposedPath = "relative/ru.md"; },
+    (plan) => { plan.targets[0].publishedPath = "/unexpected/ru.md"; },
+    (plan) => {
+      plan.baselineState = "complete";
+      plan.targets[0].publishedPath = null;
+      plan.targets[1].publishedPath = "/published/en.md";
+    },
+    (plan) => { plan.targets[1].language = "de"; },
+  ];
+
+  for (const mutate of mutations) {
+    const process = sequenceSpawn([]);
+    const harness = loadPluginHarness({ spawn: process.spawn });
+    const plugin = new harness.PluginClass(harness.app);
+    await plugin.onload();
+    const plan = reviewPlan("absent");
+    mutate(plan);
+
+    const result = await plugin.launchReviewPlan(plan);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.diagnostics[0].field, "review-plan");
+    assert.equal(process.calls.length, 0);
+  }
 });
 
 test("note commands accept only the active Markdown TFile", async () => {
