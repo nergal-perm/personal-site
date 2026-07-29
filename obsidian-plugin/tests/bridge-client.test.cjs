@@ -80,19 +80,28 @@ function reviewPlan(baselineState = "absent") {
 
 function sequenceSpawn(results) {
   const calls = [];
+  const children = [];
   const spawn = (executable, args, options) => {
     const result = results[calls.length] || { exitCode: 0, stderr: "" };
     calls.push({ executable, args, options });
     const child = new EventEmitter();
     child.stderr = new EventEmitter();
-    process.nextTick(() => {
-      if (result.stderr) child.stderr.emit("data", Buffer.from(result.stderr));
-      if (result.error) child.emit("error", result.error);
-      child.emit("close", result.exitCode, null);
-    });
+    child.killCalls = [];
+    child.kill = (signal) => {
+      child.killCalls.push(signal);
+      return true;
+    };
+    children.push(child);
+    if (!result.noEvents) {
+      process.nextTick(() => {
+        if (result.stderr) child.stderr.emit("data", Buffer.from(result.stderr));
+        if (result.error) child.emit("error", result.error);
+        child.emit("close", result.exitCode, null);
+      });
+    }
     return child;
   };
-  return { spawn, calls };
+  return { spawn, calls, children };
 }
 
 function findElement(root, predicate) {
@@ -391,6 +400,8 @@ function loadPluginHarness({
   accessSync = () => {},
   spawn = fakeSpawnResult().spawn,
   homeDirectory = os.homedir(),
+  setTimeoutFn = setTimeout,
+  clearTimeoutFn = clearTimeout,
 } = {}) {
   const notices = [];
   const modals = [];
@@ -558,6 +569,9 @@ function loadPluginHarness({
     }
     if (request === "node:child_process") return { spawn };
     if (request === "node:os") return { homedir: () => homeDirectory };
+    if (request === "node:timers") {
+      return { setTimeout: setTimeoutFn, clearTimeout: clearTimeoutFn };
+    }
     return originalLoad.call(this, request, parent, isMain);
   };
   let PluginClass;
@@ -595,6 +609,7 @@ function loadShippedMainWithHostRequire() {
       "node:child_process": { spawn() {} },
       "node:fs": fs,
       "node:os": os,
+      "node:timers": require("node:timers"),
       obsidian: {
         Modal: class {},
         Notice: class {},
@@ -852,6 +867,87 @@ test("one failed language still attempts the other and returns no success", asyn
   assert.match(result.diagnostics[0].message, /RU failed/);
 });
 
+test("a no-event Zed process times out, is terminated, and does not block EN", {
+  timeout: 200,
+}, async () => {
+  const process = sequenceSpawn([
+    { noEvents: true },
+    { exitCode: 0 },
+  ]);
+  const harness = loadPluginHarness({
+    spawn: process.spawn,
+    setTimeoutFn(callback) {
+      return setTimeout(callback, 1);
+    },
+    clearTimeoutFn(handle) {
+      clearTimeout(handle);
+    },
+  });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const result = await plugin.launchReviewPlan(reviewPlan("absent"));
+
+  assert.equal(result.ok, false);
+  assert.equal(process.calls.length, 2);
+  assert.deepEqual(process.children[0].killCalls, [undefined]);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed-ru"]);
+  assert.match(result.diagnostics[0].message, /время ожидания/i);
+});
+
+test("an error followed by close settles once and clears each launch timer", async () => {
+  const process = sequenceSpawn([
+    { error: new Error("spawn failed"), exitCode: 1 },
+    { exitCode: 0 },
+  ]);
+  const scheduled = [];
+  const cleared = [];
+  const harness = loadPluginHarness({
+    spawn: process.spawn,
+    setTimeoutFn(callback) {
+      const handle = { callback };
+      scheduled.push(handle);
+      return handle;
+    },
+    clearTimeoutFn(handle) {
+      cleared.push(handle);
+    },
+  });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const result = await plugin.launchReviewPlan(reviewPlan("absent"));
+
+  assert.equal(result.ok, false);
+  assert.equal(process.calls.length, 2);
+  assert.equal(scheduled.length, 2);
+  assert.deepEqual(cleared, scheduled);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed-ru"]);
+  assert.equal(process.children[0].killCalls.length, 0);
+});
+
+test("both Zed language failures are reported and stderr capture stays bounded", async () => {
+  const process = sequenceSpawn([
+    { exitCode: 1, stderr: `${"R".repeat(10_000)}UNBOUNDED_TAIL` },
+    { exitCode: 2, stderr: "EN failed" },
+  ]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const result = await plugin.launchReviewPlan(reviewPlan("complete"));
+
+  assert.equal(result.ok, false);
+  assert.equal(process.calls.length, 2);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), [
+    "zed-ru",
+    "zed-en",
+  ]);
+  assert.ok(result.diagnostics[0].message.length < 5_000);
+  assert.doesNotMatch(result.diagnostics[0].message, /UNBOUNDED_TAIL/);
+  assert.match(result.diagnostics[1].message, /EN failed/);
+});
+
 test("every malformed plan is rejected before process launch", async () => {
   const mutations = [
     (plan) => { plan.baselineState = "unknown"; },
@@ -935,13 +1031,13 @@ test("open review inspects the active note and launches the exporter plan", asyn
   ));
 });
 
-test("post-prepare review button re-inspects the prepared note after focus changes", async () => {
+test("post-prepare review button keeps the immutable prepared note path", async () => {
   const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
-  harness.app.workspace.activeFile =
-    new harness.FakeTFile("concepts/Prepared.md");
+  const preparedFile = new harness.FakeTFile("concepts/Prepared.md");
+  harness.app.workspace.activeFile = preparedFile;
   const bridgeCalls = [];
   plugin.bridgeClient = {
     async run(commandName, notePath) {
@@ -963,6 +1059,7 @@ test("post-prepare review button re-inspects the prepared note after focus chang
     (element) => element.ownText === "Открыть проверку",
   );
   assert.ok(button);
+  preparedFile.path = "concepts/Renamed.md";
   harness.app.workspace.activeFile =
     new harness.FakeTFile("concepts/Other.md");
 

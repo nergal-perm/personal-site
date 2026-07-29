@@ -9,7 +9,9 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
@@ -17,13 +19,19 @@ import java.util.Objects;
 /** Builds safe, editor-neutral file targets for one translation review. */
 public final class ReviewLaunchPlanner {
   private final SafeReader safeReader;
+  private final AttributeProbe attributeProbe;
 
   public ReviewLaunchPlanner() {
-    this(ReviewLaunchPlanner::readSafeUtf8);
+    this(ReviewLaunchPlanner::readSafeUtf8, ReviewLaunchPlanner::readAttributesNoFollow);
   }
 
   ReviewLaunchPlanner(SafeReader safeReader) {
+    this(safeReader, ReviewLaunchPlanner::readAttributesNoFollow);
+  }
+
+  ReviewLaunchPlanner(SafeReader safeReader, AttributeProbe attributeProbe) {
     this.safeReader = Objects.requireNonNull(safeReader, "safeReader");
+    this.attributeProbe = Objects.requireNonNull(attributeProbe, "attributeProbe");
   }
 
   public ReviewPlan plan(
@@ -55,13 +63,14 @@ public final class ReviewLaunchPlanner {
     }
 
     Path publishedDirectory = page.resolve("published");
-    if (!Files.exists(publishedDirectory, LinkOption.NOFOLLOW_LINKS)) {
-      return new ReviewPlan("absent", List.of(
-          new ReviewTarget("ru", proposedRu, null),
-          new ReviewTarget("en", proposedEn, null)));
+    ProbeResult directoryProbe =
+        probePublishedPath(publishedDirectory, "Published snapshot directory");
+    if (directoryProbe.missing()) {
+      return planMissingPublishedDirectory(
+          publishedDirectory, proposedRu, proposedEn);
     }
-    if (Files.isSymbolicLink(publishedDirectory)
-        || !Files.isDirectory(publishedDirectory, LinkOption.NOFOLLOW_LINKS)) {
+    BasicFileAttributes directoryAttributes = directoryProbe.attributes();
+    if (directoryAttributes.isSymbolicLink() || !directoryAttributes.isDirectory()) {
       throw publishedFailure("Published snapshot path must be a non-symbolic directory.");
     }
     Path realPublished;
@@ -75,14 +84,14 @@ public final class ReviewLaunchPlanner {
     }
     Path publishedRu = realPublished.resolve("ru.md");
     Path publishedEn = realPublished.resolve("en.md");
-    boolean hasRu = Files.exists(publishedRu, LinkOption.NOFOLLOW_LINKS);
-    boolean hasEn = Files.exists(publishedEn, LinkOption.NOFOLLOW_LINKS);
-    if (!hasRu && !hasEn) {
+    ProbeResult ruProbe = probePublishedPath(publishedRu, "Published Russian snapshot");
+    ProbeResult enProbe = probePublishedPath(publishedEn, "Published English snapshot");
+    if (ruProbe.missing() && enProbe.missing()) {
       return new ReviewPlan("absent", List.of(
           new ReviewTarget("ru", proposedRu, null),
           new ReviewTarget("en", proposedEn, null)));
     }
-    if (hasRu != hasEn) {
+    if (ruProbe.missing() != enProbe.missing()) {
       throw publishedFailure(
           "published snapshot is incomplete: ru.md and en.md must exist as one pair.");
     }
@@ -91,6 +100,34 @@ public final class ReviewLaunchPlanner {
     return new ReviewPlan("complete", List.of(
         new ReviewTarget("ru", proposedRu, publishedRu),
         new ReviewTarget("en", proposedEn, publishedEn)));
+  }
+
+  private ReviewPlan planMissingPublishedDirectory(
+      Path publishedDirectory,
+      Path proposedRu,
+      Path proposedEn) {
+    ProbeResult ruProbe = probePublishedPath(
+        publishedDirectory.resolve("ru.md"), "Published Russian snapshot");
+    ProbeResult enProbe = probePublishedPath(
+        publishedDirectory.resolve("en.md"), "Published English snapshot");
+    if (!ruProbe.missing() || !enProbe.missing()) {
+      throw publishedFailure(
+          "published snapshot changed during inspection; run the check again.");
+    }
+    return new ReviewPlan("absent", List.of(
+        new ReviewTarget("ru", proposedRu, null),
+        new ReviewTarget("en", proposedEn, null)));
+  }
+
+  private ProbeResult probePublishedPath(Path path, String label) {
+    try {
+      return ProbeResult.present(attributeProbe.read(path));
+    } catch (NoSuchFileException error) {
+      return ProbeResult.missingResult();
+    } catch (IOException | SecurityException error) {
+      throw publishedFailure(
+          label + " presence cannot be determined.", error);
+    }
   }
 
   private byte[] readProposal(Path path, String label) {
@@ -140,6 +177,11 @@ public final class ReviewLaunchPlanner {
     }
   }
 
+  private static BasicFileAttributes readAttributesNoFollow(Path path) throws IOException {
+    return Files.readAttributes(
+        path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+  }
+
   private static void decodeUtf8(byte[] bytes, String label) {
     try {
       StandardCharsets.UTF_8.newDecoder()
@@ -171,6 +213,25 @@ public final class ReviewLaunchPlanner {
   @FunctionalInterface
   interface SafeReader {
     byte[] read(Path path, String label) throws IOException;
+  }
+
+  @FunctionalInterface
+  interface AttributeProbe {
+    BasicFileAttributes read(Path path) throws IOException;
+  }
+
+  private record ProbeResult(BasicFileAttributes attributes) {
+    private static ProbeResult present(BasicFileAttributes attributes) {
+      return new ProbeResult(Objects.requireNonNull(attributes, "attributes"));
+    }
+
+    private static ProbeResult missingResult() {
+      return new ProbeResult(null);
+    }
+
+    private boolean missing() {
+      return attributes == null;
+    }
   }
 
   public record ReviewPlan(String baselineState, List<ReviewTarget> targets) {

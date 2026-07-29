@@ -7,8 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.eugene.astroexport.model.ManifestEntry;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -235,6 +238,57 @@ final class ReviewLaunchPlannerTest {
 
     assertEquals("published_snapshot_inconsistent", error.status());
     assertTrue(error.getMessage().contains("permission denied"));
+  }
+
+  @Test
+  void blocksWhenPublishedMemberAbsenceCannotBeConfirmedAfterIoFailure() throws Exception {
+    Fixture fixture = fixture();
+    Path published = fixture.page().resolve("published");
+    Files.createDirectories(published);
+    ReviewLaunchPlanner planner = new ReviewLaunchPlanner(
+        (path, label) -> Files.readAllBytes(path),
+        path -> {
+          if (path.endsWith(Path.of("published", "ru.md"))) {
+            throw new AccessDeniedException(path.toString());
+          }
+          return Files.readAttributes(
+              path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        });
+
+    ReviewLaunchPlanner.ReviewLaunchException error = assertThrows(
+        ReviewLaunchPlanner.ReviewLaunchException.class,
+        () -> planner.plan(
+            fixture.reviewRoot(), fixture.page(), fixture.entry(), fixture.english()));
+
+    assertEquals("published_snapshot_inconsistent", error.status());
+    assertEquals("published-snapshot", error.field());
+    assertTrue(error.getMessage().contains("cannot be determined"));
+  }
+
+  @Test
+  void blocksWhenPublishedMemberAbsenceCannotBeConfirmedAfterSecurityFailure()
+      throws Exception {
+    Fixture fixture = fixture();
+    Path published = fixture.page().resolve("published");
+    Files.createDirectories(published);
+    ReviewLaunchPlanner planner = new ReviewLaunchPlanner(
+        (path, label) -> Files.readAllBytes(path),
+        path -> {
+          if (path.endsWith(Path.of("published", "en.md"))) {
+            throw new SecurityException("security policy denied the probe");
+          }
+          return Files.readAttributes(
+              path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        });
+
+    ReviewLaunchPlanner.ReviewLaunchException error = assertThrows(
+        ReviewLaunchPlanner.ReviewLaunchException.class,
+        () -> planner.plan(
+            fixture.reviewRoot(), fixture.page(), fixture.entry(), fixture.english()));
+
+    assertEquals("published_snapshot_inconsistent", error.status());
+    assertEquals("published-snapshot", error.field());
+    assertTrue(error.getMessage().contains("cannot be determined"));
   }
 
   @Test

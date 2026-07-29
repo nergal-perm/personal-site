@@ -1,6 +1,13 @@
 const path = require("node:path");
 const fs = require("node:fs");
 const { spawn: spawnProcess } = require("node:child_process");
+const {
+  setTimeout: scheduleTimeout,
+  clearTimeout: cancelTimeout,
+} = require("node:timers");
+
+const ZED_LAUNCH_TIMEOUT_MS = 15_000;
+const ZED_STDERR_LIMIT = 4_096;
 
 // Obsidian evaluates a plugin's main.js through a host-level require, not a
 // module loader rooted at this plugin directory. Keep local dependencies in
@@ -343,6 +350,14 @@ function zedArgs(baselineState, target) {
 
 function runZedTarget(zedCli, baselineState, target) {
   return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const settle = (diagnostic) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) cancelTimeout(timer);
+      resolve(diagnostic);
+    };
     let child;
     try {
       child = spawnProcess(zedCli, zedArgs(baselineState, target), {
@@ -351,40 +366,51 @@ function runZedTarget(zedCli, baselineState, target) {
         stdio: ["ignore", "ignore", "pipe"],
       });
     } catch (_error) {
-      resolve(localDiagnostic(
+      settle(localDiagnostic(
         `Не удалось запустить окно Zed для ${target.language.toUpperCase()}.`,
         `zed-${target.language}`,
       ));
       return;
     }
     let stderr = "";
-    let settled = false;
     child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
+      const remaining = ZED_STDERR_LIMIT - stderr.length;
+      if (remaining > 0) {
+        stderr += chunk.toString("utf8").slice(0, remaining);
+      }
     });
     child.on("error", () => {
-      if (settled) return;
-      settled = true;
-      resolve(localDiagnostic(
+      settle(localDiagnostic(
         `Не удалось запустить окно Zed для ${target.language.toUpperCase()}.`,
         `zed-${target.language}`,
       ));
     });
     child.on("close", (exitCode, signal) => {
-      if (settled) return;
-      settled = true;
       if (exitCode === 0) {
-        resolve(null);
+        settle(null);
         return;
       }
       const detail = stderr.trim();
-      resolve(localDiagnostic(
+      settle(localDiagnostic(
         `Zed не принял ${target.language.toUpperCase()} review` +
           `${signal ? `; signal ${signal}` : `; exit ${exitCode}`}` +
           `${detail ? `: ${detail}` : "."}`,
         `zed-${target.language}`,
       ));
     });
+    timer = scheduleTimeout(() => {
+      if (settled) return;
+      settle(localDiagnostic(
+        `Zed превысил время ожидания запуска окна для ` +
+          `${target.language.toUpperCase()} review.`,
+        `zed-${target.language}`,
+      ));
+      try {
+        child.kill();
+      } catch (_error) {
+        // The timeout diagnostic remains authoritative even if termination races exit.
+      }
+    }, ZED_LAUNCH_TIMEOUT_MS);
   });
 }
 
@@ -574,9 +600,10 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
   async prepareCurrentNote() {
     const file = this.activeMarkdownNote();
     if (!file) return;
+    const preparedNotePath = file.path;
     const running = new Notice("Подготовка английского черновика…", 0);
     try {
-      const result = await this.bridgeClient.run("prepare", file.path);
+      const result = await this.bridgeClient.run("prepare", preparedNotePath);
       if (!result.ok) {
         this.showBlocked(result);
         return;
@@ -584,7 +611,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
       new Notice("Английский черновик готов к проверке.");
       new ReviewReadyModal(
         this.app,
-        () => this.inspectAndOpenReview(file.path),
+        () => this.inspectAndOpenReview(preparedNotePath),
       ).open();
     } catch (error) {
       this.showBridgeError(error);
