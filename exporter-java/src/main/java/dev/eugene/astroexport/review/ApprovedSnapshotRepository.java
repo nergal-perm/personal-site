@@ -41,7 +41,13 @@ public final class ApprovedSnapshotRepository {
         ? VaultReferenceCatalog.empty()
         : catalog;
     if (SemanticSchemaState.mode(reviewRoot) == SemanticSchemaState.Mode.MIGRATION_INCOMPLETE) {
-      throw failure("migration-incomplete", null, "semantic link migration is incomplete");
+      throw failure(
+          "migration-incomplete",
+          null,
+          "semantic link migration is incomplete; journal="
+              + SemanticSchemaState.migrationJournal(reviewRoot)
+              + " recovery="
+              + reviewRoot.resolve(".semantic-links/recovery-v1"));
     }
     List<String> selected = selectedSourcePaths(selection);
     List<SnapshotDirectory> approved = scanApproved(reviewRoot);

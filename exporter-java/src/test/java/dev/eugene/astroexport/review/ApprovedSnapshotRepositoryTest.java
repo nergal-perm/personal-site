@@ -274,8 +274,17 @@ final class ApprovedSnapshotRepositoryTest {
         {"schemaVersion":1,"inventorySha256":"%s","catalogSha256":"%s","activatedAt":"%s"}
         """.formatted(inventory, catalog, Instant.parse("2026-07-30T00:00:00Z")));
     Files.writeString(semantic.resolve("migration-v1.journal.json"), """
-        {"state":"complete","inventorySha256":"%s","catalogSha256":"%s"}
-        """.formatted(inventory, catalog));
+        {
+          "schemaVersion": 1,
+          "state": "complete",
+          "inventorySha256": "%s",
+          "catalogSha256": "%s",
+          "recoveryRoot": ".semantic-links/recovery-v1",
+          "pages": [
+            {"collection":"blog","publicId":"fixture","pageRef":"vault-ref-fixture","sourcePath":"fixture.md","state":"complete","stagedSha256":"%s","published":"blog/fixture/published","staged":".semantic-links/staging-v1/blog/fixture/published","displaced":".semantic-links/recovery-v1/blog/fixture/published"}
+          ]
+        }
+        """.formatted(inventory, catalog, "c".repeat(64)));
   }
 
   private static SelectionResult selection(String... paths) {

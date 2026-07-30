@@ -64,13 +64,36 @@ final class SemanticSchemaStateTest {
     Path journal = temp.resolve(".semantic-links/migration-v1.journal.json");
     Files.writeString(journal, """
         {
+          "schemaVersion": 1,
           "state": "complete",
           "inventorySha256": "%s",
-          "catalogSha256": "%s"
+          "catalogSha256": "%s",
+          "pages": [
+            {"collection":"blog","publicId":"page","pageRef":"vault-ref-page","sourcePath":"page.md","state":"complete","stagedSha256":"%s","published":"blog/page/published","staged":"staging/page","displaced":"recovery/page"}
+          ],
+          "recoveryRoot": ".semantic-links/recovery"
+        }
+        """.formatted("a".repeat(64), "b".repeat(64), "c".repeat(64)));
+
+    assertEquals(SemanticSchemaState.Mode.SEMANTIC, SemanticSchemaState.mode(temp));
+  }
+
+  @Test
+  void completeJournalMissingPageEvidenceBlocksAsIncomplete() throws Exception {
+    writeMarker("a".repeat(64), "b".repeat(64));
+    Path journal = temp.resolve(".semantic-links/migration-v1.journal.json");
+    Files.writeString(journal, """
+        {
+          "state": "complete",
+          "inventorySha256": "%s",
+          "catalogSha256": "%s",
+          "pages": [],
+          "recoveryRoot": ".semantic-links/recovery"
         }
         """.formatted("a".repeat(64), "b".repeat(64)));
 
-    assertEquals(SemanticSchemaState.Mode.SEMANTIC, SemanticSchemaState.mode(temp));
+    assertEquals(SemanticSchemaState.Mode.MIGRATION_INCOMPLETE,
+        SemanticSchemaState.mode(temp));
   }
 
   @Test

@@ -8,6 +8,7 @@ import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.migration.SemanticOperationLock;
 import dev.eugene.astroexport.migration.ReferenceMigrationInventory;
+import dev.eugene.astroexport.migration.SemanticMigrationService;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
@@ -614,8 +615,55 @@ public final class AstroExportCommand implements Callable<Integer> {
     return fresh ? 0 : 1;
   }
 
-  private int migrateSemanticLinks(Path vaultRoot, Path reviewRoot, Path astroRoot, Path reportPath) {
-    if (astroRoot == null || !Files.isDirectory(astroRoot, LinkOption.NOFOLLOW_LINKS)) {
+  private int migrateSemanticLinks(
+      Path vaultRoot,
+      Path reviewRoot,
+      Path astroRoot,
+      Path reportPath,
+      Path decisionsPath,
+      boolean apply,
+      boolean rollForward,
+      boolean rollBack) {
+    int modes = (apply ? 1 : 0) + (rollForward ? 1 : 0) + (rollBack ? 1 : 0);
+    if (modes > 1) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "migration",
+              "Require exactly one of normal inventory, --apply, --roll-forward, or --roll-back.",
+              true)))
+          .build());
+      return 1;
+    }
+    if ((rollForward || rollBack) && reviewRoot == null) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "review",
+              "Recovery requires --review with migration-v1.journal.json and recovery paths.",
+              true)))
+          .build());
+      return 1;
+    }
+    if (!rollForward && !rollBack
+        && (vaultRoot == null || reviewRoot == null || astroRoot == null || reportPath == null)) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "migration",
+              "Inventory and apply modes require --vault, --review, --astro, and --report.",
+              true)))
+          .build());
+      return 1;
+    }
+    if (apply && decisionsPath == null) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "decisions",
+              "--apply requires --decisions.",
+              true)))
+          .build());
+      return 1;
+    }
+    if (!rollForward && !rollBack
+        && (astroRoot == null || !Files.isDirectory(astroRoot, LinkOption.NOFOLLOW_LINKS))) {
       emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
           .diagnostics(List.of(new PublicationDiagnostic(
               "astro",
@@ -625,6 +673,28 @@ public final class AstroExportCommand implements Callable<Integer> {
       return 1;
     }
     try {
+      if (rollForward || rollBack) {
+        services.recoverSemanticMigration(new SemanticMigrationService.RecoveryRequest(
+            reviewRoot,
+            rollForward
+                ? SemanticMigrationService.RecoveryMode.ROLL_FORWARD
+                : SemanticMigrationService.RecoveryMode.ROLL_BACK));
+        emitJson(bridge("migrate-semantic-links", true,
+                rollForward ? "rolled-forward" : "rolled-back")
+            .build());
+        return 0;
+      }
+      if (apply) {
+        services.applySemanticMigration(new SemanticMigrationService.ApplyRequest(
+            vaultRoot,
+            reviewRoot,
+            astroRoot,
+            reportPath,
+            decisionsPath));
+        emitJson(bridge("migrate-semantic-links", true, "applied")
+            .build());
+        return 0;
+      }
       ReferenceMigrationInventory.Inventory inventory =
           services.inspectReferenceMigration(vaultRoot, reviewRoot, astroRoot, reportPath);
       ReferenceMigrationInventory.Summary summary = inventory.summary();
@@ -640,7 +710,9 @@ public final class AstroExportCommand implements Callable<Integer> {
       emitJson(bridge("migrate-semantic-links", false, "unsafe-input")
           .diagnostics(List.of(new PublicationDiagnostic(
               "migration",
-              error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage(),
+              (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage())
+                  + " journal=" + SemanticSchemaState.migrationJournal(reviewRoot)
+                  + " recovery=" + reviewRoot.resolve(".semantic-links/recovery-v1"),
               true)))
           .build());
       return 1;
@@ -2096,15 +2168,27 @@ public final class AstroExportCommand implements Callable<Integer> {
   @Command(name = "migrate-semantic-links")
   static final class MigrateSemanticLinksCommand implements Callable<Integer> {
     @picocli.CommandLine.ParentCommand AstroExportCommand parent;
-    @Option(names = "--vault", required = true) Path vault;
+    @Option(names = "--vault") Path vault;
     @Option(names = "--review", required = true) Path review;
-    @Option(names = "--astro", required = true) Path astro;
-    @Option(names = "--report", required = true) Path report;
+    @Option(names = "--astro") Path astro;
+    @Option(names = "--report") Path report;
+    @Option(names = "--decisions") Path decisions;
+    @Option(names = "--apply") boolean apply;
+    @Option(names = "--roll-forward") boolean rollForward;
+    @Option(names = "--roll-back") boolean rollBack;
     @Option(names = "--json", required = true) boolean json;
 
     @Override
     public Integer call() {
-      return parent.migrateSemanticLinks(vault, review, astro, report);
+      return parent.migrateSemanticLinks(
+          vault,
+          review,
+          astro,
+          report,
+          decisions,
+          apply,
+          rollForward,
+          rollBack);
     }
   }
 

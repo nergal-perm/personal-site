@@ -9,6 +9,7 @@ import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.PublicationKind;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.migration.ReferenceMigrationInventory;
+import dev.eugene.astroexport.migration.SemanticMigrationService;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.report.ReportBuilder;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
@@ -60,6 +61,7 @@ public final class CommandServices {
   private final ApprovedSnapshotRepository approvedSnapshots;
   private final ApprovedReleaseMaterializer approvedReleaseMaterializer;
   private final ReferenceMigrationInventory referenceMigrationInventory;
+  private final SemanticMigrationService semanticMigrationService;
 
   private CommandServices(
       Clock clock,
@@ -79,7 +81,8 @@ public final class CommandServices {
       StageApprovedSnapshotAction stageApprovedSnapshotAction,
       ApprovedSnapshotRepository approvedSnapshots,
       ApprovedReleaseMaterializer approvedReleaseMaterializer,
-      ReferenceMigrationInventory referenceMigrationInventory) {
+      ReferenceMigrationInventory referenceMigrationInventory,
+      SemanticMigrationService semanticMigrationService) {
     this.clock = clock;
     this.selectionAction = selectionAction;
     this.manifestAction = manifestAction;
@@ -98,6 +101,7 @@ public final class CommandServices {
     this.approvedSnapshots = approvedSnapshots;
     this.approvedReleaseMaterializer = approvedReleaseMaterializer;
     this.referenceMigrationInventory = referenceMigrationInventory;
+    this.semanticMigrationService = semanticMigrationService;
   }
 
   public static CommandServices defaults() {
@@ -122,7 +126,8 @@ public final class CommandServices {
         ReviewWorkspace::stageApprovedSnapshot,
         new ApprovedSnapshotRepository(),
         new ApprovedReleaseMaterializer(),
-        new ReferenceMigrationInventory());
+        new ReferenceMigrationInventory(),
+        new SemanticMigrationService());
   }
 
   public CommandServices withClock(Clock replacement) {
@@ -174,7 +179,8 @@ public final class CommandServices {
         stageApprovedSnapshotAction,
         approvedSnapshots,
         approvedReleaseMaterializer,
-        referenceMigrationInventory);
+        referenceMigrationInventory,
+        semanticMigrationService);
   }
 
   public CommandServices withReplaceEnglishReviewAction(ReplaceEnglishReviewAction replacement) {
@@ -196,7 +202,8 @@ public final class CommandServices {
         stageApprovedSnapshotAction,
         approvedSnapshots,
         approvedReleaseMaterializer,
-        referenceMigrationInventory);
+        referenceMigrationInventory,
+        semanticMigrationService);
   }
 
   public CommandServices withStageApprovedSnapshotAction(
@@ -219,7 +226,8 @@ public final class CommandServices {
         replacement,
         approvedSnapshots,
         approvedReleaseMaterializer,
-        referenceMigrationInventory);
+        referenceMigrationInventory,
+        semanticMigrationService);
   }
 
   private CommandServices copy(
@@ -248,7 +256,8 @@ public final class CommandServices {
         stageApprovedSnapshotAction,
         approvedSnapshots,
         approvedReleaseMaterializer,
-        referenceMigrationInventory);
+        referenceMigrationInventory,
+        semanticMigrationService);
   }
 
   public Clock clock() {
@@ -287,6 +296,16 @@ public final class CommandServices {
       Path astro,
       Path report) {
     return referenceMigrationInventory.inspect(vault, review, astro, report);
+  }
+
+  public SemanticMigrationService.ApplyResult applySemanticMigration(
+      SemanticMigrationService.ApplyRequest request) {
+    return semanticMigrationService.apply(request, SemanticMigrationService.MigrationHooks.none());
+  }
+
+  public SemanticMigrationService.RecoveryResult recoverSemanticMigration(
+      SemanticMigrationService.RecoveryRequest request) {
+    return semanticMigrationService.recover(request);
   }
 
   public SiteWriter.WriteResult writeSite(Path siteRoot, ManifestResult manifest, Consumer<Path> validator) {

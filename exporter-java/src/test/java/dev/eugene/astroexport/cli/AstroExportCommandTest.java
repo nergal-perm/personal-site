@@ -18,6 +18,7 @@ import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.migration.SemanticOperationLock;
+import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
@@ -146,6 +147,63 @@ final class AstroExportCommandTest {
     assertEquals(false, payload.get("ok"));
     assertEquals("decisions-required", payload.get("status"));
     assertEquals(1, ((Map<?, ?>) payload.get("summary")).get("confirmedNeeded"));
+  }
+
+  @Test
+  void migrateSemanticLinksApplyInstallsJournalAndActivationMarker() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    Path report = temp.resolve("inventory.json");
+    Files.createDirectories(astro);
+    writeRawNote(vault, "page.md", "See [[Target|target]].");
+    writeRawNote(vault, "target.md", "Target.");
+    writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
+        "See [target](/ru/target/).",
+        "See [target](/en/target/).");
+    new dev.eugene.astroexport.migration.ReferenceMigrationInventory()
+        .inspect(vault, review, astro, report);
+    String inventorySha = (String) json(Files.readString(report)).get("inventorySha256");
+    Path decisions = temp.resolve("decisions.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{}}
+        """.formatted(inventorySha));
+
+    CommandFixture.Result result = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(),
+        "--review", review.toString(),
+        "--astro", astro.toString(),
+        "--report", report.toString(),
+        "--decisions", decisions.toString(),
+        "--apply",
+        "--json");
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    Map<String, Object> payload = json(result.stdout());
+    assertEquals(true, payload.get("ok"));
+    assertEquals("applied", payload.get("status"));
+    assertEquals(SemanticSchemaState.Mode.SEMANTIC, SemanticSchemaState.mode(review));
+    assertTrue(Files.exists(review.resolve("blog/page/published/references.json")));
+  }
+
+  @Test
+  void migrateSemanticLinksRejectsMultipleMutationModes() throws Exception {
+    Path review = temp.resolve("review");
+
+    CommandFixture.Result result = run(command(),
+        "migrate-semantic-links",
+        "--review", review.toString(),
+        "--apply",
+        "--roll-forward",
+        "--json");
+
+    assertEquals(1, result.exitCode());
+    Map<String, Object> payload = json(result.stdout());
+    assertEquals(false, payload.get("ok"));
+    assertTrue(result.stdout().contains("migration-v1.journal.json")
+        || result.stdout().contains("Require exactly one"));
   }
 
   @Test
