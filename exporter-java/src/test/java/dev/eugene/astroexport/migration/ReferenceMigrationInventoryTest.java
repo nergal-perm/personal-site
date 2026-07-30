@@ -86,6 +86,91 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
+  void sidecarOrderMismatchPreventsExactAutomaticInventory() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[B|one]] [[C|two]]");
+    writeNote(vault, "b.md", "B.");
+    writeNote(vault, "c.md", "C.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-b", "b.md", "vault-ref-c", "c.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[one](/ru/b/) [two](/ru/c/)",
+        "[one](/en/b/) [two](/en/c/)",
+        List.of("ref-0002", "ref-0001"));
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+
+    assertEquals("order-mismatch", inventory.pages().getFirst().status().json());
+    assertEquals(List.of("order-mismatch", "order-mismatch"),
+        inventory.pages().getFirst().occurrences().stream()
+            .map(occurrence -> occurrence.classification().json())
+            .toList());
+  }
+
+  @Test
+  void missingCurrentSourceIsUnsafeInput() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "missing.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "missing.md", "vault-ref-page",
+        "[target](/ru/target/)",
+        "[target](/en/target/)");
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+
+    assertEquals("unsafe", inventory.pages().getFirst().status().json());
+    assertFalse(inventory.pages().getFirst().automatic());
+    assertEquals("unsafe-input", inventory.pages().getFirst().occurrences().getFirst().classification().json());
+  }
+
+  @Test
+  void rawFrontmatterLinksAreNotInventoried() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", """
+        ---
+        related: [[Target|target]]
+        ---
+        Body without links.
+        """);
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "Body without links.",
+        "Body without links.");
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+
+    assertEquals(0, inventory.pages().getFirst().occurrences().size());
+    assertEquals("exact", inventory.pages().getFirst().status().json());
+  }
+
+  @Test
+  void inventoryUsesCurrentAstroRoutesInsteadOfVaultPathFallbacks() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    writeNote(vault, "page.md", "[[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/essays/current-target/)",
+        "[target](/en/essays/current-target/)");
+    writeAstroRoute(astro, "src/content/blog/ru/current-target.md", "vault-ref-target", "/ru/essays/current-target/");
+    writeAstroRoute(astro, "src/content/blog/en/current-target.md", "vault-ref-target", "/en/essays/current-target/");
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, astro, temp.resolve("inventory.json"));
+
+    assertEquals("exact", inventory.pages().getFirst().status().json());
+    assertEquals("exact", inventory.pages().getFirst().occurrences().getFirst().classification().json());
+  }
+
+  @Test
   void inspectReportsSymlinkHardLinkAndInvalidUtf8AsUnsafeWithoutMutatingReview() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");
@@ -178,6 +263,30 @@ final class ReferenceMigrationInventoryTest {
         new ReferenceMigrationInventory().validateDecisions(inventory, decisions);
 
     assertEquals(List.of("vault-ref-page/order"), decisionSet.keys());
+  }
+
+  @Test
+  void correctedEnglishDecisionRejectsUnchangedReversedOrder() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[B|one]] [[C|two]]");
+    writeNote(vault, "b.md", "B.");
+    writeNote(vault, "c.md", "C.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-b", "b.md", "vault-ref-c", "c.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[one](/ru/b/) [two](/ru/c/)",
+        "[two](/en/c/) [one](/en/b/)");
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+    Path corrected = temp.resolve("corrected/page-en.md");
+    Files.createDirectories(corrected.getParent());
+    Files.writeString(corrected, "[two](/en/c/) [one](/en/b/)", StandardCharsets.UTF_8);
+    Path decisions = temp.resolve("decisions.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"corrected/page-en.md","correctedEnglishSha256":"%s"}}}
+        """.formatted(inventory.inventorySha256(), PageReferenceMapCodec.sha256(Files.readAllBytes(corrected))));
+
+    assertDecisionRejected(inventory, decisions, "order-mismatch");
   }
 
   private static void assertDecisionRejected(
@@ -281,6 +390,18 @@ final class ReferenceMigrationInventoryTest {
       String pageRef,
       String ru,
       String en) throws Exception {
+    writeApproved(review, collection, publicId, sourcePath, pageRef, ru, en, List.of());
+  }
+
+  private static void writeApproved(
+      Path review,
+      String collection,
+      String publicId,
+      String sourcePath,
+      String pageRef,
+      String ru,
+      String en,
+      List<String> order) throws Exception {
     Path published = review.resolve(collection).resolve(publicId).resolve("published");
     Files.createDirectories(published);
     Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
@@ -291,8 +412,24 @@ final class ReferenceMigrationInventoryTest {
         "sourcePath", sourcePath,
         "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
         "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
-        "order", List.of(),
+        "order", order,
         "references", Map.of())), StandardCharsets.UTF_8);
+  }
+
+  private static void writeAstroRoute(
+      Path astro,
+      String path,
+      String pageRef,
+      String route) throws Exception {
+    Path target = astro.resolve(path);
+    Files.createDirectories(target.getParent());
+    Files.writeString(target, """
+        ---
+        pageRef: %s
+        route: %s
+        ---
+        Body.
+        """.formatted(pageRef, route), StandardCharsets.UTF_8);
   }
 
   private static Map<String, ByteBuffer> treeSnapshot(Path root) throws Exception {

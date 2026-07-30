@@ -62,6 +62,19 @@ final class ReferenceMigrationAlignerTest {
   }
 
   @Test
+  void sameTargetDifferentLabelsReversedInEnglishIsOrderMismatch() {
+    ReferenceMigrationAligner.MigrationPage page = aligner.align(
+        raw("[[B|first]] [[B|second]]"),
+        approvedRu("[first](/ru/b/) [second](/ru/b/)"),
+        approvedEn("[second](/en/b/) [first](/en/b/)"),
+        resolver(targetB()));
+
+    assertEquals(ORDER_MISMATCH_PAGE, page.status());
+    assertEquals(List.of(ORDER_MISMATCH, ORDER_MISMATCH), classifications(page));
+    assertFalse(page.automatic());
+  }
+
+  @Test
   void unresolvedRawTargetIsNotProposedAsSemanticTriple() {
     ReferenceMigrationAligner.MigrationPage page = aligner.align(
         raw("[[Missing|missing]]"),
@@ -80,6 +93,18 @@ final class ReferenceMigrationAlignerTest {
         raw("[[B|one]]"),
         approvedRu("[one](/ru/b/)"),
         approvedEn("[one](/en/b/) and [one](/en/b/)"),
+        resolver(targetB()));
+
+    assertEquals(List.of(AMBIGUOUS_TRANSLATION), classifications(page));
+    assertFalse(page.automatic());
+  }
+
+  @Test
+  void doesNotInferEnglishOccurrenceFromPlainTranslatedLabelOnly() {
+    ReferenceMigrationAligner.MigrationPage page = aligner.align(
+        raw("[[B|one]]"),
+        approvedRu("[one](/ru/b/)"),
+        approvedEn("one"),
         resolver(targetB()));
 
     assertEquals(List.of(AMBIGUOUS_TRANSLATION), classifications(page));

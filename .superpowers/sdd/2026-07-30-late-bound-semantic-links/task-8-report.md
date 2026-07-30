@@ -75,3 +75,136 @@ Observed result:
 
 - The aligner is intentionally conservative and test-covered for the Task 8 cases, but it does not yet implement a broad paragraph-anchor dynamic-programming search for all possible prose translation layouts. It enumerates candidate spans and compares unique document-order assignments; unclear/complex cases fall into confirmation-required or unsafe classifications rather than automatic triples.
 - Corrected-English decision validation is read-only and validates containment/hash/completeness, but it does not materialize or persist any corrected-order state; that remains Task 9.
+
+## Fix Round 1/5
+
+### Status
+
+DONE_WITH_CONCERNS
+
+### Findings Fixed
+
+- Fixed ordering comparison to use unique occurrence signatures rather than `targetRef`, so two occurrences pointing at the same target cannot be reversed in English and still classified exact.
+- Preserved loaded `references.json.order` and marks a page `order-mismatch` when sidecar order differs from proposed occurrence order.
+- Fixed `approve-corrected-order` validation to parse English links and compare destination order against the RU/source occurrence order; unchanged reversed corrected files now fail with `order-mismatch`.
+- Missing/current-source read failures now become `unsafe-input` with a synthetic unsafe occurrence instead of an automatic exact page.
+- Raw source parsing now uses `FrontmatterDocument.parse(...).body()`, so frontmatter wikilinks are not inventoried as inline body references.
+- English plain-text candidates are no longer accepted from visible-label equality alone; they require surrounding/rendered-context anchoring.
+- `--astro` is now passed through CLI services into inventory. Inventory scans Astro Markdown frontmatter `pageRef` and `route` fields and uses those current routes before vault-path fallback routes.
+
+### Covering Tests Added
+
+- `ReferenceMigrationAlignerTest.sameTargetDifferentLabelsReversedInEnglishIsOrderMismatch`
+- `ReferenceMigrationAlignerTest.doesNotInferEnglishOccurrenceFromPlainTranslatedLabelOnly`
+- `ReferenceMigrationInventoryTest.sidecarOrderMismatchPreventsExactAutomaticInventory`
+- `ReferenceMigrationInventoryTest.missingCurrentSourceIsUnsafeInput`
+- `ReferenceMigrationInventoryTest.rawFrontmatterLinksAreNotInventoried`
+- `ReferenceMigrationInventoryTest.inventoryUsesCurrentAstroRoutesInsteadOfVaultPathFallbacks`
+- `ReferenceMigrationInventoryTest.correctedEnglishDecisionRejectsUnchangedReversedOrder`
+
+### Commands And Output
+
+Red command:
+
+```bash
+mvn -q -Dtest=ReferenceMigrationAlignerTest,ReferenceMigrationInventoryTest test
+```
+
+Output:
+
+```text
+[ERROR] COMPILATION ERROR :
+[ERROR] /Users/eugene/Dev/personal-site/exporter-java/src/test/java/dev/eugene/astroexport/migration/ReferenceMigrationInventoryTest.java:[167,42] no suitable method found for inspect(java.nio.file.Path,java.nio.file.Path,java.nio.file.Path,java.nio.file.Path)
+...
+```
+
+Focused covering command:
+
+```bash
+mvn -q -Dtest=ReferenceMigrationAlignerTest,ReferenceMigrationInventoryTest,AstroExportCommandTest,NativeCliParityTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Full regression command:
+
+```bash
+mvn -q test
+```
+
+First output:
+
+```text
+[ERROR] dev.eugene.astroexport.release.ApprovedReleaseMaterializerTest.publicOutputGateAllowsApprovedRoutesInsideVaultRoot ... ApprovedReleaseException: ru output contains private semantic payload
+```
+
+Follow-up isolation command:
+
+```bash
+mvn -q -Dtest=ApprovedReleaseMaterializerTest#publicOutputGateAllowsApprovedRoutesInsideVaultRoot test
+```
+
+Output:
+
+```text
+<empty output, exit 0>
+```
+
+Full regression rerun:
+
+```bash
+mvn -q test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+Usage: astro-export [-hV] [--dry-run] [--out=<out>] [--report=<report>]
+                    [--review=<review>] [--vault=<vault>] [COMMAND]
+Export explicitly published Obsidian notes into Astro source trees.
+      --dry-run           select and report without writing content
+  -h, --help              Show this help message and exit.
+      --out=<out>         Astro project root for atomic write mode
+      --report=<report>   report path
+      --review=<review>   translation review workspace
+  -V, --version           Print version information and exit.
+      --vault=<vault>     Obsidian vault root
+Commands:
+  build-from-review
+  migrate-overrides
+  prepare
+  inspect-publication
+  mark-reviewed
+  migrate-semantic-links
+  refresh-publication-queue
+  write-publication-contract
+```
+
+Whitespace check:
+
+```bash
+git diff --check
+```
+
+Output:
+
+```text
+<empty output, exit 0>
+```
+
+### Concerns
+
+- The first full-suite run exposed an order-sensitive `ApprovedReleaseMaterializerTest` failure outside the Task 8 files; the failing test passed in isolation and the full suite passed on rerun.
+- English stripped/plain spans are still allowed only when anchored by rendered surrounding/full-context agreement. Unanchored English plain-label matches remain confirmation-required.

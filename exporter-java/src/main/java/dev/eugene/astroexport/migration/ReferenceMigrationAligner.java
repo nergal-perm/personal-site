@@ -43,6 +43,9 @@ public final class ReferenceMigrationAligner {
       ApprovedDocument approvedEnglish,
       VaultReferenceResolver resolver) {
     List<RawOccurrence> rawOccurrences = parseRaw(raw.markdown());
+    if (!raw.safe()) {
+      return unsafePage(raw, approvedRussian, approvedEnglish, rawOccurrences, raw.unsafeReason());
+    }
     if (!approvedRussian.safe() || !approvedEnglish.safe()) {
       return unsafePage(raw, approvedRussian, approvedEnglish, rawOccurrences,
           approvedRussian.safe() ? approvedEnglish.unsafeReason() : approvedRussian.unsafeReason());
@@ -60,9 +63,14 @@ public final class ReferenceMigrationAligner {
             "raw target has no unique vault identity"));
         continue;
       }
-      List<String> routes = routesFor(resolution.currentPath());
+      List<String> routes = raw.routesFor(resolution.pageRef(), resolution.currentPath());
       List<ApprovedSpan> ruCandidates = candidates(russianSpans, occurrence.label(), routes, "ru");
-      List<ApprovedSpan> enCandidates = candidates(englishSpans, occurrence.label(), routes, "en");
+      List<ApprovedSpan> enCandidates = englishCandidates(
+          englishSpans,
+          occurrence,
+          raw.markdown(),
+          approvedEnglish.text(),
+          routes);
       boolean duplicate = duplicateSignatures.getOrDefault(signature(resolution, occurrence), 0) > 1;
       Classification classification = classify(ruCandidates, enCandidates, duplicate);
       String reason = reason(classification, ruCandidates, enCandidates, duplicate);
@@ -72,6 +80,7 @@ public final class ReferenceMigrationAligner {
     boolean completeUniqueOrders = uniqueAssignmentCount(working, true) == resolvedCount(working)
         && uniqueAssignmentCount(working, false) == resolvedCount(working);
     boolean orderMismatch = completeUniqueOrders && !documentOrder(working, true).equals(documentOrder(working, false));
+    orderMismatch = orderMismatch || sidecarOrderMismatch(raw.legacyReferenceOrder(), working);
     boolean unsafeContext = !orderMismatch && sourceContextDrift(raw.markdown(), approvedRussian.text());
     List<MigrationOccurrence> occurrences = new ArrayList<>();
     for (WorkingOccurrence item : working) {
@@ -105,6 +114,23 @@ public final class ReferenceMigrationAligner {
       List<RawOccurrence> rawOccurrences,
       String reason) {
     List<MigrationOccurrence> occurrences = new ArrayList<>();
+    if (rawOccurrences.isEmpty()) {
+      occurrences.add(new MigrationOccurrence(
+          raw.pageRef() + "/" + referenceId(1),
+          UNSAFE_INPUT,
+          null,
+          "",
+          approvedRussian.safe() ? null : approvedRussian.unsafeReason(),
+          approvedEnglish.safe() ? null : approvedEnglish.unsafeReason(),
+          1,
+          null,
+          null,
+          reason == null ? "unsafe approved input" : reason,
+          null,
+          null,
+          null,
+          null));
+    }
     for (RawOccurrence occurrence : rawOccurrences) {
       occurrences.add(new MigrationOccurrence(
           raw.pageRef() + "/" + referenceId(occurrence.ordinal()),
@@ -117,6 +143,7 @@ public final class ReferenceMigrationAligner {
           null,
           blankToNull(occurrence.heading()),
           reason == null ? "unsafe approved input" : reason,
+          null,
           null,
           null,
           null));
@@ -163,6 +190,7 @@ public final class ReferenceMigrationAligner {
         reason,
         classification == EXACT ? refId : null,
         reference,
+        enSpan == null ? null : enSpan.destination(),
         enSpan == null ? null : new Span(enSpan.start(), enSpan.end()));
   }
 
@@ -265,8 +293,24 @@ public final class ReferenceMigrationAligner {
         .filter(occurrence -> (russian ? occurrence.ruCandidates() : occurrence.enCandidates()).size() == 1)
         .sorted(Comparator.comparingInt(occurrence ->
             (russian ? occurrence.ruCandidates() : occurrence.enCandidates()).getFirst().start()))
-        .map(occurrence -> occurrence.resolution().pageRef())
+        .map(ReferenceMigrationAligner::occurrenceSignature)
         .toList();
+  }
+
+  private static boolean sidecarOrderMismatch(List<String> sidecarOrder, List<WorkingOccurrence> occurrences) {
+    if (sidecarOrder.isEmpty()) {
+      return false;
+    }
+    List<String> proposed = occurrences.stream()
+        .filter(occurrence -> occurrence.resolution().status() == VaultReferenceResolver.Status.RESOLVED)
+        .map(occurrence -> referenceId(occurrence.raw().ordinal()))
+        .toList();
+    return !sidecarOrder.equals(proposed);
+  }
+
+  private static String occurrenceSignature(WorkingOccurrence occurrence) {
+    RawOccurrence raw = occurrence.raw();
+    return occurrence.resolution().pageRef() + "|" + raw.label() + "|" + raw.heading() + "|" + raw.ordinal();
   }
 
   private static int resolvedCount(List<WorkingOccurrence> occurrences) {
@@ -362,6 +406,51 @@ public final class ReferenceMigrationAligner {
       }
     }
     return List.copyOf(matches);
+  }
+
+  private static List<ApprovedSpan> englishCandidates(
+      List<ApprovedSpan> spans,
+      RawOccurrence occurrence,
+      String rawMarkdown,
+      String englishMarkdown,
+      List<String> routes) {
+    List<ApprovedSpan> matches = new ArrayList<>();
+    for (ApprovedSpan span : candidates(spans, occurrence.label(), routes, "en")) {
+      if (span.destination() != null || anchoredPlainEnglish(rawMarkdown, englishMarkdown, occurrence, span)) {
+        matches.add(span);
+      }
+    }
+    return List.copyOf(matches);
+  }
+
+  private static boolean anchoredPlainEnglish(
+      String rawMarkdown,
+      String englishMarkdown,
+      RawOccurrence occurrence,
+      ApprovedSpan span) {
+    String rawBefore = nearestWordBefore(renderRawLabels(rawMarkdown), occurrence.start());
+    String rawAfter = nearestWordAfter(renderRawLabels(rawMarkdown), occurrence.end());
+    String enBefore = nearestWordBefore(englishMarkdown, span.start());
+    String enAfter = nearestWordAfter(englishMarkdown, span.end());
+    String renderedRaw = normalizeComparable(renderRawLabels(rawMarkdown));
+    String renderedEnglish = normalizeComparable(renderApprovedLabels(englishMarkdown));
+    return (!rawBefore.isEmpty() && rawBefore.equals(enBefore))
+        || (!rawAfter.isEmpty() && rawAfter.equals(enAfter))
+        || (renderedRaw.equals(renderedEnglish) && !renderedRaw.equals(occurrence.label()));
+  }
+
+  private static String nearestWordBefore(String text, int end) {
+    Matcher matcher = Pattern.compile("[\\p{L}\\p{N}_-]+").matcher(text.substring(0, Math.min(end, text.length())));
+    String value = "";
+    while (matcher.find()) {
+      value = matcher.group();
+    }
+    return value;
+  }
+
+  private static String nearestWordAfter(String text, int start) {
+    Matcher matcher = Pattern.compile("[\\p{L}\\p{N}_-]+").matcher(text.substring(Math.min(start, text.length())));
+    return matcher.find() ? matcher.group() : "";
   }
 
   private static List<ApprovedSpan> parseApproved(String markdown, String language) {
@@ -515,7 +604,49 @@ public final class ReferenceMigrationAligner {
       String reason) {
   }
 
-  public record RawPage(String pageRef, String sourcePath, String markdown) { }
+  public record RawPage(
+      String pageRef,
+      String sourcePath,
+      String markdown,
+      boolean safe,
+      String unsafeReason,
+      Map<String, RoutePair> currentRoutes,
+      List<String> legacyReferenceOrder) {
+    public RawPage(String pageRef, String sourcePath, String markdown) {
+      this(pageRef, sourcePath, markdown, true, null, Map.of(), List.of());
+    }
+
+    public static RawPage unsafe(String pageRef, String sourcePath, String reason) {
+      return new RawPage(pageRef, sourcePath, "", false, reason, Map.of(), List.of());
+    }
+
+    public RawPage {
+      markdown = markdown == null ? "" : markdown;
+      currentRoutes = currentRoutes == null ? Map.of() : Map.copyOf(currentRoutes);
+      legacyReferenceOrder = legacyReferenceOrder == null ? List.of() : List.copyOf(legacyReferenceOrder);
+    }
+
+    List<String> routesFor(String targetRef, String currentPath) {
+      RoutePair pair = currentRoutes.get(targetRef);
+      if (pair != null) {
+        return pair.routes();
+      }
+      return ReferenceMigrationAligner.routesFor(currentPath);
+    }
+  }
+
+  public record RoutePair(String ruRoute, String enRoute) {
+    List<String> routes() {
+      List<String> routes = new ArrayList<>();
+      if (ruRoute != null && !ruRoute.isBlank()) {
+        routes.add(ruRoute);
+      }
+      if (enRoute != null && !enRoute.isBlank()) {
+        routes.add(enRoute);
+      }
+      return List.copyOf(routes);
+    }
+  }
 
   public record ApprovedDocument(String path, boolean safe, String text, String unsafeReason) {
     public static ApprovedDocument valid(String path, byte[] bytes) {
@@ -562,6 +693,7 @@ public final class ReferenceMigrationAligner {
       String reason,
       String proposedReferenceId,
       PageReferenceMap.Reference proposedReference,
+      String proposedEnDestination,
       Span proposedEnSpan) {
   }
 

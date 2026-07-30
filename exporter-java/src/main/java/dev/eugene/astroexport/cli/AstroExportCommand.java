@@ -626,7 +626,7 @@ public final class AstroExportCommand implements Callable<Integer> {
     }
     try {
       ReferenceMigrationInventory.Inventory inventory =
-          services.inspectReferenceMigration(vaultRoot, reviewRoot, reportPath);
+          services.inspectReferenceMigration(vaultRoot, reviewRoot, astroRoot, reportPath);
       ReferenceMigrationInventory.Summary summary = inventory.summary();
       boolean ok = !summary.decisionsRequired();
       emitJson(bridge(

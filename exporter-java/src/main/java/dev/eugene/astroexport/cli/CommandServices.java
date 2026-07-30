@@ -284,8 +284,9 @@ public final class CommandServices {
   public ReferenceMigrationInventory.Inventory inspectReferenceMigration(
       Path vault,
       Path review,
+      Path astro,
       Path report) {
-    return referenceMigrationInventory.inspect(vault, review, report);
+    return referenceMigrationInventory.inspect(vault, review, astro, report);
   }
 
   public SiteWriter.WriteResult writeSite(Path siteRoot, ManifestResult manifest, Consumer<Path> validator) {

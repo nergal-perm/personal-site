@@ -5,6 +5,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.exc.StreamReadException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
@@ -39,10 +40,15 @@ public final class ReferenceMigrationInventory {
   }
 
   public Inventory inspect(Path vault, Path review, Path report) {
+    return inspect(vault, review, null, report);
+  }
+
+  public Inventory inspect(Path vault, Path review, Path astro, Path report) {
     Objects.requireNonNull(vault, "vault");
     Objects.requireNonNull(review, "review");
     VaultReferenceCatalog catalog = VaultReferenceCatalog.loadIfPresent(review);
     VaultReferenceResolver resolver = new VaultReferenceResolver(catalog);
+    Map<String, ReferenceMigrationAligner.RoutePair> currentRoutes = scanAstroRoutes(astro);
     List<ApprovedSnapshot> snapshots = scanApproved(review);
     List<ReferenceMigrationAligner.MigrationPage> pages = new ArrayList<>();
     ReferenceMigrationAligner aligner = new ReferenceMigrationAligner();
@@ -51,10 +57,26 @@ public final class ReferenceMigrationInventory {
       if (pageRef == null || pageRef.isBlank()) {
         pageRef = provisionalPageRef(snapshot.sourcePath());
       }
-      Path rawPath = bounded(vault, snapshot.sourcePath());
-      String rawMarkdown = readRaw(rawPath);
+      RawInput rawInput = readRawBody(vault, snapshot.sourcePath());
+      ReferenceMigrationAligner.RawPage rawPage = rawInput.safe()
+          ? new ReferenceMigrationAligner.RawPage(
+              pageRef,
+              snapshot.sourcePath(),
+              rawInput.body(),
+              true,
+              null,
+              currentRoutes,
+              snapshot.legacyOrder())
+          : new ReferenceMigrationAligner.RawPage(
+              pageRef,
+              snapshot.sourcePath(),
+              "",
+              false,
+              rawInput.reason(),
+              currentRoutes,
+              snapshot.legacyOrder());
       pages.add(aligner.align(
-          new ReferenceMigrationAligner.RawPage(pageRef, snapshot.sourcePath(), rawMarkdown),
+          rawPage,
           snapshot.russian(),
           snapshot.english(),
           resolver));
@@ -156,36 +178,33 @@ public final class ReferenceMigrationInventory {
         .filter(candidate -> key.equals(candidate.pageRef() + "/order"))
         .findFirst()
         .orElseThrow(() -> new DecisionValidationException("unknown-decision", "unknown order decision"));
-    String text = new String(bytes, StandardCharsets.UTF_8);
-    for (ReferenceMigrationAligner.MigrationOccurrence occurrence : page.occurrences()) {
-      if (occurrence.targetRef() == null || !text.contains("/en/" + routeStem(occurrence.targetRef(), page) + "/")) {
-        throw new DecisionValidationException("incomplete-corrected-review", "corrected English lacks required reference");
-      }
+    List<String> correctedOrder = englishLinkDestinations(new String(bytes, StandardCharsets.UTF_8));
+    List<String> expectedOrder = page.occurrences().stream()
+        .map(ReferenceMigrationInventory::englishDestination)
+        .toList();
+    if (expectedOrder.stream().anyMatch(Objects::isNull)) {
+      throw new DecisionValidationException("incomplete-corrected-review", "inventory lacks complete English order");
+    }
+    if (!correctedOrder.equals(expectedOrder)) {
+      throw new DecisionValidationException("order-mismatch", "corrected English order must match Russian order");
     }
   }
 
-  private static String routeStem(String targetRef, ReferenceMigrationAligner.MigrationPage page) {
-    for (ReferenceMigrationAligner.MigrationOccurrence occurrence : page.occurrences()) {
-      if (targetRef.equals(occurrence.targetRef()) && occurrence.rawWikilink() != null) {
-        String raw = occurrence.rawWikilink();
-        int start = raw.indexOf("[[");
-        int bar = raw.indexOf('|');
-        int hash = raw.indexOf('#');
-        int end = raw.indexOf("]]");
-        int targetEnd = raw.length();
-        if (bar > 0) {
-          targetEnd = bar;
-        } else if (hash > 0) {
-          targetEnd = hash;
-        } else if (end > 0) {
-          targetEnd = end;
-        }
-        if (start >= 0) {
-          return raw.substring(start + 2, targetEnd).toLowerCase(java.util.Locale.ROOT);
-        }
+  private static String englishDestination(ReferenceMigrationAligner.MigrationOccurrence occurrence) {
+    return occurrence.proposedEnDestination();
+  }
+
+  private static List<String> englishLinkDestinations(String markdown) {
+    List<String> destinations = new ArrayList<>();
+    java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+        "\\[[^\\]\\n]*?\\]\\(([^\\r\\n)]*?)\\)").matcher(markdown);
+    while (matcher.find()) {
+      String destination = matcher.group(1);
+      if (destination.startsWith("/en/")) {
+        destinations.add(destination);
       }
     }
-    return targetRef;
+    return List.copyOf(destinations);
   }
 
   private static Path resolveCorrected(Path decisionsPath, String relative) {
@@ -240,6 +259,19 @@ public final class ReferenceMigrationInventory {
         PageReferenceMap map = PageReferenceMapCodec.read(references.bytes(), published.resolve("references.json").toString());
         pageRef = map.pageRef();
         sourcePath = map.sourcePath();
+        List<String> order = map.order();
+        SafeLeaf ru = readSafeLeaf(published.resolve("ru.md"));
+        SafeLeaf en = readSafeLeaf(published.resolve("en.md"));
+        String unsafe = firstUnsafe(ru, en, references);
+        if (unsafe != null) {
+          return unsafeSnapshot(published, pageRef, sourcePath, unsafe, order);
+        }
+        return new ApprovedSnapshot(
+            pageRef,
+            sourcePath,
+            order,
+            ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("ru.md").toString(), ru.bytes()),
+            ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("en.md").toString(), en.bytes()));
       } catch (RuntimeException error) {
         references = SafeLeaf.unsafe("unsafe approved snapshot references.json: " + error.getMessage());
       }
@@ -248,17 +280,28 @@ public final class ReferenceMigrationInventory {
     SafeLeaf en = readSafeLeaf(published.resolve("en.md"));
     String unsafe = firstUnsafe(ru, en, references);
     if (unsafe != null) {
-      return new ApprovedSnapshot(
-          pageRef,
-          sourcePath,
-          ReferenceMigrationAligner.ApprovedDocument.unsafe(published.resolve("ru.md").toString(), unsafe),
-          ReferenceMigrationAligner.ApprovedDocument.unsafe(published.resolve("en.md").toString(), unsafe));
+      return unsafeSnapshot(published, pageRef, sourcePath, unsafe, List.of());
     }
     return new ApprovedSnapshot(
         pageRef,
         sourcePath,
+        List.of(),
         ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("ru.md").toString(), ru.bytes()),
         ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("en.md").toString(), en.bytes()));
+  }
+
+  private static ApprovedSnapshot unsafeSnapshot(
+      Path published,
+      String pageRef,
+      String sourcePath,
+      String unsafe,
+      List<String> order) {
+    return new ApprovedSnapshot(
+        pageRef,
+        sourcePath,
+        order,
+        ReferenceMigrationAligner.ApprovedDocument.unsafe(published.resolve("ru.md").toString(), unsafe),
+        ReferenceMigrationAligner.ApprovedDocument.unsafe(published.resolve("en.md").toString(), unsafe));
   }
 
   private static String firstUnsafe(SafeLeaf... leaves) {
@@ -296,12 +339,55 @@ public final class ReferenceMigrationInventory {
     }
   }
 
-  private static String readRaw(Path path) {
+  private static RawInput readRawBody(Path vault, String sourcePath) {
+    Path path = bounded(vault, sourcePath);
     try {
-      return Files.readString(path, StandardCharsets.UTF_8);
+      if (!Files.exists(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) {
+        return RawInput.unsafe("current source is missing or symbolic: " + sourcePath);
+      }
+      String markdown = Files.readString(path, StandardCharsets.UTF_8);
+      String body = FrontmatterDocument.parse(path, sourcePath, markdown).body();
+      return RawInput.safe(body);
     } catch (IOException error) {
-      return "";
+      return RawInput.unsafe("current source cannot be read: " + sourcePath);
     }
+  }
+
+  private static Map<String, ReferenceMigrationAligner.RoutePair> scanAstroRoutes(Path astro) {
+    if (astro == null || !Files.isDirectory(astro, LinkOption.NOFOLLOW_LINKS)) {
+      return Map.of();
+    }
+    Map<String, RouteBuilder> routes = new LinkedHashMap<>();
+    try (var paths = Files.walk(astro)) {
+      for (Path path : paths
+          .filter(Files::isRegularFile)
+          .filter(path -> path.toString().endsWith(".md"))
+          .sorted()
+          .toList()) {
+        FrontmatterDocument document = FrontmatterDocument.parse(
+            path,
+            astro.relativize(path).toString(),
+            Files.readString(path, StandardCharsets.UTF_8));
+        String pageRef = document.metadata().get("pageRef") instanceof String value ? value : null;
+        String route = document.metadata().get("route") instanceof String value ? value : null;
+        if (pageRef == null || route == null) {
+          continue;
+        }
+        RouteBuilder builder = routes.computeIfAbsent(pageRef, ignored -> new RouteBuilder());
+        if (route.startsWith("/ru/")) {
+          builder.ru = route;
+        } else if (route.startsWith("/en/")) {
+          builder.en = route;
+        }
+      }
+    } catch (IOException error) {
+      return Map.of();
+    }
+    LinkedHashMap<String, ReferenceMigrationAligner.RoutePair> result = new LinkedHashMap<>();
+    for (Map.Entry<String, RouteBuilder> entry : routes.entrySet()) {
+      result.put(entry.getKey(), new ReferenceMigrationAligner.RoutePair(entry.getValue().ru, entry.getValue().en));
+    }
+    return Map.copyOf(result);
   }
 
   private static Path bounded(Path root, String relative) {
@@ -376,8 +462,27 @@ public final class ReferenceMigrationInventory {
   private record ApprovedSnapshot(
       String pageRef,
       String sourcePath,
+      List<String> legacyOrder,
       ReferenceMigrationAligner.ApprovedDocument russian,
       ReferenceMigrationAligner.ApprovedDocument english) {
+    private ApprovedSnapshot {
+      legacyOrder = legacyOrder == null ? List.of() : List.copyOf(legacyOrder);
+    }
+  }
+
+  private record RawInput(boolean safe, String body, String reason) {
+    static RawInput safe(String body) {
+      return new RawInput(true, body, null);
+    }
+
+    static RawInput unsafe(String reason) {
+      return new RawInput(false, "", reason);
+    }
+  }
+
+  private static final class RouteBuilder {
+    private String ru;
+    private String en;
   }
 
   private record SafeLeaf(boolean safe, byte[] bytes, String reason) {
