@@ -316,3 +316,82 @@ Output:
 ### Concerns
 
 - No remaining concerns specific to this fix round.
+
+## Fix Round 3/5
+
+### Status
+
+DONE
+
+### Findings Fixed
+
+- Nonempty legacy sidecar order with zero current raw occurrences now creates an explicit `ORDER_MISMATCH` synthetic page/order occurrence, so the page cannot vacuously classify as exact.
+- Replaced recursive depth-first assignment enumeration with a bottom-up dynamic-programming table keyed by assignment position and prior approved-document start position. Counts are capped at 2 because classification only needs none, unique, or multiple surviving monotonic assignments.
+- Unresolved targets no longer contribute empty candidate lists to page-level monotonic assignment. Resolved exact occurrences can still receive deterministic triples while unresolved occurrences remain plain text with no proposed reference.
+
+### Covering Tests Added
+
+- `ReferenceMigrationAlignerTest.unresolvedRawTargetDoesNotPreventExactResolvedAssignments`
+- `ReferenceMigrationAlignerTest.monotonicAssignmentUsesPageLevelDynamicProgrammingForCandidateOrder`
+- `ReferenceMigrationInventoryTest.nonemptySidecarOrderWithNoRawOccurrencesIsOrderMismatch`
+
+### Commands And Output
+
+Initial focused command:
+
+```bash
+mvn -q -Dtest=ReferenceMigrationAlignerTest,ReferenceMigrationInventoryTest test
+```
+
+Output:
+
+```text
+[ERROR] Tests run: 14, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.020 s <<< FAILURE! -- in dev.eugene.astroexport.migration.ReferenceMigrationAlignerTest
+[ERROR] dev.eugene.astroexport.migration.ReferenceMigrationAlignerTest.monotonicAssignmentUsesPageLevelDynamicProgrammingForCandidateOrder -- Time elapsed: 0.005 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <EXACT_PAGE> but was: <CONFIRMED_NEEDED>
+...
+[ERROR] Tests run: 26, Failures: 1, Errors: 0, Skipped: 0
+```
+
+Focused migration command after correcting the test fixture:
+
+```bash
+mvn -q -Dtest=ReferenceMigrationAlignerTest,ReferenceMigrationInventoryTest test
+```
+
+Output:
+
+```text
+<empty output, exit 0>
+```
+
+Covering Task 8 command:
+
+```bash
+mvn -q -Dtest=ReferenceMigrationAlignerTest,ReferenceMigrationInventoryTest,AstroExportCommandTest,NativeCliParityTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Whitespace command:
+
+```bash
+git diff --check
+```
+
+Output:
+
+```text
+<empty output, exit 0>
+```
+
+### Concerns
+
+- No remaining concerns specific to this fix round.

@@ -130,6 +130,27 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
+  void nonemptySidecarOrderWithNoRawOccurrencesIsOrderMismatch() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "No current body links.");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "No current body links.",
+        "No current body links.",
+        List.of("ref-0001"));
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+
+    assertEquals("order-mismatch", inventory.pages().getFirst().status().json());
+    assertEquals("order-mismatch", inventory.pages().getFirst().occurrences().getFirst().classification().json());
+    assertEquals("vault-ref-page/order", inventory.pages().getFirst().occurrences().getFirst().occurrenceKey());
+    assertFalse(inventory.pages().getFirst().automatic());
+  }
+
+  @Test
   void missingCurrentSourceIsUnsafeInput() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");

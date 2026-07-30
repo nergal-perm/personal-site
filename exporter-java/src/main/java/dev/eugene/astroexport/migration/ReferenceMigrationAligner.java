@@ -94,6 +94,9 @@ public final class ReferenceMigrationAligner {
     orderMismatch = orderMismatch || sidecarOrderMismatch(raw.legacyOrderPresent(), raw.legacyReferenceOrder(), working);
     boolean unsafeContext = !orderMismatch && sourceContextDrift(raw.markdown(), approvedRussian.text());
     List<MigrationOccurrence> occurrences = new ArrayList<>();
+    if (orderMismatch && working.isEmpty()) {
+      occurrences.add(orderMismatchOccurrence(raw));
+    }
     for (WorkingOccurrence item : working) {
       Classification classification = item.classification();
       String reason = item.reason();
@@ -116,6 +119,24 @@ public final class ReferenceMigrationAligner {
         List.copyOf(occurrences),
         approvedRussian,
         approvedEnglish);
+  }
+
+  private static MigrationOccurrence orderMismatchOccurrence(RawPage raw) {
+    return new MigrationOccurrence(
+        raw.pageRef() + "/order",
+        ORDER_MISMATCH,
+        null,
+        context(raw.markdown(), 0, 0),
+        null,
+        null,
+        0,
+        null,
+        null,
+        "legacy sidecar order does not match current raw occurrences",
+        null,
+        null,
+        null,
+        null);
   }
 
   private static MigrationPage unsafePage(
@@ -254,9 +275,12 @@ public final class ReferenceMigrationAligner {
       String reason = occurrence.reason();
       List<ApprovedSpan> ru = occurrence.ruCandidates();
       List<ApprovedSpan> en = occurrence.enCandidates();
-      if (!duplicate && russian.unique() && english.unique()) {
-        ru = List.of(russian.spans().get(index));
-        en = List.of(english.spans().get(index));
+      ApprovedSpan ruAssignment = russian.spansByOccurrence().get(index);
+      ApprovedSpan enAssignment = english.spansByOccurrence().get(index);
+      if (!duplicate && ruAssignment != null && enAssignment != null
+          && russian.unique() && english.unique()) {
+        ru = List.of(ruAssignment);
+        en = List.of(enAssignment);
         classification = EXACT;
         reason = "unique monotonic RU/EN/target alignment";
       } else if (classification != UNRESOLVED_TARGET && classification != UNSAFE_INPUT) {
@@ -281,50 +305,61 @@ public final class ReferenceMigrationAligner {
   }
 
   private static Assignment monotonicAssignment(List<WorkingOccurrence> working, boolean russian) {
-    List<List<ApprovedSpan>> candidates = new ArrayList<>();
-    for (WorkingOccurrence occurrence : working) {
-      if (occurrence.resolution().status() != VaultReferenceResolver.Status.RESOLVED) {
-        candidates.add(List.of());
-      } else {
-        candidates.add(russian ? occurrence.ruCandidates() : occurrence.enCandidates());
-      }
-    }
-    List<List<ApprovedSpan>> assignments = new ArrayList<>();
-    enumerateAssignments(candidates, 0, -1, new ArrayList<>(), assignments);
-    if (assignments.size() == 1) {
-      return new Assignment(true, 1, assignments.getFirst());
-    }
-    return new Assignment(false, assignments.size(), List.of());
-  }
-
-  private static void enumerateAssignments(
-      List<List<ApprovedSpan>> candidates,
-      int index,
-      int previousStart,
-      List<ApprovedSpan> current,
-      List<List<ApprovedSpan>> assignments) {
-    if (assignments.size() > 1) {
-      return;
-    }
-    if (index == candidates.size()) {
-      assignments.add(List.copyOf(current));
-      return;
-    }
-    List<ApprovedSpan> spans = candidates.get(index);
-    if (spans.isEmpty()) {
-      return;
-    }
-    for (ApprovedSpan span : spans) {
-      if (span.start() <= previousStart) {
+    List<AssignmentCandidates> candidates = new ArrayList<>();
+    LinkedHashSet<Integer> priorStarts = new LinkedHashSet<>();
+    priorStarts.add(-1);
+    for (int index = 0; index < working.size(); index++) {
+      WorkingOccurrence occurrence = working.get(index);
+      if (!alignable(occurrence)) {
         continue;
       }
-      current.add(span);
-      enumerateAssignments(candidates, index + 1, span.start(), current, assignments);
-      current.removeLast();
-      if (assignments.size() > 1) {
-        return;
+      List<ApprovedSpan> spans = russian ? occurrence.ruCandidates() : occurrence.enCandidates();
+      candidates.add(new AssignmentCandidates(index, spans));
+      for (ApprovedSpan span : spans) {
+        priorStarts.add(span.start());
       }
     }
+    if (candidates.isEmpty()) {
+      return new Assignment(true, 1, Map.of());
+    }
+    Map<AssignmentState, CountedAssignment> table = new LinkedHashMap<>();
+    for (Integer previousStart : priorStarts) {
+      table.put(new AssignmentState(candidates.size(), previousStart), new CountedAssignment(1, Map.of()));
+    }
+    for (int position = candidates.size() - 1; position >= 0; position--) {
+      AssignmentCandidates occurrence = candidates.get(position);
+      for (Integer previousStart : priorStarts) {
+        int count = 0;
+        Map<Integer, ApprovedSpan> uniqueSpans = Map.of();
+        for (ApprovedSpan span : occurrence.spans()) {
+          if (span.start() <= previousStart) {
+            continue;
+          }
+          CountedAssignment suffix = table.get(new AssignmentState(position + 1, span.start()));
+          if (suffix == null || suffix.count() == 0) {
+            continue;
+          }
+          count = Math.min(2, count + suffix.count());
+          if (count == 1) {
+            LinkedHashMap<Integer, ApprovedSpan> assignment = new LinkedHashMap<>();
+            assignment.put(occurrence.workingIndex(), span);
+            assignment.putAll(suffix.spansByOccurrence());
+            uniqueSpans = Map.copyOf(assignment);
+          } else {
+            uniqueSpans = Map.of();
+            break;
+          }
+        }
+        table.put(new AssignmentState(position, previousStart), new CountedAssignment(count, uniqueSpans));
+      }
+    }
+    CountedAssignment result = table.get(new AssignmentState(0, -1));
+    return new Assignment(result.count() == 1, result.count(), result.spansByOccurrence());
+  }
+
+  private static boolean alignable(WorkingOccurrence occurrence) {
+    return occurrence.resolution().status() == VaultReferenceResolver.Status.RESOLVED
+        && occurrence.classification() != UNSAFE_INPUT;
   }
 
   private static boolean sourceContextDrift(String raw, String approvedRussian) {
@@ -707,9 +742,24 @@ public final class ReferenceMigrationAligner {
       String reason) {
   }
 
-  private record Assignment(boolean unique, int count, List<ApprovedSpan> spans) {
-    private Assignment {
+  private record AssignmentCandidates(int workingIndex, List<ApprovedSpan> spans) {
+    private AssignmentCandidates {
       spans = List.copyOf(spans);
+    }
+  }
+
+  private record AssignmentState(int position, int previousStart) {
+  }
+
+  private record CountedAssignment(int count, Map<Integer, ApprovedSpan> spansByOccurrence) {
+    private CountedAssignment {
+      spansByOccurrence = Map.copyOf(spansByOccurrence);
+    }
+  }
+
+  private record Assignment(boolean unique, int count, Map<Integer, ApprovedSpan> spansByOccurrence) {
+    private Assignment {
+      spansByOccurrence = Map.copyOf(spansByOccurrence);
     }
   }
 

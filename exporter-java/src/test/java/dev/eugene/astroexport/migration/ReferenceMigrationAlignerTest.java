@@ -88,6 +88,20 @@ final class ReferenceMigrationAlignerTest {
   }
 
   @Test
+  void unresolvedRawTargetDoesNotPreventExactResolvedAssignments() {
+    ReferenceMigrationAligner.MigrationPage page = aligner.align(
+        raw("[[B|one]] then [[Missing|missing]]"),
+        approvedRu("[one](/ru/b/) then missing"),
+        approvedEn("[one](/en/b/) then missing"),
+        resolver(targetB()));
+
+    assertEquals(List.of(EXACT, UNRESOLVED_TARGET), classifications(page));
+    assertEquals("ref-0001", page.occurrences().getFirst().proposedReferenceId());
+    assertEquals(null, page.occurrences().get(1).proposedReference());
+    assertFalse(page.automatic());
+  }
+
+  @Test
   void multiplePossibleEnglishSpansAreAmbiguous() {
     ReferenceMigrationAligner.MigrationPage page = aligner.align(
         raw("[[B|one]]"),
@@ -109,6 +123,22 @@ final class ReferenceMigrationAlignerTest {
 
     assertEquals(EXACT_PAGE, page.status());
     assertEquals(List.of(EXACT, EXACT), classifications(page));
+    assertTrue(page.automatic());
+  }
+
+  @Test
+  void monotonicAssignmentUsesPageLevelDynamicProgrammingForCandidateOrder() {
+    ReferenceMigrationAligner.MigrationPage page = aligner.align(
+        raw("[[B|one]] [[C|two]] [[D|three]]"),
+        approvedRu("[one](/ru/b/) [two](/ru/c/) [three](/ru/d/)"),
+        approvedEn("""
+            [two](/en/c/) stray [three](/en/d/) stray [one](/en/b/)
+            [two](/en/c/) [three](/en/d/)
+            """),
+        resolver(targetB(), targetC(), targetD()));
+
+    assertEquals(EXACT_PAGE, page.status());
+    assertEquals(List.of(EXACT, EXACT, EXACT), classifications(page));
     assertTrue(page.automatic());
   }
 
@@ -217,6 +247,10 @@ final class ReferenceMigrationAlignerTest {
 
   private static VaultReferenceCatalog.CatalogEntry targetC() {
     return entry("vault-ref-c", "c.md", "C", "C", List.of());
+  }
+
+  private static VaultReferenceCatalog.CatalogEntry targetD() {
+    return entry("vault-ref-d", "d.md", "D", "D", List.of());
   }
 
   private static VaultReferenceCatalog.CatalogEntry entry(
