@@ -62,6 +62,10 @@ public record VaultReferenceCatalog(int schemaVersion, Map<String, CatalogEntry>
     }
   }
 
+  public static VaultReferenceCatalog loadIfPresent(Path reviewRoot) {
+    return load(reviewRoot);
+  }
+
   public static VaultReferenceCatalog read(byte[] content) {
     try {
       @SuppressWarnings("unchecked")

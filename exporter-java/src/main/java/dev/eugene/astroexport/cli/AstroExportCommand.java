@@ -15,6 +15,8 @@ import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
+import dev.eugene.astroexport.release.ApprovedReleaseException;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
 import dev.eugene.astroexport.report.ReportBuilder;
 import dev.eugene.astroexport.review.PublishedSnapshotStore;
 import dev.eugene.astroexport.review.ReviewLaunchPlanner;
@@ -191,11 +193,39 @@ public final class AstroExportCommand implements Callable<Integer> {
     SelectionResult selection = null;
     ManifestResult manifest = null;
     Path siteRoot;
+    ApprovedReleaseMaterializer.MaterializedRelease release = null;
+    SemanticOperationLock.Lease semanticLease = null;
     try {
       siteRoot = validatedAstroRoot(outRoot);
-      selection = services.select(vaultRoot);
-      manifest = prepareBilingualManifest(selection, reviewRoot, refreshRuReview, vaultRoot, true);
+      semanticLease = SemanticOperationLock.acquireShared(reviewRoot);
+      SemanticSchemaState.Mode schemaMode = SemanticSchemaState.mode(reviewRoot);
+      if (schemaMode == SemanticSchemaState.Mode.MIGRATION_INCOMPLETE) {
+        throw new ApprovedReleaseException(
+            "migration-incomplete",
+            null,
+            "semantic link migration is incomplete");
+      }
+      if (schemaMode == SemanticSchemaState.Mode.SEMANTIC) {
+        selection = services.select(vaultRoot);
+        release = services.buildApprovedRelease(vaultRoot, reviewRoot);
+        manifest = resolveReleaseAssets(release.manifest(), vaultRoot);
+      } else {
+        selection = services.select(vaultRoot);
+        manifest = prepareBilingualManifest(selection, reviewRoot, refreshRuReview, vaultRoot, true);
+      }
+    } catch (SemanticOperationLock.LockBusyException error) {
+      closeQuietly(semanticLease);
+      String text = ReportBuilder.buildBlockedWriteReport(
+          new ApprovedReleaseException(
+              "migration-incomplete",
+              null,
+              "semantic link migration is running; retry after it finishes"),
+          selection,
+          manifest);
+      emitReport(reportPath, text, error);
+      return 1;
     } catch (Exception error) {
+      closeQuietly(semanticLease);
       String text = ReportBuilder.buildBlockedWriteReport(error, selection, manifest);
       emitReport(reportPath, text, error);
       return 1;
@@ -203,22 +233,31 @@ public final class AstroExportCommand implements Callable<Integer> {
 
     SiteWriter.WriteResult result;
     try {
-      result = services.writeSite(siteRoot, manifest, services.astroGate(siteRoot));
+      SiteWriter.CommitGuard commitGuard = release == null
+          ? SiteWriter.CommitGuard.noop()
+          : release.inputGuard()::verify;
+      result = services.writeSite(siteRoot, manifest, services.astroGate(siteRoot), commitGuard);
     } catch (SiteWriter.WriterException error) {
       String text = error.committed()
           ? ReportBuilder.buildCommittedWriteErrorReport(error, selection, manifest, null)
           : ReportBuilder.buildBlockedWriteReport(error, selection, manifest);
       emitReport(reportPath, text, error);
+      closeQuietly(semanticLease);
       return 1;
     } catch (Exception error) {
       String text = ReportBuilder.buildBlockedWriteReport(error, selection, manifest);
       emitReport(reportPath, text, error);
+      closeQuietly(semanticLease);
       return 1;
+    } finally {
+      closeQuietly(semanticLease);
     }
 
     String text;
     try {
-      text = ReportBuilder.buildWriteReport(selection, manifest, result);
+      text = release == null
+          ? ReportBuilder.buildWriteReport(selection, manifest, result)
+          : ReportBuilder.buildWriteReport(selection, manifest, result, release.ignoredDrafts());
     } catch (Exception error) {
       String committed = ReportBuilder.buildCommittedWriteErrorReport(
           new SiteWriter.WriterException(error.getMessage() == null ? error.toString() : error.getMessage(), true, List.of()),
@@ -243,6 +282,28 @@ public final class AstroExportCommand implements Callable<Integer> {
     }
     printReport(text, null);
     return 0;
+  }
+
+  private ManifestResult resolveReleaseAssets(ManifestResult manifest, Path vaultRoot) {
+    return new ManifestResult(
+        manifest.entries(),
+        manifest.englishEntries(),
+        manifest.retainedLinks(),
+        manifest.strippedLinks(),
+        manifest.assets(),
+        new AssetResolver().resolveAssets(vaultRoot, manifest.assets()),
+        manifest.translationUses());
+  }
+
+  private static void closeQuietly(AutoCloseable closeable) {
+    if (closeable == null) {
+      return;
+    }
+    try {
+      closeable.close();
+    } catch (Exception ignored) {
+      // Lease lifetime has ended.
+    }
   }
 
   private ManifestResult prepareBilingualManifest(
@@ -505,6 +566,14 @@ public final class AstroExportCommand implements Callable<Integer> {
       return 1;
     }
     ReviewPairState pair = reviewPairState(preflight.entry(), reviewRoot);
+    SemanticSchemaState.Mode schemaMode = SemanticSchemaState.mode(reviewRoot);
+    String candidateState = candidateState(preflight.entry(), pair, identity, reviewRoot, schemaMode);
+    String approvedSnapshotState = approvedSnapshotState(identity, schemaMode);
+    String semanticReferencesState = semanticReferencesState(schemaMode);
+    String releaseState = "valid".equals(approvedSnapshotState)
+        && "valid".equals(semanticReferencesState)
+        ? "releasable"
+        : "blocked";
     boolean fresh = "fresh".equals(pair.freshness());
     ReviewLaunchPlanner.ReviewPlan reviewPlan = null;
     if (fresh) {
@@ -523,6 +592,10 @@ public final class AstroExportCommand implements Callable<Integer> {
             .workspaceHealth(preflight.workspaceHealth())
             .pairFreshness(pair.freshness())
             .translationStatus(pair.translationStatus())
+            .candidateState(candidateState)
+            .approvedSnapshotState(approvedSnapshotState)
+            .semanticReferencesState(semanticReferencesState)
+            .releaseState(releaseState)
             .build());
         return 1;
       }
@@ -535,9 +608,84 @@ public final class AstroExportCommand implements Callable<Integer> {
         .workspaceHealth(preflight.workspaceHealth())
         .pairFreshness(pair.freshness())
         .translationStatus(pair.translationStatus())
+        .candidateState(candidateState)
+        .approvedSnapshotState(approvedSnapshotState)
+        .semanticReferencesState(semanticReferencesState)
+        .releaseState(releaseState)
         .reviewPlan(reviewPlan)
         .build());
     return fresh ? 0 : 1;
+  }
+
+  private String candidateState(
+      ManifestEntry entry,
+      ReviewPairState pair,
+      PublicationIdentity identity,
+      Path reviewRoot,
+      SemanticSchemaState.Mode schemaMode) {
+    if (schemaMode == SemanticSchemaState.Mode.SEMANTIC && identity != null) {
+      Path candidate = identity.reviewDirectory().resolve("candidate");
+      if (!Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
+        return "absent";
+      }
+      try {
+        byte[] ru = readSafeRegularFile(candidate.resolve("ru.md"));
+        byte[] en = readSafeRegularFile(candidate.resolve("en.md"));
+        PageReferenceMapCodec.validate(
+            PageReferenceMapCodec.read(
+                readSafeRegularFile(candidate.resolve("references.json")),
+                candidate.resolve("references.json").toString()),
+            ru,
+            en);
+        return candidateState(reviewPairState(entry, reviewRoot, candidate.resolve("en.md")));
+      } catch (IOException | RuntimeException error) {
+        return "stale";
+      }
+    }
+    return candidateState(pair);
+  }
+
+  private static String candidateState(ReviewPairState pair) {
+    if (pair == null || "missing".equals(pair.freshness())) {
+      return "absent";
+    }
+    if ("fresh".equals(pair.freshness()) && "reviewed".equals(pair.translationStatus())) {
+      return "reviewed";
+    }
+    if ("fresh".equals(pair.freshness()) && "generated".equals(pair.translationStatus())) {
+      return "generated";
+    }
+    return "stale";
+  }
+
+  private static String approvedSnapshotState(
+      PublicationIdentity identity,
+      SemanticSchemaState.Mode schemaMode) {
+    if (identity == null || identity.reviewDirectory() == null) {
+      return "absent";
+    }
+    Path published = identity.reviewDirectory().resolve("published");
+    if (!Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
+      return "absent";
+    }
+    try {
+      readSafeRegularFile(published.resolve("ru.md"));
+      readSafeRegularFile(published.resolve("en.md"));
+      if (schemaMode == SemanticSchemaState.Mode.SEMANTIC) {
+        readSafeRegularFile(published.resolve("references.json"));
+      }
+      return "valid";
+    } catch (IOException | RuntimeException error) {
+      return "invalid";
+    }
+  }
+
+  private static String semanticReferencesState(SemanticSchemaState.Mode schemaMode) {
+    return switch (schemaMode) {
+      case SEMANTIC -> "valid";
+      case LEGACY -> "migration-required";
+      case MIGRATION_INCOMPLETE -> "invalid";
+    };
   }
 
   private int markReviewed(Path vaultRoot, String note, Path reviewRoot, Path jobsRoot) {
@@ -623,6 +771,7 @@ public final class AstroExportCommand implements Callable<Integer> {
       byte[] candidateRu = null;
       byte[] candidateEn = null;
       byte[] candidateReferences = null;
+      String semanticPageRef = null;
       SemanticOperationLock.Lease semanticLease = null;
       if (semanticApproval) {
         try {
@@ -633,6 +782,7 @@ public final class AstroExportCommand implements Callable<Integer> {
           PageReferenceMap candidateMap = PageReferenceMapCodec.read(
               candidateReferences, "candidate/references.json");
           PageReferenceMapCodec.validate(candidateMap, candidateRu, candidateEn);
+          semanticPageRef = candidateMap.pageRef();
         } catch (SemanticOperationLock.LockBusyException error) {
           emitJson(bridge("mark-reviewed", false, "translating")
               .note(note)
@@ -915,14 +1065,20 @@ public final class AstroExportCommand implements Callable<Integer> {
                 .toList();
         pendingSnapshot.close();
 
-        emitJson(bridge("mark-reviewed", true, "ready_to_publish")
+        BridgeResponse.Builder success = bridge("mark-reviewed", true, "ready_to_publish")
             .note(note)
             .identity(identity)
             .diagnostics(snapshotDiagnostics)
             .workspaceHealth(stable.preflight().workspaceHealth())
             .pairFreshness("fresh")
-            .translationStatus("reviewed")
-            .build());
+            .translationStatus("reviewed");
+        Map<String, Integer> impactSummary = semanticApproval
+            ? approvalImpactSummary(vaultRoot, reviewRoot, semanticPageRef)
+            : null;
+        if (impactSummary != null) {
+          success.summary(impactSummary);
+        }
+        emitJson(success.build());
         return 0;
       } catch (PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
         emitPublishedSnapshotRecovery(
@@ -1657,6 +1813,35 @@ public final class AstroExportCommand implements Callable<Integer> {
       }
     }
     return null;
+  }
+
+  private Map<String, Integer> approvalImpactSummary(
+      Path vaultRoot,
+      Path reviewRoot,
+      String pageRef) {
+    if (pageRef == null) {
+      return null;
+    }
+    try {
+      ApprovedReleaseMaterializer.MaterializedRelease release =
+          services.buildApprovedRelease(vaultRoot, reviewRoot);
+      List<dev.eugene.astroexport.release.ReferenceImpactIndex.InboundReference> inbound =
+          release.audit().impactIndex().inboundTo(pageRef);
+      LinkedHashMap<String, Integer> summary = new LinkedHashMap<>();
+      summary.put("inboundLinksActivated", inbound.size());
+      summary.put("affectedApprovedPages",
+          (int) inbound.stream().map(
+              dev.eugene.astroexport.release.ReferenceImpactIndex.InboundReference::pageRef)
+              .distinct().count());
+      summary.put("pendingDraftReferrers",
+          (int) release.ignoredDrafts().stream()
+              .filter(draft -> pageRef.equals(draft.targetRef()))
+              .map(ApprovedReleaseMaterializer.IgnoredDraft::pageRef)
+              .distinct().count());
+      return summary;
+    } catch (RuntimeException error) {
+      return null;
+    }
   }
 
   private CurrentPairState currentPairStateAfterConflict(

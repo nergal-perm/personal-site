@@ -8,6 +8,8 @@ import dev.eugene.astroexport.model.ManifestLink;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
+import dev.eugene.astroexport.release.ApprovedReleaseException;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
 import dev.eugene.astroexport.translation.TranslationValidator;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -17,6 +19,21 @@ import java.util.Map;
 
 /** Builds stable operator reports for dry-run, manifest, and write steps. */
 public final class ReportBuilder {
+  private static final List<String> RELEASE_DIAGNOSTIC_CODES = List.of(
+      "missing-approved-snapshot",
+      "approved-snapshot-incomplete",
+      "reference-map-hash-mismatch",
+      "reference-order-mismatch",
+      "duplicate-reference-occurrence",
+      "missing-reference-occurrence",
+      "unknown-reference-occurrence",
+      "catalog-reconciliation-required",
+      "duplicate-approved-identity",
+      "private-reference-leak",
+      "migration-incomplete",
+      "concurrent-approved-snapshot-change",
+      "release-provenance-mismatch");
+
   private ReportBuilder() { }
 
   public static String buildSelectionReport(SelectionResult result) {
@@ -136,6 +153,14 @@ public final class ReportBuilder {
       SelectionResult selection,
       ManifestResult manifest,
       SiteWriter.WriteResult result) {
+    return buildWriteReport(selection, manifest, result, List.of());
+  }
+
+  public static String buildWriteReport(
+      SelectionResult selection,
+      ManifestResult manifest,
+      SiteWriter.WriteResult result,
+      List<ApprovedReleaseMaterializer.IgnoredDraft> ignoredDrafts) {
     List<String> manifestLines = buildManifestReport(selection, manifest).lines().toList();
     int contextStart = 0;
     for (int index = 0; index < manifestLines.size(); index++) {
@@ -165,6 +190,20 @@ public final class ReportBuilder {
         .sorted(Comparator.comparing(ResolvedAsset::reference))
         .forEach(asset -> lines.add("- Vault reference `" + asset.reference() + "` → source `" + asset.sourcePath()
             + "` → `" + asset.publicUrl() + "` (`" + asset.sha256() + "`)"));
+    List<ApprovedReleaseMaterializer.IgnoredDraft> ignored =
+        ignoredDrafts == null ? List.of() : List.copyOf(ignoredDrafts);
+    if (!ignored.isEmpty()) {
+      lines.add("");
+      lines.add("## Ignored candidates (" + ignored.size() + ")");
+      lines.add("");
+      ignored.stream()
+          .sorted(Comparator
+              .comparing(ApprovedReleaseMaterializer.IgnoredDraft::pageRef)
+              .thenComparing(ApprovedReleaseMaterializer.IgnoredDraft::language)
+              .thenComparing(ApprovedReleaseMaterializer.IgnoredDraft::targetRef))
+          .forEach(draft -> lines.add("- `" + draft.pageRef() + "` (`" + draft.publicId()
+              + "`, " + draft.language() + ") ignored draft target `" + draft.targetRef() + "`"));
+    }
     lines.add("");
     lines.add("## Export summary");
     lines.add("");
@@ -193,8 +232,20 @@ public final class ReportBuilder {
       lines.add("- Manifest records before staging: " + (manifest.entries().size() + manifest.englishEntries().size()));
       lines.add("- Collected assets: " + manifest.assets().size());
     }
+    if (error instanceof ApprovedReleaseException approvedError) {
+      lines.add("- Diagnostic code: `" + approvedError.code() + "`");
+      if (approvedError.sourcePath() != null) {
+        lines.add("- Diagnostic source: `" + approvedError.sourcePath() + "`");
+      }
+    }
     String errorText = error.getMessage() == null ? "" : error.getMessage();
     lines.addAll(List.of("", "## Error", "", "```text", errorText, "```", ""));
+    if (error instanceof ApprovedReleaseException) {
+      lines.add("## Stable release diagnostic codes");
+      lines.add("");
+      RELEASE_DIAGNOSTIC_CODES.forEach(code -> lines.add("- `" + code + "`"));
+      lines.add("");
+    }
     return String.join("\n", lines);
   }
 

@@ -57,6 +57,10 @@ final class AstroExportCommandTest {
       "reviewDirectory",
       "pairFreshness",
       "translationStatus",
+      "candidateState",
+      "approvedSnapshotState",
+      "semanticReferencesState",
+      "releaseState",
       "reviewPlan",
       "diagnostics",
       "workspaceHealth",
@@ -100,7 +104,7 @@ final class AstroExportCommandTest {
     assertEquals(0, result.exitCode());
     Map<String, Object> payload = json(result.stdout());
     assertIterableEquals(BRIDGE_KEYS, payload.keySet());
-    assertEquals(2, payload.get("schemaVersion"));
+    assertEquals(3, payload.get("schemaVersion"));
     assertEquals("inspect-publication", payload.get("command"));
     assertEquals(true, payload.get("ok"));
     assertEquals("ready_for_review", payload.get("status"));
@@ -110,6 +114,10 @@ final class AstroExportCommandTest {
     assertEquals(review.resolve("blog/essay").toString(), payload.get("reviewDirectory"));
     assertEquals("fresh", payload.get("pairFreshness"));
     assertEquals("generated", payload.get("translationStatus"));
+    assertEquals("generated", payload.get("candidateState"));
+    assertEquals("absent", payload.get("approvedSnapshotState"));
+    assertEquals("migration-required", payload.get("semanticReferencesState"));
+    assertEquals("blocked", payload.get("releaseState"));
     Map<?, ?> reviewPlan = (Map<?, ?>) payload.get("reviewPlan");
     assertEquals("absent", reviewPlan.get("baselineState"));
     List<?> targets = (List<?>) reviewPlan.get("targets");
@@ -524,7 +532,7 @@ final class AstroExportCommandTest {
     assertFalse(result.stderr().contains("Traceback"));
     Map<String, Object> payload = json(result.stdout());
     assertIterableEquals(BRIDGE_KEYS, payload.keySet());
-    assertEquals(2, payload.get("schemaVersion"));
+    assertEquals(3, payload.get("schemaVersion"));
     assertEquals("refresh-publication-queue", payload.get("command"));
     assertEquals(false, payload.get("ok"));
     assertEquals("refresh_failed", payload.get("status"));
@@ -636,6 +644,81 @@ final class AstroExportCommandTest {
     assertTrue(Files.isRegularFile(out.resolve("src/content/blog/ru/essay.md")));
     assertEquals("keep me\n", Files.readString(out.resolve("unmanaged.txt")));
     assertTrue(temporarySiblings(out).isEmpty());
+  }
+
+  @Test
+  void buildFromReviewBlocksSelectedUnapprovedNoteInSemanticMode() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Selected but not approved.");
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    Path candidate = review.resolve("blog/essay/candidate");
+    Files.createDirectories(candidate);
+    byte[] ru = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    byte[] en = approvedEnglish("generated draft\n");
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), en);
+    Files.write(candidate.resolve("references.json"), referencesFor(ru, en));
+    Path out = writeAstroRoot(temp.resolve("astro"));
+    Path report = temp.resolve("write-report.md");
+
+    CommandFixture.Result result = run(
+        new AstroExportCommand(CommandServices.defaults()
+            .withGateRunner(invocation ->
+                new SiteWriter.GateResult(0, "gate ok\n", ""))),
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", out.toString(),
+        "--report", report.toString(),
+        "--review", review.toString());
+
+    assertEquals(1, result.exitCode());
+    String text = Files.readString(report);
+    assertTrue(text.contains("missing-approved-snapshot"));
+    assertTrue(text.contains("anywhere/Essay.md"));
+    assertFalse(Files.exists(out.resolve("src/content/blog/ru/essay.md")));
+  }
+
+  @Test
+  void buildFromReviewIgnoresFreshGeneratedCandidateWhenApprovedExists()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Source body.");
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    byte[] approvedRu = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    byte[] approvedEn = approvedEnglish("approved\n");
+    Files.createDirectories(review.resolve("blog/essay"));
+    try (ReviewWorkspace.PendingPublishedSnapshot pending = ReviewWorkspace.stageApprovedSnapshot(
+        review, "blog", "essay", approvedRu, approvedEn, referencesFor(approvedRu, approvedEn))) {
+      pending.commit(List.of());
+    }
+    Path candidate = review.resolve("blog/essay/candidate");
+    Files.createDirectories(candidate);
+    byte[] candidateRu = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    byte[] candidateEn = approvedEnglish("generated draft\n");
+    Files.write(candidate.resolve("ru.md"), candidateRu);
+    Files.write(candidate.resolve("en.md"), candidateEn);
+    Files.write(candidate.resolve("references.json"), referencesFor(candidateRu, candidateEn));
+    Path out = writeAstroRoot(temp.resolve("astro"));
+
+    CommandFixture.Result result = run(
+        new AstroExportCommand(CommandServices.defaults()
+            .withGateRunner(invocation ->
+                new SiteWriter.GateResult(0, "gate ok\n", ""))),
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", out.toString(),
+        "--report", temp.resolve("report.md").toString(),
+        "--review", review.toString());
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    assertTrue(Files.readString(out.resolve("src/content/blog/en/essay.md"))
+        .contains("approved"));
+    assertFalse(Files.readString(out.resolve("src/content/blog/en/essay.md"))
+        .contains("generated draft"));
   }
 
   @Test
@@ -1551,7 +1634,7 @@ final class AstroExportCommandTest {
     writeBlogReviewEn(review, currentBlogEntry(vault).translationSourceHash(), "generated");
     Path recovery = temp.resolve(".astro.astro-export-backup-recovery");
     CommandServices services = CommandServices.defaults()
-        .withWriteSiteAction((siteRoot, manifest, validator) -> {
+        .withWriteSiteAction((siteRoot, manifest, validator, commitGuard) -> {
           throw new SiteWriter.WriterException("committed cleanup failed", true, List.of(recovery.toString()));
         });
     CommandFixture.Result committed = run(new AstroExportCommand(services),
@@ -1712,7 +1795,7 @@ final class AstroExportCommandTest {
     assertFalse(result.stderr().contains("Traceback"));
     Map<String, Object> payload = json(result.stdout());
     assertIterableEquals(BRIDGE_KEYS, payload.keySet());
-    assertEquals(2, payload.get("schemaVersion"));
+    assertEquals(3, payload.get("schemaVersion"));
     assertEquals(command, payload.get("command"));
     assertEquals(false, payload.get("ok"));
     assertEquals(status, payload.get("status"));
@@ -1785,6 +1868,23 @@ final class AstroExportCommandTest {
         ---
         %s
         """.formatted(sourceHash, status, body)
+        .getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static byte[] approvedEnglish(String body) {
+    return """
+        ---
+        id: essay
+        language: en
+        reviewType: essay
+        route: /en/essays/essay/
+        targetPath: src/content/blog/en/essay.md
+        title: English title
+        description: English description.
+        translationStatus: reviewed
+        ---
+        %s
+        """.formatted(body)
         .getBytes(StandardCharsets.UTF_8);
   }
 

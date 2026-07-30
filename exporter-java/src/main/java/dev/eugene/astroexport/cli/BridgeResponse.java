@@ -10,7 +10,7 @@ import java.util.Map;
 
 /** Stable JSON response shape for Obsidian bridge commands. */
 public final class BridgeResponse {
-  public static final int SCHEMA_VERSION = 2;
+  public static final int SCHEMA_VERSION = 3;
   private static final ObjectMapper JSON = new ObjectMapper();
 
   private final LinkedHashMap<String, Object> payload;
@@ -45,6 +45,10 @@ public final class BridgeResponse {
     private String reviewDirectory;
     private String pairFreshness;
     private String translationStatus;
+    private String candidateState;
+    private String approvedSnapshotState;
+    private String semanticReferencesState;
+    private String releaseState;
     private ReviewLaunchPlanner.ReviewPlan reviewPlan;
     private List<PublicationDiagnostic> diagnostics = List.of();
     private List<PublicationDiagnostic> workspaceHealth = List.of();
@@ -89,6 +93,26 @@ public final class BridgeResponse {
 
     public Builder translationStatus(String translationStatus) {
       this.translationStatus = translationStatus;
+      return this;
+    }
+
+    public Builder candidateState(String candidateState) {
+      this.candidateState = candidateState;
+      return this;
+    }
+
+    public Builder approvedSnapshotState(String approvedSnapshotState) {
+      this.approvedSnapshotState = approvedSnapshotState;
+      return this;
+    }
+
+    public Builder semanticReferencesState(String semanticReferencesState) {
+      this.semanticReferencesState = semanticReferencesState;
+      return this;
+    }
+
+    public Builder releaseState(String releaseState) {
+      this.releaseState = releaseState;
       return this;
     }
 
@@ -144,6 +168,10 @@ public final class BridgeResponse {
       values.put("reviewDirectory", reviewDirectory);
       values.put("pairFreshness", pairFreshness);
       values.put("translationStatus", translationStatus);
+      values.put("candidateState", candidateState);
+      values.put("approvedSnapshotState", approvedSnapshotState);
+      values.put("semanticReferencesState", semanticReferencesState);
+      values.put("releaseState", releaseState);
       values.put("reviewPlan", reviewPlanPayload(reviewPlan));
       values.put("diagnostics", diagnosticPayloads(diagnostics));
       values.put("workspaceHealth", diagnosticPayloads(workspaceHealth));

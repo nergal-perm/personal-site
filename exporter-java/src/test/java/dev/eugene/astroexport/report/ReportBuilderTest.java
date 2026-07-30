@@ -13,6 +13,8 @@ import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.model.TranslationUse;
+import dev.eugene.astroexport.release.ApprovedReleaseException;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
 import dev.eugene.astroexport.translation.TranslationValidator;
 import java.nio.file.Path;
 import java.util.List;
@@ -190,6 +192,31 @@ final class ReportBuilderTest {
   }
 
   @Test
+  void writeReportListsIgnoredCandidatesSeparatelyFromDiagnostics() {
+    SelectionResult selection = new SelectionResult(List.of(), List.of(), 1, 1);
+    ManifestResult manifest = new ManifestResult(
+        List.of(new ManifestEntry("blog/Essay.md", "src/content/blog/ru/essay.md", "/ru/essays/essay/", Map.of("id", "essay"), "")),
+        List.of(new ManifestEntry("blog/Essay.md", "src/content/blog/en/essay.md", "/en/essays/essay/", Map.of("id", "essay"), "")),
+        List.of(),
+        List.of(),
+        List.of(),
+        List.of());
+    SiteWriter.WriteResult result = new SiteWriter.WriteResult(2, List.of(), List.of());
+
+    String report = ReportBuilder.buildWriteReport(
+        selection,
+        manifest,
+        result,
+        List.of(new ApprovedReleaseMaterializer.IgnoredDraft(
+            "vault-ref-1", "essay", "vault-ref-2", "ru")));
+
+    assertTrue(report.contains("## Ignored candidates (1)"));
+    assertTrue(report.contains("`vault-ref-1`"));
+    assertTrue(report.contains("`vault-ref-2`"));
+    assertFalse(report.contains("## Blocking diagnostics"));
+  }
+
+  @Test
   void blockedWriteReportKeepsAvailableSelectionAndManifestContext() {
     SelectionResult selection = new SelectionResult(List.of(), List.of(), 3, 2);
     ManifestResult manifest = new ManifestResult(
@@ -212,6 +239,22 @@ final class ReportBuilderTest {
     assertFalse(report.contains("Generated records before validation"));
     assertTrue(report.contains("```text\nAstro content gate failed with exit code 7\n```"));
     assertFalse(report.contains("RuntimeException"));
+  }
+
+  @Test
+  void blockedWriteReportIncludesApprovedReleaseDiagnosticCodeVocabulary() {
+    String report = ReportBuilder.buildBlockedWriteReport(
+        new ApprovedReleaseException(
+            "missing-approved-snapshot",
+            "blog/new.md",
+            "no approved snapshot for blog/new.md"),
+        null,
+        null);
+
+    assertTrue(report.contains("Diagnostic code: `missing-approved-snapshot`"));
+    assertTrue(report.contains("Diagnostic source: `blog/new.md`"));
+    assertTrue(report.contains("`concurrent-approved-snapshot-change`"));
+    assertTrue(report.contains("`release-provenance-mismatch`"));
   }
 
   @Test

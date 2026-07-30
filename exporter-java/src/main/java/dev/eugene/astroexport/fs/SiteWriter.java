@@ -156,15 +156,42 @@ public final class SiteWriter {
       Path siteRoot,
       ManifestResult manifest,
       Consumer<Path> validator) {
+    return writeSiteAtomic(siteRoot, manifest, validator, CommitGuard.noop());
+  }
+
+  public static WriteResult writeSiteAtomic(
+      Path siteRoot,
+      ManifestResult manifest,
+      Consumer<Path> validator,
+      CommitGuard commitGuard) {
     StagedSite staged = stageSite(siteRoot, manifest);
-    return replaceManagedTrees(siteRoot, staged, validator);
+    return replaceManagedTrees(siteRoot, staged, validator, commitGuard);
   }
 
   static WriteResult replaceManagedTrees(
       Path siteRoot,
       StagedSite staged,
       Consumer<Path> validator) {
-    return replaceManagedTrees(siteRoot, staged, validator, PathMover.filesMove());
+    return replaceManagedTrees(siteRoot, staged, validator, CommitGuard.noop());
+  }
+
+  static WriteResult replaceManagedTrees(
+      Path siteRoot,
+      StagedSite staged,
+      Consumer<Path> validator,
+      CommitGuard commitGuard) {
+    return replaceManagedTrees(
+        siteRoot,
+        staged,
+        validator,
+        PathMover.filesMove(),
+        BackupMover.filesMove(),
+        RollbackHook.noop(),
+        CleanupHook.deleteOwnedTemp(),
+        StoreChecker.filesStore(),
+        ForwardBoundaryHook.noop(),
+        IdentityReader.filesIdentity(),
+        commitGuard);
   }
 
   static WriteResult replaceManagedTrees(
@@ -261,7 +288,8 @@ public final class SiteWriter {
         cleanupHook,
         storeChecker,
         forwardBoundaryHook,
-        IdentityReader.filesIdentity());
+        IdentityReader.filesIdentity(),
+        CommitGuard.noop());
   }
 
   static WriteResult replaceManagedTrees(
@@ -275,6 +303,32 @@ public final class SiteWriter {
       StoreChecker storeChecker,
       ForwardBoundaryHook forwardBoundaryHook,
       IdentityReader identityReader) {
+    return replaceManagedTrees(
+        siteRoot,
+        staged,
+        validator,
+        mover,
+        backupMover,
+        rollbackHook,
+        cleanupHook,
+        storeChecker,
+        forwardBoundaryHook,
+        identityReader,
+        CommitGuard.noop());
+  }
+
+  static WriteResult replaceManagedTrees(
+      Path siteRoot,
+      StagedSite staged,
+      Consumer<Path> validator,
+      PathMover mover,
+      BackupMover backupMover,
+      RollbackHook rollbackHook,
+      CleanupHook cleanupHook,
+      StoreChecker storeChecker,
+      ForwardBoundaryHook forwardBoundaryHook,
+      IdentityReader identityReader,
+      CommitGuard commitGuard) {
     StageBinding binding = claimStage(staged);
     Path site;
     LiveLayoutBinding liveLayout;
@@ -291,6 +345,7 @@ public final class SiteWriter {
       validator.accept(binding.temp().path());
       verifyStaged(binding, identityReader);
       verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
+      verifyCommitGuard(commitGuard);
     } catch (Exception error) {
       WriterException primary = writerError(error, "staged validation failed: " + error.getMessage());
       throw cleanupWithPrimary(primary, List.of(binding.temp()), false, List.of(), cleanupHook);
@@ -360,8 +415,10 @@ public final class SiteWriter {
 
     LinkedHashMap<String, PathIdentity> installedRoots = new LinkedHashMap<>();
     try {
+      verifyCommitGuard(commitGuard);
       for (String relative : TreeHasher.MANAGED_ROOTS) {
         verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
+        verifyCommitGuard(commitGuard);
         moveManagedTree(
             site,
             binding,
@@ -373,6 +430,7 @@ public final class SiteWriter {
             installedRoots,
             identityReader);
         verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
+        verifyCommitGuard(commitGuard);
       }
       verifyLiveLayout(site, binding, liveLayout, storeChecker, identityReader);
       for (String relative : TreeHasher.MANAGED_ROOTS) {
@@ -384,6 +442,7 @@ public final class SiteWriter {
       if (!TreeHasher.hashManagedTrees(site).equals(binding.managedTreeHashes())) {
         throw new WriterException("installed managed trees do not match staged evidence");
       }
+      verifyCommitGuard(commitGuard);
     } catch (Exception error) {
       List<String> rollbackErrors = rollback(
           site,
@@ -485,6 +544,16 @@ public final class SiteWriter {
         throw new UncheckedIOException(error);
       }
     });
+  }
+
+  private static void verifyCommitGuard(CommitGuard commitGuard) {
+    try {
+      (commitGuard == null ? CommitGuard.noop() : commitGuard).verify();
+    } catch (RuntimeException error) {
+      throw new WriterException(
+          "concurrent-approved-snapshot-change: " + error.getMessage(),
+          error);
+    }
   }
 
   private static StageBinding claimStage(StagedSite staged) {
@@ -1793,6 +1862,15 @@ public final class SiteWriter {
 
     static ForwardBoundaryHook noop() {
       return (relative, source, destination) -> { };
+    }
+  }
+
+  @FunctionalInterface
+  public interface CommitGuard {
+    void verify();
+
+    static CommitGuard noop() {
+      return () -> { };
     }
   }
 

@@ -10,6 +10,10 @@ import dev.eugene.astroexport.model.PublicationKind;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.report.ReportBuilder;
+import dev.eugene.astroexport.references.VaultReferenceCatalog;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
+import dev.eugene.astroexport.review.ApprovedPageSnapshot;
+import dev.eugene.astroexport.review.ApprovedSnapshotRepository;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.translation.TranslationValidator;
 import dev.eugene.astroexport.validation.PreflightService;
@@ -52,6 +56,8 @@ public final class CommandServices {
   private final WriteRuReviewAction writeRuReviewAction;
   private final ReplaceEnglishReviewAction replaceEnglishReviewAction;
   private final StageApprovedSnapshotAction stageApprovedSnapshotAction;
+  private final ApprovedSnapshotRepository approvedSnapshots;
+  private final ApprovedReleaseMaterializer approvedReleaseMaterializer;
 
   private CommandServices(
       Clock clock,
@@ -68,7 +74,9 @@ public final class CommandServices {
       MigrateOverridesAction migrateOverridesAction,
       WriteRuReviewAction writeRuReviewAction,
       ReplaceEnglishReviewAction replaceEnglishReviewAction,
-      StageApprovedSnapshotAction stageApprovedSnapshotAction) {
+      StageApprovedSnapshotAction stageApprovedSnapshotAction,
+      ApprovedSnapshotRepository approvedSnapshots,
+      ApprovedReleaseMaterializer approvedReleaseMaterializer) {
     this.clock = clock;
     this.selectionAction = selectionAction;
     this.manifestAction = manifestAction;
@@ -84,6 +92,8 @@ public final class CommandServices {
     this.writeRuReviewAction = writeRuReviewAction;
     this.replaceEnglishReviewAction = replaceEnglishReviewAction;
     this.stageApprovedSnapshotAction = stageApprovedSnapshotAction;
+    this.approvedSnapshots = approvedSnapshots;
+    this.approvedReleaseMaterializer = approvedReleaseMaterializer;
   }
 
   public static CommandServices defaults() {
@@ -105,7 +115,9 @@ public final class CommandServices {
         ReviewWorkspace::migrateOverrides,
         ReviewWorkspace::writeRuReviewFile,
         ReviewWorkspace::replaceEnglishReviewFile,
-        ReviewWorkspace::stageApprovedSnapshot);
+        ReviewWorkspace::stageApprovedSnapshot,
+        new ApprovedSnapshotRepository(),
+        new ApprovedReleaseMaterializer());
   }
 
   public CommandServices withClock(Clock replacement) {
@@ -154,7 +166,9 @@ public final class CommandServices {
         migrateOverridesAction,
         writeRuReviewAction,
         replaceEnglishReviewAction,
-        stageApprovedSnapshotAction);
+        stageApprovedSnapshotAction,
+        approvedSnapshots,
+        approvedReleaseMaterializer);
   }
 
   public CommandServices withReplaceEnglishReviewAction(ReplaceEnglishReviewAction replacement) {
@@ -173,7 +187,9 @@ public final class CommandServices {
         migrateOverridesAction,
         writeRuReviewAction,
         replacement,
-        stageApprovedSnapshotAction);
+        stageApprovedSnapshotAction,
+        approvedSnapshots,
+        approvedReleaseMaterializer);
   }
 
   public CommandServices withStageApprovedSnapshotAction(
@@ -193,7 +209,9 @@ public final class CommandServices {
         migrateOverridesAction,
         writeRuReviewAction,
         replaceEnglishReviewAction,
-        replacement);
+        replacement,
+        approvedSnapshots,
+        approvedReleaseMaterializer);
   }
 
   private CommandServices copy(
@@ -219,7 +237,9 @@ public final class CommandServices {
         migrateOverridesAction,
         writeRuReviewAction,
         replaceEnglishReviewAction,
-        stageApprovedSnapshotAction);
+        stageApprovedSnapshotAction,
+        approvedSnapshots,
+        approvedReleaseMaterializer);
   }
 
   public Clock clock() {
@@ -242,8 +262,26 @@ public final class CommandServices {
     return prepareAction.prepare(vault, note, review, jobs, this::resolvePrepareEntry);
   }
 
+  public ApprovedReleaseMaterializer.MaterializedRelease buildApprovedRelease(
+      Path vault,
+      Path review) {
+    SelectionResult selection = select(vault);
+    VaultReferenceCatalog catalog = VaultReferenceCatalog.loadIfPresent(review);
+    List<ApprovedPageSnapshot> snapshots =
+        approvedSnapshots.loadSelected(selection, review, catalog);
+    return approvedReleaseMaterializer.materialize(snapshots, vault);
+  }
+
   public SiteWriter.WriteResult writeSite(Path siteRoot, ManifestResult manifest, Consumer<Path> validator) {
-    return writeSiteAction.write(siteRoot, manifest, validator);
+    return writeSite(siteRoot, manifest, validator, SiteWriter.CommitGuard.noop());
+  }
+
+  public SiteWriter.WriteResult writeSite(
+      Path siteRoot,
+      ManifestResult manifest,
+      Consumer<Path> validator,
+      SiteWriter.CommitGuard commitGuard) {
+    return writeSiteAction.write(siteRoot, manifest, validator, commitGuard);
   }
 
   public WorkflowStateService workflowState() {
@@ -485,7 +523,11 @@ public final class CommandServices {
 
   @FunctionalInterface
   public interface WriteSiteAction {
-    SiteWriter.WriteResult write(Path siteRoot, ManifestResult manifest, Consumer<Path> validator);
+    SiteWriter.WriteResult write(
+        Path siteRoot,
+        ManifestResult manifest,
+        Consumer<Path> validator,
+        SiteWriter.CommitGuard commitGuard);
   }
 
   @FunctionalInterface
