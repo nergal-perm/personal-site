@@ -245,3 +245,81 @@ Result: passed.
 ### Concerns
 
 - No remaining concerns for the fix-round 2 parity finding.
+
+## Fix Round 3
+
+Status: DONE
+
+### Changed
+
+- Fixed editorial expected release target reconstruction in `SemanticMigrationService` parity validation.
+- Expected editorial RU/EN entries now use `src/data/pages/<language>/<publicId>.json`, matching `ReviewWorkspace` and staged semantic materialization.
+- Added focused editorial parity regression coverage for a valid `editorial/home` migration.
+- Preserved the staged semantic materialization comparison, Astro staging gate, and prior recovery behavior.
+
+### Files Changed
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/migration/SemanticMigrationService.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/migration/SemanticMigrationServiceTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-9-report.md`
+
+### Tests Run
+
+```bash
+mvn -q -Dtest=SemanticMigrationServiceTest#editorialMigrationPassesMaterializedReleaseParity test
+```
+
+Initial RED result: failed before the production fix with `targetPath expected src/content/editorial/ru/home.md but was src/data/pages/ru/home.json`.
+
+Final output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+mvn -q -Dtest=SemanticSchemaStateTest,SemanticMigrationServiceTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+mvn -q -Dtest=SemanticSchemaStateTest,SemanticMigrationServiceTest,ApprovedSnapshotRepositoryTest,AstroExportCommandTest,NativeCliParityTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+git diff --check
+```
+
+Output: no output.
+
+Result: passed.
+
+### Concerns
+
+- No remaining concerns for the fix-round 3 editorial parity finding.

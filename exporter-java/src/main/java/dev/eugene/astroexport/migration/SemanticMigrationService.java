@@ -553,10 +553,17 @@ public final class SemanticMigrationService {
         approved.metadata().getOrDefault("publicContentType", "note")));
     return new ManifestEntry(
         sourcePath,
-        "src/content/" + collection + "/" + language + "/" + publicId + ".md",
+        approvedTargetPath(collection, publicId, language),
         approvedRoute(collection, publicId, reviewType, language),
         new LinkedHashMap<>(approved.metadata()),
         approved.body());
+  }
+
+  private static String approvedTargetPath(String collection, String publicId, String language) {
+    if ("editorial".equals(collection)) {
+      return "src/data/pages/" + language + "/" + publicId + ".json";
+    }
+    return "src/content/" + collection + "/" + language + "/" + publicId + ".md";
   }
 
   private static ApprovedMarkdown parseApprovedMarkdown(String sourcePath, String markdown) {

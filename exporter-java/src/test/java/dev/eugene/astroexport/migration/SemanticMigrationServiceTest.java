@@ -279,6 +279,16 @@ final class SemanticMigrationServiceTest {
     assertFalse(Files.exists(SemanticSchemaState.activationMarker(fixture.review())));
   }
 
+  @Test
+  void editorialMigrationPassesMaterializedReleaseParity() throws Exception {
+    Fixture fixture = editorialFixture();
+
+    new SemanticMigrationService().apply(fixture.request(), SemanticMigrationService.MigrationHooks.none());
+
+    assertEquals(SemanticSchemaState.Mode.SEMANTIC, SemanticSchemaState.mode(fixture.review()));
+    assertTrue(Files.exists(fixture.review().resolve("editorial/home/published/references.json")));
+  }
+
   private static void assertBuildBlocked(Path review) {
     assertEquals(SemanticSchemaState.Mode.MIGRATION_INCOMPLETE,
         SemanticSchemaState.mode(review));
@@ -425,6 +435,24 @@ final class SemanticMigrationServiceTest {
     return new OrderFixture(vault, review, astro, report, decisions);
   }
 
+  private Fixture editorialFixture() throws Exception {
+    Path vault = temp.resolve("vault-editorial");
+    Path review = temp.resolve("review-editorial");
+    Path astro = temp.resolve("astro-editorial");
+    Path report = temp.resolve("inventory-editorial.json");
+    Files.createDirectories(astro);
+    writeNote(vault, "home.md", "Home body.");
+    writeCatalog(review, "vault-ref-home", "home.md");
+    writeEditorialPublishedPair(review);
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, astro, report);
+    Path decisions = temp.resolve("decisions-editorial.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{}}
+        """.formatted(inventory.inventorySha256()));
+    return new Fixture(vault, review, astro, report, decisions);
+  }
+
   private static void writeCatalog(Path reviewRoot, String... refsAndPaths) throws Exception {
     Map<String, Object> entries = new LinkedHashMap<>();
     for (int index = 0; index < refsAndPaths.length; index += 2) {
@@ -523,6 +551,23 @@ final class SemanticMigrationServiceTest {
         StandardCharsets.UTF_8);
   }
 
+  private static void writeEditorialPublishedPair(Path review) throws Exception {
+    Path published = review.resolve("editorial/home/published");
+    Files.createDirectories(published);
+    String ru = approvedEditorial("ru", "home", "Home Russian page.\n");
+    String en = approvedEditorial("en", "home", "Home page.\n");
+    Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("en.md"), en, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "pageRef", "vault-ref-home",
+        "sourcePath", "home.md",
+        "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
+        "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
+        "order", List.of(),
+        "references", Map.of())), StandardCharsets.UTF_8);
+  }
+
   private static void writeAstroRoute(
       Path astro,
       String path,
@@ -595,6 +640,19 @@ final class SemanticMigrationServiceTest {
         publicCollection: blog
         publicContentType: essay
         reviewType: essay
+        translationStatus: reviewed
+        title: %s %s
+        ---
+        %s""".formatted(publicId, language, publicId, language, publicId, body);
+  }
+
+  private static String approvedEditorial(String language, String publicId, String body) {
+    return """
+        ---
+        id: %s
+        language: %s
+        publicId: %s
+        publicCollection: editorial
         translationStatus: reviewed
         title: %s %s
         ---
