@@ -24,7 +24,6 @@ public final class ApprovedReleaseMaterializer {
   private static final Pattern VAULT_REF = Pattern.compile("\\bvault-ref-[A-Za-z0-9-]+\\b");
   private static final Pattern CATALOG_PATH = Pattern.compile("catalog-v\\d+\\.json|\\.semantic-links/");
   private static final Pattern ABSOLUTE_PATH_TOKEN = Pattern.compile("(?<![\\w:])/[^\\s<>\"')]+");
-  private static final Pattern PATH_LIKE_LEAF = Pattern.compile("(?i).+\\.(md|markdown|json|canvas|base|yaml|yml|png|jpe?g|gif|svg|webp|mp3|mp4)$");
 
   private final LinkProcessor linkProcessor = new LinkProcessor();
 
@@ -215,7 +214,7 @@ public final class ApprovedReleaseMaterializer {
     java.util.regex.Matcher matcher = ABSOLUTE_PATH_TOKEN.matcher(value);
     while (matcher.find()) {
       String token = trimTrailingPunctuation(matcher.group());
-      if (token.isBlank() || !PATH_LIKE_LEAF.matcher(token).matches()) {
+      if (token.isBlank()) {
         continue;
       }
       try {

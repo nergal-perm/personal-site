@@ -165,14 +165,16 @@ final class ApprovedReleaseMaterializerTest {
     assertEquals("invalid-release-output", error.code());
   }
 
-  @Test
-  void publicOutputGateRejectsPathsInsideVaultRootEvenWhenTheyLookLikeLocaleRoutes() throws Exception {
+  @ParameterizedTest
+  @ValueSource(strings = {"/ru/private/Note.md", "/ru/private/", "/ru/private/Secret"})
+  void publicOutputGateRejectsPathsInsideVaultRootEvenWithoutAllowlistedExtensions(
+      String leakedPath) throws Exception {
     Path source = vault.resolve("source/A.md");
     Files.createDirectories(source.getParent());
     Files.writeString(source, "selected source", StandardCharsets.UTF_8);
     ApprovedPageSnapshot a = withRussianBody(
         withSourcePath(approvedTarget("A", "vault-ref-a", "a"), source.toString()),
-        "Leaked /ru/private/Note.md");
+        "Leaked " + leakedPath);
 
     ApprovedReleaseException error = assertThrows(
         ApprovedReleaseException.class,
