@@ -11,7 +11,7 @@ REPORT_PATH="${REPORT_PATH:-$EXPORTER_ROOT/report.md}"
 VAULT_ROOT="$VAULT_ROOT" \
 ASTRO_ROOT="$ASTRO_ROOT" \
 REPORT_PATH="$REPORT_PATH" \
-  "$SCRIPT_DIR/export-site.sh" "$@"
+  "$SCRIPT_DIR/build-from-review.sh" "$@"
 
 cd "$ASTRO_ROOT"
 exec npm run build

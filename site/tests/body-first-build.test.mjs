@@ -166,7 +166,7 @@ Body-first regression paragraph for ${fixture.language} ${fixture.contentType}.
 
 async function runBuild() {
   try {
-    return await execFileAsync('npm', ['run', 'build'], {
+    return await execFileAsync('npm', ['run', 'astro', 'build', '--', '--force'], {
       cwd: projectRoot,
       env: { ...process.env, CI: '1', NO_COLOR: '1' },
       maxBuffer: 50 * 1024 * 1024,

@@ -14,10 +14,7 @@ if [[ ! -x "$EXPORTER" ]]; then
   exit 1
 fi
 
-echo "==> refresh-publication-queue against $VAULT_PATH"
-"$EXPORTER" --vault "$VAULT_PATH" --review "$REVIEW" refresh-publication-queue
-
-echo "==> build-from-review into $SITE"
+echo "==> build-from-review approved materialization into $SITE"
 "$EXPORTER" --vault "$VAULT_PATH" --out "$SITE" --review "$REVIEW" build-from-review
 
 echo "==> npm run build in site/"

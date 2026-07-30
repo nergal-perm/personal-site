@@ -10,6 +10,141 @@
       ]
     },
     {
+      "type": "dev.eugene.astroexport.fs.TreeHasher$ManagedFileHash",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "path",
+          "parameterTypes": []
+        },
+        {
+          "name": "sha256",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "dev.eugene.astroexport.fs.TreeHasher$ManagedTreeHash",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "relative",
+          "parameterTypes": []
+        },
+        {
+          "name": "sha256",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "dev.eugene.astroexport.release.ReleaseProvenance",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "int",
+            "java.util.List",
+            "java.util.List",
+            "java.util.List",
+            "int",
+            "int",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "schemaVersion",
+          "parameterTypes": []
+        },
+        {
+          "name": "selectedPages",
+          "parameterTypes": []
+        },
+        {
+          "name": "managedTrees",
+          "parameterTypes": []
+        },
+        {
+          "name": "managedFiles",
+          "parameterTypes": []
+        },
+        {
+          "name": "activationCount",
+          "parameterTypes": []
+        },
+        {
+          "name": "deactivationCount",
+          "parameterTypes": []
+        },
+        {
+          "name": "payloadDigest",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
+      "type": "dev.eugene.astroexport.release.ReleaseProvenance$SelectedPage",
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": [
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String",
+            "java.lang.String"
+          ]
+        },
+        {
+          "name": "pageRef",
+          "parameterTypes": []
+        },
+        {
+          "name": "publicId",
+          "parameterTypes": []
+        },
+        {
+          "name": "sourcePath",
+          "parameterTypes": []
+        },
+        {
+          "name": "ruSha256",
+          "parameterTypes": []
+        },
+        {
+          "name": "enSha256",
+          "parameterTypes": []
+        },
+        {
+          "name": "referencesSha256",
+          "parameterTypes": []
+        },
+        {
+          "name": "ruProjectionSha256",
+          "parameterTypes": []
+        },
+        {
+          "name": "enProjectionSha256",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "dev.eugene.astroexport.cli.AstroExportCommand",
       "fields": [
         {
@@ -156,6 +291,18 @@
         },
         {
           "name": "report"
+        },
+        {
+          "name": "decisions"
+        },
+        {
+          "name": "apply"
+        },
+        {
+          "name": "rollForward"
+        },
+        {
+          "name": "rollBack"
         },
         {
           "name": "json"

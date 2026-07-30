@@ -1,0 +1,1 @@
+{"schemaVersion":1,"pageRef":"vault-ref-a","sourcePath":"blog/A.md","ruSha256":"9548c21b072be18a6aa9127f3b710d8eef2a380a6bcec3779dbec3953717b656","enSha256":"970cebc6245a693c6cabf70175597720c02cabf4143fc85f3ad5bb4d2f0ede85","order":["ref-0001"],"references":{"ref-0001":{"targetRef":"vault-ref-b","authoredTarget":"B","heading":"","label":"B label"}}}

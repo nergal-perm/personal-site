@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "state": "complete",
+  "inventorySha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "catalogSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "catalogState": "complete",
+  "catalogPublished": ".semantic-links/catalog-v1.json",
+  "catalogStaged": ".semantic-links/staging-v1/catalog-v1.json",
+  "catalogDisplaced": ".semantic-links/recovery-v1/catalog-v1.json",
+  "recoveryRoot": ".semantic-links/recovery-v1",
+  "pages": [
+    {
+      "collection": "blog",
+      "publicId": "a",
+      "pageRef": "vault-ref-a",
+      "sourcePath": "blog/A.md",
+      "state": "complete",
+      "stagedSha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "published": "blog/a/published",
+      "staged": ".semantic-links/staging-v1/blog/a/published",
+      "displaced": ".semantic-links/recovery-v1/blog/a/published"
+    },
+    {
+      "collection": "blog",
+      "publicId": "b",
+      "pageRef": "vault-ref-b",
+      "sourcePath": "blog/B.md",
+      "state": "complete",
+      "stagedSha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "published": "blog/b/published",
+      "staged": ".semantic-links/staging-v1/blog/b/published",
+      "displaced": ".semantic-links/recovery-v1/blog/b/published"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "entries": {
+    "vault-ref-a": {
+      "currentPath": "blog/A.md",
+      "stableNoteId": "synthetic-a",
+      "title": "A",
+      "aliases": [],
+      "previousPaths": [],
+      "state": "active"
+    },
+    "vault-ref-b": {
+      "currentPath": "blog/B.md",
+      "stableNoteId": "synthetic-b",
+      "title": "B",
+      "aliases": [],
+      "previousPaths": [],
+      "state": "active"
+    }
+  }
+}

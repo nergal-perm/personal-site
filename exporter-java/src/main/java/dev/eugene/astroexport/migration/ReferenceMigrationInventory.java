@@ -606,6 +606,7 @@ public final class ReferenceMigrationInventory {
       payload.put("sourceContext", occurrence.sourceContext());
       payload.put("ruContext", occurrence.ruContext());
       payload.put("proposedEnContext", occurrence.proposedEnContext());
+      payload.put("proposedEnSpan", spanPayload(occurrence.proposedEnSpan()));
       payload.put("sourceOrdinal", occurrence.sourceOrdinal());
       payload.put("targetRef", occurrence.targetRef());
       payload.put("heading", occurrence.heading());
@@ -613,6 +614,16 @@ public final class ReferenceMigrationInventory {
       payload.put("proposedReference", proposedReferencePayload(
           occurrence.proposedReferenceId(),
           occurrence.proposedReference()));
+      return payload;
+    }
+
+    private static Map<String, Object> spanPayload(ReferenceMigrationAligner.Span span) {
+      if (span == null) {
+        return null;
+      }
+      LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
+      payload.put("start", span.start());
+      payload.put("end", span.end());
       return payload;
     }
 

@@ -63,6 +63,7 @@ final class ReferenceMigrationInventoryTest {
                 "See [[Target|target]].",
                 "See [target](/ru/target/).",
                 "See [target](/en/target/).",
+                Map.of("start", 4, "end", 25),
                 1,
                 "vault-ref-target",
                 null,
@@ -394,6 +395,7 @@ final class ReferenceMigrationInventoryTest {
       String sourceContext,
       String ruContext,
       String proposedEnContext,
+      Map<String, Object> proposedEnSpan,
       int sourceOrdinal,
       String targetRef,
       String heading,
@@ -406,6 +408,7 @@ final class ReferenceMigrationInventoryTest {
     payload.put("sourceContext", sourceContext);
     payload.put("ruContext", ruContext);
     payload.put("proposedEnContext", proposedEnContext);
+    payload.put("proposedEnSpan", proposedEnSpan);
     payload.put("sourceOrdinal", sourceOrdinal);
     payload.put("targetRef", targetRef);
     payload.put("heading", heading);

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -15,6 +16,7 @@ import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.SelectionResult;
+import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.testsupport.CommandFixture;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintWriter;
@@ -30,12 +32,14 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 final class NativeCliParityTest {
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final List<String> MANAGED_ROOTS = List.of(
+      ".astro-export",
       "public/assets/vault",
       "src/content",
       "src/data/pages");
@@ -116,7 +120,7 @@ final class NativeCliParityTest {
     String text = Files.readString(report);
     assertEquals(text, result.stdout());
     assertEquals("4", summaryValue(text, "Generated records"));
-    assertEquals("3", summaryValue(text, "Managed trees"));
+    assertEquals(String.valueOf(MANAGED_ROOTS.size()), summaryValue(text, "Managed trees"));
     assertEquals("1", summaryValue(text, "Resolved assets"));
     assertIterableEquals(MANAGED_ROOTS, sectionBullets(text, "## Managed tree hashes").stream()
         .map(line -> line.substring(3, line.indexOf("` \u2014 sha256")))
@@ -156,12 +160,119 @@ final class NativeCliParityTest {
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$InspectPublicationCommand"));
     assertEquals(Set.of("parent", "vault", "note", "review", "jobs", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MarkReviewedCommand"));
-    assertEquals(Set.of("parent", "vault", "review", "astro", "report", "json"),
+    assertEquals(Set.of("parent", "vault", "review", "astro", "report", "decisions",
+            "apply", "rollForward", "rollBack", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MigrateSemanticLinksCommand"));
     assertEquals(Set.of("parent", "vault", "review", "jobs", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$RefreshPublicationQueueCommand"));
     assertEquals(Set.of("parent", "out"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$WritePublicationContractCommand"));
+  }
+
+  @Test
+  void nativeExecutableExercisesSemanticSubcommandsBeyondHelp() throws Exception {
+    Path nativeBinary = Path.of("target/astro-export").toAbsolutePath().normalize();
+    assumeTrue(Files.isExecutable(nativeBinary), "native binary is built by mvn -Pnative native:compile");
+    assumeTrue(nativeRun(nativeBinary, "--help").stdout().contains("migrate-semantic-links"),
+        "native binary predates semantic CLI subcommands");
+    Path vault = temp.resolve("native-vault");
+    Path review = temp.resolve("native-review");
+    Path astro = writeAstroRoot(temp.resolve("native-astro"));
+    Path jobs = temp.resolve("native-jobs");
+    Path inventory = temp.resolve("native-inventory.json");
+    writePublishedSemanticFixture(vault, review, astro);
+
+    NativeResult inventoryResult = nativeRun(nativeBinary,
+        "migrate-semantic-links",
+        "--vault", vault.toString(),
+        "--review", review.toString(),
+        "--astro", astro.toString(),
+        "--report", inventory.toString(),
+        "--json");
+    assertEquals(1, inventoryResult.exitCode(), inventoryResult.stdout() + inventoryResult.stderr());
+    Map<String, Object> inventoryPayload = json(inventoryResult.stdout());
+    assertEquals(3, inventoryPayload.get("schemaVersion"));
+    assertEquals("migrate-semantic-links", inventoryPayload.get("command"));
+    assertEquals("decisions-required", inventoryPayload.get("status"));
+    assertEquals(1, ((Map<?, ?>) inventoryPayload.get("summary")).get("occurrences"));
+
+    Path decisions = temp.resolve("native-decisions.json");
+    Map<String, Object> inventoryReport = json(Files.readString(inventory));
+    Map<?, ?> firstPage = (Map<?, ?>) ((List<?>) inventoryReport.get("pages")).getFirst();
+    Map<?, ?> firstOccurrence = (Map<?, ?>) ((List<?>) firstPage.get("occurrences")).getFirst();
+    Map<?, ?> span = (Map<?, ?>) firstOccurrence.get("proposedEnSpan");
+    assumeTrue(span != null, "native binary predates proposedEnSpan inventory output");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%s,"end":%s}}}}
+        """.formatted(
+            inventoryReport.get("inventorySha256"),
+            firstOccurrence.get("occurrenceKey"),
+            span.get("start"),
+            span.get("end")), StandardCharsets.UTF_8);
+    NativeResult applyResult = nativeRun(nativeBinary,
+        "migrate-semantic-links",
+        "--vault", vault.toString(),
+        "--review", review.toString(),
+        "--astro", astro.toString(),
+        "--report", inventory.toString(),
+        "--decisions", decisions.toString(),
+        "--apply",
+        "--json");
+    assertEquals(0, applyResult.exitCode(), applyResult.stdout() + applyResult.stderr());
+    assertEquals("applied", json(applyResult.stdout()).get("status"));
+    writePublicationSource(vault, "page.md", "page", "Page", "See [[Target|target]].");
+    writePublicationSource(vault, "target.md", "target", "Target", "Target.");
+
+    NativeResult inspectResult = nativeRun(nativeBinary,
+        "inspect-publication",
+        "--vault", vault.toString(),
+        "--note", "page.md",
+        "--review", review.toString(),
+        "--json");
+    assertEquals(1, inspectResult.exitCode(), inspectResult.stdout() + inspectResult.stderr());
+    Map<String, Object> inspectPayload = json(inspectResult.stdout());
+    assertEquals(3, inspectPayload.get("schemaVersion"));
+    assertEquals("stale", inspectPayload.get("status"));
+    assertEquals("missing", inspectPayload.get("pairFreshness"));
+    assertEquals("valid", inspectPayload.get("approvedSnapshotState"));
+    assertEquals("valid", inspectPayload.get("semanticReferencesState"));
+    assertEquals("releasable", inspectPayload.get("releaseState"));
+
+    NativeResult buildResult = nativeRun(nativeBinary,
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", astro.toString(),
+        "--review", review.toString(),
+        "--report", temp.resolve("native-build.md").toString());
+    assertEquals(0, buildResult.exitCode(), buildResult.stdout() + buildResult.stderr());
+    assertTrue(Files.readString(astro.resolve("src/content/blog/ru/page.md"))
+        .contains("[target](/ru/essays/target/)"));
+    assertFalse(Files.readString(astro.resolve("src/content/blog/ru/page.md")).contains("ref:"));
+
+    Path classicVault = temp.resolve("classic-vault");
+    Path classicReview = temp.resolve("classic-review");
+    writeBlogNote(classicVault);
+    ManifestEntry classicEntry = currentBlogEntry(classicVault);
+    writeBlogReviewEn(classicReview, classicEntry.translationSourceHash(), "generated");
+    NativeResult markReviewed = nativeRun(nativeBinary,
+        "mark-reviewed",
+        "--vault", classicVault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", classicReview.toString(),
+        "--jobs", jobs.toString(),
+        "--json");
+    assertEquals(0, markReviewed.exitCode(), markReviewed.stdout() + markReviewed.stderr());
+    assertEquals("ready_to_publish", json(markReviewed.stdout()).get("status"));
+
+    NativeResult prepareBlocked = nativeRun(nativeBinary,
+        "prepare",
+        "--vault", classicVault.toString(),
+        "--note", "missing.md",
+        "--review", classicReview.toString(),
+        "--jobs", jobs.toString(),
+        "--json");
+    assertEquals(1, prepareBlocked.exitCode());
+    assertEquals("prepare", json(prepareBlocked.stdout()).get("command"));
   }
 
   @Test
@@ -292,6 +403,205 @@ final class NativeCliParityTest {
     Files.writeString(root.resolve("unmanaged.txt"), "keep me\n", StandardCharsets.UTF_8);
     return root;
   }
+
+  private static void writePublishedSemanticFixture(Path vault, Path review, Path astro) throws Exception {
+    writeRawNote(vault, "page.md", "See [[Target|target]].");
+    writeRawNote(vault, "target.md", "Target.");
+    writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeAstroRoute(astro, "src/content/blog/ru/target.md", "vault-ref-target", "/ru/essays/target/");
+    writeAstroRoute(astro, "src/content/blog/en/target.md", "vault-ref-target", "/en/essays/target/");
+    writeApprovedPublishedPair(review, "page", "page.md", "vault-ref-page",
+        "See [target](/ru/essays/target/).",
+        "See [target](/en/essays/target/).");
+    writeApprovedPublishedPair(review, "target", "target.md", "vault-ref-target",
+        "Target.",
+        "Target.");
+  }
+
+  private static void writePublicationSource(
+      Path vault,
+      String path,
+      String publicId,
+      String title,
+      String body) throws Exception {
+    writeRawNote(vault, path, """
+        ---
+        publish: true
+        publicId: %s
+        publicCollection: blog
+        publicContentType: essay
+        title: %s
+        description: %s.
+        ---
+        %s
+        """.formatted(publicId, title, title, body));
+  }
+
+  private static void writeRawNote(Path vault, String path, String body) throws Exception {
+    Path target = vault.resolve(path);
+    Files.createDirectories(target.getParent() == null ? vault : target.getParent());
+    Files.writeString(target, body, StandardCharsets.UTF_8);
+  }
+
+  private static void writeSemanticCatalog(Path reviewRoot, String... refsAndPaths) throws Exception {
+    LinkedHashMap<String, Object> entries = new LinkedHashMap<>();
+    for (int i = 0; i < refsAndPaths.length; i += 2) {
+      String pageRef = refsAndPaths[i];
+      String currentPath = refsAndPaths[i + 1];
+      String title = semanticCatalogTitle(currentPath);
+      entries.put(pageRef, Map.of(
+          "currentPath", currentPath,
+          "stableNoteId", title,
+          "title", title,
+          "aliases", List.of(),
+          "previousPaths", List.of(),
+          "state", "active"));
+    }
+    Path path = reviewRoot.resolve(".semantic-links/catalog-v1.json");
+    Files.createDirectories(path.getParent());
+    Files.writeString(path, JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "entries", entries)), StandardCharsets.UTF_8);
+  }
+
+  private static String semanticCatalogTitle(String path) {
+    String stem = path.replace(".md", "");
+    int slash = stem.lastIndexOf('/');
+    if (slash >= 0) {
+      stem = stem.substring(slash + 1);
+    }
+    return stem.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + stem.substring(1);
+  }
+
+  private static void writeApprovedPublishedPair(
+      Path reviewRoot,
+      String publicId,
+      String sourcePath,
+      String pageRef,
+      String ru,
+      String en) throws Exception {
+    Path published = reviewRoot.resolve("blog").resolve(publicId).resolve("published");
+    Files.createDirectories(published);
+    byte[] russian = approvedMarkdown(publicId, "ru", ru);
+    byte[] english = approvedMarkdown(publicId, "en", en);
+    boolean linksTarget = ru.contains("target]");
+    Files.write(published.resolve("ru.md"), russian);
+    Files.write(published.resolve("en.md"), english);
+    Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "pageRef", pageRef,
+        "sourcePath", sourcePath,
+        "ruSha256", PageReferenceMapCodec.sha256(russian),
+        "enSha256", PageReferenceMapCodec.sha256(english),
+        "order", linksTarget ? List.of("ref-0001") : List.of(),
+        "references", linksTarget
+            ? Map.of("ref-0001", Map.of(
+                "targetRef", "vault-ref-target",
+                "authoredTarget", "Target",
+                "heading", "",
+                "label", "target"))
+            : Map.of())), StandardCharsets.UTF_8);
+  }
+
+  private static byte[] approvedMarkdown(String publicId, String language, String body) {
+    return """
+        ---
+        id: %s
+        language: %s
+        reviewType: essay
+        route: /%s/essays/%s/
+        targetPath: src/content/blog/%s/%s.md
+        title: %s
+        description: %s.
+        %s---
+        %s
+        """.formatted(
+            publicId,
+            language,
+            language,
+            publicId,
+            language,
+            publicId,
+            publicId,
+            publicId,
+            "en".equals(language) ? "translationStatus: reviewed\n" : "",
+            body).getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static void writeAstroRoute(
+      Path astro,
+      String path,
+      String pageRef,
+      String route) throws Exception {
+    Path target = astro.resolve(path);
+    Files.createDirectories(target.getParent());
+    Files.writeString(target, """
+        ---
+        pageRef: %s
+        route: %s
+        ---
+        Body.
+        """.formatted(pageRef, route), StandardCharsets.UTF_8);
+  }
+
+  private static Path writeBlogNote(Path vault) throws Exception {
+    Path note = vault.resolve("anywhere/Essay.md");
+    Files.createDirectories(note.getParent());
+    Files.writeString(note, """
+        ---
+        title: Essay
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Essay.
+        ---
+        Text.
+        """, StandardCharsets.UTF_8);
+    return note;
+  }
+
+  private static void writeBlogReviewEn(Path review, String sourceHash, String status) throws Exception {
+    Path english = review.resolve("blog/essay/en.md");
+    Files.createDirectories(english.getParent());
+    Files.writeString(english, """
+        ---
+        sourceHash: %s
+        translationStatus: %s
+        translatedAt: 2026-07-17
+        translationProfile: native-parity-fixture-v1
+        title: English title
+        description: English description.
+        ---
+        English text.
+        """.formatted(sourceHash, status), StandardCharsets.UTF_8);
+  }
+
+  private static Map<String, Object> json(String text) throws Exception {
+    return JSON.readValue(
+        text,
+        new TypeReference<LinkedHashMap<String, Object>>() { });
+  }
+
+  private static NativeResult nativeRun(Path binary, String... args) throws Exception {
+    ArrayList<String> command = new ArrayList<>();
+    command.add(binary.toString());
+    command.addAll(List.of(args));
+    Process process = new ProcessBuilder(command)
+        .directory(Path.of("").toAbsolutePath().normalize().toFile())
+        .start();
+    boolean completed = process.waitFor(60, TimeUnit.SECONDS);
+    if (!completed) {
+      process.destroyForcibly();
+      throw new AssertionError("native command timed out: " + command);
+    }
+    return new NativeResult(
+        process.exitValue(),
+        new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8),
+        new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8));
+  }
+
+  private record NativeResult(int exitCode, String stdout, String stderr) { }
 
   private static Map<String, ByteBuffer> temporarySiblings(Path root) throws Exception {
     LinkedHashMap<String, ByteBuffer> files = new LinkedHashMap<>();
