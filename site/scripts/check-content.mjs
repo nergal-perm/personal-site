@@ -1,9 +1,16 @@
 import fs from "fs";
 import path from "path";
+import crypto from "crypto";
 import YAML from "yaml";
 
 const workspaceRoot = process.cwd();
 const errors = [];
+const payloadRoots = [
+  "public/assets/vault",
+  "src/content",
+  "src/data/pages",
+];
+const markerPattern = /ref:ref-|vault-ref-|catalog-v\d+\.json|\.semantic-links\//;
 
 function inputDirectory(envName, liveRelativePath) {
   const configured = process.env[envName];
@@ -35,6 +42,11 @@ function inputDirectory(envName, liveRelativePath) {
 
 const contentDir = inputDirectory("ASTRO_CONTENT_DIR", "src/content");
 const pagesDir = inputDirectory("ASTRO_PAGES_DIR", "src/data/pages");
+const releaseManifest = releaseManifestPath();
+
+if (releaseManifest.shouldVerify) {
+  verifyReleaseProvenance(releaseManifest);
+}
 
 if (errors.length > 0) {
   console.error(
@@ -67,6 +79,210 @@ function getFiles(dir, ext) {
   return results;
 }
 
+function releaseManifestPath() {
+  const configured = process.env.ASTRO_RELEASE_MANIFEST;
+  const required = process.env.ASTRO_REQUIRE_RELEASE_PROVENANCE === "1";
+  if (configured !== undefined && configured.trim() === "") {
+    return {
+      shouldVerify: true,
+      manifest: null,
+      root: workspaceRoot,
+      reason: "ASTRO_RELEASE_MANIFEST must not be empty",
+    };
+  }
+  if (configured !== undefined) {
+    const manifest = path.resolve(workspaceRoot, configured);
+    return {
+      shouldVerify: true,
+      manifest,
+      root: path.dirname(path.dirname(manifest)),
+    };
+  }
+  const manifest = path.join(workspaceRoot, ".astro-export", "release-provenance.json");
+  return {
+    shouldVerify: required || fs.existsSync(manifest),
+    manifest,
+    root: workspaceRoot,
+  };
+}
+
+function verifyReleaseProvenance(selection) {
+  const fail = (message) => {
+    errors.push(`[Release Provenance Error] release-provenance-mismatch: ${message}`);
+  };
+  if (selection.reason) {
+    fail(selection.reason);
+    return;
+  }
+  const { manifest, root } = selection;
+  try {
+    const stat = fs.lstatSync(manifest);
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      fail(`manifest is not a regular file: ${manifest}`);
+      return;
+    }
+  } catch (err) {
+    fail(`missing manifest: ${manifest}`);
+    return;
+  }
+
+  let manifestBytes;
+  let actual;
+  try {
+    manifestBytes = fs.readFileSync(manifest);
+    actual = JSON.parse(manifestBytes.toString("utf8"));
+  } catch (err) {
+    fail(`cannot parse manifest: ${err.message}`);
+    return;
+  }
+  if (actual.schemaVersion !== 1) {
+    fail(`unsupported schema version: ${actual.schemaVersion}`);
+    return;
+  }
+  const rootNames = (actual.managedTrees ?? []).map((tree) => tree.relative);
+  if (JSON.stringify(rootNames) !== JSON.stringify(payloadRoots)) {
+    fail(`payload roots must be exactly ${payloadRoots.join(", ")}`);
+    return;
+  }
+
+  let managedTrees;
+  let managedFiles;
+  try {
+    managedTrees = payloadRoots.map((relative) => ({
+      relative,
+      sha256: hashTree(path.join(root, relative)),
+    }));
+    managedFiles = hashPayloadFiles(root);
+    scanPublicPayload(root, fail);
+  } catch (err) {
+    fail(err.message);
+    return;
+  }
+
+  const recomputed = {
+    schemaVersion: actual.schemaVersion,
+    selectedPages: actual.selectedPages ?? [],
+    managedTrees,
+    managedFiles,
+    activationCount: actual.activationCount,
+    deactivationCount: actual.deactivationCount,
+    payloadDigest: "",
+  };
+  recomputed.payloadDigest = sha256(Buffer.from(JSON.stringify(recomputed), "utf8"));
+  const canonical = {
+    schemaVersion: actual.schemaVersion,
+    selectedPages: actual.selectedPages ?? [],
+    managedTrees: actual.managedTrees ?? [],
+    managedFiles: actual.managedFiles ?? [],
+    activationCount: actual.activationCount,
+    deactivationCount: actual.deactivationCount,
+    payloadDigest: actual.payloadDigest,
+  };
+  if (manifestBytes.toString("utf8") !== JSON.stringify(canonical)) {
+    fail("manifest is not canonical");
+  }
+  if (JSON.stringify(actual.managedTrees ?? []) !== JSON.stringify(managedTrees)) {
+    fail("managed tree hash mismatch");
+  }
+  if (JSON.stringify(actual.managedFiles ?? []) !== JSON.stringify(managedFiles)) {
+    fail("managed file hash mismatch");
+  }
+  if (actual.payloadDigest !== recomputed.payloadDigest) {
+    fail("payload digest mismatch");
+  }
+}
+
+function hashPayloadFiles(root) {
+  const records = [];
+  for (const relativeRoot of payloadRoots) {
+    const treeRoot = path.join(root, relativeRoot);
+    for (const filePath of listTree(treeRoot)) {
+      const relative = slash(path.relative(root, filePath));
+      const stat = fs.lstatSync(filePath);
+      if (stat.isSymbolicLink()) {
+        throw new Error(`managed payload contains a symlink: ${relative}`);
+      }
+      if (stat.isDirectory()) continue;
+      if (!stat.isFile()) {
+        throw new Error(`managed payload contains an unsupported entry: ${relative}`);
+      }
+      records.push({ path: relative, sha256: sha256(fs.readFileSync(filePath)) });
+    }
+  }
+  return records.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+function hashTree(root) {
+  const digest = crypto.createHash("sha256");
+  for (const filePath of listTree(root)) {
+    const relative = slash(path.relative(root, filePath));
+    const relativeBytes = Buffer.from(relative, "utf8");
+    const stat = fs.lstatSync(filePath);
+    let kind;
+    let payload;
+    if (stat.isSymbolicLink()) {
+      throw new Error(`managed tree contains a symlink: ${relative}`);
+    } else if (stat.isDirectory()) {
+      kind = "D";
+      payload = Buffer.alloc(0);
+    } else if (stat.isFile()) {
+      kind = "F";
+      payload = fs.readFileSync(filePath);
+    } else {
+      throw new Error(`managed tree contains an unsupported entry: ${relative}`);
+    }
+    digest.update(Buffer.from(kind));
+    digest.update(lengthBuffer(relativeBytes.length));
+    digest.update(relativeBytes);
+    digest.update(lengthBuffer(payload.length));
+    digest.update(payload);
+  }
+  return digest.digest("hex");
+}
+
+function listTree(root) {
+  const stat = fs.lstatSync(root);
+  if (stat.isSymbolicLink() || !stat.isDirectory()) {
+    throw new Error(`managed tree is not a directory: ${root}`);
+  }
+  const results = [];
+  const visit = (dir) => {
+    for (const name of fs.readdirSync(dir).sort()) {
+      const child = path.join(dir, name);
+      results.push(child);
+      if (fs.lstatSync(child).isDirectory()) visit(child);
+    }
+  };
+  visit(root);
+  return results.sort((left, right) =>
+    slash(path.relative(root, left)).localeCompare(slash(path.relative(root, right))),
+  );
+}
+
+function scanPublicPayload(root, fail) {
+  for (const record of hashPayloadFiles(root)) {
+    if (!record.path.endsWith(".md") && !record.path.endsWith(".json")) continue;
+    const body = fs.readFileSync(path.join(root, record.path), "utf8");
+    if (markerPattern.test(body)) {
+      fail(`public payload contains private semantic marker: ${record.path}`);
+    }
+  }
+}
+
+function lengthBuffer(length) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigInt64BE(BigInt(length));
+  return buffer;
+}
+
+function sha256(bytes) {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}
+
+function slash(value) {
+  return value.split(path.sep).join("/");
+}
+
 const collections = ["blog", "bibliography", "music", "concepts"];
 const requiredPageIds = new Set([
   "about",
@@ -79,6 +295,7 @@ const requiredPageIds = new Set([
   "search",
   "claims",
 ]);
+const allowedPageIds = new Set([...requiredPageIds, "now"]);
 const systemSearchId = "search";
 
 // Структуры для сбора данных
@@ -250,7 +467,7 @@ for (const lang of ["ru", "en"]) {
     }
   }
   for (const actualId of pageIds[lang]) {
-    if (!requiredPageIds.has(actualId)) {
+    if (!allowedPageIds.has(actualId)) {
       errors.push(
         `[Page Contract Error] Locale "${lang}" has unexpected page "${actualId}"`,
       );

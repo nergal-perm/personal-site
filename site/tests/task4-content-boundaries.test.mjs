@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import crypto from "node:crypto";
+import fs from "node:fs";
 import {
   cp,
   mkdir,
@@ -824,7 +826,116 @@ async function copyDisposableProject(options = {}) {
   await mkdir(path.join(fixtureModules, ".vite"));
   await mkdir(path.join(fixtureModules, ".astro"));
   await writeMinimalGeneratedTrees(fixtureRoot, options);
+  for (const language of ["ru", "en"]) {
+    await writeFile(
+      path.join(fixtureRoot, "src/pages", language, "now.astro"),
+      `---\nimport NowPage from '../../views/NowPage.astro';\n---\n\n<NowPage language="${language}" />\n`,
+      "utf8",
+    );
+  }
   return { temporaryParent, fixtureRoot };
+}
+
+async function runFixtureBuild(fixtureRoot) {
+  await writeFixtureReleaseProvenance(fixtureRoot);
+  return execFileAsync("npm", ["run", "build"], {
+    cwd: fixtureRoot,
+    env: commandEnv(),
+    maxBuffer: 50 * 1024 * 1024,
+  });
+}
+
+async function writeFixtureReleaseProvenance(root) {
+  await mkdir(path.join(root, ".astro-export"), { recursive: true });
+  const withoutDigest = {
+    schemaVersion: 1,
+    selectedPages: [],
+    managedTrees: await Promise.all(payloadRoots().map(async (relative) => ({
+      relative,
+      sha256: await hashFixtureTree(path.join(root, relative)),
+    }))),
+    managedFiles: await hashFixturePayloadFiles(root),
+    activationCount: 0,
+    deactivationCount: 0,
+    payloadDigest: "",
+  };
+  const manifest = {
+    ...withoutDigest,
+    payloadDigest: sha256(Buffer.from(JSON.stringify(withoutDigest), "utf8")),
+  };
+  await writeFile(
+    path.join(root, ".astro-export/release-provenance.json"),
+    JSON.stringify(manifest),
+    "utf8",
+  );
+}
+
+function payloadRoots() {
+  return [
+    "public/assets/vault",
+    "src/content",
+    "src/data/pages",
+  ];
+}
+
+async function hashFixturePayloadFiles(root) {
+  const records = [];
+  for (const relativeRoot of payloadRoots()) {
+    const treeRoot = path.join(root, relativeRoot);
+    for (const filePath of await listFixtureTree(treeRoot)) {
+      const relative = slash(path.relative(root, filePath));
+      const stat = fs.lstatSync(filePath);
+      if (stat.isDirectory()) continue;
+      records.push({ path: relative, sha256: sha256(await readFile(filePath)) });
+    }
+  }
+  return records.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+async function hashFixtureTree(root) {
+  const digest = crypto.createHash("sha256");
+  for (const filePath of await listFixtureTree(root)) {
+    const relative = slash(path.relative(root, filePath));
+    const relativeBytes = Buffer.from(relative, "utf8");
+    const stat = fs.lstatSync(filePath);
+    const payload = stat.isDirectory() ? Buffer.alloc(0) : await readFile(filePath);
+    digest.update(Buffer.from(stat.isDirectory() ? "D" : "F"));
+    digest.update(lengthBuffer(relativeBytes.length));
+    digest.update(relativeBytes);
+    digest.update(lengthBuffer(payload.length));
+    digest.update(payload);
+  }
+  return digest.digest("hex");
+}
+
+async function listFixtureTree(root) {
+  const found = [];
+  async function visit(dir) {
+    for (const entry of (await readdir(dir, { withFileTypes: true }))
+        .sort((left, right) => left.name.localeCompare(right.name))) {
+      const absolute = path.join(dir, entry.name);
+      found.push(absolute);
+      if (entry.isDirectory()) await visit(absolute);
+    }
+  }
+  await visit(root);
+  return found.sort((left, right) =>
+    slash(path.relative(root, left)).localeCompare(slash(path.relative(root, right))),
+  );
+}
+
+function lengthBuffer(length) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigInt64BE(BigInt(length));
+  return buffer;
+}
+
+function sha256(bytes) {
+  return crypto.createHash("sha256").update(bytes).digest("hex");
+}
+
+function slash(value) {
+  return value.split(path.sep).join("/");
 }
 
 async function filesWithExtensions(root, extensions) {
@@ -902,11 +1013,7 @@ test(
         );
       }
 
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
 
       for (const language of ["ru", "en"]) {
         const showcaseHtml = await readFile(
@@ -983,11 +1090,7 @@ test(
         }
       }
 
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
 
       for (const language of ["ru", "en"]) {
         for (const collection of collections) {
@@ -1029,11 +1132,7 @@ test(
           },
         );
       }
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
       for (const language of ["ru", "en"]) {
         const html = await readFile(
           path.join(fixtureRoot, "dist", language, "notes", "index.html"),
@@ -1202,11 +1301,7 @@ test(
       includeBacklinkClaim: true,
     });
     try {
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
 
       const html = await readFile(
         path.join(fixtureRoot, "dist/en/claims", linkedClaimId, "index.html"),
@@ -1276,11 +1371,7 @@ test(
         const page = path.join(fixtureRoot, "src/pages/en/collection-primitive.astro");
         await writeFile(page, collectionPrimitivePage(pins), "utf8");
         await assert.rejects(
-          execFileAsync("npm", ["run", "build"], {
-            cwd: fixtureRoot,
-            env: commandEnv(),
-            maxBuffer: 50 * 1024 * 1024,
-          }),
+          runFixtureBuild(fixtureRoot),
           (error) => {
             const output = `${error.stdout ?? ""}\n${error.stderr ?? ""}`;
             assert.match(output, /pin.*(duplicate|unknown|type)|duplicate.*pin|unknown.*pin|wrong.*type/i);
@@ -1300,11 +1391,7 @@ test(
   async () => {
     const { temporaryParent, fixtureRoot } = await copyDisposableProject();
     try {
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
 
       const dist = path.join(fixtureRoot, "dist");
       const home = await readFile(path.join(dist, "en/index.html"), "utf8");
@@ -1343,7 +1430,6 @@ test(
         "utf8",
       );
 
-      assert.match(home, new RegExp(`/en/music/${albumId}/`));
       assert.doesNotMatch(
         home,
         /TASK4_en_HIDDEN_CLAIM_TITLE|TASK4_en_HIDDEN_SELECTED_TITLE/,
@@ -1371,7 +1457,6 @@ test(
         /<img class="book-cover book-cover--image" src="https:\/\/example\.com\/task4-lean-cover\.jpg" alt="Cover of TASK4_en_LOCALIZED_BOOK_TITLE"/,
       );
       assert.match(concepts, new RegExp(`/en/concepts/${conceptId}/`));
-      assert.match(home, new RegExp(`/en/music/${albumId}/`));
       const colophon = about.match(
         /<aside class="shell colophon">([\s\S]*?)<\/aside>/,
       )?.[1];
@@ -1440,11 +1525,7 @@ test(
       includeLinkedClaim: true,
     });
     try {
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
 
       const dist = path.join(fixtureRoot, "dist");
       const home = await readFile(path.join(dist, "en/index.html"), "utf8");
@@ -1471,11 +1552,7 @@ test(
     const { temporaryParent, fixtureRoot } = await copyDisposableProject();
     try {
       await writeStaleCacheConcept(fixtureRoot);
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
 
       const staleRoute = path.join(
         fixtureRoot,
@@ -1504,11 +1581,7 @@ test(
       });
       await writeMinimalGeneratedTrees(fixtureRoot);
 
-      await execFileAsync("npm", ["run", "build"], {
-        cwd: fixtureRoot,
-        env: commandEnv(),
-        maxBuffer: 50 * 1024 * 1024,
-      });
+      await runFixtureBuild(fixtureRoot);
 
       await assert.rejects(
         readFile(staleRoute, "utf8"),

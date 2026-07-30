@@ -8,6 +8,8 @@ import dev.eugene.astroexport.assets.ResolvedAsset;
 import dev.eugene.astroexport.frontmatter.FrontmatterCanonicalizer;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
+import dev.eugene.astroexport.release.ReleaseProvenanceWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -44,6 +46,7 @@ public final class SiteWriter {
   private static final List<String> COLLECTIONS = List.of("bibliography", "blog", "concepts", "music");
   private static final List<String> LOCALES = List.of("en", "ru");
   private static final List<String> REQUIRED_DIRECTORIES = List.of(
+      ".astro-export",
       "public/assets/vault",
       "src/content/bibliography/en",
       "src/content/bibliography/ru",
@@ -79,16 +82,32 @@ public final class SiteWriter {
   private SiteWriter() { }
 
   public static StagedSite stageSite(Path siteRoot, ManifestResult manifest) {
-    return stageSite(siteRoot, manifest, AssetCopier.filesCopy());
+    return stageSite(siteRoot, manifest, (ApprovedReleaseMaterializer.MaterializedRelease) null);
+  }
+
+  public static StagedSite stageSite(
+      Path siteRoot,
+      ManifestResult manifest,
+      ApprovedReleaseMaterializer.MaterializedRelease release) {
+    return stageSite(siteRoot, manifest, release, AssetCopier.filesCopy());
   }
 
   static StagedSite stageSite(Path siteRoot, ManifestResult manifest, AssetCopier assetCopier) {
-    return stageSite(siteRoot, manifest, assetCopier, IdentityReader.filesIdentity());
+    return stageSite(siteRoot, manifest, null, assetCopier, IdentityReader.filesIdentity());
   }
 
   static StagedSite stageSite(
       Path siteRoot,
       ManifestResult manifest,
+      ApprovedReleaseMaterializer.MaterializedRelease release,
+      AssetCopier assetCopier) {
+    return stageSite(siteRoot, manifest, release, assetCopier, IdentityReader.filesIdentity());
+  }
+
+  static StagedSite stageSite(
+      Path siteRoot,
+      ManifestResult manifest,
+      ApprovedReleaseMaterializer.MaterializedRelease release,
       AssetCopier assetCopier,
       IdentityReader identityReader) {
     Path site = canonicalSiteRoot(siteRoot);
@@ -121,6 +140,9 @@ public final class SiteWriter {
         writeBytes(stagedRoot.resolve(SEARCH_TARGETS.get(template.getKey())), template.getValue());
       }
       copyAssets(stagedRoot, assets, assetCopier);
+      if (release != null) {
+        new ReleaseProvenanceWriter().write(stagedRoot, release);
+      }
       List<TreeHasher.ManagedTreeHash> hashes = TreeHasher.hashManagedTrees(stagedRoot);
       String capability = UUID.randomUUID().toString() + UUID.randomUUID();
       StageBinding binding = new StageBinding(
@@ -156,7 +178,7 @@ public final class SiteWriter {
       Path siteRoot,
       ManifestResult manifest,
       Consumer<Path> validator) {
-    return writeSiteAtomic(siteRoot, manifest, validator, CommitGuard.noop());
+    return writeSiteAtomic(siteRoot, manifest, null, validator, CommitGuard.noop());
   }
 
   public static WriteResult writeSiteAtomic(
@@ -164,7 +186,16 @@ public final class SiteWriter {
       ManifestResult manifest,
       Consumer<Path> validator,
       CommitGuard commitGuard) {
-    StagedSite staged = stageSite(siteRoot, manifest);
+    return writeSiteAtomic(siteRoot, manifest, null, validator, commitGuard);
+  }
+
+  public static WriteResult writeSiteAtomic(
+      Path siteRoot,
+      ManifestResult manifest,
+      ApprovedReleaseMaterializer.MaterializedRelease release,
+      Consumer<Path> validator,
+      CommitGuard commitGuard) {
+    StagedSite staged = stageSite(siteRoot, manifest, release);
     return replaceManagedTrees(siteRoot, staged, validator, commitGuard);
   }
 
@@ -504,12 +535,17 @@ public final class SiteWriter {
   public static Consumer<Path> astroContentGate(Path siteRoot, GateRunner runner) {
     Path workingDirectory = canonicalSiteRoot(siteRoot);
     return stagedRoot -> {
+      LinkedHashMap<String, String> environment = new LinkedHashMap<>();
+      environment.put("ASTRO_CONTENT_DIR", stagedRoot.resolve("src/content").toString());
+      environment.put("ASTRO_PAGES_DIR", stagedRoot.resolve("src/data/pages").toString());
+      Path provenance = stagedRoot.resolve(ReleaseProvenanceWriter.MANIFEST_RELATIVE);
+      if (Files.isRegularFile(provenance, LinkOption.NOFOLLOW_LINKS) && !Files.isSymbolicLink(provenance)) {
+        environment.put("ASTRO_RELEASE_MANIFEST", provenance.toString());
+      }
       GateInvocation invocation = new GateInvocation(
           workingDirectory,
           List.of("npm", "run", "check-content"),
-          Map.of(
-              "ASTRO_CONTENT_DIR", stagedRoot.resolve("src/content").toString(),
-              "ASTRO_PAGES_DIR", stagedRoot.resolve("src/data/pages").toString()));
+          environment);
       GateResult result;
       try {
         result = runner.run(invocation);
@@ -1052,6 +1088,7 @@ public final class SiteWriter {
   }
 
   private static void createRequiredDirectories(Path root) throws IOException {
+    Files.createDirectories(root.resolve(".astro-export"));
     for (String collection : COLLECTIONS) {
       for (String locale : LOCALES) {
         Files.createDirectories(root.resolve("src/content").resolve(collection).resolve(locale));

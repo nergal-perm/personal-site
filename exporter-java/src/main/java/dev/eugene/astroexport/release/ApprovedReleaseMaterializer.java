@@ -75,7 +75,8 @@ public final class ApprovedReleaseMaterializer {
         new ActivationAudit(activations, impactIndex),
         ignoredDrafts,
         registry,
-        inputGuard);
+        inputGuard,
+        snapshots);
   }
 
   private Projection project(
@@ -281,9 +282,11 @@ public final class ApprovedReleaseMaterializer {
       ActivationAudit audit,
       List<IgnoredDraft> ignoredDrafts,
       ApprovedTargetRegistry registry,
-      ReleaseInputGuard inputGuard) {
+      ReleaseInputGuard inputGuard,
+      List<ApprovedPageSnapshot> selectedSnapshots) {
     public MaterializedRelease {
       ignoredDrafts = List.copyOf(ignoredDrafts);
+      selectedSnapshots = List.copyOf(selectedSnapshots);
     }
   }
 

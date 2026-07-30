@@ -309,7 +309,7 @@ public final class CommandServices {
   }
 
   public SiteWriter.WriteResult writeSite(Path siteRoot, ManifestResult manifest, Consumer<Path> validator) {
-    return writeSite(siteRoot, manifest, validator, SiteWriter.CommitGuard.noop());
+    return writeSite(siteRoot, manifest, null, validator, SiteWriter.CommitGuard.noop());
   }
 
   public SiteWriter.WriteResult writeSite(
@@ -317,7 +317,16 @@ public final class CommandServices {
       ManifestResult manifest,
       Consumer<Path> validator,
       SiteWriter.CommitGuard commitGuard) {
-    return writeSiteAction.write(siteRoot, manifest, validator, commitGuard);
+    return writeSite(siteRoot, manifest, null, validator, commitGuard);
+  }
+
+  public SiteWriter.WriteResult writeSite(
+      Path siteRoot,
+      ManifestResult manifest,
+      ApprovedReleaseMaterializer.MaterializedRelease release,
+      Consumer<Path> validator,
+      SiteWriter.CommitGuard commitGuard) {
+    return writeSiteAction.write(siteRoot, manifest, release, validator, commitGuard);
   }
 
   public WorkflowStateService workflowState() {
@@ -562,6 +571,7 @@ public final class CommandServices {
     SiteWriter.WriteResult write(
         Path siteRoot,
         ManifestResult manifest,
+        ApprovedReleaseMaterializer.MaterializedRelease release,
         Consumer<Path> validator,
         SiteWriter.CommitGuard commitGuard);
   }

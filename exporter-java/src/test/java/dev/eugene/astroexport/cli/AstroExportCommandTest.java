@@ -1897,7 +1897,7 @@ final class AstroExportCommandTest {
     writeBlogReviewEn(review, currentBlogEntry(vault).translationSourceHash(), "generated");
     Path recovery = temp.resolve(".astro.astro-export-backup-recovery");
     CommandServices services = CommandServices.defaults()
-        .withWriteSiteAction((siteRoot, manifest, validator, commitGuard) -> {
+        .withWriteSiteAction((siteRoot, manifest, release, validator, commitGuard) -> {
           throw new SiteWriter.WriterException("committed cleanup failed", true, List.of(recovery.toString()));
         });
     CommandFixture.Result committed = run(new AstroExportCommand(services),

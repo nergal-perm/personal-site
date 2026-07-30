@@ -239,7 +239,7 @@ public final class AstroExportCommand implements Callable<Integer> {
       SiteWriter.CommitGuard commitGuard = release == null
           ? SiteWriter.CommitGuard.noop()
           : release.inputGuard()::verify;
-      result = services.writeSite(siteRoot, manifest, services.astroGate(siteRoot), commitGuard);
+      result = services.writeSite(siteRoot, manifest, release, services.astroGate(siteRoot), commitGuard);
     } catch (SiteWriter.WriterException error) {
       String text = error.committed()
           ? ReportBuilder.buildCommittedWriteErrorReport(error, selection, manifest, null)

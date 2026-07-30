@@ -10,6 +10,12 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import dev.eugene.astroexport.assets.ResolvedAsset;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
+import dev.eugene.astroexport.release.ApprovedTargetRegistry;
+import dev.eugene.astroexport.release.ReferenceImpactIndex;
+import dev.eugene.astroexport.release.ReleaseInputGuard;
+import dev.eugene.astroexport.release.ReleaseProvenance;
+import dev.eugene.astroexport.release.ReleaseProvenanceWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.ByteBuffer;
@@ -34,7 +40,8 @@ final class SiteWriterTest {
   private static final List<String> MANAGED_ROOTS = List.of(
       "public/assets/vault",
       "src/content",
-      "src/data/pages");
+      "src/data/pages",
+      ".astro-export");
   private static final Map<String, String> SEARCH_TEMPLATE_HASHES = Map.of(
       "ru", "29fac5e1900763c1fad16e1ede73789fa371dc1b01007cdb5efc44cd4fdaa591",
       "en", "2c0e2e56b306532f6facbb7cdf2e80005c1041c8b34ee67131b0f520a0cf1d8e");
@@ -130,6 +137,32 @@ final class SiteWriterTest {
         "EDITORIAL-BODY-MUST-NOT-LEAK")) {
       assertFalse(emitted.contains(internal));
     }
+    discard(staged);
+  }
+
+  @Test
+  void stageSiteWithReleaseWritesProvenanceInsideAtomicManagedRoots() throws Exception {
+    Sample sample = sampleExport();
+    ApprovedReleaseMaterializer.MaterializedRelease release =
+        new ApprovedReleaseMaterializer.MaterializedRelease(
+            sample.manifest,
+            new ApprovedReleaseMaterializer.ActivationAudit(Map.of(), ReferenceImpactIndex.from(List.of())),
+            List.of(),
+            ApprovedTargetRegistry.from(List.of()),
+            ReleaseInputGuard.builder().build(),
+            List.of());
+
+    SiteWriter.StagedSite staged = SiteWriter.stageSite(sample.site, sample.manifest, release);
+
+    assertEquals(MANAGED_ROOTS, staged.managedTreeHashes().stream()
+        .map(TreeHasher.ManagedTreeHash::relative)
+        .toList());
+    assertTrue(Files.isRegularFile(staged.root().resolve(ReleaseProvenanceWriter.MANIFEST_RELATIVE)));
+    ReleaseProvenance provenance = new ReleaseProvenanceWriter().verify(staged.root());
+    assertEquals(TreeHasher.PAYLOAD_ROOTS,
+        provenance.managedTrees().stream().map(TreeHasher.ManagedTreeHash::relative).toList());
+    assertFalse(provenance.managedFiles().stream()
+        .anyMatch(file -> file.path().startsWith(".astro-export/")));
     discard(staged);
   }
 
@@ -1429,6 +1462,7 @@ final class SiteWriterTest {
         Arguments.of("src/data"),
         Arguments.of("public"),
         Arguments.of("public/assets"),
+        Arguments.of(".astro-export"),
         Arguments.of("public/assets/vault"),
         Arguments.of("src/content"),
         Arguments.of("src/data/pages"));
