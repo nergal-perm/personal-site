@@ -24,13 +24,19 @@ public final class CandidateSnapshotStore {
       Set.of("ru.md", "en.md", "references.json");
 
   private final AtomicExchange atomicExchange;
+  private final IoHooks ioHooks;
 
   public CandidateSnapshotStore() {
-    this(new JnaAtomicExchange());
+    this(new JnaAtomicExchange(), new IoHooks() { });
   }
 
   CandidateSnapshotStore(AtomicExchange atomicExchange) {
+    this(atomicExchange, new IoHooks() { });
+  }
+
+  CandidateSnapshotStore(AtomicExchange atomicExchange, IoHooks ioHooks) {
     this.atomicExchange = Objects.requireNonNull(atomicExchange, "atomicExchange");
+    this.ioHooks = Objects.requireNonNull(ioHooks, "ioHooks");
   }
 
   public PendingCandidate stage(
@@ -55,8 +61,11 @@ public final class CandidateSnapshotStore {
       byte[] stagedRussian = russian.clone();
       byte[] stagedEnglish = english.clone();
       byte[] stagedReferences = references.clone();
+      ioHooks.beforeWrite(staging.resolve("ru.md"));
       writeForced(staging.resolve("ru.md"), stagedRussian);
+      ioHooks.beforeWrite(staging.resolve("en.md"));
       writeForced(staging.resolve("en.md"), stagedEnglish);
+      ioHooks.beforeWrite(staging.resolve("references.json"));
       writeForced(staging.resolve("references.json"), stagedReferences);
       forceDirectory(staging);
       return new FilePendingCandidate(
@@ -68,9 +77,15 @@ public final class CandidateSnapshotStore {
     } catch (IOException | RuntimeException error) {
       if (staging != null) {
         try {
-          deleteTree(staging);
+          ioHooks.deleteTree(staging);
         } catch (IOException cleanupError) {
-          error.addSuppressed(cleanupError);
+          cleanupError.addSuppressed(error);
+          throw new CandidateSnapshotRecoveryException(
+              "cannot clean failed staged candidate snapshot " + staging,
+              RecoveryDisposition.STAGED_CANDIDATE,
+              page.resolve("candidate"),
+              List.of(staging),
+              cleanupError);
         }
       }
       if (error instanceof RuntimeException runtimeError) {
@@ -85,6 +100,14 @@ public final class CandidateSnapshotStore {
 
     @Override
     void close();
+  }
+
+  interface IoHooks {
+    default void beforeWrite(Path path) throws IOException { }
+
+    default void deleteTree(Path root) throws IOException {
+      CandidateSnapshotStore.deleteTree(root);
+    }
   }
 
   public record CommitResult(List<Path> recoveryPaths) {
@@ -207,7 +230,7 @@ public final class CandidateSnapshotStore {
         ownershipState = OwnershipState.COMMITTED;
         if (replacement) {
           try {
-            deleteTree(staging);
+            ioHooks.deleteTree(staging);
           } catch (IOException cleanupError) {
             return new CommitResult(List.of(staging));
           }
@@ -232,7 +255,7 @@ public final class CandidateSnapshotStore {
         return;
       }
       try {
-        deleteTree(staging);
+        ioHooks.deleteTree(staging);
       } catch (IOException error) {
         throw new CandidateSnapshotRecoveryException(
             "cannot clean staged candidate snapshot " + staging,

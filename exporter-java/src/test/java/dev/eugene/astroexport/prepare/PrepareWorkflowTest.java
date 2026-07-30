@@ -151,6 +151,45 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void semanticPrepareReportsCandidateCleanupRecoveryPath() throws Exception {
+    Fixture fixture = semanticFixture();
+    Path leftover = fixture.review().resolve("blog/essay/.candidate-stage-leftover");
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "First [first](ref:ref-0001), then [second](ref:ref-0002).\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+    PrepareWorkflow.IoHooks ioHooks = new PrepareWorkflow.IoHooks() {
+      @Override
+      public ReviewWorkspace.PendingCandidateSnapshot stageCandidateSnapshot(
+          Path reviewRoot,
+          dev.eugene.astroexport.model.ManifestEntry entry,
+          byte[] russian,
+          byte[] english,
+          byte[] references) {
+        return new ReviewWorkspace.PendingCandidateSnapshot() {
+          @Override
+          public ReviewWorkspace.CandidateSnapshotResult commit(
+              List<WorkflowStateService.SnapshotGuard> guards) {
+            return new ReviewWorkspace.CandidateSnapshotResult(List.of(leftover));
+          }
+
+          @Override
+          public void close() { }
+        };
+      }
+    };
+
+    PrepareWorkflow.PrepareResult result = workflow(runner, new JnaAtomicExchange(), ioHooks)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertTrue(result.diagnostics().stream().anyMatch(diagnostic ->
+        diagnostic.field().equals("candidate-recovery")
+            && diagnostic.message().contains(leftover.toString())
+            && !diagnostic.blocking()));
+  }
+
+  @Test
   void promptIncludesUnifiedDiffOfRussianSourceWhenPublishedSnapshotDiffers() throws Exception {
     Fixture fixture = fixture();
     ReviewWorkspace.writePublishedSnapshot(

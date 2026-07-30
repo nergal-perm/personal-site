@@ -100,6 +100,36 @@ final class CandidateSnapshotStoreTest {
     assertEquals("new ru", Files.readString(page.resolve("candidate/ru.md")));
   }
 
+  @Test
+  void failedStageCleanupReportsStagedCandidateRecoveryPath() throws Exception {
+    Path page = temp.resolve("review/blog/essay");
+    Files.createDirectories(page);
+    CandidateSnapshotStore store = new CandidateSnapshotStore(
+        (first, second) -> { },
+        new CandidateSnapshotStore.IoHooks() {
+          @Override
+          public void beforeWrite(Path path) throws IOException {
+            if (path.getFileName().toString().equals("en.md")) {
+              throw new IOException("write failed");
+            }
+          }
+
+          @Override
+          public void deleteTree(Path root) throws IOException {
+            throw new IOException("cleanup failed");
+          }
+        });
+
+    CandidateSnapshotStore.CandidateSnapshotRecoveryException error = assertThrows(
+        CandidateSnapshotStore.CandidateSnapshotRecoveryException.class,
+        () -> store.stage(page, bytes("ru"), bytes("en"), bytes("{\"schemaVersion\":1}")));
+
+    assertEquals(CandidateSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
+        error.disposition());
+    assertTrue(error.recoveryPaths().stream().anyMatch(path ->
+        path.getFileName().toString().startsWith(".candidate-stage-")));
+  }
+
   private static byte[] bytes(String value) {
     return value.getBytes(StandardCharsets.UTF_8);
   }

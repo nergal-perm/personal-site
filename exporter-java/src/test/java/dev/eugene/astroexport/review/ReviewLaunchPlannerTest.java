@@ -95,6 +95,25 @@ final class ReviewLaunchPlannerTest {
   }
 
   @Test
+  void incompleteSemanticMigrationRejectsLegacyProposalFallback() throws Exception {
+    Fixture fixture = fixture();
+    Path journal = fixture.reviewRoot().resolve(".semantic-links/migration-v1.journal.json");
+    Files.createDirectories(journal.getParent());
+    Files.writeString(journal, "{\"state\":\"installed\"}");
+
+    ReviewLaunchPlanner.ReviewLaunchException error = assertThrows(
+        ReviewLaunchPlanner.ReviewLaunchException.class,
+        () -> new ReviewLaunchPlanner().plan(
+            fixture.reviewRoot(),
+            fixture.page(),
+            fixture.entry(),
+            fixture.english()));
+
+    assertEquals("stale", error.status());
+    assertTrue(error.getMessage().contains("migration"));
+  }
+
+  @Test
   void plansPublishedToProposedDiffTargetsWhenBothSnapshotsExist() throws Exception {
     Fixture fixture = fixture();
     Path published = fixture.page().resolve("published");

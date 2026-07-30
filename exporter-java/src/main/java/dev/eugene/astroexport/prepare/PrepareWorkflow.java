@@ -770,9 +770,10 @@ public final class PrepareWorkflow {
             previousStatus,
             now);
       }
+      List<Path> candidateRecoveryPaths = List.of();
       try {
         if (semantic) {
-          installCandidate(
+          candidateRecoveryPaths = installCandidate(
               reviewRoot,
               committed.entry(),
               committed.referencePlan(),
@@ -819,7 +820,17 @@ public final class PrepareWorkflow {
 
       List<PublicationDiagnostic> scopeDiagnostics;
       try {
-        scopeDiagnostics = scopeDiagnostics(publishedRu, publishedEn, normalizedRu, generated);
+        scopeDiagnostics = new ArrayList<>(
+            scopeDiagnostics(publishedRu, publishedEn, normalizedRu, generated));
+        if (!candidateRecoveryPaths.isEmpty()) {
+          scopeDiagnostics.add(new PublicationDiagnostic(
+              "candidate-recovery",
+              "Generated candidate is ready, but stale displaced candidate data remains at: "
+                  + candidateRecoveryPaths.stream()
+                      .map(Path::toString)
+                      .collect(java.util.stream.Collectors.joining(", ")),
+              false));
+        }
       } catch (RuntimeException error) {
         // The scope check is best-effort review guidance; a failure here (e.g. a corrupt
         // published snapshot) must never turn a working translation into a blocking failure.
@@ -1494,7 +1505,7 @@ public final class PrepareWorkflow {
     }
   }
 
-  private void installCandidate(
+  private List<Path> installCandidate(
       Path reviewRoot,
       ManifestEntry entry,
       ReferencePlan referencePlan,
@@ -1519,8 +1530,8 @@ public final class PrepareWorkflow {
           previousEnglish));
     }
     try (ReviewWorkspace.PendingCandidateSnapshot pending =
-        ReviewWorkspace.stageCandidateSnapshot(reviewRoot, entry, russian, english, references)) {
-      pending.commit(guards);
+        ioHooks.stageCandidateSnapshot(reviewRoot, entry, russian, english, references)) {
+      return pending.commit(guards).recoveryPaths();
     }
   }
 
@@ -2182,6 +2193,15 @@ public final class PrepareWorkflow {
 
     default void deleteEnglishTemporary(Path path) throws IOException {
       Files.deleteIfExists(path);
+    }
+
+    default ReviewWorkspace.PendingCandidateSnapshot stageCandidateSnapshot(
+        Path reviewRoot,
+        ManifestEntry entry,
+        byte[] russian,
+        byte[] english,
+        byte[] references) {
+      return ReviewWorkspace.stageCandidateSnapshot(reviewRoot, entry, russian, english, references);
     }
   }
 

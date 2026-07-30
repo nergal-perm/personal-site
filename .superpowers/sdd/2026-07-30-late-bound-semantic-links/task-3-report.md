@@ -132,3 +132,44 @@ DONE_WITH_CONCERNS
 ## Concerns
 - I did not run the full Maven suite, only the Task 3 covering suite plus focused fix suite.
 - JNA native-access warnings remain under the current JDK.
+
+---
+
+# Fix Round 2 Report
+
+## Status
+DONE_WITH_CONCERNS
+
+## Changed Behavior
+- `CandidateSnapshotStore.stage(...)` now reports failed staged-directory cleanup as `CandidateSnapshotRecoveryException` with `RecoveryDisposition.STAGED_CANDIDATE` and the staged recovery path, instead of suppressing cleanup failure under a generic staging exception.
+- `PrepareWorkflow` no longer discards successful candidate commit recovery paths. Semantic preparation surfaces retained displaced candidate cleanup paths as a non-blocking `candidate-recovery` diagnostic in the `PrepareResult`.
+- `ReviewLaunchPlanner` now blocks `SemanticSchemaState.Mode.MIGRATION_INCOMPLETE` before selecting proposal paths, preventing fallback to legacy top-level `ru.md`/`en.md` while migration recovery is required.
+
+## Covering Tests
+- `CandidateSnapshotStoreTest.failedStageCleanupReportsStagedCandidateRecoveryPath`
+- `PrepareWorkflowTest.semanticPrepareReportsCandidateCleanupRecoveryPath`
+- `ReviewLaunchPlannerTest.incompleteSemanticMigrationRejectsLegacyProposalFallback`
+
+## Commands and Output
+- Red command:
+  - `mvn -q -Dtest=CandidateSnapshotStoreTest,ReviewLaunchPlannerTest test`
+- Red output:
+  - Failed at test compilation because `CandidateSnapshotStore.IoHooks` did not exist.
+- Focused green command:
+  - `mvn -q -Dtest=CandidateSnapshotStoreTest,PrepareWorkflowTest,ReviewLaunchPlannerTest test`
+- Focused green output:
+  - Passed.
+  - JVM emitted JNA native-access warnings.
+- Full Task 3 covering command:
+  - `mvn -q -Dtest=CandidateSnapshotStoreTest,SemanticSchemaStateTest,SemanticOperationLockTest,PrepareWorkflowTest,ManifestBuilderTest,ReviewWorkspaceTest,ReviewLaunchPlannerTest,TranslationProjectionTest test`
+- Full Task 3 covering output:
+  - Passed.
+  - JVM emitted JNA native-access warnings.
+- Whitespace command:
+  - `git diff --check`
+- Whitespace output:
+  - Passed with no output.
+
+## Concerns
+- I did not run the full Maven suite, only the Task 3 covering suite plus focused round 2 suite.
+- JNA native-access warnings remain under the current JDK.

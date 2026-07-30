@@ -51,7 +51,12 @@ public final class ReviewLaunchPlanner {
     }
 
     Path candidateDirectory = page.resolve("candidate");
-    boolean semantic = SemanticSchemaState.mode(root) == SemanticSchemaState.Mode.SEMANTIC;
+    SemanticSchemaState.Mode schemaMode = SemanticSchemaState.mode(root);
+    if (schemaMode == SemanticSchemaState.Mode.MIGRATION_INCOMPLETE) {
+      throw proposalFailure(
+          "Semantic link migration is incomplete; recover it before launching review.");
+    }
+    boolean semantic = schemaMode == SemanticSchemaState.Mode.SEMANTIC;
     if (semantic && !Files.isDirectory(candidateDirectory, LinkOption.NOFOLLOW_LINKS)) {
       throw proposalFailure(
           "Semantic review requires a complete candidate/ proposal; run prepare again.");
