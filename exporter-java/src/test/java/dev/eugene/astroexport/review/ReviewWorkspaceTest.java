@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import java.net.URI;
@@ -50,6 +51,64 @@ final class ReviewWorkspaceTest {
     assertEquals(
         ReviewWorkspace.renderRuReview(entry),
         Files.readString(written));
+  }
+
+  @Test
+  void russianReviewSerializationCanonicalizesEveryMappingLevel() {
+    LinkedHashMap<String, Object> nested = new LinkedHashMap<>();
+    nested.put("z", 2);
+    nested.put("a", 1);
+    LinkedHashMap<String, Object> metadata = new LinkedHashMap<>();
+    metadata.put("zeta", "last");
+    metadata.put("nested", nested);
+    metadata.put("alpha", "first");
+    metadata.put("id", "canonical");
+    ManifestEntry entry = new ManifestEntry(
+        "blog/Canonical.md",
+        "src/content/blog/ru/canonical.md",
+        "/ru/essays/canonical/",
+        metadata,
+        "Body.");
+
+    String rendered = ReviewWorkspace.renderRuReview(entry);
+    FrontmatterDocument parsed = FrontmatterDocument.parse(
+        Path.of("ru.md"), "ru.md", rendered);
+
+    assertEquals(
+        List.of("alpha", "id", "nested", "route", "targetPath", "zeta"),
+        List.copyOf(parsed.metadata().keySet()));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> parsedNested =
+        (Map<String, Object>) parsed.metadata().get("nested");
+    assertEquals(List.of("a", "z"), List.copyOf(parsedNested.keySet()));
+  }
+
+  @Test
+  void generatedStatusSerializationCanonicalizesEveryMappingLevel() {
+    String generated = ReviewWorkspace.setGeneratedReviewStatus("""
+        ---
+        zeta: last
+        nested:
+          z: 2
+          a: 1
+        translationStatus: reviewed
+        alpha: first
+        ---
+        English body.
+        """);
+
+    FrontmatterDocument parsed = FrontmatterDocument.parse(
+        Path.of("en.md"), "en.md", generated);
+
+    assertEquals(
+        List.of("alpha", "nested", "translationStatus", "zeta"),
+        List.copyOf(parsed.metadata().keySet()));
+    @SuppressWarnings("unchecked")
+    Map<String, Object> parsedNested =
+        (Map<String, Object>) parsed.metadata().get("nested");
+    assertEquals(List.of("a", "z"), List.copyOf(parsedNested.keySet()));
+    assertEquals("generated", parsed.metadata().get("translationStatus"));
+    assertTrue(generated.endsWith("English body.\n"));
   }
 
   @Test

@@ -3,6 +3,7 @@ package dev.eugene.astroexport.review;
 import com.fasterxml.jackson.core.StreamReadFeature;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.astroexport.frontmatter.FrontmatterCanonicalizer;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.model.ManifestEntry;
@@ -589,7 +590,7 @@ public final class ReviewWorkspace {
   private static String serializeMarkdown(Map<String, Object> metadata, String body) {
     String yaml = new Dump(DumpSettings.builder()
         .setDefaultFlowStyle(FlowStyle.BLOCK)
-        .build()).dumpToString(metadata);
+        .build()).dumpToString(FrontmatterCanonicalizer.canonicalize(metadata));
     String content = body == null ? "" : body.strip();
     return "---\n" + yaml + "---\n" + (content.isEmpty() ? "" : content + "\n");
   }
