@@ -8,6 +8,8 @@ import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
+import dev.eugene.astroexport.references.PageReferenceMap;
+import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
@@ -51,6 +53,8 @@ public final class ReviewWorkspace {
   private static final AtomicExchange ATOMIC_EXCHANGE = new JnaAtomicExchange();
   private static final PublishedSnapshotStore PUBLISHED_SNAPSHOTS =
       new PublishedSnapshotStore();
+  private static final CandidateSnapshotStore CANDIDATE_SNAPSHOTS =
+      new CandidateSnapshotStore();
   private static final ObjectMapper JSON = new ObjectMapper()
       .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION.mappedFeature());
 
@@ -287,12 +291,74 @@ public final class ReviewWorkspace {
     return readIfExists(reviewRoot.resolve(collection).resolve(publicId).resolve("published/en.md"));
   }
 
+  public static PageReferenceMap readCandidateReferences(
+      Path reviewRoot,
+      String collection,
+      String publicId) {
+    Path page = reviewRoot.resolve(collection).resolve(publicId).resolve("candidate");
+    try {
+      byte[] ru = Files.readAllBytes(page.resolve("ru.md"));
+      byte[] en = Files.readAllBytes(page.resolve("en.md"));
+      PageReferenceMap map = PageReferenceMapCodec.read(
+          Files.readAllBytes(page.resolve("references.json")),
+          "candidate/references.json");
+      PageReferenceMapCodec.validate(map, ru, en);
+      return map;
+    } catch (IOException error) {
+      throw new IllegalStateException("cannot read candidate references " + page, error);
+    }
+  }
+
+  public static PendingCandidateSnapshot stageCandidateSnapshot(
+      Path reviewRoot,
+      ManifestEntry entry,
+      byte[] russian,
+      byte[] english,
+      byte[] references) {
+    Target target = target(entry);
+    Path page = reviewRoot.resolve(target.collection()).resolve(target.publicId());
+    try {
+      Files.createDirectories(page);
+    } catch (IOException error) {
+      throw new IllegalStateException("cannot prepare candidate snapshot " + page, error);
+    }
+    CandidateSnapshotStore.PendingCandidate pending =
+        CANDIDATE_SNAPSHOTS.stage(page, russian, english, references);
+    return new PendingCandidateSnapshot() {
+      @Override
+      public CandidateSnapshotResult commit(
+          List<WorkflowStateService.SnapshotGuard> guards) {
+        CandidateSnapshotStore.CommitResult result = pending.commit(guards);
+        return new CandidateSnapshotResult(result.recoveryPaths());
+      }
+
+      @Override
+      public void close() {
+        pending.close();
+      }
+    };
+  }
+
   public interface PendingPublishedSnapshot extends AutoCloseable {
     PublishedSnapshotResult commit(
         List<WorkflowStateService.SnapshotGuard> guards);
 
     @Override
     void close();
+  }
+
+  public interface PendingCandidateSnapshot extends AutoCloseable {
+    CandidateSnapshotResult commit(
+        List<WorkflowStateService.SnapshotGuard> guards);
+
+    @Override
+    void close();
+  }
+
+  public record CandidateSnapshotResult(List<Path> recoveryPaths) {
+    public CandidateSnapshotResult {
+      recoveryPaths = List.copyOf(recoveryPaths);
+    }
   }
 
   public record PublishedSnapshotResult(List<Path> recoveryPaths) {

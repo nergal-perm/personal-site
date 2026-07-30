@@ -17,6 +17,7 @@ import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.model.ManifestResult;
+import dev.eugene.astroexport.references.VaultReferenceCatalog;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.translation.TranslationValidator;
@@ -92,6 +93,23 @@ final class PrepareWorkflowTest {
         List.of("created", "running", "running", "succeeded"),
         ((List<Map<String, Object>>) journal.get("history")).stream()
             .map(event -> event.get("state")).toList());
+  }
+
+  @Test
+  void semanticCandidateRejectsEnglishOccurrenceOrderMismatch() throws Exception {
+    Fixture fixture = semanticFixture();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "First [second](ref:ref-0002), then [first](ref:ref-0001).\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("translation_failed", result.status());
+    assertEquals("candidate", result.diagnostics().getFirst().field());
+    assertTrue(result.diagnostics().getFirst().message().contains("reference-order-mismatch"));
+    assertFalse(Files.exists(fixture.review().resolve("blog/essay/candidate")));
   }
 
   @Test
@@ -1801,6 +1819,66 @@ final class PrepareWorkflowTest {
         Russian body.
         """);
     return new Fixture(vault, source, temp.resolve("review"), temp.resolve("jobs"));
+  }
+
+  private Fixture semanticFixture() throws Exception {
+    Fixture fixture = fixture();
+    Files.writeString(fixture.source(), """
+        ---
+        id: essay
+        title: Russian title
+        publish: true
+        publicId: essay
+        publicCollection: blog
+        publicContentType: essay
+        description: Russian description.
+        topics:
+          - systems
+        ---
+        Сначала [[Target One|первый]], затем [[Target Two|второй]].
+        """);
+    Path second = fixture.vault().resolve("private/Target Two.md");
+    Files.createDirectories(second.getParent());
+    Files.writeString(second, "private");
+    Path marker = fixture.review().resolve(".semantic-links/schema-v1.active.json");
+    Files.createDirectories(marker.getParent());
+    Files.writeString(marker, """
+        {
+          "schemaVersion": 1,
+          "inventorySha256": "%s",
+          "catalogSha256": "%s",
+          "activatedAt": "2026-07-30T00:00:00Z"
+        }
+        """.formatted("a".repeat(64), "b".repeat(64)));
+    VaultReferenceCatalog catalog = new VaultReferenceCatalog(
+        VaultReferenceCatalog.SCHEMA_VERSION,
+        Map.of(
+            "vault-ref-page", new VaultReferenceCatalog.CatalogEntry(
+                "vault-ref-page",
+                "blog/Essay.md",
+                null,
+                "Russian title",
+                List.of(),
+                List.of(),
+                VaultReferenceCatalog.STATE_ACTIVE),
+            "vault-ref-0001", new VaultReferenceCatalog.CatalogEntry(
+                "vault-ref-0001",
+                "private/Target One.md",
+                null,
+                "Target One",
+                List.of(),
+                List.of(),
+                VaultReferenceCatalog.STATE_ACTIVE),
+            "vault-ref-0002", new VaultReferenceCatalog.CatalogEntry(
+                "vault-ref-0002",
+                "private/Target Two.md",
+                null,
+                "Target Two",
+                List.of(),
+                List.of(),
+                VaultReferenceCatalog.STATE_ACTIVE)));
+    catalog.writeAtomically(fixture.review());
+    return fixture;
   }
 
   private Fixture conceptFixture() throws Exception {

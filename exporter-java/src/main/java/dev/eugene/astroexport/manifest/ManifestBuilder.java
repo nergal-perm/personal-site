@@ -12,6 +12,10 @@ import dev.eugene.astroexport.translation.TranslationProjection;
 import dev.eugene.astroexport.validation.PublicationDiagnostic;
 import dev.eugene.astroexport.validation.PublicationValidator;
 import dev.eugene.astroexport.markdown.MarkdownScanner;
+import dev.eugene.astroexport.references.ReferencePlan;
+import dev.eugene.astroexport.references.ReferencePlanningException;
+import dev.eugene.astroexport.references.SemanticLinkContext;
+import dev.eugene.astroexport.references.SemanticReferencePlanner;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
@@ -81,6 +85,7 @@ public final class ManifestBuilder {
   private final PublicationValidator publicationValidator = new PublicationValidator();
   private final LinkProcessor linkProcessor = new LinkProcessor();
   private final EditorialParser editorialParser = new EditorialParser();
+  private final SemanticReferencePlanner semanticReferencePlanner = new SemanticReferencePlanner();
 
   public ManifestResult buildRussianManifest(SelectionResult selection) {
     List<Note> notes = selection.included().stream()
@@ -169,6 +174,106 @@ public final class ManifestBuilder {
         retained,
         stripped,
         assets.stream().sorted(ManifestBuilder::compareUnicodeCodePoints).toList());
+  }
+
+  public ManifestResult buildRussianManifest(
+      SelectionResult selection,
+      SemanticLinkContext semanticLinks) {
+    List<Note> notes = selection.included().stream()
+        .map(this::sanitize)
+        .sorted(Comparator.comparing(Note::vaultPath, ManifestBuilder::compareUnicodeCodePoints))
+        .toList();
+    List<ManifestEntry> entries = new ArrayList<>();
+    for (Note note : notes) {
+      entries.add(normalize(note));
+    }
+    Map<String, ManifestEntry> entriesByPath = new LinkedHashMap<>();
+    for (ManifestEntry entry : entries) {
+      entriesByPath.put(entry.sourcePath(), entry);
+    }
+    List<ManifestLink> retained = new ArrayList<>();
+    List<ManifestLink> stripped = new ArrayList<>();
+    Set<String> assets = new LinkedHashSet<>();
+    Map<String, ReferencePlan> referencePlans = new LinkedHashMap<>();
+    for (Note note : notes) {
+      ManifestEntry entry = entriesByPath.get(note.vaultPath());
+      LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(entry.metadata());
+      String body = entry.body();
+      boolean refreshEditorialTranslationSource = false;
+      if (note.publicCollection().equals("editorial")) {
+        int retainedBefore = retained.size();
+        int strippedBefore = stripped.size();
+        resolveEditorialMetadata(entry.sourcePath(), metadata, notes, retained, stripped);
+        resolvePins(entry.sourcePath(), metadata, notes);
+        refreshEditorialTranslationSource =
+            retained.size() != retainedBefore
+                || stripped.size() != strippedBefore
+                || metadata.get("pinned") instanceof List<?> pins && !pins.isEmpty();
+        filterEditorialReferences(entry.sourcePath(), metadata, notes, stripped);
+      } else {
+        try {
+          dev.eugene.astroexport.links.ManifestLink links =
+              linkProcessor.processSemanticEmbedsAndAssets(copy(note, body));
+          assets.addAll(links.assets());
+          SemanticReferencePlanner.PreparedSemanticBody prepared =
+              semanticReferencePlanner.prepare(
+                  entry.sourcePath(),
+                  semanticLinks.pageRef(entry.sourcePath()),
+                  (String) links.body(),
+                  semanticLinks.previousApprovedMap(entry.sourcePath()),
+                  semanticLinks.resolver());
+          body = prepared.markdown();
+          referencePlans.put(entry.sourcePath(), prepared.plan());
+          for (PublicationDiagnostic diagnostic : prepared.diagnostics()) {
+            stripped.add(new ManifestLink(entry.sourcePath(), diagnostic.message(), "body"));
+          }
+        } catch (LinkProcessor.TransclusionException error) {
+          throw new ManifestTransclusionException(entry.sourcePath(), error.getMessage());
+        } catch (ReferencePlanningException error) {
+          throw new ManifestValidationException(
+              entry.sourcePath(), error.code(), error.getMessage());
+        }
+      }
+      if (note.publicCollection().equals("blog") && "claim".equals(metadata.get("contentType"))) {
+        resolveClaimLinks(entry.sourcePath(), metadata, notes, retained, stripped);
+      }
+      resolveFrontmatterLinks(entry.sourcePath(), metadata, notes, retained, stripped);
+      metadata.put("sourceHash", sourceHash(metadata, body));
+      String translationSourceHash = entry.translationSourceHash();
+      Map<String, Object> translationSourceMetadata = entry.translationSourceMetadata();
+      if (refreshEditorialTranslationSource) {
+        translationSourceHash = String.valueOf(metadata.get("sourceHash"));
+        translationSourceMetadata = metadata;
+      }
+      ManifestEntry finalized = new ManifestEntry(
+          entry.sourcePath(),
+          entry.targetPath(),
+          entry.route(),
+          metadata,
+          body,
+          translationSourceHash,
+          translationSourceMetadata);
+      if (!note.publicCollection().equals("editorial")) {
+        finalized = new ManifestEntry(
+            finalized.sourcePath(),
+            finalized.targetPath(),
+            finalized.route(),
+            finalized.metadata(),
+            finalized.body(),
+            TranslationProjection.translationSourceHash(finalized),
+            null);
+      }
+      entriesByPath.put(entry.sourcePath(), finalized);
+    }
+    return new ManifestResult(
+        notes.stream().map(note -> entriesByPath.get(note.vaultPath())).toList(),
+        List.of(),
+        retained,
+        stripped,
+        assets.stream().sorted(ManifestBuilder::compareUnicodeCodePoints).toList(),
+        List.of(),
+        List.of(),
+        referencePlans);
   }
 
   private ManifestEntry normalize(Note note) {

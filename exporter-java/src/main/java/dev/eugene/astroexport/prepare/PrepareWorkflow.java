@@ -8,9 +8,17 @@ import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
 import dev.eugene.astroexport.fs.JnaFileDescriptor;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
+import dev.eugene.astroexport.migration.SemanticOperationLock;
+import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.process.CodexRunner;
+import dev.eugene.astroexport.references.PageReferenceMap;
+import dev.eugene.astroexport.references.PageReferenceMapCodec;
+import dev.eugene.astroexport.references.ReferencePlan;
+import dev.eugene.astroexport.references.SemanticLinkContext;
+import dev.eugene.astroexport.references.VaultReferenceCatalog;
+import dev.eugene.astroexport.references.VaultReferenceResolver;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.translation.TranslationDiff;
 import dev.eugene.astroexport.translation.TranslationProjection;
@@ -279,17 +287,47 @@ public final class PrepareWorkflow {
       return metadataBlocked(initial, now);
     }
 
-    ManifestEntry entry;
+    SemanticOperationLock.Lease semanticLease;
+    SemanticSchemaState.Mode semanticMode;
     try {
-      entry = entryResolver.resolve(vault, notePath);
+      semanticLease = SemanticOperationLock.acquireShared(reviewRoot);
+      semanticMode = SemanticSchemaState.mode(reviewRoot);
+    } catch (SemanticOperationLock.LockBusyException error) {
+      return new PrepareResult(
+          "translating",
+          null,
+          List.of(new PublicationDiagnostic(
+              "semantic-operation",
+              "A semantic migration or recovery is running; wait for it to finish.")),
+          List.of(),
+          null,
+          null);
+    } catch (IOException error) {
+      return metadataBlocked(initial, now, new PublicationDiagnostic(
+          "semantic-operation",
+          "Could not acquire the semantic operation lock: "
+              + error.getClass().getSimpleName() + "."));
+    }
+    try (semanticLease) {
+    if (semanticMode == SemanticSchemaState.Mode.MIGRATION_INCOMPLETE) {
+      return metadataBlocked(initial, now, new PublicationDiagnostic(
+          "semantic-schema",
+          "Semantic link migration is incomplete; recover it before preparing translations."));
+    }
+
+    ResolvedEntry resolvedEntry;
+    try {
+      resolvedEntry = resolveEntry(vault, notePath, reviewRoot, semanticMode);
     } catch (RuntimeException error) {
       return metadataBlocked(initial, now, new PublicationDiagnostic(
           "manifest", notePath + ": " + safeMessage(error)));
     }
+    ManifestEntry entry = resolvedEntry.entry();
     Path source = initial.note().path();
     Target target = target(entry);
     Path reviewDirectory = reviewRoot.resolve(target.collection()).resolve(target.publicId());
-    Path durableEn = reviewDirectory.resolve("en.md");
+    boolean semantic = semanticMode == SemanticSchemaState.Mode.SEMANTIC;
+    Path durableEn = reviewDirectory.resolve(semantic ? "candidate/en.md" : "en.md");
     Path publicationJobs = jobsRoot.resolve(target.collection()).resolve(target.publicId());
     Path lockPath = jobsRoot.resolve(target.collection()).resolve(target.publicId() + ".lock");
 
@@ -550,7 +588,7 @@ public final class PrepareWorkflow {
         runnerError = error;
       }
 
-      Fresh fresh = fresh(vault, notePath, source, sourceHash);
+      Fresh fresh = fresh(vault, notePath, reviewRoot, semanticMode, source, sourceHash);
       if (fresh.staleMessage() != null) {
         return terminal(
             "stale",
@@ -640,7 +678,7 @@ public final class PrepareWorkflow {
             now);
       }
 
-      Fresh finalFresh = fresh(vault, notePath, source, sourceHash);
+      Fresh finalFresh = fresh(vault, notePath, reviewRoot, semanticMode, source, sourceHash);
       if (finalFresh.staleMessage() != null) {
         return terminal(
             "stale",
@@ -711,7 +749,7 @@ public final class PrepareWorkflow {
             now);
       }
 
-      Fresh committed = fresh(vault, notePath, source, sourceHash);
+      Fresh committed = fresh(vault, notePath, reviewRoot, semanticMode, source, sourceHash);
       if (committed.staleMessage() != null) {
         return terminal(
             "stale",
@@ -726,12 +764,23 @@ public final class PrepareWorkflow {
             now);
       }
       try {
-        installEnglish(
-            durableEn,
-            generated,
-            previousEn,
-            source,
-            committed.sourceSnapshot());
+        if (semantic) {
+          installCandidate(
+              reviewRoot,
+              committed.entry(),
+              committed.referencePlan(),
+              generated,
+              previousEn,
+              source,
+              committed.sourceSnapshot());
+        } else {
+          installEnglish(
+              durableEn,
+              generated,
+              previousEn,
+              source,
+              committed.sourceSnapshot());
+        }
       } catch (WorkflowStateService.ConcurrentFileUpdateException error) {
         return terminal(
             "stale",
@@ -748,9 +797,10 @@ public final class PrepareWorkflow {
       } catch (Exception error) {
         return terminal(
             "translation_failed",
-            "review",
-            "Could not atomically replace en.md: "
-                + error.getClass().getSimpleName() + ": " + safeMessage(error),
+            semantic ? "candidate" : "review",
+            (semantic ? "Could not validate or install candidate triple: "
+                : "Could not atomically replace en.md: ")
+                + candidateErrorMessage(error),
             source,
             committed.entry(),
             reviewDirectory,
@@ -791,6 +841,7 @@ public final class PrepareWorkflow {
             jobId);
       }
     }
+  }
   }
 
   private PrepareResult metadataBlocked(PreflightService.Result result, Instant now) {
@@ -876,6 +927,8 @@ public final class PrepareWorkflow {
   private Fresh fresh(
       Path vault,
       String notePath,
+      Path reviewRoot,
+      SemanticSchemaState.Mode semanticMode,
       Path source,
       String expectedHash) {
     byte[] before;
@@ -883,6 +936,7 @@ public final class PrepareWorkflow {
       before = Files.readAllBytes(source);
     } catch (IOException error) {
       return new Fresh(
+          null,
           null,
           "Source could not be read while translation state was being validated; "
               + "inspect the note and run prepare again.",
@@ -897,15 +951,35 @@ public final class PrepareWorkflow {
               + "fix the note and run prepare again.";
     } else {
       try {
-        freshEntry = entryResolver.resolve(vault, notePath);
+        ResolvedEntry resolved = resolveEntry(vault, notePath, reviewRoot, semanticMode);
+        freshEntry = resolved.entry();
+        ReferencePlan referencePlan = resolved.referencePlan();
+        if (freshEntry != null && !expectedHash.equals(requiredHash(freshEntry))) {
+          staleMessage =
+              "Source changed during translation; discard this candidate and run prepare again.";
+        }
+        byte[] after;
+        try {
+          ioHooks.afterFreshPreflight(source);
+          after = Files.readAllBytes(source);
+        } catch (IOException error) {
+          return new Fresh(
+              freshEntry,
+              referencePlan,
+              "Source could not be read while translation state was being validated; "
+                  + "inspect the note and run prepare again.",
+              null);
+        }
+        if (!Arrays.equals(before, after)) {
+          staleMessage =
+              "Source changed while translation state was being validated; "
+                  + "inspect the note and run prepare again.";
+        }
+        return new Fresh(freshEntry, referencePlan, staleMessage, after);
       } catch (RuntimeException error) {
         staleMessage =
             "Source changed during translation and no longer passes preflight; "
                 + "fix the note and run prepare again.";
-      }
-      if (freshEntry != null && !expectedHash.equals(requiredHash(freshEntry))) {
-        staleMessage =
-            "Source changed during translation; discard this candidate and run prepare again.";
       }
     }
 
@@ -916,6 +990,7 @@ public final class PrepareWorkflow {
     } catch (IOException error) {
       return new Fresh(
           freshEntry,
+          null,
           "Source could not be read while translation state was being validated; "
               + "inspect the note and run prepare again.",
           null);
@@ -925,7 +1000,33 @@ public final class PrepareWorkflow {
           "Source changed while translation state was being validated; "
               + "inspect the note and run prepare again.";
     }
-    return new Fresh(freshEntry, staleMessage, after);
+    return new Fresh(freshEntry, null, staleMessage, after);
+  }
+
+  private ResolvedEntry resolveEntry(
+      Path vault,
+      String notePath,
+      Path reviewRoot,
+      SemanticSchemaState.Mode semanticMode) {
+    if (semanticMode != SemanticSchemaState.Mode.SEMANTIC) {
+      return new ResolvedEntry(entryResolver.resolve(vault, notePath), null);
+    }
+    PublicationDiscovery discovery = new PublicationDiscovery();
+    ManifestBuilder builder = new ManifestBuilder();
+    VaultReferenceCatalog catalog = VaultReferenceCatalog.load(reviewRoot);
+    ManifestResult result = builder.buildRussianManifest(
+        discovery.select(vault),
+        new SemanticLinkContext(
+            catalog,
+            new VaultReferenceResolver(catalog),
+            Map.of()));
+    ManifestEntry entry = result.entries()
+        .stream()
+        .filter(candidate -> candidate.sourcePath().equals(notePath))
+        .findFirst()
+        .orElseThrow(() -> new IllegalArgumentException(
+            notePath + ": must be selected for publication"));
+    return new ResolvedEntry(entry, result.referencePlans().get(notePath));
   }
 
   private static List<PublicationDiagnostic> scopeDiagnostics(
@@ -1013,6 +1114,10 @@ public final class PrepareWorkflow {
         - Preserve reference identities exactly. An identity may itself contain /ru/;
           keep such catalog keys unchanged. All rendered internal route values and links
           in English prose must use /en/, never /ru/.
+        - Every Markdown destination of the form ref:ref-NNNN is an invariant semantic
+          occurrence ID. Preserve every ID exactly once and in the exact order found in
+          ru.md. Translate only the visible label. Do not invent, remove, duplicate,
+          renumber, or reorder semantic occurrence IDs.
         - Produce valid UTF-8 Markdown with valid YAML frontmatter.
 
         The following is the complete structural template for candidate.en.md. Replace
@@ -1347,6 +1452,43 @@ public final class PrepareWorkflow {
       }
       forceDirectory(target.getParent());
     }
+  }
+
+  private void installCandidate(
+      Path reviewRoot,
+      ManifestEntry entry,
+      ReferencePlan referencePlan,
+      byte[] english,
+      byte[] previousEnglish,
+      Path source,
+      byte[] expectedSource) throws IOException {
+    if (referencePlan == null) {
+      throw new IllegalArgumentException("semantic reference plan is missing");
+    }
+    byte[] russian = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    PageReferenceMap map = PageReferenceMap.bind(referencePlan, russian, english);
+    PageReferenceMapCodec.validate(map, russian, english);
+    byte[] references = PageReferenceMapCodec.write(map);
+    assertSnapshot(source, expectedSource, "guarded source content changed");
+    List<WorkflowStateService.SnapshotGuard> guards = new ArrayList<>();
+    guards.add(new WorkflowStateService.SnapshotGuard(source, expectedSource));
+    if (previousEnglish != null) {
+      Target target = target(entry);
+      guards.add(new WorkflowStateService.SnapshotGuard(
+          reviewRoot.resolve(target.collection()).resolve(target.publicId()).resolve("candidate/en.md"),
+          previousEnglish));
+    }
+    try (ReviewWorkspace.PendingCandidateSnapshot pending =
+        ReviewWorkspace.stageCandidateSnapshot(reviewRoot, entry, russian, english, references)) {
+      pending.commit(guards);
+    }
+  }
+
+  private static String candidateErrorMessage(Exception error) {
+    if (error instanceof PageReferenceMapCodec.ReferenceValidationException validation) {
+      return validation.code() + ": " + validation.getMessage();
+    }
+    return error.getClass().getSimpleName() + ": " + safeMessage(error);
   }
 
   private Path rollbackEnglish(Path target, Path temporary, byte[] payload)
@@ -2018,8 +2160,13 @@ public final class PrepareWorkflow {
 
   private record Target(String collection, String publicId) { }
 
+  private record ResolvedEntry(
+      ManifestEntry entry,
+      ReferencePlan referencePlan) { }
+
   private record Fresh(
       ManifestEntry entry,
+      ReferencePlan referencePlan,
       String staleMessage,
       byte[] sourceSnapshot) { }
 

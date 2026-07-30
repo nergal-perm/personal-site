@@ -9,6 +9,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.model.ManifestLink;
+import dev.eugene.astroexport.references.ReferencePlan;
+import dev.eugene.astroexport.references.SemanticLinkContext;
+import dev.eugene.astroexport.references.VaultReferenceCatalog;
+import dev.eugene.astroexport.references.VaultReferenceResolver;
 import java.math.BigInteger;
 import java.nio.file.Path;
 import java.time.LocalDate;
@@ -1166,8 +1170,76 @@ final class ManifestBuilderTest {
     }
   }
 
+  @Test
+  void targetPublicationStateDoesNotChangeReferrerHashOrOccurrencePlan() {
+    Prepared referrerWhilePrivate = prepareFixture(false);
+    Prepared referrerWhilePublic = prepareFixture(true);
+
+    assertEquals(
+        referrerWhilePrivate.entry().translationSourceHash(),
+        referrerWhilePublic.entry().translationSourceHash());
+    assertEquals(referrerWhilePrivate.referencePlan(), referrerWhilePublic.referencePlan());
+    assertEquals("[label](ref:ref-0001)",
+        referrerWhilePrivate.entry().body());
+  }
+
   private static dev.eugene.astroexport.model.ManifestEntry only(dev.eugene.astroexport.model.ManifestResult result) { return result.entries().getFirst(); }
   private static dev.eugene.astroexport.model.ManifestEntry byId(dev.eugene.astroexport.model.ManifestResult result, String id) { return result.entries().stream().filter(entry -> id.equals(entry.metadata().get("id"))).findFirst().orElseThrow(); }
+  private Prepared prepareFixture(boolean targetPublic) {
+    Note referrer = note(
+        "blog/Referrer.md",
+        "Referrer",
+        "referrer",
+        "blog",
+        "essay",
+        Map.of("description", "Описание."),
+        "[[Target|label]]");
+    Note target = new Note(
+        Path.of("private/Target.md"),
+        "private/Target.md",
+        "Target",
+        Map.of(
+            "title", "Target",
+            "publish", targetPublic,
+            "publicId", "target",
+            "publicCollection", "blog",
+            "publicContentType", "note"),
+        "",
+        targetPublic,
+        "target",
+        "blog",
+        "note",
+        List.of());
+    VaultReferenceCatalog catalog = new VaultReferenceCatalog(
+        VaultReferenceCatalog.SCHEMA_VERSION,
+        Map.of("vault-ref-page", new VaultReferenceCatalog.CatalogEntry(
+            "vault-ref-page",
+            "blog/Referrer.md",
+            null,
+            "Referrer",
+            List.of(),
+            List.of(),
+            VaultReferenceCatalog.STATE_ACTIVE),
+            "vault-ref-0001", new VaultReferenceCatalog.CatalogEntry(
+                "vault-ref-0001",
+                "private/Target.md",
+                null,
+                "Target",
+                List.of(),
+                List.of(),
+                VaultReferenceCatalog.STATE_ACTIVE)));
+    var result = builder.buildRussianManifest(
+        targetPublic ? selection(referrer, target) : selection(referrer),
+        new SemanticLinkContext(
+            catalog,
+            new VaultReferenceResolver(catalog),
+            Map.of()));
+    dev.eugene.astroexport.model.ManifestEntry entry = byId(result, "referrer");
+    return new Prepared(entry, result.referencePlans().get("blog/Referrer.md"));
+  }
+  private record Prepared(
+      dev.eugene.astroexport.model.ManifestEntry entry,
+      ReferencePlan referencePlan) { }
   private static SelectionResult selection(Note... notes) { return new SelectionResult(List.of(notes), List.of(), notes.length, notes.length); }
   private static Note note(String path, String title, String id, String collection, String type, Map<String, Object> extra, String body) {
     return note(path, title, id, collection, type, extra, body, List.of());

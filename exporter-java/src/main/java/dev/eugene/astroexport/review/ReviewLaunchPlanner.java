@@ -2,6 +2,8 @@ package dev.eugene.astroexport.review;
 
 import dev.eugene.astroexport.fs.JnaFileDescriptor;
 import dev.eugene.astroexport.model.ManifestEntry;
+import dev.eugene.astroexport.references.PageReferenceMap;
+import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
@@ -47,10 +49,16 @@ public final class ReviewLaunchPlanner {
       throw proposalFailure("Review directory escapes the review root.");
     }
 
-    Path proposedRu = page.resolve("ru.md");
-    Path proposedEn = page.resolve("en.md");
+    Path proposalDirectory = Files.isDirectory(page.resolve("candidate"), LinkOption.NOFOLLOW_LINKS)
+        ? page.resolve("candidate")
+        : page;
+    Path proposedRu = proposalDirectory.resolve("ru.md");
+    Path proposedEn = proposalDirectory.resolve("en.md");
     byte[] russian = readProposal(proposedRu, "Russian proposal");
     byte[] english = readProposal(proposedEn, "English proposal");
+    if (proposalDirectory.endsWith("candidate")) {
+      validateCandidateReferences(proposalDirectory, russian, english);
+    }
     byte[] expectedRussian =
         ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
     if (!Arrays.equals(expectedRussian, russian)) {
@@ -143,6 +151,18 @@ public final class ReviewLaunchPlanner {
       safeReader.read(path, label);
     } catch (IOException | IllegalArgumentException error) {
       throw publishedFailure(label + " is unsafe or unreadable: " + error.getMessage(), error);
+    }
+  }
+
+  private void validateCandidateReferences(Path candidate, byte[] russian, byte[] english) {
+    try {
+      byte[] references = safeReader.read(
+          candidate.resolve("references.json"), "Candidate reference map");
+      PageReferenceMap map = PageReferenceMapCodec.read(references, "candidate/references.json");
+      PageReferenceMapCodec.validate(map, russian, english);
+    } catch (IOException | RuntimeException error) {
+      throw proposalFailure(
+          "Candidate reference map is unavailable: " + error.getMessage(), error);
     }
   }
 

@@ -16,6 +16,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 public final class JnaFileDescriptor implements AutoCloseable {
   private static final int O_RDONLY = 0;
   private static final int O_RDWR = 2;
+  private static final int LOCK_SH = 1;
   private static final int LOCK_EX = 2;
   private static final int LOCK_NB = 4;
   private static final int LOCK_UN = 8;
@@ -161,6 +162,15 @@ public final class JnaFileDescriptor implements AutoCloseable {
 
   public boolean tryExclusiveLock() throws IOException {
     int result = flock.invokeInt(new Object[] {descriptor, LOCK_EX | LOCK_NB});
+    return tryLockResult(result);
+  }
+
+  public boolean trySharedLock() throws IOException {
+    int result = flock.invokeInt(new Object[] {descriptor, LOCK_SH | LOCK_NB});
+    return tryLockResult(result);
+  }
+
+  private boolean tryLockResult(int result) throws IOException {
     if (result == 0) {
       locked = true;
       return true;

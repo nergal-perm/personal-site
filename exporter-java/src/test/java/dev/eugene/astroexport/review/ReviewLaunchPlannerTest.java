@@ -5,6 +5,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.eugene.astroexport.model.ManifestEntry;
+import dev.eugene.astroexport.references.PageReferenceMap;
+import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
@@ -43,6 +45,36 @@ final class ReviewLaunchPlannerTest {
     assertEquals(fixture.page().toRealPath().resolve("en.md"),
         plan.targets().get(1).proposedPath());
     assertEquals(null, plan.targets().get(1).publishedPath());
+  }
+
+  @Test
+  void semanticPlanReadsProposedRuEnFromCandidateDirectoryAndValidatesReferences() throws Exception {
+    Fixture fixture = fixture();
+    Files.delete(fixture.page().resolve("ru.md"));
+    Files.delete(fixture.page().resolve("en.md"));
+    byte[] ru = ReviewWorkspace.renderRuReview(fixture.entry()).getBytes(StandardCharsets.UTF_8);
+    byte[] en = fixture.english();
+    Path candidate = fixture.page().resolve("candidate");
+    Files.createDirectories(candidate);
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), en);
+    Files.write(candidate.resolve("references.json"), PageReferenceMapCodec.write(new PageReferenceMap(
+        PageReferenceMap.SCHEMA_VERSION,
+        "vault-ref-page",
+        fixture.entry().sourcePath(),
+        PageReferenceMapCodec.sha256(ru),
+        PageReferenceMapCodec.sha256(en),
+        List.of(),
+        Map.of())));
+
+    ReviewLaunchPlanner.ReviewPlan plan = new ReviewLaunchPlanner().plan(
+        fixture.reviewRoot(),
+        fixture.page(),
+        fixture.entry(),
+        en);
+
+    assertEquals(candidate.toRealPath().resolve("ru.md"), plan.targets().get(0).proposedPath());
+    assertEquals(candidate.toRealPath().resolve("en.md"), plan.targets().get(1).proposedPath());
   }
 
   @Test

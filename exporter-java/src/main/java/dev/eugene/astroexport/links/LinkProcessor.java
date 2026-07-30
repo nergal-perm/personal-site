@@ -44,6 +44,26 @@ public final class LinkProcessor {
     return new ManifestLink(replaced, retained, stripped, assets);
   }
 
+  public ManifestLink processSemanticEmbedsAndAssets(Note note) {
+    String body = MarkdownScanner.stripObsidianComments(note.body());
+    List<String> assets = new ArrayList<>();
+    String replaced = replaceOutsideProtectedContexts(body, match -> {
+      String target = match.group(2).strip();
+      boolean embed = !match.group(1).isEmpty();
+      if (isAsset(target)) {
+        if (embed) {
+          assets.add(target);
+        }
+        return match.group();
+      }
+      if (embed) {
+        throw new TransclusionException(target);
+      }
+      return match.group();
+    });
+    return new ManifestLink(replaced, List.of(), List.of(), assets);
+  }
+
   public ManifestLink tokenizeEditorialText(String source, Collection<Note> selectedNotes) {
     Map<String, Resolution> index = index(selectedNotes);
     String body = MarkdownScanner.stripObsidianComments(source);

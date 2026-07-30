@@ -1,0 +1,74 @@
+package dev.eugene.astroexport.migration;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Map;
+import java.util.regex.Pattern;
+
+public final class SemanticSchemaState {
+  private static final ObjectMapper JSON = new ObjectMapper(new JsonFactory()
+      .enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION));
+  private static final Pattern SHA256 = Pattern.compile("^[0-9a-f]{64}$");
+
+  private SemanticSchemaState() { }
+
+  public static Path activationMarker(Path reviewRoot) {
+    return reviewRoot.resolve(".semantic-links/schema-v1.active.json");
+  }
+
+  public static Path migrationJournal(Path reviewRoot) {
+    return reviewRoot.resolve(".semantic-links/migration-v1.journal.json");
+  }
+
+  public static Mode mode(Path reviewRoot) {
+    Path marker = activationMarker(reviewRoot);
+    boolean hasMarker = Files.exists(marker);
+    boolean hasJournal = Files.exists(migrationJournal(reviewRoot));
+    if (!hasMarker && !hasJournal) {
+      return Mode.LEGACY;
+    }
+    if (!hasMarker) {
+      return Mode.MIGRATION_INCOMPLETE;
+    }
+    try {
+      @SuppressWarnings("unchecked")
+      Map<String, Object> payload = JSON.readValue(Files.readAllBytes(marker), Map.class);
+      if (payload.size() != 4
+          || !Integer.valueOf(1).equals(payload.get("schemaVersion"))
+          || !validSha(payload.get("inventorySha256"))
+          || !validSha(payload.get("catalogSha256"))
+          || !validInstant(payload.get("activatedAt"))) {
+        return Mode.MIGRATION_INCOMPLETE;
+      }
+      return Mode.SEMANTIC;
+    } catch (Exception error) {
+      return Mode.MIGRATION_INCOMPLETE;
+    }
+  }
+
+  private static boolean validSha(Object value) {
+    return value instanceof String text && SHA256.matcher(text).matches();
+  }
+
+  private static boolean validInstant(Object value) {
+    if (!(value instanceof String text)) {
+      return false;
+    }
+    try {
+      Instant.parse(text);
+      return true;
+    } catch (RuntimeException error) {
+      return false;
+    }
+  }
+
+  public enum Mode {
+    LEGACY,
+    SEMANTIC,
+    MIGRATION_INCOMPLETE
+  }
+}

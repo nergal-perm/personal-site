@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.model.ManifestEntry;
+import dev.eugene.astroexport.references.PageReferenceMap;
+import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -144,6 +146,31 @@ final class ReviewWorkspaceTest {
         "title", "Observable work",
         "text", "English description.")), patch.metadata().get("current"));
     assertEquals(Map.of("paths", Map.of()), patch.referenceTranslations());
+  }
+
+  @Test
+  void readsCandidateReferencesFromCandidateDirectory() throws Exception {
+    byte[] ru = "[label](ref:ref-0001)\n".getBytes(StandardCharsets.UTF_8);
+    byte[] en = "[label](ref:ref-0001)\n".getBytes(StandardCharsets.UTF_8);
+    Path candidate = temp.resolve("review/blog/essay/candidate");
+    Files.createDirectories(candidate);
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), en);
+    Files.write(candidate.resolve("references.json"), PageReferenceMapCodec.write(new PageReferenceMap(
+        PageReferenceMap.SCHEMA_VERSION,
+        "vault-ref-page",
+        "blog/Essay.md",
+        PageReferenceMapCodec.sha256(ru),
+        PageReferenceMapCodec.sha256(en),
+        List.of("ref-0001"),
+        Map.of("ref-0001", new PageReferenceMap.Reference(
+            "vault-ref-target", "Target", "", "label")))));
+
+    PageReferenceMap map = ReviewWorkspace.readCandidateReferences(
+        temp.resolve("review"), "blog", "essay");
+
+    assertEquals(List.of("ref-0001"), map.order());
+    assertEquals("vault-ref-target", map.references().get("ref-0001").targetRef());
   }
 
   @Test
