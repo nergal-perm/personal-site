@@ -48,7 +48,7 @@ final class VaultReferenceCatalogTest {
             "vault-ref-0001",
             "notes/One.md",
             "stable-note",
-            "",
+            "One",
             List.of("Alias"),
             List.of(),
             VaultReferenceCatalog.STATE_ACTIVE)));
@@ -61,6 +61,7 @@ final class VaultReferenceCatalogTest {
     assertEquals(catalog.schemaVersion(), loaded.schemaVersion());
     assertEquals(VaultReferenceCatalog.STATE_ACTIVE, loaded.entries().get("vault-ref-0001").state());
     assertEquals(List.of("Alias"), loaded.entries().get("vault-ref-0001").aliases());
+    assertEquals("One", loaded.entries().get("vault-ref-0001").title());
   }
 
   @Test

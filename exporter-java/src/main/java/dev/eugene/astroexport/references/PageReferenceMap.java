@@ -48,5 +48,6 @@ public record PageReferenceMap(
   public record Reference(
       String targetRef,
       String authoredTarget,
-      String heading) { }
+      String heading,
+      String label) { }
 }

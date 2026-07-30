@@ -19,9 +19,9 @@ final class PageReferenceMapCodecTest {
         List.of("ref-0001", "ref-0002"),
         Map.of(
             "ref-0002", new PageReferenceMap.Reference(
-                "vault-ref-target", "Target", "Second"),
+                "vault-ref-target", "Target", "Second", "Second"),
             "ref-0001", new PageReferenceMap.Reference(
-                "vault-ref-target", "Target", null)));
+                "vault-ref-target", "Target", null, "First")));
 
     byte[] ru = bytes("[первый](ref:ref-0001) [второй](ref:ref-0002)\n");
     byte[] en = bytes("[first](ref:ref-0001) [second](ref:ref-0002)\n");
@@ -54,7 +54,7 @@ final class PageReferenceMapCodecTest {
         "page",
         "blog/A.md",
         List.of("ref-0001", "ref-0001"),
-        Map.of("ref-0001", reference("target", null, null)));
+        Map.of("ref-0001", reference("target", null, null, null)));
     byte[] ru = bytes("[a](ref:ref-0001) [b](ref:ref-0001)");
     byte[] en = bytes("[a](ref:ref-0001) [b](ref:ref-0001)");
     PageReferenceMap map = PageReferenceMap.bind(plan, ru, en);
@@ -71,7 +71,7 @@ final class PageReferenceMapCodecTest {
         "page",
         "blog/A.md",
         List.of("ref-0001", "ref-0002"),
-        Map.of("ref-0001", reference("target", null, null)));
+        Map.of("ref-0001", reference("target", null, null, null)));
     byte[] ru = bytes("[a](ref:ref-0001) [b](ref:ref-0002)");
     byte[] en = bytes("[a](ref:ref-0001) [b](ref:ref-0002)");
     PageReferenceMap map = PageReferenceMap.bind(plan, ru, en);
@@ -89,8 +89,8 @@ final class PageReferenceMapCodecTest {
         "blog/A.md",
         List.of("ref-0001"),
         Map.of(
-            "ref-0001", reference("target", null, null),
-            "ref-0002", reference("unused", null, null)));
+            "ref-0001", reference("target", null, null, null),
+            "ref-0002", reference("unused", null, null, null)));
     byte[] ru = bytes("[a](ref:ref-0001)");
     byte[] en = bytes("[a](ref:ref-0001)");
     PageReferenceMap map = PageReferenceMap.bind(plan, ru, en);
@@ -136,13 +136,17 @@ final class PageReferenceMapCodecTest {
   private static ReferencePlan plan(String... references) {
     LinkedHashMap<String, PageReferenceMap.Reference> mapped = new LinkedHashMap<>();
     for (String reference : references) {
-      mapped.put(reference, reference(reference, reference, null));
+      mapped.put(reference, reference(reference, reference, null, reference));
     }
     return new ReferencePlan("page", "blog/A.md", List.copyOf(List.of(references)), mapped);
   }
 
-  private static PageReferenceMap.Reference reference(String targetRef, String authoredTarget, String heading) {
-    return new PageReferenceMap.Reference(targetRef, authoredTarget, heading);
+  private static PageReferenceMap.Reference reference(
+      String targetRef,
+      String authoredTarget,
+      String heading,
+      String label) {
+    return new PageReferenceMap.Reference(targetRef, authoredTarget, heading, label);
   }
 
   private static byte[] bytes(String value) {

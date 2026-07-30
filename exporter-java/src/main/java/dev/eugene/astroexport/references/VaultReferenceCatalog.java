@@ -322,6 +322,9 @@ public record VaultReferenceCatalog(int schemaVersion, Map<String, CatalogEntry>
       if (stableNoteId != null && !stableNoteId.isBlank()) {
         payload.put("stableNoteId", stableNoteId);
       }
+      if (title != null && !title.isBlank()) {
+        payload.put("title", title);
+      }
       payload.put("aliases", aliases);
       payload.put("previousPaths", previousPaths);
       payload.put("state", state);

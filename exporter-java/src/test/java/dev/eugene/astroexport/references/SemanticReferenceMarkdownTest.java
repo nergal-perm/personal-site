@@ -62,7 +62,7 @@ final class SemanticReferenceMarkdownTest {
         "0",
         "0",
         List.of("alpha"),
-        Map.of("alpha", new PageReferenceMap.Reference("/alpha", "Alpha", "#one")));
+        Map.of("alpha", new PageReferenceMap.Reference("/alpha", "Alpha", "#one", "first")));
     String markdown = "[missing](ref:gamma)";
 
     assertThrows(
@@ -94,8 +94,8 @@ final class SemanticReferenceMarkdownTest {
         "0",
         List.of("alpha", "beta"),
         Map.of(
-            "alpha", new PageReferenceMap.Reference("/alpha", "Alpha", "#one"),
-            "beta", new PageReferenceMap.Reference("/beta", "Beta", "#two")));
+            "alpha", new PageReferenceMap.Reference("/alpha", "Alpha", "#one", "alpha"),
+            "beta", new PageReferenceMap.Reference("/beta", "Beta", "#two", "beta")));
   }
 
   private static Function<PageReferenceMap.Reference, Optional<String>> mapTo(String prefix) {

@@ -28,8 +28,8 @@ final class SemanticReferencePlannerTest {
     assertEquals("[One](ref:ref-0001) and [two](ref:ref-0002)", prepared.markdown());
     assertEquals(List.of("ref-0001", "ref-0002"), prepared.plan().order());
     assertEquals(Map.of(
-            "ref-0001", new PageReferenceMap.Reference("vault-ref-0001", "One", ""),
-            "ref-0002", new PageReferenceMap.Reference("vault-ref-0002", "id-two", "")),
+            "ref-0001", new PageReferenceMap.Reference("vault-ref-0001", "One", "", "One"),
+            "ref-0002", new PageReferenceMap.Reference("vault-ref-0002", "id-two", "", "two")),
         prepared.plan().references());
     assertEquals(List.of(), prepared.diagnostics());
   }
@@ -100,24 +100,24 @@ final class SemanticReferencePlannerTest {
     SemanticReferencePlanner.PreparedSemanticBody first = planner.prepare(
         "blog/Source.md",
         "vault-ref-page",
-        "[[One]] and [[One]]",
+        "[[One|First]] and [[One|Second]]",
         Optional.empty(),
         resolver);
 
     assertEquals(
-        "[One](ref:ref-0001) and [One](ref:ref-0002)",
+        "[First](ref:ref-0001) and [Second](ref:ref-0002)",
         first.markdown());
     assertEquals(List.of("ref-0001", "ref-0002"), first.plan().order());
 
     SemanticReferencePlanner.PreparedSemanticBody second = planner.prepare(
         "blog/Source.md",
         "vault-ref-page",
-        "[[One]] and [[One]]",
+        "[[One|First]] and [[One|Second]]",
         Optional.of(PageReferenceMap.bind(first.plan(), bytes("ru"), bytes("en"))),
         resolver);
 
     assertEquals(
-        "[One](ref:ref-0001) and [One](ref:ref-0002)",
+        "[First](ref:ref-0001) and [Second](ref:ref-0002)",
         second.markdown());
     assertEquals(List.of(), second.diagnostics());
 
@@ -133,12 +133,64 @@ final class SemanticReferencePlannerTest {
             "en",
             List.of("ref-0001", "ref-0010", "ref-0011"),
             Map.of(
-                "ref-0001", new PageReferenceMap.Reference("vault-ref-0001", "Other", ""),
-                "ref-0010", new PageReferenceMap.Reference("vault-ref-0001", "One", ""),
-                "ref-0011", new PageReferenceMap.Reference("vault-ref-0001", "One", "")))),
+                "ref-0001", new PageReferenceMap.Reference("vault-ref-0001", "Other", "", "One"),
+                "ref-0010", new PageReferenceMap.Reference("vault-ref-0001", "One", "", "One"),
+                "ref-0011", new PageReferenceMap.Reference("vault-ref-0001", "One", "", "One")))),
         resolver);
 
     assertEquals("[One](ref:ref-0012)", ambiguous.markdown());
+    assertEquals("reference-reconciliation-required", ambiguous.diagnostics().getFirst().field());
+    assertEquals(true, ambiguous.diagnostics().getFirst().blocking());
+  }
+
+  @Test
+  void doesNotReusePreviousIdentifierWhenVisibleLabelChanges() {
+    SemanticReferencePlanner planner = new SemanticReferencePlanner();
+    VaultReferenceResolver resolver = resolver(
+        entry("vault-ref-0001", "notes/One.md", "id-one", "One", List.of()));
+
+    SemanticReferencePlanner.PreparedSemanticBody first = planner.prepare(
+        "blog/Source.md",
+        "vault-ref-page",
+        "[[One|same label]]",
+        Optional.empty(),
+        resolver);
+
+    SemanticReferencePlanner.PreparedSemanticBody second = planner.prepare(
+        "blog/Source.md",
+        "vault-ref-page",
+        "[[One|different label]]",
+        Optional.of(PageReferenceMap.bind(first.plan(), bytes("ru"), bytes("en"))),
+        resolver);
+
+    assertEquals("[different label](ref:ref-0002)", second.markdown());
+    assertEquals(List.of(), second.diagnostics());
+  }
+
+  @Test
+  void flagsAmbiguousReuseWhenSequenceIndexMatchesMultipleOldIds() {
+    SemanticReferencePlanner planner = new SemanticReferencePlanner();
+    VaultReferenceResolver resolver = resolver(
+        entry("vault-ref-0001", "notes/One.md", "id-one", "One", List.of()));
+
+    SemanticReferencePlanner.PreparedSemanticBody ambiguous = planner.prepare(
+        "blog/Source.md",
+        "vault-ref-page",
+        "[[One]]",
+        Optional.of(new PageReferenceMap(
+            PageReferenceMap.SCHEMA_VERSION,
+            "vault-ref-page",
+            "blog/Source.md",
+            "ru",
+            "en",
+            List.of("ref-0001", "ref-0010"),
+            Map.of(
+                "ref-0001", new PageReferenceMap.Reference("vault-ref-0001", "One", "", "One"),
+                "ref-0010", new PageReferenceMap.Reference("vault-ref-0001", "One", "", "One")))),
+        resolver);
+
+    assertEquals("[One](ref:ref-0001)", ambiguous.markdown());
+    assertEquals(1, ambiguous.diagnostics().size());
     assertEquals("reference-reconciliation-required", ambiguous.diagnostics().getFirst().field());
     assertEquals(true, ambiguous.diagnostics().getFirst().blocking());
   }

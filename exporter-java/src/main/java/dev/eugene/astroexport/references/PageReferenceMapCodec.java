@@ -167,6 +167,7 @@ public final class PageReferenceMapCodec {
     payload.put("targetRef", reference.targetRef());
     payload.put("authoredTarget", reference.authoredTarget());
     payload.put("heading", reference.heading());
+    payload.put("label", reference.label());
     return payload;
   }
 
@@ -186,7 +187,8 @@ public final class PageReferenceMapCodec {
       references.put(id, new PageReferenceMap.Reference(
           requiredString(referencePayload.get("targetRef"), "reference.targetRef"),
           optionalString(referencePayload.get("authoredTarget")),
-          optionalString(referencePayload.get("heading"))));
+          optionalString(referencePayload.get("heading")),
+          optionalString(referencePayload.get("label"))));
     }
     return references;
   }

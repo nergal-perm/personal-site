@@ -92,7 +92,8 @@ public final class SemanticReferencePlanner {
 
     String authoredTarget = occurrence.target() + (occurrence.heading() == null ? "" : occurrence.heading());
     String normalizedHeading = normalizeHeading(occurrence.heading());
-    String signature = signature(resolution.pageRef(), authoredTarget, normalizedHeading);
+    String signature = signature(
+        resolution.pageRef(), authoredTarget, normalizedHeading, occurrence.label());
 
     ReuseDecision decision = previousState.reuse(signature, occurrence.sequenceIndex());
     if (decision.blocking()) {
@@ -110,13 +111,18 @@ public final class SemanticReferencePlanner {
     }
 
     used.add(refId);
-    references.put(refId, new PageReferenceMap.Reference(resolution.pageRef(), authoredTarget, occurrence.heading()));
+    references.put(refId, new PageReferenceMap.Reference(
+        resolution.pageRef(),
+        authoredTarget,
+        occurrence.heading(),
+        occurrence.label()));
     order.add(refId);
     return "[" + occurrence.label() + "](ref:" + refId + ")";
   }
 
-  private static String signature(String targetRef, String authoredTarget, String heading) {
-    return targetRef + "|" + (authoredTarget == null ? "" : authoredTarget) + "|" + (heading == null ? "" : heading);
+  private static String signature(String targetRef, String authoredTarget, String heading, String label) {
+    return targetRef + "|" + (authoredTarget == null ? "" : authoredTarget) + "|" + (heading == null ? ""
+        : heading) + "|" + (label == null ? "" : label);
   }
 
   private static List<Occurrence> parse(String body) {
@@ -220,7 +226,11 @@ public final class SemanticReferencePlanner {
         if (reference == null) {
           continue;
         }
-        String signature = signature(reference.targetRef(), reference.authoredTarget() == null ? "" : reference.authoredTarget(), normalizeHeading(reference.heading()));
+        String signature = signature(
+            reference.targetRef(),
+            reference.authoredTarget() == null ? "" : reference.authoredTarget(),
+            normalizeHeading(reference.heading()),
+            reference.label() == null ? "" : reference.label());
         order.put(index, id);
         signatureById.put(id, signature);
         idsBySignature.computeIfAbsent(signature, ignored -> new ArrayList<>()).add(id);
@@ -232,10 +242,13 @@ public final class SemanticReferencePlanner {
       String byIndex = order.get(sequenceIndex);
       if (byIndex != null && signature.equals(signatureById.get(byIndex))) {
         List<String> candidates = idsBySignature.get(signature);
-      if (candidates != null && candidates.size() == 1) {
-        remove(byIndex, signature);
-        return new ReuseDecision(byIndex, false);
-      }
+        if (candidates != null && candidates.size() > 1) {
+          return new ReuseDecision(byIndex, true);
+        }
+        if (candidates != null && candidates.size() == 1) {
+          remove(byIndex, signature);
+          return new ReuseDecision(byIndex, false);
+        }
         return new ReuseDecision(byIndex, false);
       }
 

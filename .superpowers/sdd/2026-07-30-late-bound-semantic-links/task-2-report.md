@@ -1,36 +1,25 @@
 # Task 2 Report: Stable Vault Catalog and Conservative Resolution
 
 ## Implemented
-- Reworked `VaultNoteDescriptor` with non-following symlink vault scan and frontmatter extraction of `id`, `title`, `aliases`, and filename stem with diagnostics for invalid UTF-8/unsafe paths/duplicate IDs.
-- Implemented `VaultReferenceCatalog` schema-v1 persistence at `.semantic-links/catalog-v1.json` with:
-  - `load(Path)`
-  - `read(byte[])`/`write()`
-  - `writeAtomically(Path)` using temp sibling + atomic exchange
-  - `reconcile(Path, List<VaultNoteDescriptor>)`
-  - tombstone preservation for removed active entries.
-- Implemented `VaultReferenceResolver` with precedence layers:
-  1. exact vault path (without `.md`)
-  2. stable ID
-  3. timestamp-stripped stem
-  4. title
-  5. alias.
-- Implemented `SemanticReferencePlanner.prepare(...)` with:
-  - wiki-link tokenization outside protected contexts
-  - rewriting to `[label](ref:XXXX)` for resolved links
-  - unresolved handling with non-blocking `unresolved-reference` diagnostic
-  - ambiguous target exception `ambiguous-reference-target`
-  - conservative identifier reuse and blocking `reference-reconciliation-required`
-  - new identifier allocation as lowest `ref-%04d` above previous max.
+- Added label into semantic reuse signature and persisted it through `PageReferenceMap.Reference`:
+  - `dev/eugene/astroexport/references/PageReferenceMap.java`
+  - `dev/eugene/astroexport/references/PageReferenceMapCodec.java`
+  - `dev/eugene/astroexport/references/SemanticReferencePlanner.java`
+- Fixed conservative reuse ambiguity handling when sequence index matches a duplicate historic signature:
+  - `dev/eugene/astroexport/references/SemanticReferencePlanner.java`
+- Persisted `title` in catalog-v1 catalog entries:
+  - `dev/eugene/astroexport/references/VaultReferenceCatalog.java`
+- Kept catalog/reporting workflow untouched; no `PrepareWorkflow`/translation pipeline integration added in Task 2 scope.
 
 ## Added/updated tests
-- `exporter-java/src/test/java/dev/eugene/astroexport/references/VaultReferenceCatalogTest.java`
-- `exporter-java/src/test/java/dev/eugene/astroexport/references/VaultReferenceResolverTest.java`
-- `exporter-java/src/test/java/dev/eugene/astroexport/references/SemanticReferencePlannerTest.java`
+- `dev/eugene/astroexport/references/VaultReferenceCatalogTest.java`
+- `dev/eugene/astroexport/references/SemanticReferencePlannerTest.java`
+- `dev/eugene/astroexport/references/PageReferenceMapCodecTest.java`
+- `dev/eugene/astroexport/references/SemanticReferenceMarkdownTest.java`
 
 ## TDD / validation evidence
-- `mvn -q -Dtest=VaultReferenceCatalogTest,VaultReferenceResolverTest,SemanticReferencePlannerTest,LinkProcessorTest test`
-- Result: all targeted tests passed.
+- Command: `mvn -q -Dtest=VaultReferenceCatalogTest,VaultReferenceResolverTest,SemanticReferencePlannerTest,LinkProcessorTest test`
+- Result: all selected tests passed.
 
 ## Self-review findings
-- `VaultReferenceCatalog.CatalogEntry.title` is retained in-memory but currently not serialized in `write()`; only `currentPath`, `stableNoteId`, `aliases`, `previousPaths`, `state` are persisted in catalog JSON.
-- Resolver and planner logic follows task requirements, but planner ambiguity diagnostics depend on signature/signature-index matching and conservative order heuristics.
+- Concern: Task 2 currently has no prepare/translation workflow wiring for catalog loading, resolver construction, and planner execution. This was already outside the explicit Task 2 run scope in the existing code and remains a Task 3 integration concern.
