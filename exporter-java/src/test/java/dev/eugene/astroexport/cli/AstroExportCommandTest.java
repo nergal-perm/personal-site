@@ -876,6 +876,47 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void semanticBuildFromReviewRunsGateAgainstStagedReleaseProvenance()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Source body.");
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    byte[] approvedRu = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    byte[] approvedEn = approvedEnglish("approved\n");
+    Files.createDirectories(review.resolve("blog/essay"));
+    try (ReviewWorkspace.PendingPublishedSnapshot pending = ReviewWorkspace.stageApprovedSnapshot(
+        review, "blog", "essay", approvedRu, approvedEn, referencesFor(approvedRu, approvedEn))) {
+      pending.commit(List.of());
+    }
+    Path out = writeAstroRoot(temp.resolve("astro"));
+    List<SiteWriter.GateInvocation> invocations = new java.util.ArrayList<>();
+
+    CommandFixture.Result result = run(
+        new AstroExportCommand(CommandServices.defaults()
+            .withGateRunner(invocation -> {
+              invocations.add(invocation);
+              Path manifest = Path.of(invocation.environment().get("ASTRO_RELEASE_MANIFEST"));
+              assertTrue(Files.isRegularFile(manifest));
+              assertTrue(manifest.endsWith(".astro-export/release-provenance.json"));
+              assertTrue(manifest.startsWith(Path.of(invocation.environment().get("ASTRO_CONTENT_DIR"))
+                  .getParent()
+                  .getParent()));
+              assertFalse(manifest.startsWith(out));
+              return new SiteWriter.GateResult(0, "gate ok\n", "");
+            })),
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", out.toString(),
+        "--report", temp.resolve("report.md").toString(),
+        "--review", review.toString());
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    assertEquals(1, invocations.size());
+  }
+
+  @Test
   void dryRunReportStatesCandidatesAreNotReleaseInput() throws Exception {
     Path vault = temp.resolve("vault");
     writeBlogNote(vault, "Candidate body.");

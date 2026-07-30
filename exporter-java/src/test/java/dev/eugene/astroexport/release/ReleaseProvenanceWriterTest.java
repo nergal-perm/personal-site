@@ -14,6 +14,9 @@ import dev.eugene.astroexport.review.SnapshotHashes;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -143,6 +146,62 @@ final class ReleaseProvenanceWriterTest {
     assertMismatch(() -> writer.verify(staged));
   }
 
+  @Test
+  void releaseAwareVerifyRejectsForgedSelectedSnapshotAndProjectionClaims() throws Exception {
+    ApprovedReleaseMaterializer.MaterializedRelease release = activatedRelease();
+    Path staged = stagedPayload(release);
+    ReleaseProvenance provenance = writer.write(staged, release);
+    ReleaseProvenance.SelectedPage original = provenance.selectedPages().stream()
+        .filter(page -> page.publicId().equals("a"))
+        .findFirst()
+        .orElseThrow();
+    ReleaseProvenance.SelectedPage forged = new ReleaseProvenance.SelectedPage(
+        original.pageRef(),
+        original.publicId(),
+        original.sourcePath(),
+        "0".repeat(64),
+        original.enSha256(),
+        original.referencesSha256(),
+        "1".repeat(64),
+        original.enProjectionSha256());
+    ReleaseProvenance forgedWithoutDigest = new ReleaseProvenance(
+        provenance.schemaVersion(),
+        List.of(forged, provenance.selectedPages().get(1)),
+        provenance.managedTrees(),
+        provenance.managedFiles(),
+        provenance.activationCount(),
+        provenance.deactivationCount(),
+        "");
+    ReleaseProvenance forgedManifest = new ReleaseProvenance(
+        forgedWithoutDigest.schemaVersion(),
+        forgedWithoutDigest.selectedPages(),
+        forgedWithoutDigest.managedTrees(),
+        forgedWithoutDigest.managedFiles(),
+        forgedWithoutDigest.activationCount(),
+        forgedWithoutDigest.deactivationCount(),
+        TreeHasher.sha256(writer.serialize(forgedWithoutDigest)));
+    Files.write(
+        staged.resolve(ReleaseProvenanceWriter.MANIFEST_RELATIVE),
+        writer.serialize(forgedManifest),
+        StandardOpenOption.TRUNCATE_EXISTING);
+
+    assertEquals(forgedManifest, writer.verify(staged));
+    assertMismatch(() -> writer.verify(staged, release));
+  }
+
+  @Test
+  void writeForcesManifestToStorageBeforeReturning() throws Exception {
+    ApprovedReleaseMaterializer.MaterializedRelease release = activatedRelease();
+    Path staged = stagedPayload(release);
+    RecordingManifestSink sink = new RecordingManifestSink();
+    ReleaseProvenanceWriter forcingWriter = new ReleaseProvenanceWriter(sink);
+
+    forcingWriter.write(staged, release);
+
+    assertEquals(List.of("write", "force"), sink.events());
+    assertTrue(Files.isRegularFile(staged.resolve(ReleaseProvenanceWriter.MANIFEST_RELATIVE)));
+  }
+
   private static void assertMismatch(ThrowingRunnable runnable) {
     ReleaseProvenanceWriter.ReleaseProvenanceException error = assertThrows(
         ReleaseProvenanceWriter.ReleaseProvenanceException.class,
@@ -254,5 +313,21 @@ final class ReleaseProvenanceWriterTest {
   @FunctionalInterface
   private interface ThrowingRunnable {
     void run() throws Exception;
+  }
+
+  private static final class RecordingManifestSink implements ReleaseProvenanceWriter.ManifestSink {
+    private final ArrayDeque<String> events = new ArrayDeque<>();
+
+    @Override
+    public void writeAndForce(Path path, byte[] bytes) throws java.io.IOException {
+      Files.createDirectories(path.getParent());
+      Files.write(path, bytes, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+      events.add("write");
+      events.add("force");
+    }
+
+    List<String> events() {
+      return new ArrayList<>(events);
+    }
   }
 }

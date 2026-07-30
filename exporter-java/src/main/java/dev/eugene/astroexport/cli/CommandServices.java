@@ -14,6 +14,7 @@ import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.report.ReportBuilder;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
 import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
+import dev.eugene.astroexport.release.ReleaseProvenanceWriter;
 import dev.eugene.astroexport.review.ApprovedPageSnapshot;
 import dev.eugene.astroexport.review.ApprovedSnapshotRepository;
 import dev.eugene.astroexport.review.ReviewWorkspace;
@@ -373,6 +374,11 @@ public final class CommandServices {
       LinkedHashMap<String, String> environment = new LinkedHashMap<>();
       environment.put("ASTRO_CONTENT_DIR", stagedRoot.resolve("src/content").toString());
       environment.put("ASTRO_PAGES_DIR", stagedRoot.resolve("src/data/pages").toString());
+      Path provenance = stagedRoot.resolve(ReleaseProvenanceWriter.MANIFEST_RELATIVE);
+      if (Files.isRegularFile(provenance, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+          && !Files.isSymbolicLink(provenance)) {
+        environment.put("ASTRO_RELEASE_MANIFEST", provenance.toString());
+      }
       environment.put("CI", "1");
       environment.put("NO_COLOR", "1");
       SiteWriter.GateInvocation invocation = new SiteWriter.GateInvocation(

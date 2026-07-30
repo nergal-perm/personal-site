@@ -10,6 +10,8 @@ import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.review.ApprovedPageSnapshot;
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -28,6 +30,15 @@ public final class ReleaseProvenanceWriter {
   private static final ObjectMapper JSON = new ObjectMapper()
       .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
       .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS);
+  private final ManifestSink manifestSink;
+
+  public ReleaseProvenanceWriter() {
+    this(ManifestSink.files());
+  }
+
+  ReleaseProvenanceWriter(ManifestSink manifestSink) {
+    this.manifestSink = Objects.requireNonNull(manifestSink, "manifestSink");
+  }
 
   public ReleaseProvenance write(
       Path stagedRoot,
@@ -39,11 +50,11 @@ public final class ReleaseProvenanceWriter {
     Path manifest = stagedRoot.resolve(MANIFEST_RELATIVE);
     try {
       Files.createDirectories(manifest.getParent());
-      Files.write(manifest, json(provenance), StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+      manifestSink.writeAndForce(manifest, json(provenance));
     } catch (IOException error) {
       throw new SiteWriter.WriterException("cannot write release provenance: " + error.getMessage(), error);
     }
-    return provenance;
+    return verify(stagedRoot, release);
   }
 
   public ReleaseProvenance verify(Path stagedRoot) {
@@ -90,6 +101,26 @@ public final class ReleaseProvenanceWriter {
     } catch (IOException error) {
       throw mismatch("cannot read manifest: " + error.getMessage(), error);
     }
+  }
+
+  public ReleaseProvenance verify(
+      Path stagedRoot,
+      ApprovedReleaseMaterializer.MaterializedRelease release) {
+    return verify(stagedRoot, stagedRoot.resolve(MANIFEST_RELATIVE), release);
+  }
+
+  public ReleaseProvenance verify(
+      Path stagedRoot,
+      Path manifest,
+      ApprovedReleaseMaterializer.MaterializedRelease release) {
+    Objects.requireNonNull(release, "release");
+    ReleaseProvenance actual = verify(stagedRoot, manifest);
+    ReleaseProvenance expectedWithoutDigest = build(stagedRoot, release, "");
+    ReleaseProvenance expected = withDigest(expectedWithoutDigest, payloadDigest(expectedWithoutDigest));
+    if (!actual.equals(expected)) {
+      throw mismatch("release claims mismatch");
+    }
+    return actual;
   }
 
   public byte[] serialize(ReleaseProvenance provenance) {
@@ -189,6 +220,25 @@ public final class ReleaseProvenanceWriter {
 
     public ReleaseProvenanceException(String detail, Throwable cause) {
       super(detail, cause);
+    }
+  }
+
+  interface ManifestSink {
+    void writeAndForce(Path path, byte[] bytes) throws IOException;
+
+    static ManifestSink files() {
+      return (path, bytes) -> {
+        try (FileChannel channel = FileChannel.open(
+            path,
+            StandardOpenOption.CREATE_NEW,
+            StandardOpenOption.WRITE)) {
+          ByteBuffer buffer = ByteBuffer.wrap(bytes);
+          while (buffer.hasRemaining()) {
+            channel.write(buffer);
+          }
+          channel.force(true);
+        }
+      };
     }
   }
 }
