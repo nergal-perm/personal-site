@@ -546,6 +546,30 @@ final class PrepareWorkflowTest {
   }
 
   @Test
+  void candidateTemplateSerializesFrontmatterInCanonicalOrder() throws Exception {
+    Fixture fixture = fixture();
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null);
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    String template = runner.prompt
+        .substring(
+            runner.prompt.indexOf("<candidate-template>")
+                + "<candidate-template>".length(),
+            runner.prompt.indexOf("</candidate-template>"))
+        .strip();
+    FrontmatterDocument parsed = FrontmatterDocument.parse(
+        Path.of("candidate.en.md"), "candidate.en.md", template);
+    List<String> keyOrder = List.copyOf(parsed.metadata().keySet());
+    assertEquals(keyOrder.stream().sorted().toList(), keyOrder);
+  }
+
+  @Test
   void conceptCandidateTemplatePreservesDefinitionBodyAndDraftControls() throws Exception {
     Fixture fixture = conceptFixture();
     RecordingRunner runner = new RecordingRunner(job -> {

@@ -2,6 +2,7 @@ package dev.eugene.astroexport.prepare;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.discovery.PublicationDiscovery;
+import dev.eugene.astroexport.frontmatter.FrontmatterCanonicalizer;
 import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
@@ -1073,7 +1074,10 @@ public final class PrepareWorkflow {
       body = localized(entry.body()).strip();
     }
     String suffix = body.isEmpty() ? "" : body + "\n";
-    return "---\n" + YAML.dumpToString(metadata) + "---\n" + suffix;
+    return "---\n"
+        + YAML.dumpToString(FrontmatterCanonicalizer.canonicalize(metadata))
+        + "---\n"
+        + suffix;
   }
 
   private static Object draftProjection(Object value, String key) {
