@@ -279,6 +279,10 @@ final class ApprovedSnapshotRepositoryTest {
           "state": "complete",
           "inventorySha256": "%s",
           "catalogSha256": "%s",
+          "catalogState": "complete",
+          "catalogPublished": ".semantic-links/catalog-v1.json",
+          "catalogStaged": ".semantic-links/staging-v1/catalog-v1.json",
+          "catalogDisplaced": ".semantic-links/recovery-v1/catalog-v1.json",
           "recoveryRoot": ".semantic-links/recovery-v1",
           "pages": [
             {"collection":"blog","publicId":"fixture","pageRef":"vault-ref-fixture","sourcePath":"fixture.md","state":"complete","stagedSha256":"%s","published":"blog/fixture/published","staged":".semantic-links/staging-v1/blog/fixture/published","displaced":".semantic-links/recovery-v1/blog/fixture/published"}

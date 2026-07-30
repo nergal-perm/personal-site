@@ -95,3 +95,71 @@ Result: passed with no output.
 - `SemanticMigrationService` validates decision coverage, but corrected-order decisions are not yet used to replace the installed English bytes with the external corrected file. That path is covered by validation, not by byte installation.
 - The implementation provides failure hooks for parity projection and Astro gate boundaries, but the service does not yet run a full materialized-release parity comparison or a real Astro content gate against a staged output tree. Existing selected tests pass, but this is narrower than the brief's strongest wording.
 - Cleanup failure after marker installation is represented by `cleanup-pending` page state in the journal, but the current CLI success payload does not expose the exact cleanup recovery paths beyond the journal itself.
+
+## Fix Round 1
+
+Status: DONE
+
+### Changed
+
+- Hardened page installation journaling by writing and forcing `installing` before each atomic exchange, then teaching roll-forward and rollback to recover the `installing` state without deleting the displaced legacy bytes.
+- Rejected `--apply` when an existing journal leaves schema state `MIGRATION_INCOMPLETE`, so a new apply cannot erase staged/recovery evidence that must be rolled forward or rolled back first.
+- Staged the semantic catalog, recorded catalog published/staged/displaced journal paths, installed it atomically before activation, validated its hash during staged validation, roll-forward, and installed verification, and added catalog evidence to complete-journal schema validation.
+- Applied approved corrected-order decisions to staged English semantic bytes and derived reference order/IDs from the reconciled materialization.
+- Replaced the no-op Astro gate path with a gate call against the staging root; CLI apply now passes the real Astro gate, and the CLI test verifies the staged content directory is used.
+- Made cleanup failure nonblocking for schema activation by accepting `cleanup-pending` page entries in an otherwise complete journal.
+
+### Files Changed
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/migration/SemanticMigrationService.java`
+- `exporter-java/src/main/java/dev/eugene/astroexport/migration/SemanticSchemaState.java`
+- `exporter-java/src/main/java/dev/eugene/astroexport/cli/AstroExportCommand.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/migration/SemanticMigrationServiceTest.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/migration/SemanticSchemaStateTest.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/review/ApprovedSnapshotRepositoryTest.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/cli/AstroExportCommandTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-9-report.md`
+
+### Tests Run
+
+```bash
+mvn -q -Dtest=SemanticSchemaStateTest,SemanticMigrationServiceTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+mvn -q -Dtest=SemanticSchemaStateTest,SemanticMigrationServiceTest,ApprovedSnapshotRepositoryTest,AstroExportCommandTest,NativeCliParityTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+git diff --check
+```
+
+Output: no output.
+
+Result: passed.
+
+### Concerns
+
+- No remaining concerns for the listed Critical/Important fix-round findings.

@@ -65,6 +65,7 @@ public final class SemanticSchemaState {
           && Integer.valueOf(1).equals(payload.get("schemaVersion"))
           && marker.get("inventorySha256").equals(payload.get("inventorySha256"))
           && marker.get("catalogSha256").equals(payload.get("catalogSha256"))
+          && validCatalogEvidence(payload)
           && validJournalRecoveryRoot(payload.get("recoveryRoot"))
           && validJournalPages(payload.get("pages"));
     } catch (Exception error) {
@@ -74,6 +75,13 @@ public final class SemanticSchemaState {
 
   private static boolean validJournalRecoveryRoot(Object value) {
     return value instanceof String text && !text.isBlank();
+  }
+
+  private static boolean validCatalogEvidence(Map<String, Object> payload) {
+    return "complete".equals(payload.get("catalogState"))
+        && nonBlank(payload.get("catalogPublished"))
+        && nonBlank(payload.get("catalogStaged"))
+        && nonBlank(payload.get("catalogDisplaced"));
   }
 
   private static boolean validJournalPages(Object value) {
@@ -86,7 +94,8 @@ public final class SemanticSchemaState {
           || !nonBlank(payload.get("publicId"))
           || !nonBlank(payload.get("pageRef"))
           || !nonBlank(payload.get("sourcePath"))
-          || !"complete".equals(payload.get("state"))
+          || (!"complete".equals(payload.get("state"))
+              && !"cleanup-pending".equals(payload.get("state")))
           || !validSha(payload.get("stagedSha256"))
           || !nonBlank(payload.get("published"))
           || !nonBlank(payload.get("staged"))

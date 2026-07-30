@@ -26,6 +26,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,6 +59,7 @@ public final class SemanticMigrationService {
     SemanticOperationLock.Lease lease = null;
     try {
       lease = SemanticOperationLock.acquireExclusive(request.review());
+      rejectIncompleteMigration(request.review());
       ApplyPlan plan = stagePlan(request, checkedHooks);
       install(plan, checkedHooks);
       checkedHooks.after(Boundary.LOCK_RELEASE, 1);
@@ -97,6 +100,10 @@ public final class SemanticMigrationService {
     ReferenceMigrationInventory.DecisionSet decisions =
         inventoryService.validateDecisions(inventory, request.decisions());
     requireDecisionCoverage(inventory, decisions);
+    Map<String, CorrectedOrderDecision> correctedOrder = correctedOrderDecisions(
+        request.decisions(),
+        inventory,
+        decisions);
     Path catalog = VaultReferenceCatalog.catalogPath(request.review());
     byte[] catalogBytes = readSafe(catalog);
     String catalogSha = PageReferenceMapCodec.sha256(catalogBytes);
@@ -106,6 +113,9 @@ public final class SemanticMigrationService {
     recreateDirectory(stagingRoot);
     Files.createDirectories(recoveryRoot);
     forceDirectory(root);
+    Path catalogStage = stagingRoot.resolve("catalog-v1.json");
+    writeForced(catalogStage, catalogBytes);
+    forceDirectory(catalogStage.getParent());
 
     Journal journal = new Journal(
         "planned",
@@ -113,6 +123,10 @@ public final class SemanticMigrationService {
         catalogSha,
         ".semantic-links/recovery-v1",
         new ArrayList<>());
+    journal.catalogPublished(request.review().relativize(catalog).toString());
+    journal.catalogStaged(request.review().relativize(catalogStage).toString());
+    journal.catalogDisplaced(request.review().relativize(recoveryRoot.resolve("catalog-v1.json")).toString());
+    journal.catalogState("staged");
     writeJournal(request.review(), journal);
     hooks.after(Boundary.CATALOG_STAGED, 1);
     List<PagePlan> pages = new ArrayList<>();
@@ -123,7 +137,10 @@ public final class SemanticMigrationService {
       Path pageStage = stagingRoot.resolve(identity.collection()).resolve(identity.publicId()).resolve("published");
       Files.createDirectories(pageStage);
       byte[] ru = semanticBytes(page.approvedRussian().text(), page, true);
-      byte[] en = semanticBytes(page.approvedEnglish().text(), page, false);
+      CorrectedOrderDecision corrected = correctedOrder.get(page.pageRef() + "/order");
+      byte[] en = corrected == null
+          ? semanticBytes(page.approvedEnglish().text(), page, false)
+          : semanticBytes(new String(corrected.bytes(), StandardCharsets.UTF_8), page, false);
       PageReferenceMap references = references(page, ru, en);
       byte[] referenceBytes = PageReferenceMapCodec.write(references);
       PageReferenceMapCodec.validate(
@@ -152,9 +169,13 @@ public final class SemanticMigrationService {
       hooks.after(Boundary.PAGE_STAGED, index);
       pages.add(new PagePlan(published, pageStage, displaced, journalPage));
     }
+    ApplyPlan plan = new ApplyPlan(request.review(), catalog, catalogStage,
+        recoveryRoot.resolve("catalog-v1.json"), journal, pages, request.astroGate());
+    validateStagedCutover(plan);
     hooks.after(Boundary.PARITY_PROJECTED, 1);
+    request.astroGate().accept(stagingRoot);
     hooks.after(Boundary.ASTRO_GATED, 1);
-    return new ApplyPlan(request.review(), catalogBytes, journal, pages);
+    return plan;
   }
 
   private void install(ApplyPlan plan, MigrationHooks hooks) throws IOException {
@@ -162,6 +183,8 @@ public final class SemanticMigrationService {
     for (PagePlan page : plan.pages()) {
       index++;
       Files.createDirectories(page.displaced().getParent());
+      page.journalPage().state("installing");
+      writeJournal(plan.review(), plan.journal());
       atomicExchange.exchange(page.published(), page.staged());
       forceDirectory(page.published().getParent());
       page.journalPage().state("installed");
@@ -177,6 +200,21 @@ public final class SemanticMigrationService {
       Files.move(page.staged(), page.displaced(), StandardCopyOption.ATOMIC_MOVE);
       forceDirectory(page.displaced().getParent());
     }
+    plan.journal().catalogState("installing");
+    writeJournal(plan.review(), plan.journal());
+    atomicExchange.exchange(plan.catalogPublished(), plan.catalogStaged());
+    forceDirectory(plan.catalogPublished().getParent());
+    plan.journal().catalogState("installed");
+    writeJournal(plan.review(), plan.journal());
+    hooks.after(Boundary.CATALOG_INSTALLED, 1);
+    if (!PageReferenceMapCodec.sha256(readSafe(plan.catalogPublished()))
+        .equals(plan.journal().catalogSha256())) {
+      throw new IllegalStateException("installed catalog hash mismatch: " + plan.catalogPublished());
+    }
+    Files.move(plan.catalogStaged(), plan.catalogDisplaced(), StandardCopyOption.ATOMIC_MOVE);
+    forceDirectory(plan.catalogDisplaced().getParent());
+    plan.journal().catalogState("complete");
+    writeJournal(plan.review(), plan.journal());
     plan.journal().state("cleanup-pending");
     writeJournal(plan.review(), plan.journal());
     writeActivationMarker(plan.review(), plan.journal());
@@ -185,6 +223,7 @@ public final class SemanticMigrationService {
     for (JournalPage page : plan.journal().pages()) {
       page.state("complete");
     }
+    plan.journal().catalogState("complete");
     writeJournal(plan.review(), plan.journal());
     hooks.after(Boundary.JOURNAL_FORCED, 1);
     for (PagePlan page : plan.pages()) {
@@ -210,6 +249,17 @@ public final class SemanticMigrationService {
         atomicExchange.exchange(published, staged);
         Files.createDirectories(review.resolve(page.displaced()).getParent());
         Files.move(staged, review.resolve(page.displaced()), StandardCopyOption.ATOMIC_MOVE);
+      } else if ("installing".equals(page.state())) {
+        if (stagedHashMatches(published, page.stagedSha256())) {
+          Files.createDirectories(review.resolve(page.displaced()).getParent());
+          Files.move(staged, review.resolve(page.displaced()), StandardCopyOption.ATOMIC_MOVE);
+        } else if (stagedHashMatches(staged, page.stagedSha256())) {
+          atomicExchange.exchange(published, staged);
+          Files.createDirectories(review.resolve(page.displaced()).getParent());
+          Files.move(staged, review.resolve(page.displaced()), StandardCopyOption.ATOMIC_MOVE);
+        } else {
+          throw new IllegalStateException("installing page recovery hash mismatch: " + published);
+        }
       } else if ("installed".equals(page.state()) || "verified".equals(page.state())) {
         if (!stagedHashMatches(published, page.stagedSha256())) {
           throw new IllegalStateException("installed recovery hash mismatch: " + published);
@@ -217,7 +267,9 @@ public final class SemanticMigrationService {
       }
       page.state("complete");
     }
+    rollForwardCatalog(review, journal);
     journal.state("complete");
+    journal.catalogState("complete");
     writeActivationMarker(review, journal);
     writeJournal(review, journal);
   }
@@ -237,19 +289,70 @@ public final class SemanticMigrationService {
         Files.move(displaced, published, StandardCopyOption.ATOMIC_MOVE);
       } else if (Files.exists(review.resolve(page.staged()), LinkOption.NOFOLLOW_LINKS)
           && Files.exists(published, LinkOption.NOFOLLOW_LINKS)
-          && ("installed".equals(page.state()) || "verified".equals(page.state()))) {
+          && ("installing".equals(page.state())
+              || "installed".equals(page.state())
+              || "verified".equals(page.state()))) {
         atomicExchange.exchange(published, review.resolve(page.staged()));
         forceDirectory(published.getParent());
       } else if (Files.exists(review.resolve(page.staged()), LinkOption.NOFOLLOW_LINKS)) {
         deleteTree(review.resolve(page.staged()));
       }
     }
+    rollbackCatalog(review, journal);
     Files.deleteIfExists(SemanticSchemaState.activationMarker(review));
     Path journalPath = SemanticSchemaState.migrationJournal(review);
     Path rollbackEvidence = journalPath.resolveSibling("migration-v1.rollback-complete.json");
     writeJson(rollbackEvidence, journal.toPayload());
     Files.deleteIfExists(journalPath);
     forceDirectory(journalPath.getParent());
+  }
+
+  private void rollForwardCatalog(Path review, Journal journal) throws IOException {
+    Path published = review.resolve(journal.catalogPublished());
+    Path staged = review.resolve(journal.catalogStaged());
+    Path displaced = review.resolve(journal.catalogDisplaced());
+    String state = journal.catalogState();
+    if ("staged".equals(state)) {
+      requireCatalogHash(staged, journal.catalogSha256());
+      atomicExchange.exchange(published, staged);
+      Files.createDirectories(displaced.getParent());
+      Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
+    } else if ("installing".equals(state)) {
+      if (catalogHashMatches(published, journal.catalogSha256())) {
+        Files.createDirectories(displaced.getParent());
+        Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
+      } else {
+        requireCatalogHash(staged, journal.catalogSha256());
+        atomicExchange.exchange(published, staged);
+        Files.createDirectories(displaced.getParent());
+        Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
+      }
+    } else if ("installed".equals(state) || "complete".equals(state)) {
+      requireCatalogHash(published, journal.catalogSha256());
+      if (Files.exists(staged, LinkOption.NOFOLLOW_LINKS)
+          && !Files.exists(displaced, LinkOption.NOFOLLOW_LINKS)) {
+        Files.createDirectories(displaced.getParent());
+        Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
+      }
+    }
+  }
+
+  private void rollbackCatalog(Path review, Journal journal) throws IOException {
+    Path published = review.resolve(journal.catalogPublished());
+    Path staged = review.resolve(journal.catalogStaged());
+    Path displaced = review.resolve(journal.catalogDisplaced());
+    if (Files.exists(displaced, LinkOption.NOFOLLOW_LINKS)
+        && Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
+      atomicExchange.exchange(published, displaced);
+    } else if (Files.exists(staged, LinkOption.NOFOLLOW_LINKS)
+        && Files.exists(published, LinkOption.NOFOLLOW_LINKS)
+        && ("installing".equals(journal.catalogState())
+            || "installed".equals(journal.catalogState())
+            || "complete".equals(journal.catalogState()))) {
+      atomicExchange.exchange(published, staged);
+    } else if (Files.exists(staged, LinkOption.NOFOLLOW_LINKS)) {
+      Files.delete(staged);
+    }
   }
 
   private static byte[] semanticBytes(
@@ -268,7 +371,7 @@ public final class SemanticMigrationService {
       converted = replaceFirstDestination(
           converted,
           destination,
-          "ref:" + occurrence.proposedReferenceId()
+          "ref:" + referenceId(occurrence)
               + (occurrence.heading() == null || occurrence.heading().isBlank()
                   ? ""
                   : occurrence.heading()));
@@ -322,16 +425,68 @@ public final class SemanticMigrationService {
     }
   }
 
+  private static Map<String, CorrectedOrderDecision> correctedOrderDecisions(
+      Path decisionsPath,
+      ReferenceMigrationInventory.Inventory inventory,
+      ReferenceMigrationInventory.DecisionSet decisions) throws IOException {
+    Set<String> accepted = Set.copyOf(decisions.keys());
+    @SuppressWarnings("unchecked")
+    Map<String, Object> payload = JSON.readValue(Files.readAllBytes(decisionsPath), Map.class);
+    Object raw = payload.get("decisions");
+    if (!(raw instanceof Map<?, ?> rawDecisions)) {
+      return Map.of();
+    }
+    LinkedHashMap<String, CorrectedOrderDecision> corrected = new LinkedHashMap<>();
+    for (ReferenceMigrationAligner.MigrationPage page : inventory.pages()) {
+      String key = page.pageRef() + "/order";
+      if (!accepted.contains(key)) {
+        continue;
+      }
+      Object rawDecision = rawDecisions.get(key);
+      if (!(rawDecision instanceof Map<?, ?> decision)
+          || !"approve-corrected-order".equals(decision.get("decision"))) {
+        continue;
+      }
+      String relative = String.valueOf(decision.get("correctedEnglishPath"));
+      Path correctedPath = resolveDecisionSibling(decisionsPath, relative);
+      byte[] bytes = Files.readAllBytes(correctedPath);
+      corrected.put(key, new CorrectedOrderDecision(bytes));
+    }
+    return Map.copyOf(corrected);
+  }
+
+  private static Path resolveDecisionSibling(Path decisionsPath, String relative) {
+    Path candidate = Path.of(relative);
+    if (candidate.isAbsolute()) {
+      throw new IllegalStateException("correctedEnglishPath must be relative");
+    }
+    Path base = decisionsPath.toAbsolutePath().normalize().getParent();
+    Path resolved = base.resolve(candidate).normalize();
+    if (!resolved.startsWith(base)) {
+      throw new IllegalStateException("correctedEnglishPath escapes decision directory");
+    }
+    return resolved;
+  }
+
+  private static void validateStagedCutover(ApplyPlan plan) throws IOException {
+    for (PagePlan page : plan.pages()) {
+      if (!stagedHashMatches(page.staged(), page.journalPage().stagedSha256())) {
+        throw new IllegalStateException("staged semantic page hash mismatch: " + page.staged());
+      }
+    }
+    requireCatalogHash(plan.catalogStaged(), plan.journal().catalogSha256());
+  }
+
   private static PageReferenceMap references(
       ReferenceMigrationAligner.MigrationPage page,
       byte[] ru,
       byte[] en) {
     LinkedHashMap<String, PageReferenceMap.Reference> references = new LinkedHashMap<>();
     List<String> order = page.occurrences().stream()
-        .map(ReferenceMigrationAligner.MigrationOccurrence::proposedReferenceId)
+        .map(SemanticMigrationService::referenceId)
         .toList();
     for (ReferenceMigrationAligner.MigrationOccurrence occurrence : page.occurrences()) {
-      references.put(occurrence.proposedReferenceId(), occurrence.proposedReference());
+      references.put(referenceId(occurrence), reference(occurrence));
     }
     return new PageReferenceMap(
         PageReferenceMap.SCHEMA_VERSION,
@@ -341,6 +496,41 @@ public final class SemanticMigrationService {
         PageReferenceMapCodec.sha256(en),
         order,
         references);
+  }
+
+  private static String referenceId(ReferenceMigrationAligner.MigrationOccurrence occurrence) {
+    if (occurrence.proposedReferenceId() != null && !occurrence.proposedReferenceId().isBlank()) {
+      return occurrence.proposedReferenceId();
+    }
+    return "ref-%04d".formatted(occurrence.sourceOrdinal());
+  }
+
+  private static PageReferenceMap.Reference reference(
+      ReferenceMigrationAligner.MigrationOccurrence occurrence) {
+    if (occurrence.proposedReference() != null) {
+      return occurrence.proposedReference();
+    }
+    LinkParts parts = parseRawWikilink(occurrence.rawWikilink());
+    return new PageReferenceMap.Reference(
+        occurrence.targetRef(),
+        parts.authoredTarget(),
+        occurrence.heading() == null ? "" : occurrence.heading(),
+        parts.label());
+  }
+
+  private static LinkParts parseRawWikilink(String rawWikilink) {
+    if (rawWikilink == null || !rawWikilink.startsWith("[[") || !rawWikilink.endsWith("]]")) {
+      return new LinkParts("", "");
+    }
+    String inner = rawWikilink.substring(2, rawWikilink.length() - 2);
+    int pipe = inner.indexOf('|');
+    String target = pipe < 0 ? inner : inner.substring(0, pipe);
+    String label = pipe < 0 ? target : inner.substring(pipe + 1);
+    int heading = target.indexOf('#');
+    if (heading >= 0) {
+      target = target.substring(0, heading);
+    }
+    return new LinkParts(target, label);
   }
 
   private static PageIdentity findPage(Path review, String sourcePath) throws IOException {
@@ -391,6 +581,20 @@ public final class SemanticMigrationService {
       byte[] en = readSafe(root.resolve("en.md"));
       byte[] references = readSafe(root.resolve("references.json"));
       return expected.equals(PageReferenceMapCodec.sha256(combined(ru, en, references)));
+    } catch (IOException error) {
+      return false;
+    }
+  }
+
+  private static void requireCatalogHash(Path path, String expected) throws IOException {
+    if (!catalogHashMatches(path, expected)) {
+      throw new IllegalStateException("catalog hash mismatch: " + path);
+    }
+  }
+
+  private static boolean catalogHashMatches(Path path, String expected) {
+    try {
+      return expected.equals(PageReferenceMapCodec.sha256(readSafe(path)));
     } catch (IOException error) {
       return false;
     }
@@ -511,7 +715,33 @@ public final class SemanticMigrationService {
         error);
   }
 
-  public record ApplyRequest(Path vault, Path review, Path astro, Path report, Path decisions) { }
+  private static void rejectIncompleteMigration(Path review) {
+    if (Files.exists(SemanticSchemaState.migrationJournal(review), LinkOption.NOFOLLOW_LINKS)
+        && SemanticSchemaState.mode(review) == SemanticSchemaState.Mode.MIGRATION_INCOMPLETE) {
+      throw new MigrationIncompleteException(
+          "semantic migration already incomplete; use --roll-forward or --roll-back before --apply; journal="
+              + SemanticSchemaState.migrationJournal(review)
+              + " recovery="
+              + review.resolve(".semantic-links/recovery-v1"),
+          null);
+    }
+  }
+
+  public record ApplyRequest(
+      Path vault,
+      Path review,
+      Path astro,
+      Path report,
+      Path decisions,
+      Consumer<Path> astroGate) {
+    public ApplyRequest(Path vault, Path review, Path astro, Path report, Path decisions) {
+      this(vault, review, astro, report, decisions, path -> { });
+    }
+
+    public ApplyRequest {
+      astroGate = astroGate == null ? path -> { } : astroGate;
+    }
+  }
 
   public record ApplyResult(Path activationMarker) { }
 
@@ -534,6 +764,7 @@ public final class SemanticMigrationService {
 
   public enum Boundary {
     CATALOG_STAGED,
+    CATALOG_INSTALLED,
     PAGE_STAGED,
     PAGE_INSTALLED,
     PARITY_PROJECTED,
@@ -568,9 +799,12 @@ public final class SemanticMigrationService {
 
   private record ApplyPlan(
       Path review,
-      byte[] catalog,
+      Path catalogPublished,
+      Path catalogStaged,
+      Path catalogDisplaced,
       Journal journal,
-      List<PagePlan> pages) { }
+      List<PagePlan> pages,
+      Consumer<Path> astroGate) { }
 
   private record PagePlan(
       Path published,
@@ -580,6 +814,19 @@ public final class SemanticMigrationService {
 
   private record PageIdentity(String collection, String publicId) { }
 
+  private record CorrectedOrderDecision(byte[] bytes) {
+    private CorrectedOrderDecision {
+      bytes = bytes.clone();
+    }
+
+    @Override
+    public byte[] bytes() {
+      return bytes.clone();
+    }
+  }
+
+  private record LinkParts(String authoredTarget, String label) { }
+
   private static final class Journal {
     private String state;
     private final String inventorySha256;
@@ -587,6 +834,10 @@ public final class SemanticMigrationService {
     private final String recoveryRoot;
     private final List<JournalPage> pages;
     private final Map<String, Object> extra = new LinkedHashMap<>();
+    private String catalogState;
+    private String catalogPublished;
+    private String catalogStaged;
+    private String catalogDisplaced;
 
     private Journal(
         String state,
@@ -621,12 +872,48 @@ public final class SemanticMigrationService {
       this.state = state;
     }
 
+    private String catalogState() {
+      return catalogState;
+    }
+
+    private void catalogState(String catalogState) {
+      this.catalogState = catalogState;
+    }
+
+    private String catalogPublished() {
+      return catalogPublished;
+    }
+
+    private void catalogPublished(String catalogPublished) {
+      this.catalogPublished = catalogPublished;
+    }
+
+    private String catalogStaged() {
+      return catalogStaged;
+    }
+
+    private void catalogStaged(String catalogStaged) {
+      this.catalogStaged = catalogStaged;
+    }
+
+    private String catalogDisplaced() {
+      return catalogDisplaced;
+    }
+
+    private void catalogDisplaced(String catalogDisplaced) {
+      this.catalogDisplaced = catalogDisplaced;
+    }
+
     private Map<String, Object> toPayload() {
       LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
       payload.put("schemaVersion", 1);
       payload.put("state", state);
       payload.put("inventorySha256", inventorySha256);
       payload.put("catalogSha256", catalogSha256);
+      payload.put("catalogState", catalogState);
+      payload.put("catalogPublished", catalogPublished);
+      payload.put("catalogStaged", catalogStaged);
+      payload.put("catalogDisplaced", catalogDisplaced);
       payload.put("recoveryRoot", recoveryRoot);
       payload.put("pages", pages.stream().map(JournalPage::toPayload).toList());
       payload.putAll(extra);
@@ -642,6 +929,10 @@ public final class SemanticMigrationService {
           (String) payload.get("catalogSha256"),
           (String) payload.get("recoveryRoot"),
           rawPages.stream().map(JournalPage::fromPayload).collect(java.util.stream.Collectors.toCollection(ArrayList::new)));
+      journal.catalogState((String) payload.get("catalogState"));
+      journal.catalogPublished((String) payload.get("catalogPublished"));
+      journal.catalogStaged((String) payload.get("catalogStaged"));
+      journal.catalogDisplaced((String) payload.get("catalogDisplaced"));
       if (payload.get("activatedAt") instanceof String text) {
         journal.extra().put("activatedAt", text);
       }

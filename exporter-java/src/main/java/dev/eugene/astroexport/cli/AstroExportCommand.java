@@ -690,7 +690,8 @@ public final class AstroExportCommand implements Callable<Integer> {
             reviewRoot,
             astroRoot,
             reportPath,
-            decisionsPath));
+            decisionsPath,
+            services.astroGate(astroRoot)));
         emitJson(bridge("migrate-semantic-links", true, "applied")
             .build());
         return 0;

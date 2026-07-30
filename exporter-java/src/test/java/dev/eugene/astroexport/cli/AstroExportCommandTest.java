@@ -38,6 +38,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -169,8 +170,13 @@ final class AstroExportCommandTest {
     Files.writeString(decisions, """
         {"schemaVersion":1,"inventorySha256":"%s","decisions":{}}
         """.formatted(inventorySha));
+    List<SiteWriter.GateInvocation> gates = new ArrayList<>();
 
-    CommandFixture.Result result = run(command(),
+    CommandFixture.Result result = run(
+        new AstroExportCommand(CommandServices.defaults().withGateRunner(invocation -> {
+          gates.add(invocation);
+          return new SiteWriter.GateResult(0, "", "");
+        })),
         "migrate-semantic-links",
         "--vault", vault.toString(),
         "--review", review.toString(),
@@ -184,6 +190,9 @@ final class AstroExportCommandTest {
     Map<String, Object> payload = json(result.stdout());
     assertEquals(true, payload.get("ok"));
     assertEquals("applied", payload.get("status"));
+    assertEquals(1, gates.size());
+    assertEquals(astro.toAbsolutePath().normalize(), gates.getFirst().workingDirectory());
+    assertTrue(gates.getFirst().environment().get("ASTRO_CONTENT_DIR").contains(".semantic-links/staging-v1"));
     assertEquals(SemanticSchemaState.Mode.SEMANTIC, SemanticSchemaState.mode(review));
     assertTrue(Files.exists(review.resolve("blog/page/published/references.json")));
   }

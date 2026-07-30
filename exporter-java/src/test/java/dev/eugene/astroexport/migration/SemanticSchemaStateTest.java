@@ -68,6 +68,10 @@ final class SemanticSchemaStateTest {
           "state": "complete",
           "inventorySha256": "%s",
           "catalogSha256": "%s",
+          "catalogState": "complete",
+          "catalogPublished": ".semantic-links/catalog-v1.json",
+          "catalogStaged": ".semantic-links/staging-v1/catalog-v1.json",
+          "catalogDisplaced": ".semantic-links/recovery-v1/catalog-v1.json",
           "pages": [
             {"collection":"blog","publicId":"page","pageRef":"vault-ref-page","sourcePath":"page.md","state":"complete","stagedSha256":"%s","published":"blog/page/published","staged":"staging/page","displaced":"recovery/page"}
           ],
