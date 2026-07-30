@@ -301,10 +301,12 @@ public final class ReviewWorkspace {
       byte[] english,
       byte[] references) {
     Path page = reviewRoot.resolve(collection).resolve(publicId);
-    PublishedSnapshotStore.PendingSnapshot pending =
-        SemanticSchemaState.mode(reviewRoot) == SemanticSchemaState.Mode.SEMANTIC
-            ? PUBLISHED_SNAPSHOTS.stageSemantic(page, russian, english, references)
-            : PUBLISHED_SNAPSHOTS.stageLegacy(page, russian, english);
+    PublishedSnapshotStore.PendingSnapshot pending = switch (SemanticSchemaState.mode(reviewRoot)) {
+      case SEMANTIC -> PUBLISHED_SNAPSHOTS.stageSemantic(page, russian, english, references);
+      case LEGACY -> PUBLISHED_SNAPSHOTS.stageLegacy(page, russian, english);
+      case MIGRATION_INCOMPLETE ->
+          throw new IllegalStateException("semantic link migration is incomplete");
+    };
     return new PendingPublishedSnapshot() {
       @Override
       public PublishedSnapshotResult commit(
@@ -370,6 +372,15 @@ public final class ReviewWorkspace {
       }
 
       @Override
+      public CandidateSnapshotResult commit(
+          List<WorkflowStateService.SnapshotGuard> preSwapGuards,
+          List<WorkflowStateService.SnapshotGuard> postSwapGuards) {
+        CandidateSnapshotStore.CommitResult result =
+            pending.commit(preSwapGuards, postSwapGuards);
+        return new CandidateSnapshotResult(result.recoveryPaths());
+      }
+
+      @Override
       public void close() {
         pending.close();
       }
@@ -387,6 +398,10 @@ public final class ReviewWorkspace {
   public interface PendingCandidateSnapshot extends AutoCloseable {
     CandidateSnapshotResult commit(
         List<WorkflowStateService.SnapshotGuard> guards);
+
+    CandidateSnapshotResult commit(
+        List<WorkflowStateService.SnapshotGuard> preSwapGuards,
+        List<WorkflowStateService.SnapshotGuard> postSwapGuards);
 
     @Override
     void close();

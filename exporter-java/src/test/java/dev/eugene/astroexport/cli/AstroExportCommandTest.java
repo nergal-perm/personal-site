@@ -17,6 +17,7 @@ import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.process.CodexRunner;
+import dev.eugene.astroexport.migration.SemanticOperationLock;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.review.PublishedSnapshotStore;
@@ -672,6 +673,85 @@ final class AstroExportCommandTest {
         .contains("translationStatus: \"reviewed\""));
     assertEquals(PageReferenceMapCodec.sha256(ru), map.ruSha256());
     assertEquals(PageReferenceMapCodec.sha256(reviewedEn), map.enSha256());
+  }
+
+  @Test
+  void semanticApprovalUsesCandidateEnglishAsReleaseInput()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    byte[] ru = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    byte[] candidateEn = englishReview(
+        entry.translationSourceHash(), "generated", "Candidate body.\n");
+    Path candidate = review.resolve("blog/essay/candidate");
+    Files.createDirectories(candidate);
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), candidateEn);
+    Files.write(candidate.resolve("references.json"), referencesFor(ru, candidateEn));
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(CommandServices.defaults()), vault, review, temp.resolve("jobs"));
+    String published = Files.readString(review.resolve("blog/essay/published/en.md"));
+
+    assertEquals(0, result.exitCode(), result.stdout() + result.stderr());
+    assertTrue(published.contains("Candidate body."));
+    assertFalse(published.contains("English body."));
+  }
+
+  @Test
+  void markReviewedBlocksWhenSemanticMigrationIsIncomplete()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    Path journal = review.resolve(".semantic-links/migration-v1.journal.json");
+    Files.createDirectories(journal.getParent());
+    Files.writeString(journal, "{\"state\":\"installed\"}");
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(CommandServices.defaults()), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("stale", payload.get("status"));
+    assertFalse(Files.exists(review.resolve("blog/essay/published")));
+  }
+
+  @Test
+  void semanticLeaseClosesWhenPublishedStagingFails()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    byte[] ru = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    Path english = writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    byte[] en = Files.readAllBytes(english);
+    Path candidate = review.resolve("blog/essay/candidate");
+    Files.createDirectories(candidate);
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), en);
+    Files.write(candidate.resolve("references.json"), referencesFor(ru, en));
+    CommandServices services = CommandServices.defaults()
+        .withStageApprovedSnapshotAction((root, collection, publicId, russian, englishBytes, references) -> {
+          throw new IllegalStateException("stage failed");
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+
+    assertEquals(1, result.exitCode());
+    try (SemanticOperationLock.Lease ignored = SemanticOperationLock.acquireExclusive(review)) {
+      assertTrue(true);
+    }
   }
 
   @Test
@@ -1630,7 +1710,12 @@ final class AstroExportCommandTest {
   private static Path writeBlogReviewEn(Path reviewRoot, String sourceHash, String status) throws Exception {
     Path path = reviewRoot.resolve("blog/essay/en.md");
     Files.createDirectories(path.getParent());
-    Files.writeString(path, """
+    Files.write(path, englishReview(sourceHash, status, "English body.\n"));
+    return path;
+  }
+
+  private static byte[] englishReview(String sourceHash, String status, String body) {
+    return """
         ---
         sourceHash: %s
         translationStatus: %s
@@ -1639,9 +1724,9 @@ final class AstroExportCommandTest {
         title: English title
         description: English description.
         ---
-        English body.
-        """.formatted(sourceHash, status));
-    return path;
+        %s
+        """.formatted(sourceHash, status, body)
+        .getBytes(StandardCharsets.UTF_8);
   }
 
   private static void writeSemanticMarker(Path reviewRoot) throws Exception {

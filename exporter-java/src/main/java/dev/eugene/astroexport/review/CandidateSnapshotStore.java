@@ -98,6 +98,10 @@ public final class CandidateSnapshotStore {
   public interface PendingCandidate extends AutoCloseable {
     CommitResult commit(List<WorkflowStateService.SnapshotGuard> guards);
 
+    CommitResult commit(
+        List<WorkflowStateService.SnapshotGuard> preSwapGuards,
+        List<WorkflowStateService.SnapshotGuard> postSwapGuards);
+
     @Override
     void close();
   }
@@ -190,6 +194,13 @@ public final class CandidateSnapshotStore {
 
     @Override
     public CommitResult commit(List<WorkflowStateService.SnapshotGuard> guards) {
+      return commit(guards, guards);
+    }
+
+    @Override
+    public CommitResult commit(
+        List<WorkflowStateService.SnapshotGuard> preSwapGuards,
+        List<WorkflowStateService.SnapshotGuard> postSwapGuards) {
       if (closed) {
         throw new IllegalStateException("candidate snapshot staging is closed");
       }
@@ -200,9 +211,12 @@ public final class CandidateSnapshotStore {
         throw new IllegalStateException(
             "candidate snapshot commit cannot be retried after an incomplete rollback");
       }
-      List<WorkflowStateService.SnapshotGuard> checkedGuards =
-          List.copyOf(Objects.requireNonNull(guards, "guards"));
-      if (!guardsMatch(checkedGuards)) {
+      List<WorkflowStateService.SnapshotGuard> checkedPreSwapGuards =
+          List.copyOf(Objects.requireNonNull(preSwapGuards, "preSwapGuards"));
+      List<WorkflowStateService.SnapshotGuard> checkedPostSwapGuards =
+          List.copyOf(Objects.requireNonNull(postSwapGuards, "postSwapGuards"));
+      if (!guardsMatch(checkedPreSwapGuards)
+          || !guardsMatch(checkedPostSwapGuards)) {
         throw concurrentUpdate();
       }
 
@@ -216,7 +230,8 @@ public final class CandidateSnapshotStore {
           Files.move(staging, candidate, StandardCopyOption.ATOMIC_MOVE);
           ownershipState = OwnershipState.FIRST_CANDIDATE_VISIBLE;
         }
-        if (!guardsMatch(checkedGuards)
+        if (!preSwapGuardsStillMatchDisplacedSnapshot(checkedPreSwapGuards)
+            || !guardsMatch(checkedPostSwapGuards)
             || !visibleTripleMatches(candidate, russian, english, references)) {
           rollback(concurrentUpdate());
           throw concurrentUpdate();
@@ -297,6 +312,22 @@ public final class CandidateSnapshotStore {
           "candidate snapshot inputs changed during commit: " + candidate);
     }
 
+    private boolean preSwapGuardsStillMatchDisplacedSnapshot(
+        List<WorkflowStateService.SnapshotGuard> guards) {
+      for (WorkflowStateService.SnapshotGuard guard : guards) {
+        Objects.requireNonNull(guard, "guard");
+        Path path = guard.path();
+        Path checked = path;
+        if (path != null && path.normalize().startsWith(candidate)) {
+          checked = staging.resolve(candidate.relativize(path.normalize()));
+        }
+        if (!guardMatches(checked, guard.expectedContent())) {
+          return false;
+        }
+      }
+      return true;
+    }
+
     private RuntimeException commitFailure(Exception error) {
       if (error instanceof RuntimeException runtimeError) {
         return runtimeError;
@@ -325,22 +356,25 @@ public final class CandidateSnapshotStore {
   private static boolean guardsMatch(List<WorkflowStateService.SnapshotGuard> guards) {
     for (WorkflowStateService.SnapshotGuard guard : guards) {
       Objects.requireNonNull(guard, "guard");
-      Path path = guard.path();
-      if (path == null
-          || !Files.exists(path, LinkOption.NOFOLLOW_LINKS)
-          || Files.isSymbolicLink(path)
-          || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-        return false;
-      }
-      try {
-        if (!Arrays.equals(guard.expectedContent(), Files.readAllBytes(path))) {
-          return false;
-        }
-      } catch (IOException error) {
+      if (!guardMatches(guard.path(), guard.expectedContent())) {
         return false;
       }
     }
     return true;
+  }
+
+  private static boolean guardMatches(Path path, byte[] expectedContent) {
+    if (path == null
+        || !Files.exists(path, LinkOption.NOFOLLOW_LINKS)
+        || Files.isSymbolicLink(path)
+        || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+      return false;
+    }
+    try {
+      return Arrays.equals(expectedContent, Files.readAllBytes(path));
+    } catch (IOException error) {
+      return false;
+    }
   }
 
   private static void validateCandidateLayout(Path candidate) throws IOException {

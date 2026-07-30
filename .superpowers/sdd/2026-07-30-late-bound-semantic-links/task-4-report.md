@@ -96,3 +96,112 @@ Note: Maven/JNA emitted the existing Java native-access warning during tests.
 ## Concerns
 
 - The candidate replacement cannot use candidate leaves as `CandidateSnapshotStore` commit guards because those guards are checked after the visible swap. The implementation compensates with explicit candidate triple checks at approval boundaries.
+
+---
+
+# Fix Round 1 Report
+
+## Status
+
+DONE
+
+## Findings Fixed
+
+- Critical 1: semantic `mark-reviewed` now validates and derives `reviewedBytes` from `candidate/en.md`, not root `<page>/en.md`. The published semantic EN release input is the reviewed candidate EN bytes.
+- Critical 2: `CandidateSnapshotStore` now supports separate pre-swap and post-swap guards. Approval replacement passes source plus original candidate leaves as pre-swap guards and source as the post-swap guard, so replaced candidate leaves can still be guarded without failing the post-swap visibility check.
+- Important 3: `mark-reviewed` now blocks `SemanticSchemaState.Mode.MIGRATION_INCOMPLETE` before approval, and `ReviewWorkspace.stageApprovedSnapshot` rejects incomplete migration instead of falling back to legacy staging.
+- Important 4: semantic approval now closes the shared semantic lease when published snapshot staging throws either recovery or runtime failures.
+
+## Covering Tests Added
+
+- `CandidateSnapshotStoreTest.preSwapGuardsCanProtectLeavesThatAreReplaced`
+- `AstroExportCommandTest.semanticApprovalUsesCandidateEnglishAsReleaseInput`
+- `AstroExportCommandTest.markReviewedBlocksWhenSemanticMigrationIsIncomplete`
+- `AstroExportCommandTest.semanticLeaseClosesWhenPublishedStagingFails`
+
+## TDD Evidence
+
+RED:
+
+```text
+mvn -q -Dtest=CandidateSnapshotStoreTest,AstroExportCommandTest test
+[ERROR] COMPILATION ERROR :
+[ERROR] CandidateSnapshotStoreTest.java:[76,14] method commit in interface CandidateSnapshotStore.PendingCandidate cannot be applied to given types;
+required: java.util.List<WorkflowStateService.SnapshotGuard>
+found: java.util.List<WorkflowStateService.SnapshotGuard>,java.util.List<java.lang.Object>
+reason: actual and formal argument lists differ in length
+exit code 1
+```
+
+GREEN / covering tests:
+
+```text
+mvn -q -Dtest=CandidateSnapshotStoreTest,AstroExportCommandTest,ReviewWorkspaceTest test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+exit code 0
+```
+
+Broader selected suite:
+
+```text
+mvn -q -Dtest=PublishedSnapshotStoreTest,CandidateSnapshotStoreTest,ReviewWorkspaceTest,ReviewLaunchPlannerTest,AstroExportCommandTest,PrepareWorkflowTest test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+exit code 0
+```
+
+Full Java suite:
+
+```text
+mvn -q test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+Usage: astro-export [-hV] [--dry-run] [--out=<out>] [--report=<report>]
+                    [--review=<review>] [--vault=<vault>] [COMMAND]
+Export explicitly published Obsidian notes into Astro source trees.
+      --dry-run           select and report without writing content
+  -h, --help              Show this help message and exit.
+      --out=<out>         Astro project root for atomic write mode
+      --report=<report>   report path
+      --review=<review>   translation review workspace
+  -V, --version           Print version information and exit.
+      --vault=<vault>     Obsidian vault root
+Commands:
+  build-from-review
+  migrate-overrides
+  prepare
+  inspect-publication
+  mark-reviewed
+  refresh-publication-queue
+  write-publication-contract
+exit code 0
+```
+
+Whitespace:
+
+```text
+git diff --check
+exit code 0
+```
+
+## Files Changed In Fix Round 1
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/cli/AstroExportCommand.java`
+- `exporter-java/src/main/java/dev/eugene/astroexport/review/CandidateSnapshotStore.java`
+- `exporter-java/src/main/java/dev/eugene/astroexport/review/ReviewWorkspace.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/cli/AstroExportCommandTest.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/prepare/PrepareWorkflowTest.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/review/CandidateSnapshotStoreTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-4-report.md`
+
+## Concerns
+
+- Maven/JNA still emits the existing native-access warning under the current JDK; tests exit 0.

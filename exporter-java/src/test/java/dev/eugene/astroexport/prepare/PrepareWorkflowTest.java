@@ -174,6 +174,13 @@ final class PrepareWorkflowTest {
           }
 
           @Override
+          public ReviewWorkspace.CandidateSnapshotResult commit(
+              List<WorkflowStateService.SnapshotGuard> preSwapGuards,
+              List<WorkflowStateService.SnapshotGuard> postSwapGuards) {
+            return new ReviewWorkspace.CandidateSnapshotResult(List.of(leftover));
+          }
+
+          @Override
           public void close() { }
         };
       }

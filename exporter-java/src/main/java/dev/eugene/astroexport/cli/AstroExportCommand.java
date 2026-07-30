@@ -309,7 +309,11 @@ public final class AstroExportCommand implements Callable<Integer> {
     if (directory == null) {
       return new ReviewPairState("invalid", null, "English review directory escapes the review root.", null);
     }
-    Path english = directory.resolve("en.md");
+    return reviewPairState(entry, reviewRoot, directory.resolve("en.md"));
+  }
+
+  private ReviewPairState reviewPairState(ManifestEntry entry, Path reviewRoot, Path english) {
+    Target target = target(entry);
     byte[] snapshot;
     try {
       snapshot = readSafeRegularFile(english);
@@ -344,7 +348,7 @@ public final class AstroExportCommand implements Callable<Integer> {
         if (!Set.of("generated", "reviewed").contains(status)) {
           return new ReviewPairState("invalid", null, "English review has an invalid translationStatus.", null);
         }
-        if (!Arrays.equals(readSafeRegularFile(englishPath(reviewRoot, target)), snapshot)) {
+        if (!Arrays.equals(readSafeRegularFile(english), snapshot)) {
           return new ReviewPairState("stale", null,
               "English review changed during validation; inspect it again.", null);
         }
@@ -424,8 +428,16 @@ public final class AstroExportCommand implements Callable<Integer> {
     try (ReviewWorkspace.PendingCandidateSnapshot pending =
              ReviewWorkspace.stageCandidateSnapshot(
                  reviewRoot, entry, candidateRu, reviewedEn, reviewedReferences)) {
-      pending.commit(List.of(
-          new WorkflowStateService.SnapshotGuard(sourcePath, sourceSnapshot)));
+      WorkflowStateService.SnapshotGuard sourceGuard =
+          new WorkflowStateService.SnapshotGuard(sourcePath, sourceSnapshot);
+      pending.commit(
+          List.of(
+              sourceGuard,
+              new WorkflowStateService.SnapshotGuard(candidate.resolve("ru.md"), candidateRu),
+              new WorkflowStateService.SnapshotGuard(candidate.resolve("en.md"), candidateEn),
+              new WorkflowStateService.SnapshotGuard(
+                  candidate.resolve("references.json"), candidateReferences)),
+          List.of(sourceGuard));
     }
   }
 
@@ -594,8 +606,67 @@ public final class AstroExportCommand implements Callable<Integer> {
         return 1;
       }
 
-      ReviewPairState pair = reviewPairState(stable.preflight().entry(), reviewRoot);
+      SemanticSchemaState.Mode schemaMode = SemanticSchemaState.mode(reviewRoot);
+      if (schemaMode == SemanticSchemaState.Mode.MIGRATION_INCOMPLETE) {
+        emitJson(bridge("mark-reviewed", false, "stale")
+            .note(note)
+            .identity(identity)
+            .diagnostics(List.of(new PublicationDiagnostic(
+                "semantic-links",
+                "Semantic link migration is incomplete; recover it before approving review.")))
+            .workspaceHealth(stable.preflight().workspaceHealth())
+            .build());
+        return 1;
+      }
+      boolean semanticApproval = schemaMode == SemanticSchemaState.Mode.SEMANTIC;
+      Path candidate = identity.reviewDirectory().resolve("candidate");
+      byte[] candidateRu = null;
+      byte[] candidateEn = null;
+      byte[] candidateReferences = null;
+      SemanticOperationLock.Lease semanticLease = null;
+      if (semanticApproval) {
+        try {
+          semanticLease = SemanticOperationLock.acquireShared(reviewRoot);
+          candidateRu = readSafeRegularFile(candidate.resolve("ru.md"));
+          candidateEn = readSafeRegularFile(candidate.resolve("en.md"));
+          candidateReferences = readSafeRegularFile(candidate.resolve("references.json"));
+          PageReferenceMap candidateMap = PageReferenceMapCodec.read(
+              candidateReferences, "candidate/references.json");
+          PageReferenceMapCodec.validate(candidateMap, candidateRu, candidateEn);
+        } catch (SemanticOperationLock.LockBusyException error) {
+          emitJson(bridge("mark-reviewed", false, "translating")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "job",
+                  "Semantic link migration is running; review it after migration finishes.")))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .build());
+          return 1;
+        } catch (IOException | RuntimeException error) {
+          if (semanticLease != null) {
+            semanticLease.close();
+          }
+          emitJson(bridge("mark-reviewed", false, "stale")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "translation",
+                  "Semantic candidate snapshot is unavailable: "
+                      + error.getClass().getSimpleName() + ": " + error.getMessage())))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .build());
+          return 1;
+        }
+      }
+
+      ReviewPairState pair = semanticApproval
+          ? reviewPairState(stable.preflight().entry(), reviewRoot, candidate.resolve("en.md"))
+          : reviewPairState(stable.preflight().entry(), reviewRoot);
       if (!"fresh".equals(pair.freshness())) {
+        if (semanticLease != null) {
+          semanticLease.close();
+        }
         try {
           setWorkflowIfChanged(stable.preflight(), "stale", null, pair.diagnostic(),
               stable.sourceSnapshot(), List.of());
@@ -638,49 +709,6 @@ public final class AstroExportCommand implements Callable<Integer> {
       }
       byte[] stagedRussian = ReviewWorkspace.renderRuReview(
           stable.preflight().entry()).getBytes(StandardCharsets.UTF_8);
-      boolean semanticApproval =
-          SemanticSchemaState.mode(reviewRoot) == SemanticSchemaState.Mode.SEMANTIC;
-      Path candidate = identity.reviewDirectory().resolve("candidate");
-      byte[] candidateRu = null;
-      byte[] candidateEn = null;
-      byte[] candidateReferences = null;
-      SemanticOperationLock.Lease semanticLease = null;
-      if (semanticApproval) {
-        try {
-          semanticLease = SemanticOperationLock.acquireShared(reviewRoot);
-          candidateRu = readSafeRegularFile(candidate.resolve("ru.md"));
-          candidateEn = readSafeRegularFile(candidate.resolve("en.md"));
-          candidateReferences = readSafeRegularFile(candidate.resolve("references.json"));
-        } catch (SemanticOperationLock.LockBusyException error) {
-          emitJson(bridge("mark-reviewed", false, "translating")
-              .note(note)
-              .identity(identity)
-              .diagnostics(List.of(new PublicationDiagnostic(
-                  "job",
-                  "Semantic link migration is running; review it after migration finishes.")))
-              .workspaceHealth(stable.preflight().workspaceHealth())
-              .pairFreshness("fresh")
-              .translationStatus(pair.translationStatus())
-              .build());
-          return 1;
-        } catch (IOException | IllegalArgumentException error) {
-          if (semanticLease != null) {
-            semanticLease.close();
-          }
-          emitJson(bridge("mark-reviewed", false, "stale")
-              .note(note)
-              .identity(identity)
-              .diagnostics(List.of(new PublicationDiagnostic(
-                  "translation",
-                  "Semantic candidate snapshot is unavailable: "
-                      + error.getClass().getSimpleName() + ": " + error.getMessage())))
-              .workspaceHealth(stable.preflight().workspaceHealth())
-              .pairFreshness("fresh")
-              .translationStatus(pair.translationStatus())
-              .build());
-          return 1;
-        }
-      }
       ReviewWorkspace.PendingPublishedSnapshot pendingSnapshot;
       try {
         pendingSnapshot = services.stageApprovedSnapshot(
@@ -691,6 +719,9 @@ public final class AstroExportCommand implements Callable<Integer> {
             reviewedBytes,
             semanticApproval ? reboundReferences(candidateRu, reviewedBytes, candidateReferences) : null);
       } catch (PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
+        if (semanticLease != null) {
+          semanticLease.close();
+        }
         emitPublishedSnapshotRecovery(
             note,
             identity,
@@ -698,6 +729,9 @@ public final class AstroExportCommand implements Callable<Integer> {
             error);
         return 1;
       } catch (RuntimeException error) {
+        if (semanticLease != null) {
+          semanticLease.close();
+        }
         emitJson(bridge("mark-reviewed", false,
                 freshPairWorkflowStatus(pair.translationStatus()))
             .note(note)

@@ -62,6 +62,34 @@ final class CandidateSnapshotStoreTest {
   }
 
   @Test
+  void preSwapGuardsCanProtectLeavesThatAreReplaced() throws Exception {
+    Path page = temp.resolve("review/blog/essay");
+    Files.createDirectories(page);
+    CandidateSnapshotStore store = new CandidateSnapshotStore();
+    try (CandidateSnapshotStore.PendingCandidate pending = store.stage(
+        page, bytes("old ru"), bytes("old en"), bytes("{\"schemaVersion\":1}"))) {
+      pending.commit(List.of());
+    }
+
+    try (CandidateSnapshotStore.PendingCandidate pending = store.stage(
+        page, bytes("new ru"), bytes("new en"), bytes("{\"schemaVersion\":2}"))) {
+      pending.commit(
+          List.of(
+              new WorkflowStateService.SnapshotGuard(
+                  page.resolve("candidate/ru.md"), bytes("old ru")),
+              new WorkflowStateService.SnapshotGuard(
+                  page.resolve("candidate/en.md"), bytes("old en")),
+              new WorkflowStateService.SnapshotGuard(
+                  page.resolve("candidate/references.json"), bytes("{\"schemaVersion\":1}"))),
+          List.of());
+    }
+
+    assertEquals("new ru", Files.readString(page.resolve("candidate/ru.md")));
+    assertEquals("new en", Files.readString(page.resolve("candidate/en.md")));
+    assertEquals("{\"schemaVersion\":2}", Files.readString(page.resolve("candidate/references.json")));
+  }
+
+  @Test
   void rollbackFailureReportsVisibleCandidateRecoveryPath() throws Exception {
     Path page = temp.resolve("review/blog/essay");
     Files.createDirectories(page);
