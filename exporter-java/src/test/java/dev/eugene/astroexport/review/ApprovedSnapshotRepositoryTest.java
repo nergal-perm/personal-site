@@ -9,6 +9,7 @@ import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
 import dev.eugene.astroexport.references.VaultReferenceCatalog.CatalogEntry;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
 import dev.eugene.astroexport.release.ApprovedReleaseException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -219,6 +220,28 @@ final class ApprovedSnapshotRepositoryTest {
 
     assertEquals("invalid-approved-snapshot", error.code());
     assertEquals("blog/A.md", error.sourcePath());
+  }
+
+  @Test
+  void guardRejectsApprovedLeafReplacedAfterRepositoryLoad() throws Exception {
+    Path review = reviewRoot();
+    Path vault = temp.resolve("vault");
+    Files.createDirectories(vault.resolve("blog"));
+    Files.writeString(vault.resolve("blog/A.md"), "selected source", StandardCharsets.UTF_8);
+    writeApprovedTriple(review, "blog", "a", "blog/A.md", "vault-ref-0001", "approved body");
+    ApprovedPageSnapshot snapshot = repository
+        .loadSelected(selection("blog/A.md"), review, VaultReferenceCatalog.empty())
+        .getFirst();
+    Files.writeString(
+        review.resolve("blog/a/published/ru.md"),
+        "replacement body",
+        StandardCharsets.UTF_8);
+
+    ApprovedReleaseException error = assertThrows(
+        ApprovedReleaseException.class,
+        () -> new ApprovedReleaseMaterializer().materialize(List.of(snapshot), vault));
+
+    assertEquals("release-input-changed", error.code());
   }
 
   @Test

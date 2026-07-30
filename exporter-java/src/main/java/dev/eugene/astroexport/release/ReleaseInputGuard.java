@@ -1,5 +1,6 @@
 package dev.eugene.astroexport.release;
 
+import dev.eugene.astroexport.review.ApprovedPageSnapshot;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -62,6 +63,22 @@ public final class ReleaseInputGuard {
     public Builder captureRequired(Path path) {
       Path normalized = path.toAbsolutePath().normalize();
       bytes.put(normalized, readSafeRegularFile(normalized));
+      return this;
+    }
+
+    public Builder capture(ApprovedPageSnapshot.InputFile inputFile) {
+      if (inputFile == null) {
+        return this;
+      }
+      Path normalized = inputFile.path().toAbsolutePath().normalize();
+      byte[] current = readSafeRegularFile(normalized);
+      if (!java.util.Arrays.equals(inputFile.bytes(), current)) {
+        throw new ApprovedReleaseException(
+            "release-input-changed",
+            normalized.toString(),
+            "release input changed after approved snapshot load: " + normalized);
+      }
+      bytes.put(normalized, inputFile.bytes());
       return this;
     }
 

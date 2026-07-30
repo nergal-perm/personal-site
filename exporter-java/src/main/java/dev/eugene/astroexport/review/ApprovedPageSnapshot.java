@@ -54,12 +54,23 @@ public record ApprovedPageSnapshot(
   }
 
   public record InputFiles(
-      Path approvedRussian,
-      Path approvedEnglish,
-      Path approvedReferences,
-      Path catalog) {
+      InputFile approvedRussian,
+      InputFile approvedEnglish,
+      InputFile approvedReferences,
+      InputFile catalog) {
     public static InputFiles none() {
       return new InputFiles(null, null, null, null);
+    }
+  }
+
+  public record InputFile(Path path, byte[] bytes) {
+    public InputFile {
+      bytes = bytes == null ? null : bytes.clone();
+    }
+
+    @Override
+    public byte[] bytes() {
+      return bytes == null ? null : bytes.clone();
     }
   }
 }

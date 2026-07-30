@@ -243,6 +243,7 @@ public final class ApprovedSnapshotRepository {
       String collection,
       String directoryPublicId,
       Path published,
+      byte[] referencesBytes,
       PageReferenceMap references) {
 
     static SnapshotDirectory probe(String collection, String publicId, Path published) {
@@ -265,7 +266,7 @@ public final class ApprovedSnapshotRepository {
         PageReferenceMap map = PageReferenceMapCodec.read(
             references,
             published.resolve("references.json").toString());
-        return new SnapshotDirectory(collection, publicId, published, map);
+        return new SnapshotDirectory(collection, publicId, published, references, map);
       } catch (IOException | RuntimeException error) {
         throw failure(
             "invalid-approved-snapshot",
@@ -318,10 +319,10 @@ public final class ApprovedSnapshotRepository {
             references,
             new SnapshotHashes(references.ruSha256(), references.enSha256()),
             new ApprovedPageSnapshot.InputFiles(
-                published.resolve("ru.md"),
-                published.resolve("en.md"),
-                published.resolve("references.json"),
-                catalogPath));
+                new ApprovedPageSnapshot.InputFile(published.resolve("ru.md"), russian),
+                new ApprovedPageSnapshot.InputFile(published.resolve("en.md"), english),
+                new ApprovedPageSnapshot.InputFile(published.resolve("references.json"), referencesBytes),
+                inputFileIfPresent(catalogPath, selectedSourcePath)));
       } catch (RuntimeException error) {
         if (error instanceof ApprovedReleaseException releaseError) {
           throw releaseError;
@@ -332,6 +333,15 @@ public final class ApprovedSnapshotRepository {
             "invalid approved snapshot " + published + ": " + error.getMessage(),
             error);
       }
+    }
+
+    private static ApprovedPageSnapshot.InputFile inputFileIfPresent(
+        Path path,
+        String selectedSourcePath) {
+      if (path == null || !Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+        return null;
+      }
+      return new ApprovedPageSnapshot.InputFile(path, readSafeLeaf(path, selectedSourcePath));
     }
   }
 }

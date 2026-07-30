@@ -148,6 +148,19 @@ final class ApprovedReleaseMaterializerTest {
   }
 
   @Test
+  void publicOutputGateRejectsAbsoluteVaultPaths() {
+    ApprovedPageSnapshot a = withRussianBody(
+        approvedTarget("A", "vault-ref-a", "a"),
+        "Leaked /Users/eugene/Documents/personal-wiki/knowledge-base/private/Note.md");
+
+    ApprovedReleaseException error = assertThrows(
+        ApprovedReleaseException.class,
+        () -> materialize(List.of(a)));
+
+    assertEquals("invalid-release-output", error.code());
+  }
+
+  @Test
   void registryRejectsDuplicateApprovedRoutes() {
     ApprovedPageSnapshot a = approvedTarget("A", "vault-ref-a", "a", "/ru/notes/same/", "/en/notes/a/");
     ApprovedPageSnapshot b = approvedTarget("B", "vault-ref-b", "b", "/ru/notes/same/", "/en/notes/b/");
@@ -185,9 +198,9 @@ final class ApprovedReleaseMaterializerTest {
     Files.writeString(approvedReferences, "{}", StandardCharsets.UTF_8);
     ApprovedPageSnapshot snapshot = approvedTarget("A", "vault-ref-a", "a")
         .withInputFiles(new ApprovedPageSnapshot.InputFiles(
-            approvedRu,
-            approvedEn,
-            approvedReferences,
+            new ApprovedPageSnapshot.InputFile(approvedRu, Files.readAllBytes(approvedRu)),
+            new ApprovedPageSnapshot.InputFile(approvedEn, Files.readAllBytes(approvedEn)),
+            new ApprovedPageSnapshot.InputFile(approvedReferences, Files.readAllBytes(approvedReferences)),
             null));
     ApprovedReleaseMaterializer.MaterializedRelease release =
         materialize(List.of(snapshot));
@@ -258,6 +271,26 @@ final class ApprovedReleaseMaterializerTest {
         publicId,
         ruRoute,
         enRoute);
+  }
+
+  private static ApprovedPageSnapshot withRussianBody(ApprovedPageSnapshot snapshot, String body) {
+    return new ApprovedPageSnapshot(
+        snapshot.collection(),
+        snapshot.publicId(),
+        snapshot.pageRef(),
+        snapshot.sourcePath(),
+        new ManifestEntry(
+            snapshot.russian().sourcePath(),
+            snapshot.russian().targetPath(),
+            snapshot.russian().route(),
+            snapshot.russian().metadata(),
+            body,
+            snapshot.russian().translationSourceHash(),
+            snapshot.russian().translationSourceMetadata()),
+        snapshot.english(),
+        snapshot.references(),
+        snapshot.hashes(),
+        snapshot.inputFiles());
   }
 
   private static ApprovedPageSnapshot approved(

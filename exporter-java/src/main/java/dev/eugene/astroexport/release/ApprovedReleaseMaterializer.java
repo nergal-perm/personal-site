@@ -23,6 +23,9 @@ public final class ApprovedReleaseMaterializer {
   private static final Pattern SEMANTIC_DESTINATION = Pattern.compile("\\]\\(ref:[^)]+\\)");
   private static final Pattern VAULT_REF = Pattern.compile("\\bvault-ref-[A-Za-z0-9-]+\\b");
   private static final Pattern CATALOG_PATH = Pattern.compile("catalog-v\\d+\\.json|\\.semantic-links/");
+  private static final Pattern VAULT_PATH = Pattern.compile(
+      "(?:/Users/[^\\s<>\"')]+|(?<![\\w:/])/(?!ru(?:/|\\b)|en(?:/|\\b)|assets(?:/|\\b))[^\\s<>\"')]+"
+          + "|(?<![\\w/])(?:private|review|\\.publication-review|\\.publication-jobs)[\\\\/][^\\s<>\"')]+)");
 
   private final LinkProcessor linkProcessor = new LinkProcessor();
 
@@ -40,10 +43,10 @@ public final class ApprovedReleaseMaterializer {
 
     for (ApprovedPageSnapshot snapshot : snapshots) {
       guard.captureRequired(vaultRoot.resolve(snapshot.sourcePath()));
-      guard.captureIfPresent(snapshot.inputFiles().approvedRussian());
-      guard.captureIfPresent(snapshot.inputFiles().approvedEnglish());
-      guard.captureIfPresent(snapshot.inputFiles().approvedReferences());
-      guard.captureIfPresent(snapshot.inputFiles().catalog());
+      guard.capture(snapshot.inputFiles().approvedRussian());
+      guard.capture(snapshot.inputFiles().approvedEnglish());
+      guard.capture(snapshot.inputFiles().approvedReferences());
+      guard.capture(snapshot.inputFiles().catalog());
       validateActivationSequence(snapshot, "ru", snapshot.russian().body());
       validateActivationSequence(snapshot, "en", snapshot.english().body());
       Projection ru = project(snapshot, "ru", registry);
@@ -201,6 +204,8 @@ public final class ApprovedReleaseMaterializer {
         || VAULT_REF.matcher(metadata).find()
         || CATALOG_PATH.matcher(entry.body()).find()
         || CATALOG_PATH.matcher(metadata).find()
+        || VAULT_PATH.matcher(entry.body()).find()
+        || VAULT_PATH.matcher(metadata).find()
         || metadata.contains("authoredTarget")) {
       throw invalidOutput(entry, language + " output contains private semantic payload");
     }
