@@ -33,16 +33,120 @@ if [[ -d "$SITE_SRC/node_modules" ]]; then
   ln -s "$SITE_SRC/node_modules" "$ASTRO_TMP/node_modules"
 fi
 
-node --input-type=module - "$ASTRO_TMP/package.json" <<'NODE'
+node --input-type=module - "$VAULT" "$REVIEW" <<'NODE'
 import fs from "node:fs";
-const packagePath = process.argv[2];
-const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-pkg.scripts = {
-  ...pkg.scripts,
-  check: "node -e \"console.log('synthetic content gate')\"",
-  build: "astro build --force",
-};
-fs.writeFileSync(packagePath, `${JSON.stringify(pkg, null, 2)}\n`);
+import path from "node:path";
+import crypto from "node:crypto";
+
+const vault = process.argv[2];
+const review = process.argv[3];
+const pages = ["about", "claims", "concepts", "essays", "home", "library", "music", "notes"];
+const catalogPath = path.join(review, ".semantic-links", "catalog-v1.json");
+const catalog = JSON.parse(fs.readFileSync(catalogPath, "utf8"));
+
+for (const page of pages) {
+  const sourcePath = `editorial/${page}.md`;
+  const pageRef = `vault-ref-editorial-${page}`;
+  writeVaultEditorial(page, sourcePath);
+  catalog.entries[pageRef] = {
+    currentPath: sourcePath,
+    stableNoteId: `synthetic-editorial-${page}`,
+    title: `Synthetic ${page}`,
+    aliases: [],
+    previousPaths: [],
+    state: "active",
+  };
+
+  const published = path.join(review, "editorial", page, "published");
+  fs.mkdirSync(published, { recursive: true });
+  const ru = approvedMarkdown(page, "ru");
+  const en = approvedMarkdown(page, "en");
+  fs.writeFileSync(path.join(published, "ru.md"), ru);
+  fs.writeFileSync(path.join(published, "en.md"), en);
+  fs.writeFileSync(
+    path.join(published, "references.json"),
+    JSON.stringify({
+      schemaVersion: 1,
+      pageRef,
+      sourcePath,
+      ruSha256: sha256(ru),
+      enSha256: sha256(en),
+      order: [],
+      references: {},
+    }),
+  );
+}
+
+fs.writeFileSync(catalogPath, `${JSON.stringify(catalog, null, 2)}\n`);
+
+function writeVaultEditorial(page, sourcePath) {
+  const target = path.join(vault, sourcePath);
+  fs.mkdirSync(path.dirname(target), { recursive: true });
+  fs.writeFileSync(target, `---
+publish: true
+publicId: ${page}
+publicCollection: editorial
+publicContentType: curated_page
+editorialPage: ${page}
+title: Synthetic ${page}
+description: Synthetic ${page}.
+---
+Synthetic editorial source.
+`);
+}
+
+function approvedMarkdown(page, language) {
+  const metadata = {
+    id: page,
+    language,
+    sourceLanguage: "ru",
+    title: `Synthetic ${page}`,
+    summary: `Synthetic ${page}.`,
+    type: page === "home" ? "home" : page === "about" ? "about" : "index",
+    searchable: false,
+    topics: [],
+    links: [],
+    eyebrow: "Synthetic",
+    lead: "Synthetic lead.",
+  };
+  if (language === "en") {
+    metadata.translationOf = page;
+    metadata.translationStatus = "reviewed";
+  }
+  if (page === "home") {
+    metadata.heroTitle = "Synthetic home";
+    metadata.heroImageAlt = "Synthetic image";
+    metadata.currentTitle = "Synthetic current";
+    metadata.current = [
+      { key: "studying", label: "Studying", layout: "text", title: "Synthetic study", text: "Synthetic text." },
+      { key: "building", label: "Building", layout: "text", title: "Synthetic build", text: "Synthetic text." },
+      { key: "reading", label: "Reading", layout: "book", title: "Synthetic read", text: "Synthetic text." },
+      { key: "listening", label: "Listening", layout: "album", title: "Synthetic listen", text: "Synthetic text." },
+    ];
+  }
+  if (page === "about") {
+    metadata.principles = [];
+    metadata.colophon = "Synthetic colophon.";
+  }
+  return `---\n${yaml(metadata)}---\n`;
+}
+
+function yaml(value) {
+  return Object.entries(value)
+    .map(([key, item]) => `${key}: ${scalar(item)}\n`)
+    .join("");
+}
+
+function scalar(value) {
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) return JSON.stringify(value);
+  throw new Error(`unsupported synthetic metadata value: ${value}`);
+}
+
+function sha256(text) {
+  return crypto.createHash("sha256").update(text, "utf8").digest("hex");
+}
 NODE
 
 args=(
@@ -60,16 +164,6 @@ else
   cd "$EXPORTER_ROOT"
   printf -v exec_args '%q ' "${args[@]}"
   mvn -q exec:java "-Dexec.args=${exec_args% }"
-fi
-
-if [[ -d "$SITE_SRC/src/data/pages" ]]; then
-  rm -rf "$ASTRO_TMP/src/data/pages"
-  mkdir -p "$ASTRO_TMP/src/data"
-  cp -R "$SITE_SRC/src/data/pages" "$ASTRO_TMP/src/data/pages"
-fi
-if [[ -d "$SITE_SRC/src/content" ]]; then
-  mkdir -p "$ASTRO_TMP/src/content"
-  cp -R "$SITE_SRC/src/content"/. "$ASTRO_TMP/src/content"/
 fi
 
 cd "$ASTRO_TMP"

@@ -3,8 +3,8 @@ package dev.eugene.astroexport.nativeimage;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -172,9 +172,13 @@ final class NativeCliParityTest {
   @Test
   void nativeExecutableExercisesSemanticSubcommandsBeyondHelp() throws Exception {
     Path nativeBinary = Path.of("target/astro-export").toAbsolutePath().normalize();
-    assumeTrue(Files.isExecutable(nativeBinary), "native binary is built by mvn -Pnative native:compile");
-    assumeTrue(nativeRun(nativeBinary, "--help").stdout().contains("migrate-semantic-links"),
+    assertTrue(Files.isExecutable(nativeBinary), "run mvn -Pnative native:compile before native parity");
+    assertTrue(nativeRun(nativeBinary, "--help").stdout().contains("migrate-semantic-links"),
         "native binary predates semantic CLI subcommands");
+    assertNativeMissingApproval(nativeBinary);
+    assertNativeMigrationIncomplete(nativeBinary);
+    assertNativeOrderMismatch(nativeBinary);
+
     Path vault = temp.resolve("native-vault");
     Path review = temp.resolve("native-review");
     Path astro = writeAstroRoot(temp.resolve("native-astro"));
@@ -201,7 +205,7 @@ final class NativeCliParityTest {
     Map<?, ?> firstPage = (Map<?, ?>) ((List<?>) inventoryReport.get("pages")).getFirst();
     Map<?, ?> firstOccurrence = (Map<?, ?>) ((List<?>) firstPage.get("occurrences")).getFirst();
     Map<?, ?> span = (Map<?, ?>) firstOccurrence.get("proposedEnSpan");
-    assumeTrue(span != null, "native binary predates proposedEnSpan inventory output");
+    assertNotNull(span, "native binary predates proposedEnSpan inventory output");
     Files.writeString(decisions, """
         {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%s,"end":%s}}}}
         """.formatted(
@@ -273,6 +277,94 @@ final class NativeCliParityTest {
         "--json");
     assertEquals(1, prepareBlocked.exitCode());
     assertEquals("prepare", json(prepareBlocked.stdout()).get("command"));
+  }
+
+  private void assertNativeMissingApproval(Path nativeBinary) throws Exception {
+    Path vault = temp.resolve("native-missing-approval-vault");
+    Path review = temp.resolve("native-missing-approval-review");
+    Path astro = writeAstroRoot(temp.resolve("native-missing-approval-astro"));
+    Path report = temp.resolve("native-missing-approval.md");
+    writePublicationSource(vault, "missing.md", "missing", "Missing", "Missing.");
+    writeSemanticCatalog(review, "vault-ref-missing", "missing.md");
+    writeCompleteSemanticMode(review, List.of(journalPage(
+        "blog", "missing", "vault-ref-missing", "missing.md", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee")));
+
+    NativeResult result = nativeRun(nativeBinary,
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", astro.toString(),
+        "--review", review.toString(),
+        "--report", report.toString());
+
+    assertEquals(1, result.exitCode(), result.stdout() + result.stderr());
+    String text = Files.readString(report);
+    assertTrue(text.contains("Diagnostic code: `missing-approved-snapshot`"), text);
+    assertTrue(result.stdout().contains("missing-approved-snapshot"), result.stdout());
+  }
+
+  private void assertNativeMigrationIncomplete(Path nativeBinary) throws Exception {
+    Path vault = temp.resolve("native-migration-incomplete-vault");
+    Path review = temp.resolve("native-migration-incomplete-review");
+    Path astro = writeAstroRoot(temp.resolve("native-migration-incomplete-astro"));
+    Path report = temp.resolve("native-migration-incomplete.md");
+    writePublicationSource(vault, "incomplete.md", "incomplete", "Incomplete", "Incomplete.");
+    Path semantic = review.resolve(".semantic-links");
+    Files.createDirectories(semantic);
+    Files.writeString(
+        semantic.resolve("migration-v1.journal.json"),
+        "{\"state\":\"installed\"}\n",
+        StandardCharsets.UTF_8);
+
+    NativeResult result = nativeRun(nativeBinary,
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", astro.toString(),
+        "--review", review.toString(),
+        "--report", report.toString());
+
+    assertEquals(1, result.exitCode(), result.stdout() + result.stderr());
+    String text = Files.readString(report);
+    assertTrue(text.contains("Diagnostic code: `migration-incomplete`"), text);
+    assertTrue(result.stdout().contains("migration-incomplete"), result.stdout());
+  }
+
+  private void assertNativeOrderMismatch(Path nativeBinary) throws Exception {
+    Path vault = temp.resolve("native-order-mismatch-vault");
+    Path review = temp.resolve("native-order-mismatch-review");
+    Path astro = writeAstroRoot(temp.resolve("native-order-mismatch-astro"));
+    Path report = temp.resolve("native-order-mismatch.md");
+    writePublishedSemanticFixture(vault, review, astro);
+    writePublicationSource(vault, "page.md", "page", "Page", "See [[Target|target]].");
+    writePublicationSource(vault, "target.md", "target", "Target", "Target.");
+    writeCompleteSemanticMode(review, List.of(
+        journalPage(
+            "blog", "page", "vault-ref-page", "page.md", "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+        journalPage(
+            "blog", "target", "vault-ref-target", "target.md", "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff")));
+    Path references = review.resolve("blog/page/published/references.json");
+    Map<String, Object> payload = json(Files.readString(references));
+    byte[] russian = approvedMarkdown("page", "ru", "See [target](ref:ref-0001).");
+    byte[] english = approvedMarkdown("page", "en", "See [target](ref:ref-0001).");
+    Files.write(review.resolve("blog/page/published/ru.md"), russian);
+    Files.write(review.resolve("blog/page/published/en.md"), english);
+    payload.put("ruSha256", PageReferenceMapCodec.sha256(russian));
+    payload.put("enSha256", PageReferenceMapCodec.sha256(english));
+    payload.put("order", List.of());
+    payload.put("references", Map.of());
+    Files.writeString(references, JSON.writeValueAsString(payload), StandardCharsets.UTF_8);
+
+    NativeResult result = nativeRun(nativeBinary,
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--out", astro.toString(),
+        "--review", review.toString(),
+        "--report", report.toString());
+
+    assertEquals(1, result.exitCode(), result.stdout() + result.stderr());
+    String text = Files.readString(report);
+    assertTrue(text.contains("Diagnostic code: `invalid-approved-snapshot`"), text);
+    assertTrue(text.contains("reference order must match both Russian and English bodies"), text);
+    assertTrue(text.contains("reference-order-mismatch"), text);
   }
 
   @Test
@@ -464,6 +556,54 @@ final class NativeCliParityTest {
         "entries", entries)), StandardCharsets.UTF_8);
   }
 
+  private static JournalPageFixture journalPage(
+      String collection,
+      String publicId,
+      String pageRef,
+      String sourcePath,
+      String stagedSha256) {
+    return new JournalPageFixture(collection, publicId, pageRef, sourcePath, stagedSha256);
+  }
+
+  private static void writeCompleteSemanticMode(
+      Path reviewRoot,
+      List<JournalPageFixture> pages) throws Exception {
+    Path semantic = reviewRoot.resolve(".semantic-links");
+    Files.createDirectories(semantic);
+    String inventory = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    String catalog = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+    Files.writeString(semantic.resolve("schema-v1.active.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "inventorySha256", inventory,
+        "catalogSha256", catalog,
+        "activatedAt", "2026-07-30T00:00:00Z")), StandardCharsets.UTF_8);
+
+    ArrayList<Map<String, Object>> journalPages = new ArrayList<>();
+    for (JournalPageFixture page : pages) {
+      journalPages.add(Map.of(
+          "collection", page.collection(),
+          "publicId", page.publicId(),
+          "pageRef", page.pageRef(),
+          "sourcePath", page.sourcePath(),
+          "state", "complete",
+          "stagedSha256", page.stagedSha256(),
+          "published", page.collection() + "/" + page.publicId() + "/published",
+          "staged", ".semantic-links/staging-v1/" + page.collection() + "/" + page.publicId() + "/published",
+          "displaced", ".semantic-links/recovery-v1/" + page.collection() + "/" + page.publicId() + "/published"));
+    }
+    Files.writeString(semantic.resolve("migration-v1.journal.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "state", "complete",
+        "inventorySha256", inventory,
+        "catalogSha256", catalog,
+        "catalogState", "complete",
+        "catalogPublished", ".semantic-links/catalog-v1.json",
+        "catalogStaged", ".semantic-links/staging-v1/catalog-v1.json",
+        "catalogDisplaced", ".semantic-links/recovery-v1/catalog-v1.json",
+        "recoveryRoot", ".semantic-links/recovery-v1",
+        "pages", journalPages)), StandardCharsets.UTF_8);
+  }
+
   private static String semanticCatalogTitle(String path) {
     String stem = path.replace(".md", "");
     int slash = stem.lastIndexOf('/');
@@ -602,6 +742,13 @@ final class NativeCliParityTest {
   }
 
   private record NativeResult(int exitCode, String stdout, String stderr) { }
+
+  private record JournalPageFixture(
+      String collection,
+      String publicId,
+      String pageRef,
+      String sourcePath,
+      String stagedSha256) { }
 
   private static Map<String, ByteBuffer> temporarySiblings(Path root) throws Exception {
     LinkedHashMap<String, ByteBuffer> files = new LinkedHashMap<>();

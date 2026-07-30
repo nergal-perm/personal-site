@@ -55,3 +55,29 @@ Final hygiene:
 Concerns:
 - The exact default `mvn -Pnative native:compile` command is not runnable with the default JDK in this shell because `native-image` is absent. The native executable was rebuilt successfully with the installed GraalVM JDK and then verified with native parity.
 - The real read-only dry run found live-data blockers and unsafe migration decisions, so no real semantic activation was applied.
+
+## Fix Round 1 Report
+
+Timestamp: 2026-07-30 23:05:44 +04
+
+Changed files:
+- `e2e/run-synthetic.sh`
+- `exporter-java/src/test/java/dev/eugene/astroexport/nativeimage/NativeCliParityTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-11-report.md`
+
+Fixes:
+- Removed the synthetic package-script override that replaced `check` and `build`; the synthetic e2e now leaves production `npm run check` and `npm run build` intact.
+- Removed post-materialization copying of managed `src/content` and `src/data/pages`; the final production build now verifies the same provenance-tracked payload installed by `build-from-review`.
+- Added runtime-only synthetic editorial approved snapshots so materialization's production content gate sees the complete fixed page contract.
+- Added native executable coverage for missing approval, migration-incomplete, and reference order mismatch.
+- Replaced `assumeTrue` stale-binary skips with hard assertions for executable presence, semantic subcommand support, and `proposedEnSpan` inventory output.
+
+Tests:
+- `mvn -q -Dtest=LateBoundSemanticLinksAcceptanceTest test`: passed.
+- `../e2e/run-synthetic.sh` from `site/`: passed; materialization ran `npm run check`, final `npm run build` ran `ASTRO_REQUIRE_RELEASE_PROVENANCE=1 node scripts/check-content.mjs && astro build --force`, and 37 pages were built.
+- `JAVA_HOME=/Users/eugene/.sdkman/candidates/java/25.0.4-graal TMPDIR=/private/tmp mvn -Pnative -DskipTests native:compile`: passed after escalation for GraalVM native-image `/var/tmp` access.
+- `mvn -q -Dtest=NativeCliParityTest test`: passed.
+- `git diff --check`: passed.
+
+Concerns:
+- The synthetic editorial snapshots are generated only inside the e2e temp review/vault. This keeps committed fixtures focused on A/B semantic links while still exercising the production gate with a complete page contract.
