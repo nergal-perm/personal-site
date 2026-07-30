@@ -93,6 +93,93 @@ Result: exit 0.
 
 - None.
 
+---
+
+# Fix Round 4 Report
+
+## Status
+
+DONE
+
+## Finding Fixed
+
+1. The vault-path output guard classified registry-backed generated routes as local vault paths when `vaultRoot=/ru`.
+
+## What Changed
+
+- `ApprovedReleaseMaterializer` now supplies the output gate with the approved registry routes for the locale being validated.
+- A path token below `vaultRoot` remains private unless its route portion, before a query or fragment, exactly matches an approved route for that locale.
+- This accepts projected `/ru/notes/b/` and `/en/notes/b/` links for approved targets while the existing `/ru/private/`, `/ru/private/Secret`, and `/ru/private/Note.md` cases remain rejected.
+- The repository-loaded approved-byte capture and `ReleaseInputGuard.verify()` behavior were not changed.
+
+## TDD Evidence
+
+Red:
+
+```bash
+mvn -q -f exporter-java/pom.xml -Dtest=ApprovedReleaseMaterializerTest test
+```
+
+Output:
+
+```text
+[ERROR] Tests run: 18, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.130 s <<< FAILURE! -- in dev.eugene.astroexport.release.ApprovedReleaseMaterializerTest
+[ERROR] dev.eugene.astroexport.release.ApprovedReleaseMaterializerTest.publicOutputGateAllowsApprovedRoutesInsideVaultRoot -- Time elapsed: 0.006 s <<< ERROR!
+dev.eugene.astroexport.release.ApprovedReleaseException: ru output contains private semantic payload
+	at dev.eugene.astroexport.release.ApprovedReleaseMaterializer.invalidOutput(ApprovedReleaseMaterializer.java:241)
+	at dev.eugene.astroexport.release.ApprovedReleaseMaterializer.validateNoPrivatePayload(ApprovedReleaseMaterializer.java:209)
+	at dev.eugene.astroexport.release.ApprovedReleaseMaterializer.validateEntries(ApprovedReleaseMaterializer.java:180)
+	at dev.eugene.astroexport.release.ApprovedReleaseMaterializer.rejectInvalidOutput(ApprovedReleaseMaterializer.java:173)
+	at dev.eugene.astroexport.release.ApprovedReleaseMaterializer.materialize(ApprovedReleaseMaterializer.java:71)
+	at dev.eugene.astroexport.release.ApprovedReleaseMaterializerTest.publicOutputGateAllowsApprovedRoutesInsideVaultRoot(ApprovedReleaseMaterializerTest.java:199)
+
+[ERROR] Errors:
+[ERROR]   ApprovedReleaseMaterializerTest.publicOutputGateAllowsApprovedRoutesInsideVaultRoot:199 » ApprovedRelease ru output contains private semantic payload
+[ERROR] Tests run: 18, Failures: 0, Errors: 1, Skipped: 0
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.5.3:test (default-test) on project astro-export:
+[ERROR]
+[ERROR] See /Users/eugene/Dev/personal-site/exporter-java/target/surefire-reports for the individual test results.
+[ERROR] See dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR]
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+```
+
+Covering tests:
+
+```bash
+mvn -q -f exporter-java/pom.xml -Dtest=ApprovedReleaseMaterializerTest,ReferenceImpactIndexTest,ApprovedSnapshotRepositoryTest,SemanticReferenceMarkdownTest test
+```
+
+Output:
+
+```text
+<no output; exit 0>
+```
+
+Whitespace check:
+
+```bash
+git diff --check -- exporter-java/src/main/java/dev/eugene/astroexport/release/ApprovedReleaseMaterializer.java exporter-java/src/test/java/dev/eugene/astroexport/release/ApprovedReleaseMaterializerTest.java .superpowers/sdd/2026-07-30-late-bound-semantic-links/task-6-report.md
+```
+
+Output:
+
+```text
+<no output; exit 0>
+```
+
+## Files Changed
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/release/ApprovedReleaseMaterializer.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/release/ApprovedReleaseMaterializerTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-6-report.md`
+
+## Concerns
+
+- None.
+
 # Fix Round 1 Report
 
 ## Status

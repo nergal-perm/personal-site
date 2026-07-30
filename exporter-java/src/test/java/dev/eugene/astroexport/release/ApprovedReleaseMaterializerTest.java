@@ -184,6 +184,25 @@ final class ApprovedReleaseMaterializerTest {
   }
 
   @Test
+  void publicOutputGateAllowsApprovedRoutesInsideVaultRoot() throws Exception {
+    Path aSource = vault.resolve("source/A.md");
+    Path bSource = vault.resolve("source/B.md");
+    Files.createDirectories(aSource.getParent());
+    Files.writeString(aSource, "selected source A", StandardCharsets.UTF_8);
+    Files.writeString(bSource, "selected source B", StandardCharsets.UTF_8);
+    ApprovedPageSnapshot a = withSourcePath(approved(
+        "A", "[Б](ref:ref-0001)", "[B](ref:ref-0001)",
+        reference("ref-0001", "vault-ref-b")), aSource.toString());
+    ApprovedPageSnapshot b = withSourcePath(approvedTargetB(), bSource.toString());
+
+    ApprovedReleaseMaterializer.MaterializedRelease release =
+        materializer.materialize(List.of(a, b), Path.of("/ru"));
+
+    assertEquals("[Б](/ru/notes/b/)", body(release, "A", "ru"));
+    assertEquals("[B](/en/notes/b/)", body(release, "A", "en"));
+  }
+
+  @Test
   void publicOutputGateAllowsPublicRootRelativeLinksOutsideVaultRoot() throws Exception {
     ApprovedPageSnapshot a = withRussianBody(
         approvedTarget("A", "vault-ref-a", "a"),

@@ -68,7 +68,7 @@ public final class ApprovedReleaseMaterializer {
         List.of(),
         List.of(),
         Map.of());
-    rejectInvalidOutput(manifest, vaultRoot);
+    rejectInvalidOutput(manifest, vaultRoot, registry);
     ReleaseInputGuard inputGuard = guard.build();
     return new MaterializedRelease(
         manifest,
@@ -168,16 +168,29 @@ public final class ApprovedReleaseMaterializer {
     assets.addAll(linkProcessor.processSemanticEmbedsAndAssets(note).assets());
   }
 
-  private static void rejectInvalidOutput(ManifestResult manifest, Path vaultRoot) {
+  private static void rejectInvalidOutput(
+      ManifestResult manifest,
+      Path vaultRoot,
+      ApprovedTargetRegistry registry) {
     Path normalizedVaultRoot = vaultRoot.toAbsolutePath().normalize();
-    validateEntries(manifest.entries(), "ru", normalizedVaultRoot);
-    validateEntries(manifest.englishEntries(), "en", normalizedVaultRoot);
+    validateEntries(manifest.entries(), "ru", normalizedVaultRoot, approvedRoutes(registry, "ru"));
+    validateEntries(manifest.englishEntries(), "en", normalizedVaultRoot, approvedRoutes(registry, "en"));
   }
 
-  private static void validateEntries(List<ManifestEntry> entries, String language, Path vaultRoot) {
+  private static Set<String> approvedRoutes(ApprovedTargetRegistry registry, String language) {
+    return registry.targets().stream()
+        .map(target -> target.route(language))
+        .collect(java.util.stream.Collectors.toUnmodifiableSet());
+  }
+
+  private static void validateEntries(
+      List<ManifestEntry> entries,
+      String language,
+      Path vaultRoot,
+      Set<String> approvedRoutes) {
     for (ManifestEntry entry : entries) {
       validateLanguageRoute(entry, language);
-      validateNoPrivatePayload(entry, language, vaultRoot);
+      validateNoPrivatePayload(entry, language, vaultRoot, approvedRoutes);
     }
   }
 
@@ -196,21 +209,28 @@ public final class ApprovedReleaseMaterializer {
     }
   }
 
-  private static void validateNoPrivatePayload(ManifestEntry entry, String language, Path vaultRoot) {
+  private static void validateNoPrivatePayload(
+      ManifestEntry entry,
+      String language,
+      Path vaultRoot,
+      Set<String> approvedRoutes) {
     String metadata = entry.metadata().toString();
     if (SEMANTIC_DESTINATION.matcher(entry.body()).find()
         || VAULT_REF.matcher(entry.body()).find()
         || VAULT_REF.matcher(metadata).find()
         || CATALOG_PATH.matcher(entry.body()).find()
         || CATALOG_PATH.matcher(metadata).find()
-        || containsVaultPath(entry.body(), vaultRoot)
-        || containsVaultPath(metadata, vaultRoot)
+        || containsVaultPath(entry.body(), vaultRoot, approvedRoutes)
+        || containsVaultPath(metadata, vaultRoot, approvedRoutes)
         || metadata.contains("authoredTarget")) {
       throw invalidOutput(entry, language + " output contains private semantic payload");
     }
   }
 
-  private static boolean containsVaultPath(String value, Path vaultRoot) {
+  private static boolean containsVaultPath(
+      String value,
+      Path vaultRoot,
+      Set<String> approvedRoutes) {
     java.util.regex.Matcher matcher = ABSOLUTE_PATH_TOKEN.matcher(value);
     while (matcher.find()) {
       String token = trimTrailingPunctuation(matcher.group());
@@ -219,7 +239,7 @@ public final class ApprovedReleaseMaterializer {
       }
       try {
         Path path = Path.of(token).toAbsolutePath().normalize();
-        if (path.startsWith(vaultRoot)) {
+        if (path.startsWith(vaultRoot) && !approvedRoutes.contains(routePart(token))) {
           return true;
         }
       } catch (RuntimeException ignored) {
@@ -227,6 +247,16 @@ public final class ApprovedReleaseMaterializer {
       }
     }
     return false;
+  }
+
+  private static String routePart(String token) {
+    int fragment = token.indexOf('#');
+    int query = token.indexOf('?');
+    int end = fragment < 0 ? token.length() : fragment;
+    if (query >= 0) {
+      end = Math.min(end, query);
+    }
+    return token.substring(0, end);
   }
 
   private static String trimTrailingPunctuation(String value) {
