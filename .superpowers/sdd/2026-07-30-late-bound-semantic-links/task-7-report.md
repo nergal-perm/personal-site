@@ -103,3 +103,94 @@ Result: passed.
 
 - `approvalImpactSummary` is best-effort after the approved snapshot commit. If rebuilding the approved release index fails after a successful approval, the approval response omits the summary instead of failing a completed approval.
 - The diagnostic-code vocabulary is surfaced in reports, but the underlying older exception codes such as `invalid-approved-snapshot` are not renamed in this task unless the approved release path emits one of the design codes directly.
+
+## Fix Round 1/5
+
+### Findings Fixed
+
+- Added an explicit dry-run report summary line stating that the materialized current candidates are `not release input` and semantic releases use approved snapshots only.
+- Replaced inspect-time `approvedSnapshotState` leaf probing with the same `CommandServices.buildApprovedRelease(vault, review)` path used by semantic writes.
+- Derived `semanticReferencesState` and `releaseState` from approved release loading/materialization, so corrupt approved reference maps or catalog/semantic-data failures report `invalid`/`blocked`.
+- Added coverage for catalog-reconciled approved snapshots so inspect reports `valid`/`releasable` when the approved snapshot is found through source-path/catalog reconciliation rather than the current review directory.
+
+### Covering Tests Added
+
+- `AstroExportCommandTest.dryRunReportStatesCandidatesAreNotReleaseInput`
+- `AstroExportCommandTest.inspectUsesApprovedReleaseValidationForApprovedSnapshotAndSemanticStates`
+- `AstroExportCommandTest.inspectReportsReconciledApprovedSnapshotAsReleasable`
+
+### Red Evidence
+
+Command:
+
+```text
+mvn -q -Dtest=AstroExportCommandTest#dryRunReportStatesCandidatesAreNotReleaseInput+inspectUsesApprovedReleaseValidationForApprovedSnapshotAndSemanticStates+inspectReportsReconciledApprovedSnapshotAsReleasable test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+[ERROR] Tests run: 3, Failures: 3, Errors: 0, Skipped: 0
+[ERROR] AstroExportCommandTest.inspectReportsReconciledApprovedSnapshotAsReleasable expected: <0> but was: <1>
+[ERROR] AstroExportCommandTest.dryRunReportStatesCandidatesAreNotReleaseInput expected: <true> but was: <false>
+[ERROR] AstroExportCommandTest.inspectUsesApprovedReleaseValidationForApprovedSnapshotAndSemanticStates expected: <0> but was: <1>
+```
+
+### Green Evidence
+
+Command:
+
+```text
+mvn -q -Dtest=AstroExportCommandTest#dryRunReportStatesCandidatesAreNotReleaseInput+inspectUsesApprovedReleaseValidationForApprovedSnapshotAndSemanticStates+inspectReportsReconciledApprovedSnapshotAsReleasable test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Command:
+
+```text
+mvn -q -Dtest=AstroExportCommandTest,ReportBuilderTest,NativeCliParityTest,ReviewLaunchPlannerTest,SiteWriterTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Command:
+
+```text
+git diff --check
+```
+
+Output:
+
+```text
+```
+
+### Files Changed In Fix Round
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/cli/AstroExportCommand.java`
+- `exporter-java/src/main/java/dev/eugene/astroexport/report/ReportBuilder.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/cli/AstroExportCommandTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-7-report.md`
+
+### Concerns
+
+- Inspect release state is now release-gate-faithful and global for the selected release set. If another selected note blocks approved release loading, the inspected note’s `releaseState` is also `blocked`.

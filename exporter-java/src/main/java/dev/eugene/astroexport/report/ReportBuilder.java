@@ -78,6 +78,7 @@ public final class ReportBuilder {
         "- Normalized RU records: " + manifest.entries().size(),
         "- Generated EN records: " + manifest.englishEntries().size(),
         "- Review translations: " + reviewTranslations,
+        "- Release input: not release input; non-dry-run semantic releases use approved snapshots only",
         "- Translation blockers: 0",
         "- Retained public links: " + manifest.retainedLinks().size(),
         "- Stripped non-public links: " + manifest.strippedLinks().size(),

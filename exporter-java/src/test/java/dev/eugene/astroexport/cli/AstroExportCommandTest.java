@@ -20,6 +20,7 @@ import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.migration.SemanticOperationLock;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
+import dev.eugene.astroexport.references.VaultReferenceCatalog;
 import dev.eugene.astroexport.review.PublishedSnapshotStore;
 import dev.eugene.astroexport.review.ReviewWorkspace;
 import dev.eugene.astroexport.testsupport.CommandFixture;
@@ -719,6 +720,115 @@ final class AstroExportCommandTest {
         .contains("approved"));
     assertFalse(Files.readString(out.resolve("src/content/blog/en/essay.md"))
         .contains("generated draft"));
+  }
+
+  @Test
+  void dryRunReportStatesCandidatesAreNotReleaseInput() throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Candidate body.");
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+    Path report = temp.resolve("dry-run-report.md");
+
+    CommandFixture.Result result = run(new AstroExportCommand(CommandServices.defaults()),
+        "build-from-review",
+        "--vault", vault.toString(),
+        "--dry-run",
+        "--report", report.toString(),
+        "--review", review.toString());
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    String text = Files.readString(report);
+    assertTrue(text.contains("not release input"));
+    assertTrue(text.contains("approved snapshots"));
+  }
+
+  @Test
+  void inspectUsesApprovedReleaseValidationForApprovedSnapshotAndSemanticStates()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Approved body.");
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    byte[] approvedRu = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    byte[] approvedEn = approvedEnglish("approved\n");
+    Files.createDirectories(review.resolve("blog/essay"));
+    try (ReviewWorkspace.PendingPublishedSnapshot pending = ReviewWorkspace.stageApprovedSnapshot(
+        review, "blog", "essay", approvedRu, approvedEn, referencesFor(approvedRu, approvedEn))) {
+      pending.commit(List.of());
+    }
+    Files.writeString(
+        review.resolve("blog/essay/published/references.json"),
+        "{\"not\":\"a reference map\"}",
+        StandardCharsets.UTF_8);
+    writeBlogReviewEn(review, entry.translationSourceHash(), "generated");
+
+    CommandFixture.Result result = run(command(),
+        "inspect-publication",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", review.toString(),
+        "--json");
+
+    Map<String, Object> payload = json(result.stdout());
+    assertEquals("invalid", payload.get("approvedSnapshotState"));
+    assertEquals("invalid", payload.get("semanticReferencesState"));
+    assertEquals("blocked", payload.get("releaseState"));
+  }
+
+  @Test
+  void inspectReportsReconciledApprovedSnapshotAsReleasable()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault, "Current source body.");
+    Path oldSource = vault.resolve("old/Essay.md");
+    Files.createDirectories(oldSource.getParent());
+    Files.writeString(oldSource, "previous source still present for guard\n", StandardCharsets.UTF_8);
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    byte[] ru = approvedRussian("old", "/ru/essays/old/", "src/content/blog/ru/old.md", "approved old\n");
+    byte[] en = approvedEnglish("old", "/en/essays/old/", "src/content/blog/en/old.md", "approved old\n");
+    byte[] references = PageReferenceMapCodec.write(new PageReferenceMap(
+        PageReferenceMap.SCHEMA_VERSION,
+        "vault-ref-0001",
+        "old/Essay.md",
+        PageReferenceMapCodec.sha256(ru),
+        PageReferenceMapCodec.sha256(en),
+        List.of(),
+        Map.of()));
+    Files.createDirectories(review.resolve("blog/old"));
+    try (ReviewWorkspace.PendingPublishedSnapshot pending =
+             ReviewWorkspace.stageApprovedSnapshot(review, "blog", "old", ru, en, references)) {
+      pending.commit(List.of());
+    }
+    new VaultReferenceCatalog(
+        VaultReferenceCatalog.SCHEMA_VERSION,
+        Map.of("vault-ref-0001", new VaultReferenceCatalog.CatalogEntry(
+            "vault-ref-0001",
+            "anywhere/Essay.md",
+            "essay-internal",
+            "Essay",
+            List.of(),
+            List.of("old/Essay.md"),
+            VaultReferenceCatalog.STATE_ACTIVE)))
+        .writeAtomically(review);
+    ManifestEntry currentEntry = currentBlogEntry(vault);
+    writeBlogReviewEn(review, currentEntry.translationSourceHash(), "generated");
+
+    CommandFixture.Result result = run(command(),
+        "inspect-publication",
+        "--vault", vault.toString(),
+        "--note", "anywhere/Essay.md",
+        "--review", review.toString(),
+        "--json");
+
+    Map<String, Object> payload = json(result.stdout());
+    assertEquals("valid", payload.get("approvedSnapshotState"));
+    assertEquals("valid", payload.get("semanticReferencesState"));
+    assertEquals("releasable", payload.get("releaseState"));
   }
 
   @Test
@@ -1872,19 +1982,47 @@ final class AstroExportCommandTest {
   }
 
   private static byte[] approvedEnglish(String body) {
+    return approvedEnglish("essay", "/en/essays/essay/", "src/content/blog/en/essay.md", body);
+  }
+
+  private static byte[] approvedRussian(
+      String publicId,
+      String route,
+      String targetPath,
+      String body) {
     return """
         ---
-        id: essay
+        id: %s
+        language: ru
+        reviewType: essay
+        route: %s
+        targetPath: %s
+        title: Russian title
+        description: Russian description.
+        ---
+        %s
+        """.formatted(publicId, route, targetPath, body)
+        .getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static byte[] approvedEnglish(
+      String publicId,
+      String route,
+      String targetPath,
+      String body) {
+    return """
+        ---
+        id: %s
         language: en
         reviewType: essay
-        route: /en/essays/essay/
-        targetPath: src/content/blog/en/essay.md
+        route: %s
+        targetPath: %s
         title: English title
         description: English description.
         translationStatus: reviewed
         ---
         %s
-        """.formatted(body)
+        """.formatted(publicId, route, targetPath, body)
         .getBytes(StandardCharsets.UTF_8);
   }
 

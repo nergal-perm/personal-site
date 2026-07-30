@@ -568,12 +568,7 @@ public final class AstroExportCommand implements Callable<Integer> {
     ReviewPairState pair = reviewPairState(preflight.entry(), reviewRoot);
     SemanticSchemaState.Mode schemaMode = SemanticSchemaState.mode(reviewRoot);
     String candidateState = candidateState(preflight.entry(), pair, identity, reviewRoot, schemaMode);
-    String approvedSnapshotState = approvedSnapshotState(identity, schemaMode);
-    String semanticReferencesState = semanticReferencesState(schemaMode);
-    String releaseState = "valid".equals(approvedSnapshotState)
-        && "valid".equals(semanticReferencesState)
-        ? "releasable"
-        : "blocked";
+    ReleaseInspection releaseInspection = releaseInspection(vaultRoot, reviewRoot, schemaMode);
     boolean fresh = "fresh".equals(pair.freshness());
     ReviewLaunchPlanner.ReviewPlan reviewPlan = null;
     if (fresh) {
@@ -593,9 +588,9 @@ public final class AstroExportCommand implements Callable<Integer> {
             .pairFreshness(pair.freshness())
             .translationStatus(pair.translationStatus())
             .candidateState(candidateState)
-            .approvedSnapshotState(approvedSnapshotState)
-            .semanticReferencesState(semanticReferencesState)
-            .releaseState(releaseState)
+            .approvedSnapshotState(releaseInspection.approvedSnapshotState())
+            .semanticReferencesState(releaseInspection.semanticReferencesState())
+            .releaseState(releaseInspection.releaseState())
             .build());
         return 1;
       }
@@ -609,9 +604,9 @@ public final class AstroExportCommand implements Callable<Integer> {
         .pairFreshness(pair.freshness())
         .translationStatus(pair.translationStatus())
         .candidateState(candidateState)
-        .approvedSnapshotState(approvedSnapshotState)
-        .semanticReferencesState(semanticReferencesState)
-        .releaseState(releaseState)
+        .approvedSnapshotState(releaseInspection.approvedSnapshotState())
+        .semanticReferencesState(releaseInspection.semanticReferencesState())
+        .releaseState(releaseInspection.releaseState())
         .reviewPlan(reviewPlan)
         .build());
     return fresh ? 0 : 1;
@@ -658,34 +653,34 @@ public final class AstroExportCommand implements Callable<Integer> {
     return "stale";
   }
 
-  private static String approvedSnapshotState(
-      PublicationIdentity identity,
+  private ReleaseInspection releaseInspection(
+      Path vaultRoot,
+      Path reviewRoot,
       SemanticSchemaState.Mode schemaMode) {
-    if (identity == null || identity.reviewDirectory() == null) {
-      return "absent";
-    }
-    Path published = identity.reviewDirectory().resolve("published");
-    if (!Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
-      return "absent";
-    }
-    try {
-      readSafeRegularFile(published.resolve("ru.md"));
-      readSafeRegularFile(published.resolve("en.md"));
-      if (schemaMode == SemanticSchemaState.Mode.SEMANTIC) {
-        readSafeRegularFile(published.resolve("references.json"));
-      }
-      return "valid";
-    } catch (IOException | RuntimeException error) {
-      return "invalid";
-    }
+    return switch (schemaMode) {
+      case LEGACY -> new ReleaseInspection("absent", "migration-required", "blocked");
+      case MIGRATION_INCOMPLETE -> new ReleaseInspection("absent", "invalid", "blocked");
+      case SEMANTIC -> semanticReleaseInspection(vaultRoot, reviewRoot);
+    };
   }
 
-  private static String semanticReferencesState(SemanticSchemaState.Mode schemaMode) {
-    return switch (schemaMode) {
-      case SEMANTIC -> "valid";
-      case LEGACY -> "migration-required";
-      case MIGRATION_INCOMPLETE -> "invalid";
-    };
+  private ReleaseInspection semanticReleaseInspection(Path vaultRoot, Path reviewRoot) {
+    try {
+      services.buildApprovedRelease(vaultRoot, reviewRoot);
+      return new ReleaseInspection("valid", "valid", "releasable");
+    } catch (ApprovedReleaseException error) {
+      String approvedState = switch (error.code()) {
+        case "missing-approved-snapshot" -> "absent";
+        default -> "invalid";
+      };
+      String semanticState = switch (error.code()) {
+        case "missing-approved-snapshot" -> "valid";
+        default -> "invalid";
+      };
+      return new ReleaseInspection(approvedState, semanticState, "blocked");
+    } catch (RuntimeException error) {
+      return new ReleaseInspection("invalid", "invalid", "blocked");
+    }
   }
 
   private int markReviewed(Path vaultRoot, String note, Path reviewRoot, Path jobsRoot) {
@@ -1924,6 +1919,11 @@ public final class AstroExportCommand implements Callable<Integer> {
   }
 
   private record CurrentPairState(String freshness, String translationStatus) { }
+
+  private record ReleaseInspection(
+      String approvedSnapshotState,
+      String semanticReferencesState,
+      String releaseState) { }
 
   private record DerivedRefreshState(
       String status,
