@@ -8,6 +8,7 @@ import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.PublicationKind;
 import dev.eugene.astroexport.model.SelectionResult;
+import dev.eugene.astroexport.migration.ReferenceMigrationInventory;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
 import dev.eugene.astroexport.report.ReportBuilder;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
@@ -58,6 +59,7 @@ public final class CommandServices {
   private final StageApprovedSnapshotAction stageApprovedSnapshotAction;
   private final ApprovedSnapshotRepository approvedSnapshots;
   private final ApprovedReleaseMaterializer approvedReleaseMaterializer;
+  private final ReferenceMigrationInventory referenceMigrationInventory;
 
   private CommandServices(
       Clock clock,
@@ -76,7 +78,8 @@ public final class CommandServices {
       ReplaceEnglishReviewAction replaceEnglishReviewAction,
       StageApprovedSnapshotAction stageApprovedSnapshotAction,
       ApprovedSnapshotRepository approvedSnapshots,
-      ApprovedReleaseMaterializer approvedReleaseMaterializer) {
+      ApprovedReleaseMaterializer approvedReleaseMaterializer,
+      ReferenceMigrationInventory referenceMigrationInventory) {
     this.clock = clock;
     this.selectionAction = selectionAction;
     this.manifestAction = manifestAction;
@@ -94,6 +97,7 @@ public final class CommandServices {
     this.stageApprovedSnapshotAction = stageApprovedSnapshotAction;
     this.approvedSnapshots = approvedSnapshots;
     this.approvedReleaseMaterializer = approvedReleaseMaterializer;
+    this.referenceMigrationInventory = referenceMigrationInventory;
   }
 
   public static CommandServices defaults() {
@@ -117,7 +121,8 @@ public final class CommandServices {
         ReviewWorkspace::replaceEnglishReviewFile,
         ReviewWorkspace::stageApprovedSnapshot,
         new ApprovedSnapshotRepository(),
-        new ApprovedReleaseMaterializer());
+        new ApprovedReleaseMaterializer(),
+        new ReferenceMigrationInventory());
   }
 
   public CommandServices withClock(Clock replacement) {
@@ -168,7 +173,8 @@ public final class CommandServices {
         replaceEnglishReviewAction,
         stageApprovedSnapshotAction,
         approvedSnapshots,
-        approvedReleaseMaterializer);
+        approvedReleaseMaterializer,
+        referenceMigrationInventory);
   }
 
   public CommandServices withReplaceEnglishReviewAction(ReplaceEnglishReviewAction replacement) {
@@ -189,7 +195,8 @@ public final class CommandServices {
         replacement,
         stageApprovedSnapshotAction,
         approvedSnapshots,
-        approvedReleaseMaterializer);
+        approvedReleaseMaterializer,
+        referenceMigrationInventory);
   }
 
   public CommandServices withStageApprovedSnapshotAction(
@@ -211,7 +218,8 @@ public final class CommandServices {
         replaceEnglishReviewAction,
         replacement,
         approvedSnapshots,
-        approvedReleaseMaterializer);
+        approvedReleaseMaterializer,
+        referenceMigrationInventory);
   }
 
   private CommandServices copy(
@@ -239,7 +247,8 @@ public final class CommandServices {
         replaceEnglishReviewAction,
         stageApprovedSnapshotAction,
         approvedSnapshots,
-        approvedReleaseMaterializer);
+        approvedReleaseMaterializer,
+        referenceMigrationInventory);
   }
 
   public Clock clock() {
@@ -270,6 +279,13 @@ public final class CommandServices {
     List<ApprovedPageSnapshot> snapshots =
         approvedSnapshots.loadSelected(selection, review, catalog);
     return approvedReleaseMaterializer.materialize(snapshots, vault);
+  }
+
+  public ReferenceMigrationInventory.Inventory inspectReferenceMigration(
+      Path vault,
+      Path review,
+      Path report) {
+    return referenceMigrationInventory.inspect(vault, review, report);
   }
 
   public SiteWriter.WriteResult writeSite(Path siteRoot, ManifestResult manifest, Consumer<Path> validator) {

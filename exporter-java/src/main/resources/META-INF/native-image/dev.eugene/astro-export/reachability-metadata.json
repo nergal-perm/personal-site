@@ -140,6 +140,35 @@
       ]
     },
     {
+      "type": "dev.eugene.astroexport.cli.AstroExportCommand$MigrateSemanticLinksCommand",
+      "fields": [
+        {
+          "name": "parent"
+        },
+        {
+          "name": "vault"
+        },
+        {
+          "name": "review"
+        },
+        {
+          "name": "astro"
+        },
+        {
+          "name": "report"
+        },
+        {
+          "name": "json"
+        }
+      ],
+      "methods": [
+        {
+          "name": "<init>",
+          "parameterTypes": []
+        }
+      ]
+    },
+    {
       "type": "dev.eugene.astroexport.cli.AstroExportCommand$PrepareCommand",
       "fields": [
         {

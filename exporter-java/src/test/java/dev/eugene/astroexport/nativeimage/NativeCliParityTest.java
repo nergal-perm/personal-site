@@ -156,6 +156,8 @@ final class NativeCliParityTest {
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$InspectPublicationCommand"));
     assertEquals(Set.of("parent", "vault", "note", "review", "jobs", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MarkReviewedCommand"));
+    assertEquals(Set.of("parent", "vault", "review", "astro", "report", "json"),
+        fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MigrateSemanticLinksCommand"));
     assertEquals(Set.of("parent", "vault", "review", "jobs", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$RefreshPublicationQueueCommand"));
     assertEquals(Set.of("parent", "out"),

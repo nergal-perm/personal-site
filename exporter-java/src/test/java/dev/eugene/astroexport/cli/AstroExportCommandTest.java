@@ -75,6 +75,80 @@ final class AstroExportCommandTest {
   Path temp;
 
   @Test
+  void migrateSemanticLinksBridgeWritesOnlyInventoryReportAndReturnsCounts() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    Path report = temp.resolve("inventory.json");
+    Files.createDirectories(astro);
+    writeRawNote(vault, "page.md", "See [[Target|target]].");
+    writeRawNote(vault, "target.md", "Target.");
+    writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
+        "See [target](/ru/target/).",
+        "See [target](/en/target/).");
+    Map<String, ByteBuffer> beforeVault = treeSnapshot(vault);
+    Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
+    Map<String, ByteBuffer> beforeAstro = treeSnapshot(astro);
+
+    CommandFixture.Result result = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(),
+        "--review", review.toString(),
+        "--astro", astro.toString(),
+        "--report", report.toString(),
+        "--json");
+
+    assertEquals(0, result.exitCode(), result.stderr());
+    Map<String, Object> payload = json(result.stdout());
+    assertIterableEquals(BRIDGE_KEYS, payload.keySet());
+    assertEquals(3, payload.get("schemaVersion"));
+    assertEquals("migrate-semantic-links", payload.get("command"));
+    assertEquals(true, payload.get("ok"));
+    assertEquals("ready", payload.get("status"));
+    assertEquals(Map.of(
+        "exact", 1,
+        "confirmedNeeded", 0,
+        "unresolved", 0,
+        "orderMismatch", 0,
+        "unsafe", 0,
+        "occurrences", 1),
+        payload.get("summary"));
+    assertTrue(Files.isRegularFile(report));
+    assertEquals(beforeVault, treeSnapshot(vault));
+    assertEquals(beforeReview, treeSnapshot(review));
+    assertEquals(beforeAstro, treeSnapshot(astro));
+  }
+
+  @Test
+  void migrateSemanticLinksReturnsNonzeroWhenDecisionsAreRequired() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    Files.createDirectories(astro);
+    writeRawNote(vault, "page.md", "[[Target|target]]");
+    writeRawNote(vault, "target.md", "Target.");
+    writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)");
+
+    CommandFixture.Result result = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(),
+        "--review", review.toString(),
+        "--astro", astro.toString(),
+        "--report", temp.resolve("inventory.json").toString(),
+        "--json");
+
+    assertEquals(1, result.exitCode());
+    Map<String, Object> payload = json(result.stdout());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("decisions-required", payload.get("status"));
+    assertEquals(1, ((Map<?, ?>) payload.get("summary")).get("confirmedNeeded"));
+  }
+
+  @Test
   void inspectBridgeHasExactSchemaAndIsReadOnlyWithWorkspaceHealth() throws Exception {
     Path vault = temp.resolve("vault");
     writeBlogNote(vault);
@@ -2024,6 +2098,64 @@ final class AstroExportCommandTest {
         %s
         """.formatted(publicId, route, targetPath, body)
         .getBytes(StandardCharsets.UTF_8);
+  }
+
+  private static void writeRawNote(Path vault, String path, String body) throws Exception {
+    Path target = vault.resolve(path);
+    Files.createDirectories(target.getParent());
+    Files.writeString(target, body, StandardCharsets.UTF_8);
+  }
+
+  private static void writeSemanticCatalog(Path reviewRoot, String... refsAndPaths) throws Exception {
+    LinkedHashMap<String, Object> entries = new LinkedHashMap<>();
+    for (int i = 0; i < refsAndPaths.length; i += 2) {
+      String pageRef = refsAndPaths[i];
+      String currentPath = refsAndPaths[i + 1];
+      String title = semanticCatalogTitle(currentPath);
+      entries.put(pageRef, Map.of(
+          "currentPath", currentPath,
+          "stableNoteId", title,
+          "title", title,
+          "aliases", List.of(),
+          "previousPaths", List.of(),
+          "state", "active"));
+    }
+    Path path = reviewRoot.resolve(".semantic-links/catalog-v1.json");
+    Files.createDirectories(path.getParent());
+    Files.writeString(path, JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "entries", entries)), StandardCharsets.UTF_8);
+  }
+
+  private static String semanticCatalogTitle(String path) {
+    String stem = path.replace(".md", "");
+    int slash = stem.lastIndexOf('/');
+    if (slash >= 0) {
+      stem = stem.substring(slash + 1);
+    }
+    return stem.substring(0, 1).toUpperCase(java.util.Locale.ROOT) + stem.substring(1);
+  }
+
+  private static void writePublishedPair(
+      Path reviewRoot,
+      String collection,
+      String publicId,
+      String sourcePath,
+      String pageRef,
+      String ru,
+      String en) throws Exception {
+    Path published = reviewRoot.resolve(collection).resolve(publicId).resolve("published");
+    Files.createDirectories(published);
+    Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("en.md"), en, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "pageRef", pageRef,
+        "sourcePath", sourcePath,
+        "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
+        "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
+        "order", List.of(),
+        "references", Map.of())), StandardCharsets.UTF_8);
   }
 
   private static void writeSemanticMarker(Path reviewRoot) throws Exception {

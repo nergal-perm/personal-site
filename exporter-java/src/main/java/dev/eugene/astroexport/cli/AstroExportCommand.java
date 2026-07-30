@@ -7,6 +7,7 @@ import dev.eugene.astroexport.fs.SiteWriter;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.migration.SemanticOperationLock;
+import dev.eugene.astroexport.migration.ReferenceMigrationInventory;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
@@ -65,6 +66,7 @@ import picocli.CommandLine.Model.CommandSpec;
         AstroExportCommand.PrepareCommand.class,
         AstroExportCommand.InspectPublicationCommand.class,
         AstroExportCommand.MarkReviewedCommand.class,
+        AstroExportCommand.MigrateSemanticLinksCommand.class,
         AstroExportCommand.RefreshPublicationQueueCommand.class,
         AstroExportCommand.WritePublicationContractCommand.class,
     })
@@ -610,6 +612,39 @@ public final class AstroExportCommand implements Callable<Integer> {
         .reviewPlan(reviewPlan)
         .build());
     return fresh ? 0 : 1;
+  }
+
+  private int migrateSemanticLinks(Path vaultRoot, Path reviewRoot, Path astroRoot, Path reportPath) {
+    if (astroRoot == null || !Files.isDirectory(astroRoot, LinkOption.NOFOLLOW_LINKS)) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "astro",
+              "Astro root must be an existing directory.",
+              true)))
+          .build());
+      return 1;
+    }
+    try {
+      ReferenceMigrationInventory.Inventory inventory =
+          services.inspectReferenceMigration(vaultRoot, reviewRoot, reportPath);
+      ReferenceMigrationInventory.Summary summary = inventory.summary();
+      boolean ok = !summary.decisionsRequired();
+      emitJson(bridge(
+              "migrate-semantic-links",
+              ok,
+              ok ? "ready" : "decisions-required")
+          .summary(summary.toPayload())
+          .build());
+      return ok ? 0 : 1;
+    } catch (RuntimeException error) {
+      emitJson(bridge("migrate-semantic-links", false, "unsafe-input")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "migration",
+              error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage(),
+              true)))
+          .build());
+      return 1;
+    }
   }
 
   private String candidateState(
@@ -2055,6 +2090,21 @@ public final class AstroExportCommand implements Callable<Integer> {
       } catch (PublicationDiscovery.PublicationSearchException | java.io.UncheckedIOException error) {
         return parent.bridgeIoFailure("mark-reviewed", "stale", note, error);
       }
+    }
+  }
+
+  @Command(name = "migrate-semantic-links")
+  static final class MigrateSemanticLinksCommand implements Callable<Integer> {
+    @picocli.CommandLine.ParentCommand AstroExportCommand parent;
+    @Option(names = "--vault", required = true) Path vault;
+    @Option(names = "--review", required = true) Path review;
+    @Option(names = "--astro", required = true) Path astro;
+    @Option(names = "--report", required = true) Path report;
+    @Option(names = "--json", required = true) boolean json;
+
+    @Override
+    public Integer call() {
+      return parent.migrateSemanticLinks(vault, review, astro, report);
     }
   }
 
