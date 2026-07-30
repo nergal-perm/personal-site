@@ -270,10 +270,13 @@ public final class CommandServices {
 
   public ReviewWorkspace.PendingPublishedSnapshot stageApprovedSnapshot(
       Path reviewRoot,
-      ManifestEntry entry,
-      byte[] reviewedEnglish) {
+      String collection,
+      String publicId,
+      byte[] russian,
+      byte[] english,
+      byte[] references) {
     return stageApprovedSnapshotAction.stage(
-        reviewRoot, entry, reviewedEnglish);
+        reviewRoot, collection, publicId, russian, english, references);
   }
 
   public Consumer<Path> astroGate(Path siteRoot) {
@@ -505,8 +508,11 @@ public final class CommandServices {
   public interface StageApprovedSnapshotAction {
     ReviewWorkspace.PendingPublishedSnapshot stage(
         Path reviewRoot,
-        ManifestEntry entry,
-        byte[] reviewedEnglish);
+        String collection,
+        String publicId,
+        byte[] russian,
+        byte[] english,
+        byte[] references);
   }
 
   public record CliPreflight(

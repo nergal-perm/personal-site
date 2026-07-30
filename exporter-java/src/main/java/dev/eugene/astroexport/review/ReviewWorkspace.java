@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.frontmatter.FrontmatterCanonicalizer;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
+import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.references.PageReferenceMap;
@@ -250,7 +251,27 @@ public final class ReviewWorkspace {
     } catch (IOException error) {
       throw new IllegalStateException("cannot prepare published snapshot " + page, error);
     }
-    try (PublishedSnapshotStore.PendingSnapshot pending = PUBLISHED_SNAPSHOTS.stage(
+    try (PublishedSnapshotStore.PendingSnapshot pending = PUBLISHED_SNAPSHOTS.stageLegacy(
+        page,
+        ru.getBytes(StandardCharsets.UTF_8),
+        en.getBytes(StandardCharsets.UTF_8))) {
+      pending.commit(List.of());
+    }
+  }
+
+  public static void writeLegacyPublishedSnapshot(
+      Path reviewRoot,
+      String collection,
+      String publicId,
+      String ru,
+      String en) {
+    Path page = reviewRoot.resolve(collection).resolve(publicId);
+    try {
+      Files.createDirectories(page);
+    } catch (IOException error) {
+      throw new IllegalStateException("cannot prepare published snapshot " + page, error);
+    }
+    try (PublishedSnapshotStore.PendingSnapshot pending = PUBLISHED_SNAPSHOTS.stageLegacy(
         page,
         ru.getBytes(StandardCharsets.UTF_8),
         en.getBytes(StandardCharsets.UTF_8))) {
@@ -263,11 +284,27 @@ public final class ReviewWorkspace {
       ManifestEntry entry,
       byte[] reviewedEnglish) {
     Target target = target(entry);
-    Path page = reviewRoot.resolve(target.collection()).resolve(target.publicId());
-    PublishedSnapshotStore.PendingSnapshot pending = PUBLISHED_SNAPSHOTS.stage(
-        page,
+    return stageApprovedSnapshot(
+        reviewRoot,
+        target.collection(),
+        target.publicId(),
         renderRuReview(entry).getBytes(StandardCharsets.UTF_8),
-        reviewedEnglish);
+        reviewedEnglish,
+        null);
+  }
+
+  public static PendingPublishedSnapshot stageApprovedSnapshot(
+      Path reviewRoot,
+      String collection,
+      String publicId,
+      byte[] russian,
+      byte[] english,
+      byte[] references) {
+    Path page = reviewRoot.resolve(collection).resolve(publicId);
+    PublishedSnapshotStore.PendingSnapshot pending =
+        SemanticSchemaState.mode(reviewRoot) == SemanticSchemaState.Mode.SEMANTIC
+            ? PUBLISHED_SNAPSHOTS.stageSemantic(page, russian, english, references)
+            : PUBLISHED_SNAPSHOTS.stageLegacy(page, russian, english);
     return new PendingPublishedSnapshot() {
       @Override
       public PublishedSnapshotResult commit(

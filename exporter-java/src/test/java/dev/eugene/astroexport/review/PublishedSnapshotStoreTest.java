@@ -22,27 +22,27 @@ final class PublishedSnapshotStoreTest {
   Path temp;
 
   @Test
-  void commitsFirstPairAndReplacesBothFilesTogether() throws Exception {
+  void commitsFirstTripleAndReplacesAllFilesTogether() throws Exception {
     Path page = temp.resolve("review/blog/essay");
     Files.createDirectories(page);
     PublishedSnapshotStore store = new PublishedSnapshotStore();
 
     try (PublishedSnapshotStore.PendingSnapshot first =
-        store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n"))) {
+        store.stageSemantic(page, bytes("ru-v1\n"), bytes("en-v1\n"), bytes(mapV1()))) {
       assertTrue(first.commit(List.of()).recoveryPaths().isEmpty());
     }
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
 
     try (PublishedSnapshotStore.PendingSnapshot second =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       assertTrue(second.commit(List.of()).recoveryPaths().isEmpty());
     }
-    assertPair(page, "ru-v2\n", "en-v2\n");
+    assertTriple(page, "ru-v2\n", "en-v2\n", mapV2());
   }
 
   @Test
   void guardConflictAfterVisibleSwapRollsBackTheWholePair() throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n");
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1());
     Path source = temp.resolve("source.md");
     Files.writeString(source, "expected\n");
     byte[] expected = Files.readAllBytes(source);
@@ -56,36 +56,71 @@ final class PublishedSnapshotStoreTest {
         });
 
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       assertThrows(
           PublishedSnapshotStore.ConcurrentPublishedSnapshotException.class,
           () -> pending.commit(List.of(
               new WorkflowStateService.SnapshotGuard(source, expected))));
     }
 
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
+  }
+
+  @Test
+  void commitsAndRollsBackRuEnAndReferenceMapTogether() throws Exception {
+    Path page = existingTriple("ru-v1", "en-v1", mapV1());
+    Path source = temp.resolve("source.md");
+    Files.writeString(source, "expected\n");
+    WorkflowStateService.SnapshotGuard guard =
+        new WorkflowStateService.SnapshotGuard(source, Files.readAllBytes(source));
+    PublishedSnapshotStore store = new PublishedSnapshotStore(
+        new JnaAtomicExchange(),
+        new PublishedSnapshotStore.IoHooks() {
+          @Override
+          public void afterVisibleCommit(Path published) throws IOException {
+            Files.writeString(source, "changed\n");
+          }
+        });
+
+    try (PublishedSnapshotStore.PendingSnapshot pending = store.stageSemantic(
+        page, bytes("ru-v2"), bytes("en-v2"), bytes(mapV2()))) {
+      assertThrows(PublishedSnapshotStore.ConcurrentPublishedSnapshotException.class,
+          () -> pending.commit(List.of(guard)));
+    }
+
+    assertTriple(page, "ru-v1", "en-v1", mapV1());
+  }
+
+  @Test
+  void rejectsLegacyPartialOrExtraPublishedLayoutsInSemanticMode() throws Exception {
+    Path page = existingPair("ru", "en");
+    PublishedSnapshotStore store = new PublishedSnapshotStore();
+
+    assertThrows(IllegalArgumentException.class,
+        () -> store.stageSemantic(
+            page, bytes("new-ru"), bytes("new-en"), bytes(mapV1())));
   }
 
   @Test
   void exchangeFailurePreservesThePreviousPair() throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n");
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1());
     PublishedSnapshotStore store = new PublishedSnapshotStore(
         (first, second) -> { throw new IOException("exchange failed"); },
         new PublishedSnapshotStore.IoHooks() { });
 
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       IllegalStateException error =
           assertThrows(IllegalStateException.class, () -> pending.commit(List.of()));
       assertTrue(error.getMessage().contains("exchange failed"));
     }
 
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
   }
 
   @Test
   void cleanupFailureReportsTheDisplacedPairAfterCommit() throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n");
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1());
     PublishedSnapshotStore store = new PublishedSnapshotStore(
         new JnaAtomicExchange(),
         new PublishedSnapshotStore.IoHooks() {
@@ -97,11 +132,11 @@ final class PublishedSnapshotStoreTest {
 
     PublishedSnapshotStore.CommitResult result;
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       result = pending.commit(List.of());
     }
 
-    assertPair(page, "ru-v2\n", "en-v2\n");
+    assertTriple(page, "ru-v2\n", "en-v2\n", mapV2());
     assertEquals(1, result.recoveryPaths().size());
     assertTrue(Files.isDirectory(result.recoveryPaths().getFirst()));
   }
@@ -109,7 +144,7 @@ final class PublishedSnapshotStoreTest {
   @Test
   void rollbackFailureReportsCandidateOwnershipAndDisplacedRecoveryPath()
       throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n");
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1());
     Path source = temp.resolve("source.md");
     Files.writeString(source, "expected\n");
     byte[] expected = Files.readAllBytes(source);
@@ -132,27 +167,27 @@ final class PublishedSnapshotStoreTest {
 
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error;
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       error = assertThrows(
           PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
           () -> pending.commit(List.of(
               new WorkflowStateService.SnapshotGuard(source, expected))));
     }
 
-    assertPair(page, "ru-v2\n", "en-v2\n");
+    assertTriple(page, "ru-v2\n", "en-v2\n", mapV2());
     assertEquals(
         PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE,
         error.disposition());
     assertEquals(page.resolve("published").toAbsolutePath().normalize(),
         error.publishedPath());
     assertEquals(1, error.recoveryPaths().size());
-    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+    assertDirectoryTriple(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n", mapV1());
   }
 
   @Test
   void stagedCleanupFailureReportsUncommittedCandidateRecoveryPath()
       throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n");
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1());
     PublishedSnapshotStore store = new PublishedSnapshotStore(
         new JnaAtomicExchange(),
         new PublishedSnapshotStore.IoHooks() {
@@ -162,26 +197,26 @@ final class PublishedSnapshotStoreTest {
           }
         });
     PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"));
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()));
 
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
         assertThrows(
             PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
             pending::close);
 
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
     assertEquals(
         PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
         error.disposition());
     assertEquals(page.resolve("published").toAbsolutePath().normalize(),
         error.publishedPath());
     assertEquals(1, error.recoveryPaths().size());
-    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n");
+    assertDirectoryTriple(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n", mapV2());
   }
 
   @Test
   void uncheckedPostVisibleFailureRollsBackBeforeClose() throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n");
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1());
     PublishedSnapshotStore store = new PublishedSnapshotStore(
         new JnaAtomicExchange(),
         new PublishedSnapshotStore.IoHooks() {
@@ -192,13 +227,13 @@ final class PublishedSnapshotStoreTest {
         });
 
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       IllegalStateException error =
           assertThrows(IllegalStateException.class, () -> pending.commit(List.of()));
       assertEquals("hook failed", error.getMessage());
     }
 
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
   }
 
   @Test
@@ -213,19 +248,19 @@ final class PublishedSnapshotStoreTest {
           @Override
           public void forceDirectory(Path directory) throws IOException {
             if (directory.equals(page)) {
-              assertPair(page, "ru-v1\n", "en-v1\n");
+              assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
               events.add("page");
               return;
             }
             assertTrue(directory.getFileName().toString().startsWith(
                 ".published-stage-"));
-            assertDirectoryPair(directory, "ru-v1\n", "en-v1\n");
+            assertDirectoryTriple(directory, "ru-v1\n", "en-v1\n", mapV1());
             events.add("staging");
           }
         });
 
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n"))) {
+        store.stageSemantic(page, bytes("ru-v1\n"), bytes("en-v1\n"), bytes(mapV1()))) {
       assertEquals(List.of("staging"), events);
       pending.commit(List.of());
       assertEquals(List.of("staging", "page"), events);
@@ -234,7 +269,7 @@ final class PublishedSnapshotStoreTest {
 
   @Test
   void replacementForcesPageBeforeDeletingDisplacedPair() throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n")
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1())
         .toAbsolutePath()
         .normalize();
     List<String> events = new ArrayList<>();
@@ -244,11 +279,11 @@ final class PublishedSnapshotStoreTest {
           @Override
           public void forceDirectory(Path directory) throws IOException {
             if (directory.equals(page)) {
-              assertPair(page, "ru-v2\n", "en-v2\n");
+              assertTriple(page, "ru-v2\n", "en-v2\n", mapV2());
               events.add("page");
               return;
             }
-            assertDirectoryPair(directory, "ru-v2\n", "en-v2\n");
+            assertDirectoryTriple(directory, "ru-v2\n", "en-v2\n", mapV2());
             events.add("staging");
           }
 
@@ -260,7 +295,7 @@ final class PublishedSnapshotStoreTest {
         });
 
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       assertEquals(List.of("staging"), events);
       pending.commit(List.of());
     }
@@ -287,7 +322,7 @@ final class PublishedSnapshotStoreTest {
         });
 
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n"))) {
+        store.stageSemantic(page, bytes("ru-v1\n"), bytes("en-v1\n"), bytes(mapV1()))) {
       IllegalStateException error =
           assertThrows(IllegalStateException.class, () -> pending.commit(List.of()));
       assertTrue(error.getMessage().contains("page force failed"));
@@ -300,7 +335,7 @@ final class PublishedSnapshotStoreTest {
   @Test
   void replacementRollbackForceFailureReportsPreservedCandidateRecovery()
       throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n")
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1())
         .toAbsolutePath()
         .normalize();
     AtomicInteger pageForces = new AtomicInteger();
@@ -318,20 +353,20 @@ final class PublishedSnapshotStoreTest {
 
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error;
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       error = assertThrows(
           PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
           () -> pending.commit(List.of()));
     }
 
     assertEquals(2, pageForces.get());
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
     assertEquals(
         PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE,
         error.disposition());
     assertEquals(page.resolve("published"), error.publishedPath());
     assertEquals(1, error.recoveryPaths().size());
-    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n");
+    assertDirectoryTriple(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n", mapV2());
   }
 
   @Test
@@ -359,7 +394,7 @@ final class PublishedSnapshotStoreTest {
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
         assertThrows(
             PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
-            () -> store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n")));
+            () -> store.stageSemantic(page, bytes("ru-v1\n"), bytes("en-v1\n"), bytes(mapV1())));
 
     assertEquals(
         PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
@@ -370,7 +405,7 @@ final class PublishedSnapshotStoreTest {
     assertEquals(page, recovery.getParent());
     assertTrue(recovery.getFileName().toString().startsWith(
         ".published-stage-"));
-    assertDirectoryPair(recovery, "ru-v1\n", "en-v1\n");
+    assertDirectoryTriple(recovery, "ru-v1\n", "en-v1\n", mapV1());
     assertEquals("stage write force failed", error.getCause().getMessage());
     assertEquals(1, error.getCause().getSuppressed().length);
     assertEquals(
@@ -403,7 +438,7 @@ final class PublishedSnapshotStoreTest {
 
     IllegalStateException error = assertThrows(
         IllegalStateException.class,
-        () -> store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n")));
+        () -> store.stageSemantic(page, bytes("ru-v1\n"), bytes("en-v1\n"), bytes(mapV1())));
 
     assertSame(forceFailure, error);
     assertEquals(1, cleanups.get());
@@ -436,7 +471,7 @@ final class PublishedSnapshotStoreTest {
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
         assertThrows(
             PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
-            () -> store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n")));
+            () -> store.stageSemantic(page, bytes("ru-v1\n"), bytes("en-v1\n"), bytes(mapV1())));
 
     assertEquals(
         PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
@@ -446,7 +481,7 @@ final class PublishedSnapshotStoreTest {
     assertEquals(1, forceFailure.getSuppressed().length);
     assertSame(cleanupFailure, forceFailure.getSuppressed()[0]);
     assertEquals(1, error.recoveryPaths().size());
-    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+    assertDirectoryTriple(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n", mapV1());
   }
 
   @Test
@@ -474,7 +509,7 @@ final class PublishedSnapshotStoreTest {
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
         assertThrows(
             PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
-            () -> store.stage(page, bytes("ru-v1\n"), bytes("en-v1\n")));
+            () -> store.stageSemantic(page, bytes("ru-v1\n"), bytes("en-v1\n"), bytes(mapV1())));
 
     assertSame(forceFailure, error.getCause());
     assertEquals(1, forceFailure.getSuppressed().length);
@@ -482,12 +517,12 @@ final class PublishedSnapshotStoreTest {
     assertEquals(
         PublishedSnapshotStore.RecoveryDisposition.STAGED_CANDIDATE,
         error.disposition());
-    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+    assertDirectoryTriple(error.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n", mapV1());
   }
 
   @Test
   void uncheckedPageForceRollsBackAndRethrowsOriginal() throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n")
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1())
         .toAbsolutePath()
         .normalize();
     IllegalStateException forceFailure =
@@ -506,21 +541,21 @@ final class PublishedSnapshotStoreTest {
         });
 
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       IllegalStateException error =
           assertThrows(IllegalStateException.class, () -> pending.commit(List.of()));
       assertSame(forceFailure, error);
     }
 
     assertEquals(2, pageForces.get());
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
     assertTrue(stagingDirectories(page).isEmpty());
   }
 
   @Test
   void uncheckedRollbackForceReportsCandidateVisibleRecoveryEvidence()
       throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n")
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1())
         .toAbsolutePath()
         .normalize();
     IllegalStateException visibleForceFailure =
@@ -545,14 +580,14 @@ final class PublishedSnapshotStoreTest {
 
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error;
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       error = assertThrows(
           PublishedSnapshotStore.PublishedSnapshotRecoveryException.class,
           () -> pending.commit(List.of()));
     }
 
     assertEquals(2, pageForces.get());
-    assertPair(page, "ru-v1\n", "en-v1\n");
+    assertTriple(page, "ru-v1\n", "en-v1\n", mapV1());
     assertEquals(
         PublishedSnapshotStore.RecoveryDisposition.CANDIDATE_VISIBLE,
         error.disposition());
@@ -561,13 +596,13 @@ final class PublishedSnapshotStoreTest {
     assertEquals(1, rollbackForceFailure.getSuppressed().length);
     assertSame(visibleForceFailure, rollbackForceFailure.getSuppressed()[0]);
     assertEquals(1, error.recoveryPaths().size());
-    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n");
+    assertDirectoryTriple(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n", mapV2());
   }
 
   @Test
   void uncheckedCommittedCleanupReturnsNonBlockingRecoveryPath()
       throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n")
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1())
         .toAbsolutePath()
         .normalize();
     PublishedSnapshotStore store = new PublishedSnapshotStore(
@@ -581,18 +616,18 @@ final class PublishedSnapshotStoreTest {
 
     PublishedSnapshotStore.CommitResult result;
     try (PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"))) {
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()))) {
       result = pending.commit(List.of());
     }
 
-    assertPair(page, "ru-v2\n", "en-v2\n");
+    assertTriple(page, "ru-v2\n", "en-v2\n", mapV2());
     assertEquals(1, result.recoveryPaths().size());
-    assertDirectoryPair(result.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n");
+    assertDirectoryTriple(result.recoveryPaths().getFirst(), "ru-v1\n", "en-v1\n", mapV1());
   }
 
   @Test
   void uncheckedCloseCleanupReportsStagedCandidateRecovery() throws Exception {
-    Path page = existingPair("ru-v1\n", "en-v1\n")
+    Path page = existingTriple("ru-v1\n", "en-v1\n", mapV1())
         .toAbsolutePath()
         .normalize();
     IllegalStateException cleanupFailure =
@@ -606,7 +641,7 @@ final class PublishedSnapshotStoreTest {
           }
         });
     PublishedSnapshotStore.PendingSnapshot pending =
-        store.stage(page, bytes("ru-v2\n"), bytes("en-v2\n"));
+        store.stageSemantic(page, bytes("ru-v2\n"), bytes("en-v2\n"), bytes(mapV2()));
 
     PublishedSnapshotStore.PublishedSnapshotRecoveryException error =
         assertThrows(
@@ -619,7 +654,7 @@ final class PublishedSnapshotStoreTest {
     assertEquals(page.resolve("published"), error.publishedPath());
     assertSame(cleanupFailure, error.getCause());
     assertEquals(1, error.recoveryPaths().size());
-    assertDirectoryPair(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n");
+    assertDirectoryTriple(error.recoveryPaths().getFirst(), "ru-v2\n", "en-v2\n", mapV2());
   }
 
   private static byte[] bytes(String value) {
@@ -634,10 +669,26 @@ final class PublishedSnapshotStoreTest {
     return page;
   }
 
+  private Path existingTriple(String russian, String english, String references)
+      throws IOException {
+    Path page = existingPair(russian, english);
+    Files.writeString(page.resolve("published/references.json"), references);
+    return page;
+  }
+
   private static void assertPair(Path page, String russian, String english)
       throws IOException {
     assertEquals(russian, Files.readString(page.resolve("published/ru.md")));
     assertEquals(english, Files.readString(page.resolve("published/en.md")));
+  }
+
+  private static void assertTriple(
+      Path page,
+      String russian,
+      String english,
+      String references) throws IOException {
+    assertPair(page, russian, english);
+    assertEquals(references, Files.readString(page.resolve("published/references.json")));
   }
 
   private static void assertDirectoryPair(
@@ -646,6 +697,23 @@ final class PublishedSnapshotStoreTest {
       String english) throws IOException {
     assertEquals(russian, Files.readString(directory.resolve("ru.md")));
     assertEquals(english, Files.readString(directory.resolve("en.md")));
+  }
+
+  private static void assertDirectoryTriple(
+      Path directory,
+      String russian,
+      String english,
+      String references) throws IOException {
+    assertDirectoryPair(directory, russian, english);
+    assertEquals(references, Files.readString(directory.resolve("references.json")));
+  }
+
+  private static String mapV1() {
+    return "{\"schemaVersion\":1,\"ruSha256\":\"ru-v1\",\"enSha256\":\"en-v1\",\"order\":[],\"references\":{}}\n";
+  }
+
+  private static String mapV2() {
+    return "{\"schemaVersion\":1,\"ruSha256\":\"ru-v2\",\"enSha256\":\"en-v2\",\"order\":[],\"references\":{}}\n";
   }
 
   private static List<Path> stagingDirectories(Path page) throws IOException {

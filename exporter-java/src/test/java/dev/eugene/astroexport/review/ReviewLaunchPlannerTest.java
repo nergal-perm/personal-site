@@ -134,6 +134,65 @@ final class ReviewLaunchPlannerTest {
         plan.targets().get(1).publishedPath());
   }
 
+  @Test
+  void semanticPlanValidatesPublishedReferenceMapWithoutExposingItAsTarget()
+      throws Exception {
+    Fixture fixture = fixture();
+    writeSemanticMarker(fixture.reviewRoot());
+    byte[] ru = ReviewWorkspace.renderRuReview(fixture.entry()).getBytes(StandardCharsets.UTF_8);
+    byte[] en = fixture.english();
+    Path candidate = fixture.page().resolve("candidate");
+    Files.createDirectories(candidate);
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), en);
+    Files.write(candidate.resolve("references.json"), referencesFor(ru, en));
+    Path published = fixture.page().resolve("published");
+    Files.createDirectories(published);
+    Files.write(published.resolve("ru.md"), ru);
+    Files.write(published.resolve("en.md"), en);
+    Files.write(published.resolve("references.json"), referencesFor(ru, en));
+
+    ReviewLaunchPlanner.ReviewPlan plan = new ReviewLaunchPlanner().plan(
+        fixture.reviewRoot(),
+        fixture.page(),
+        fixture.entry(),
+        en);
+
+    assertEquals("complete", plan.baselineState());
+    assertEquals(List.of("ru", "en"),
+        plan.targets().stream().map(ReviewLaunchPlanner.ReviewTarget::language).toList());
+  }
+
+  @Test
+  void semanticPlanRejectsPublishedReferenceMapWithWrongHashes() throws Exception {
+    Fixture fixture = fixture();
+    writeSemanticMarker(fixture.reviewRoot());
+    byte[] ru = ReviewWorkspace.renderRuReview(fixture.entry()).getBytes(StandardCharsets.UTF_8);
+    byte[] en = fixture.english();
+    Path candidate = fixture.page().resolve("candidate");
+    Files.createDirectories(candidate);
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), en);
+    Files.write(candidate.resolve("references.json"), referencesFor(ru, en));
+    Path published = fixture.page().resolve("published");
+    Files.createDirectories(published);
+    Files.write(published.resolve("ru.md"), ru);
+    Files.write(published.resolve("en.md"), en);
+    Files.write(published.resolve("references.json"), referencesFor(
+        "other".getBytes(StandardCharsets.UTF_8), en));
+
+    ReviewLaunchPlanner.ReviewLaunchException error = assertThrows(
+        ReviewLaunchPlanner.ReviewLaunchException.class,
+        () -> new ReviewLaunchPlanner().plan(
+            fixture.reviewRoot(),
+            fixture.page(),
+            fixture.entry(),
+            en));
+
+    assertEquals("published_snapshot_inconsistent", error.status());
+    assertEquals("published-snapshot", error.field());
+  }
+
   @ParameterizedTest
   @ValueSource(strings = {"ru", "en"})
   void rejectsAPartialPublishedPair(String language) throws Exception {
@@ -456,6 +515,17 @@ final class ReviewLaunchPlannerTest {
           "activatedAt": "2026-07-30T00:00:00Z"
         }
         """.formatted("a".repeat(64), "b".repeat(64)));
+  }
+
+  private static byte[] referencesFor(byte[] ru, byte[] en) {
+    return PageReferenceMapCodec.write(new PageReferenceMap(
+        PageReferenceMap.SCHEMA_VERSION,
+        "vault-ref-page",
+        "blog/Essay.md",
+        PageReferenceMapCodec.sha256(ru),
+        PageReferenceMapCodec.sha256(en),
+        List.of(),
+        Map.of()));
   }
 
   private record Fixture(

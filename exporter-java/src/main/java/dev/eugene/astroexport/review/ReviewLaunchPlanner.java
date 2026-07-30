@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Set;
 import java.util.Objects;
 
 /** Builds safe, editor-neutral file targets for one translation review. */
@@ -104,19 +105,27 @@ public final class ReviewLaunchPlanner {
     }
     Path publishedRu = realPublished.resolve("ru.md");
     Path publishedEn = realPublished.resolve("en.md");
+    Path publishedReferences = realPublished.resolve("references.json");
     ProbeResult ruProbe = probePublishedPath(publishedRu, "Published Russian snapshot");
     ProbeResult enProbe = probePublishedPath(publishedEn, "Published English snapshot");
-    if (ruProbe.missing() && enProbe.missing()) {
+    ProbeResult referencesProbe = semantic
+        ? probePublishedPath(publishedReferences, "Published reference map")
+        : null;
+    if (ruProbe.missing() && enProbe.missing() && (!semantic || referencesProbe.missing())) {
       return new ReviewPlan("absent", List.of(
           new ReviewTarget("ru", proposedRu, null),
           new ReviewTarget("en", proposedEn, null)));
     }
-    if (ruProbe.missing() != enProbe.missing()) {
+    if (ruProbe.missing() || enProbe.missing() || (semantic && referencesProbe.missing())) {
       throw publishedFailure(
-          "published snapshot is incomplete: ru.md and en.md must exist as one pair.");
+          "published snapshot is incomplete: ru.md, en.md, and references.json must exist as one triple.");
     }
-    readPublished(publishedRu, "Published Russian snapshot");
-    readPublished(publishedEn, "Published English snapshot");
+    validatePublishedEntries(realPublished, semantic);
+    byte[] publishedRussian = readPublished(publishedRu, "Published Russian snapshot");
+    byte[] publishedEnglish = readPublished(publishedEn, "Published English snapshot");
+    if (semantic) {
+      validatePublishedReferences(publishedReferences, publishedRussian, publishedEnglish);
+    }
     return new ReviewPlan("complete", List.of(
         new ReviewTarget("ru", proposedRu, publishedRu),
         new ReviewTarget("en", proposedEn, publishedEn)));
@@ -130,7 +139,9 @@ public final class ReviewLaunchPlanner {
         publishedDirectory.resolve("ru.md"), "Published Russian snapshot");
     ProbeResult enProbe = probePublishedPath(
         publishedDirectory.resolve("en.md"), "Published English snapshot");
-    if (!ruProbe.missing() || !enProbe.missing()) {
+    ProbeResult referencesProbe = probePublishedPath(
+        publishedDirectory.resolve("references.json"), "Published reference map");
+    if (!ruProbe.missing() || !enProbe.missing() || !referencesProbe.missing()) {
       throw publishedFailure(
           "published snapshot changed during inspection; run the check again.");
     }
@@ -158,11 +169,43 @@ public final class ReviewLaunchPlanner {
     }
   }
 
-  private void readPublished(Path path, String label) {
+  private byte[] readPublished(Path path, String label) {
     try {
-      safeReader.read(path, label);
+      return safeReader.read(path, label);
     } catch (IOException | IllegalArgumentException error) {
       throw publishedFailure(label + " is unsafe or unreadable: " + error.getMessage(), error);
+    }
+  }
+
+  private void validatePublishedReferences(
+      Path references,
+      byte[] russian,
+      byte[] english) {
+    try {
+      byte[] content = safeReader.read(references, "Published reference map");
+      PageReferenceMap map = PageReferenceMapCodec.read(content, "published/references.json");
+      PageReferenceMapCodec.validate(map, russian, english);
+    } catch (IOException | RuntimeException error) {
+      throw publishedFailure(
+          "Published reference map is unsafe or invalid: " + error.getMessage(), error);
+    }
+  }
+
+  private void validatePublishedEntries(Path published, boolean semantic) {
+    Set<String> expected = semantic
+        ? Set.of("ru.md", "en.md", "references.json")
+        : Set.of("ru.md", "en.md");
+    Set<String> entries;
+    try (var paths = Files.list(published)) {
+      entries = paths
+          .map(path -> path.getFileName().toString())
+          .collect(java.util.stream.Collectors.toUnmodifiableSet());
+    } catch (IOException | RuntimeException error) {
+      throw publishedFailure("Published snapshot directory is unreadable.", error);
+    }
+    if (!entries.equals(expected)) {
+      throw publishedFailure(
+          "published snapshot layout is invalid for the active schema.");
     }
   }
 

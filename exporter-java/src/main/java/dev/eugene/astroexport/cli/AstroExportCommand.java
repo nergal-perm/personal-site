@@ -5,12 +5,16 @@ import dev.eugene.astroexport.discovery.PublicationDiscovery;
 import dev.eugene.astroexport.fs.JnaFileDescriptor;
 import dev.eugene.astroexport.fs.SiteWriter;
 import dev.eugene.astroexport.manifest.ManifestBuilder;
+import dev.eugene.astroexport.migration.SemanticSchemaState;
+import dev.eugene.astroexport.migration.SemanticOperationLock;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.model.PublicationKind;
 import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.prepare.PrepareWorkflow;
+import dev.eugene.astroexport.references.PageReferenceMap;
+import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.report.ReportBuilder;
 import dev.eugene.astroexport.review.PublishedSnapshotStore;
 import dev.eugene.astroexport.review.ReviewLaunchPlanner;
@@ -375,6 +379,56 @@ public final class AstroExportCommand implements Callable<Integer> {
     }
   }
 
+  private static byte[] reboundReferences(
+      byte[] russian,
+      byte[] english,
+      byte[] references) {
+    PageReferenceMap candidateMap = PageReferenceMapCodec.read(
+        references, "candidate/references.json");
+    PageReferenceMap reviewedMap = candidateMap.withHashes(
+        PageReferenceMapCodec.sha256(russian),
+        PageReferenceMapCodec.sha256(english));
+    byte[] reviewedReferences = PageReferenceMapCodec.write(reviewedMap);
+    PageReferenceMapCodec.validate(reviewedMap, russian, english);
+    return reviewedReferences;
+  }
+
+  private static boolean candidateTripleMatches(
+      Path candidate,
+      byte[] russian,
+      byte[] english,
+      byte[] references) {
+    try {
+      return Arrays.equals(readSafeRegularFile(candidate.resolve("ru.md")), russian)
+          && Arrays.equals(readSafeRegularFile(candidate.resolve("en.md")), english)
+          && Arrays.equals(
+              readSafeRegularFile(candidate.resolve("references.json")),
+              references);
+    } catch (IOException | IllegalArgumentException error) {
+      return false;
+    }
+  }
+
+  private static void replaceCandidateWithReviewed(
+      Path reviewRoot,
+      ManifestEntry entry,
+      byte[] candidateRu,
+      byte[] candidateEn,
+      byte[] reviewedEn,
+      byte[] candidateReferences,
+      byte[] sourceSnapshot,
+      Path sourcePath,
+      Path candidate) throws IOException {
+    byte[] reviewedReferences =
+        reboundReferences(candidateRu, reviewedEn, candidateReferences);
+    try (ReviewWorkspace.PendingCandidateSnapshot pending =
+             ReviewWorkspace.stageCandidateSnapshot(
+                 reviewRoot, entry, candidateRu, reviewedEn, reviewedReferences)) {
+      pending.commit(List.of(
+          new WorkflowStateService.SnapshotGuard(sourcePath, sourceSnapshot)));
+    }
+  }
+
   private StablePreflight stablePreflight(Path vaultRoot, String note, Path source) throws IOException {
     byte[] before = Files.readAllBytes(source);
     CommandServices.CliPreflight current = services.preflight(vaultRoot, note);
@@ -390,7 +444,6 @@ public final class AstroExportCommand implements Callable<Integer> {
       String status,
       String translationStatus,
       String diagnostic,
-      Instant now,
       byte[] expectedContent,
       List<WorkflowStateService.SnapshotGuard> guards) throws IOException {
     Note note = preflight.note();
@@ -415,10 +468,14 @@ public final class AstroExportCommand implements Callable<Integer> {
       allGuards.add(new WorkflowStateService.SnapshotGuard(note.path(), expectedContent));
     }
     allGuards.addAll(guards);
+    if (!snapshotsCurrent(note.path(), expectedContent, guards)) {
+      throw new WorkflowStateService.ConcurrentFileUpdateException(
+          "publication changed before workflow state update");
+    }
     services.workflowState().updateWorkflowState(
         note.path(),
         new WorkflowStateService.WorkflowUpdate(status, translationStatus, diagnostic),
-        now,
+        services.clock().instant(),
         allGuards.toArray(WorkflowStateService.SnapshotGuard[]::new));
     return true;
   }
@@ -487,7 +544,7 @@ public final class AstroExportCommand implements Callable<Integer> {
           diagnostics = stable.preflight().diagnostics();
           identity = identityFromPreflight(stable.preflight(), reviewRoot);
           setWorkflowIfChanged(stable.preflight(), "metadata_blocked", null,
-              workflowDiagnostic(diagnostics), services.clock().instant(), stable.sourceSnapshot(), List.of());
+              workflowDiagnostic(diagnostics), stable.sourceSnapshot(), List.of());
         } catch (WorkflowStateService.ConcurrentFileUpdateException error) {
           status = "stale";
           diagnostics = List.of(new PublicationDiagnostic(
@@ -541,7 +598,7 @@ public final class AstroExportCommand implements Callable<Integer> {
       if (!"fresh".equals(pair.freshness())) {
         try {
           setWorkflowIfChanged(stable.preflight(), "stale", null, pair.diagnostic(),
-              services.clock().instant(), stable.sourceSnapshot(), List.of());
+              stable.sourceSnapshot(), List.of());
         } catch (IOException | IllegalArgumentException | java.io.UncheckedIOException ignoredError) {
           // The stale bridge response below is the durable operator signal.
         }
@@ -581,10 +638,58 @@ public final class AstroExportCommand implements Callable<Integer> {
       }
       byte[] stagedRussian = ReviewWorkspace.renderRuReview(
           stable.preflight().entry()).getBytes(StandardCharsets.UTF_8);
+      boolean semanticApproval =
+          SemanticSchemaState.mode(reviewRoot) == SemanticSchemaState.Mode.SEMANTIC;
+      Path candidate = identity.reviewDirectory().resolve("candidate");
+      byte[] candidateRu = null;
+      byte[] candidateEn = null;
+      byte[] candidateReferences = null;
+      SemanticOperationLock.Lease semanticLease = null;
+      if (semanticApproval) {
+        try {
+          semanticLease = SemanticOperationLock.acquireShared(reviewRoot);
+          candidateRu = readSafeRegularFile(candidate.resolve("ru.md"));
+          candidateEn = readSafeRegularFile(candidate.resolve("en.md"));
+          candidateReferences = readSafeRegularFile(candidate.resolve("references.json"));
+        } catch (SemanticOperationLock.LockBusyException error) {
+          emitJson(bridge("mark-reviewed", false, "translating")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "job",
+                  "Semantic link migration is running; review it after migration finishes.")))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .pairFreshness("fresh")
+              .translationStatus(pair.translationStatus())
+              .build());
+          return 1;
+        } catch (IOException | IllegalArgumentException error) {
+          if (semanticLease != null) {
+            semanticLease.close();
+          }
+          emitJson(bridge("mark-reviewed", false, "stale")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "translation",
+                  "Semantic candidate snapshot is unavailable: "
+                      + error.getClass().getSimpleName() + ": " + error.getMessage())))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .pairFreshness("fresh")
+              .translationStatus(pair.translationStatus())
+              .build());
+          return 1;
+        }
+      }
       ReviewWorkspace.PendingPublishedSnapshot pendingSnapshot;
       try {
         pendingSnapshot = services.stageApprovedSnapshot(
-            reviewRoot, stable.preflight().entry(), reviewedBytes);
+            reviewRoot,
+            target.collection(),
+            target.publicId(),
+            semanticApproval ? candidateRu : stagedRussian,
+            reviewedBytes,
+            semanticApproval ? reboundReferences(candidateRu, reviewedBytes, candidateReferences) : null);
       } catch (PublishedSnapshotStore.PublishedSnapshotRecoveryException error) {
         emitPublishedSnapshotRecovery(
             note,
@@ -610,38 +715,64 @@ public final class AstroExportCommand implements Callable<Integer> {
       }
       Path english = englishPath(reviewRoot, target);
       boolean sourceApproved = false;
-      try (pendingSnapshot) {
+      boolean publishedApproved = false;
+      try (pendingSnapshot; SemanticOperationLock.Lease ignoredLease = semanticLease) {
         StablePreflight beforeEnglishCommit = stablePreflight(vaultRoot, note, stable.preflight().note().path());
         if (!beforeEnglishCommit.preflight().ready()
             || !identity.samePublicIdentity(identityFromPreflight(beforeEnglishCommit.preflight(), reviewRoot))
-            || !Arrays.equals(beforeEnglishCommit.sourceSnapshot(), stable.sourceSnapshot())
-            || !Arrays.equals(readSafeRegularFile(english), pair.content())) {
+            || !Arrays.equals(beforeEnglishCommit.sourceSnapshot(), stable.sourceSnapshot())) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "source changed before reviewed status commit");
+        }
+        if (semanticApproval && !candidateTripleMatches(candidate, candidateRu, candidateEn, candidateReferences)) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "candidate snapshot changed before reviewed status commit");
+        }
+        if (!semanticApproval && !Arrays.equals(readSafeRegularFile(english), pair.content())) {
           throw new WorkflowStateService.ConcurrentFileUpdateException(
               "source or English review changed before reviewed status commit");
         }
         if (!"reviewed".equals(pair.translationStatus())) {
-          services.replaceEnglishReview(
-              reviewRoot,
-              reviewed,
-              target.collection(),
-              target.publicId(),
-              pair.content(),
-              List.of(new WorkflowStateService.SnapshotGuard(
-                  beforeEnglishCommit.preflight().note().path(),
-                  stable.sourceSnapshot())));
+          if (semanticApproval) {
+            replaceCandidateWithReviewed(
+                reviewRoot,
+                stable.preflight().entry(),
+                candidateRu,
+                candidateEn,
+                reviewedBytes,
+                candidateReferences,
+                beforeEnglishCommit.sourceSnapshot(),
+                beforeEnglishCommit.preflight().note().path(),
+                candidate);
+            candidateEn = reviewedBytes;
+            candidateReferences = reboundReferences(candidateRu, reviewedBytes, candidateReferences);
+          } else {
+            services.replaceEnglishReview(
+                reviewRoot,
+                reviewed,
+                target.collection(),
+                target.publicId(),
+                pair.content(),
+                List.of(new WorkflowStateService.SnapshotGuard(
+                    beforeEnglishCommit.preflight().note().path(),
+                    stable.sourceSnapshot())));
+          }
         }
         StablePreflight current = stablePreflight(vaultRoot, note, beforeEnglishCommit.preflight().note().path());
         if (!current.preflight().ready()
             || !identity.samePublicIdentity(identityFromPreflight(current.preflight(), reviewRoot))
-            || !Arrays.equals(current.sourceSnapshot(), stable.sourceSnapshot())
-            || !Arrays.equals(readSafeRegularFile(english), reviewedBytes)) {
+            || !Arrays.equals(current.sourceSnapshot(), stable.sourceSnapshot())) {
           throw new WorkflowStateService.ConcurrentFileUpdateException(
-              "source or English review changed before source commit");
+              "source changed before source commit");
         }
-        setWorkflowIfChanged(current.preflight(), "ready_to_publish", "reviewed", "",
-            services.clock().instant(), stable.sourceSnapshot(),
-            List.of(new WorkflowStateService.SnapshotGuard(english, reviewedBytes)));
-        sourceApproved = true;
+        if (semanticApproval && !candidateTripleMatches(candidate, candidateRu, reviewedBytes, candidateReferences)) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "candidate snapshot changed before source commit");
+        }
+        if (!semanticApproval && !Arrays.equals(readSafeRegularFile(english), reviewedBytes)) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "English review changed before source commit");
+        }
 
         StablePreflight approved = stablePreflight(
             vaultRoot, note, current.preflight().note().path());
@@ -653,19 +784,37 @@ public final class AstroExportCommand implements Callable<Integer> {
         }
         byte[] approvedRussian = ReviewWorkspace.renderRuReview(
             approved.preflight().entry()).getBytes(StandardCharsets.UTF_8);
-        if (!Arrays.equals(stagedRussian, approvedRussian)
-            || !Arrays.equals(readSafeRegularFile(english), reviewedBytes)) {
+        if (!Arrays.equals(stagedRussian, approvedRussian)) {
           throw new WorkflowStateService.ConcurrentFileUpdateException(
               "source projection or English review changed before published snapshot commit");
+        }
+        if (semanticApproval && !candidateTripleMatches(candidate, candidateRu, reviewedBytes, candidateReferences)) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "candidate snapshot changed before published snapshot commit");
+        }
+        if (!semanticApproval && !Arrays.equals(readSafeRegularFile(english), reviewedBytes)) {
+          throw new WorkflowStateService.ConcurrentFileUpdateException(
+              "English review changed before published snapshot commit");
         }
 
         ReviewWorkspace.PublishedSnapshotResult published;
         try {
-          published = pendingSnapshot.commit(List.of(
-              new WorkflowStateService.SnapshotGuard(
-                  approved.preflight().note().path(),
-                  approved.sourceSnapshot()),
-              new WorkflowStateService.SnapshotGuard(english, reviewedBytes)));
+          List<WorkflowStateService.SnapshotGuard> snapshotGuards = semanticApproval
+              ? List.of(
+                  new WorkflowStateService.SnapshotGuard(
+                      approved.preflight().note().path(),
+                      approved.sourceSnapshot()),
+                  new WorkflowStateService.SnapshotGuard(candidate.resolve("ru.md"), candidateRu),
+                  new WorkflowStateService.SnapshotGuard(candidate.resolve("en.md"), reviewedBytes),
+                  new WorkflowStateService.SnapshotGuard(
+                      candidate.resolve("references.json"), candidateReferences))
+              : List.of(
+                  new WorkflowStateService.SnapshotGuard(
+                      approved.preflight().note().path(),
+                      approved.sourceSnapshot()),
+                  new WorkflowStateService.SnapshotGuard(english, reviewedBytes));
+          published = pendingSnapshot.commit(snapshotGuards);
+          publishedApproved = true;
         } catch (PublishedSnapshotStore.ConcurrentPublishedSnapshotException error) {
           pendingSnapshot.close();
           CurrentPairState currentPair = currentPairStateAfterConflict(
@@ -693,7 +842,7 @@ public final class AstroExportCommand implements Callable<Integer> {
           throw error;
         } catch (RuntimeException error) {
           pendingSnapshot.close();
-          emitJson(bridge("mark-reviewed", false, "ready_to_publish")
+          emitJson(bridge("mark-reviewed", false, "ready_for_review")
               .note(note)
               .identity(identity)
               .diagnostics(List.of(new PublicationDiagnostic(
@@ -708,6 +857,17 @@ public final class AstroExportCommand implements Callable<Integer> {
           return 1;
         }
 
+        setWorkflowIfChanged(current.preflight(), "ready_to_publish", "reviewed", "",
+            stable.sourceSnapshot(),
+            semanticApproval
+                ? List.of(
+                    new WorkflowStateService.SnapshotGuard(candidate.resolve("ru.md"), candidateRu),
+                    new WorkflowStateService.SnapshotGuard(candidate.resolve("en.md"), reviewedBytes),
+                    new WorkflowStateService.SnapshotGuard(
+                        candidate.resolve("references.json"), candidateReferences))
+                : List.of(new WorkflowStateService.SnapshotGuard(english, reviewedBytes)));
+        sourceApproved = true;
+
         List<PublicationDiagnostic> snapshotDiagnostics =
             published.recoveryPaths().stream()
                 .map(path -> new PublicationDiagnostic(
@@ -716,6 +876,7 @@ public final class AstroExportCommand implements Callable<Integer> {
                         + "could not be removed; recovery path: " + path,
                     false))
                 .toList();
+        pendingSnapshot.close();
 
         emitJson(bridge("mark-reviewed", true, "ready_to_publish")
             .note(note)
@@ -743,6 +904,21 @@ public final class AstroExportCommand implements Callable<Integer> {
               identity,
               stable.preflight().workspaceHealth(),
               recovery);
+          return 1;
+        }
+        if (publishedApproved) {
+          emitJson(bridge("mark-reviewed", false, "ready_to_publish")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "workflow",
+                  "Approved publication baseline was saved, but the source queue could not be updated ("
+                      + error.getClass().getSimpleName()
+                      + "); run Refresh publication queue.")))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .pairFreshness("fresh")
+              .translationStatus("reviewed")
+              .build());
           return 1;
         }
         CurrentPairState currentPair = currentPairStateAfterConflict(
@@ -775,6 +951,21 @@ public final class AstroExportCommand implements Callable<Integer> {
               identity,
               stable.preflight().workspaceHealth(),
               recovery);
+          return 1;
+        }
+        if (publishedApproved) {
+          emitJson(bridge("mark-reviewed", false, "ready_to_publish")
+              .note(note)
+              .identity(identity)
+              .diagnostics(List.of(new PublicationDiagnostic(
+                  "workflow",
+                  "Approved publication baseline was saved, but the source queue could not be updated ("
+                      + error.getClass().getSimpleName()
+                      + "); run Refresh publication queue.")))
+              .workspaceHealth(stable.preflight().workspaceHealth())
+              .pairFreshness("fresh")
+              .translationStatus("reviewed")
+              .build());
           return 1;
         }
         if (sourceApproved) {
@@ -853,8 +1044,6 @@ public final class AstroExportCommand implements Callable<Integer> {
     int unchanged = 0;
     int uncertain = 0;
     ArrayList<PublicationDiagnostic> errors = new ArrayList<>();
-    Instant now = services.clock().instant();
-
     for (String path : paths) {
       CommandServices.CliPreflight initial;
       try {
@@ -926,7 +1115,7 @@ public final class AstroExportCommand implements Callable<Integer> {
         }
         try {
           boolean changed = setWorkflowIfChanged(stable.preflight(), state.status(),
-              state.translationStatus(), state.diagnostic(), now, stable.sourceSnapshot(), state.guards());
+              state.translationStatus(), state.diagnostic(), stable.sourceSnapshot(), state.guards());
           if (!changed && !snapshotsCurrent(stable.preflight().note().path(), stable.sourceSnapshot(), state.guards())) {
             throw new WorkflowStateService.ConcurrentFileUpdateException(
                 "publication changed before reconciliation completed");

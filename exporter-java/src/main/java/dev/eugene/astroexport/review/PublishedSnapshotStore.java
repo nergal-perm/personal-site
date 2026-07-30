@@ -20,7 +20,9 @@ import java.util.Objects;
 import java.util.Set;
 
 public final class PublishedSnapshotStore {
-  private static final Set<String> PUBLISHED_FILES = Set.of("ru.md", "en.md");
+  private static final Set<String> LEGACY_PUBLISHED_FILES = Set.of("ru.md", "en.md");
+  private static final Set<String> PUBLISHED_FILES =
+      Set.of("ru.md", "en.md", "references.json");
 
   private final AtomicExchange atomicExchange;
   private final IoHooks ioHooks;
@@ -34,7 +36,25 @@ public final class PublishedSnapshotStore {
     this.ioHooks = Objects.requireNonNull(ioHooks, "ioHooks");
   }
 
-  PendingSnapshot stage(Path pageDirectory, byte[] russian, byte[] english) {
+  PendingSnapshot stageLegacy(Path pageDirectory, byte[] russian, byte[] english) {
+    return stage(pageDirectory, russian, english, null, false);
+  }
+
+  PendingSnapshot stageSemantic(
+      Path pageDirectory,
+      byte[] russian,
+      byte[] english,
+      byte[] references) {
+    Objects.requireNonNull(references, "references");
+    return stage(pageDirectory, russian, english, references, true);
+  }
+
+  private PendingSnapshot stage(
+      Path pageDirectory,
+      byte[] russian,
+      byte[] english,
+      byte[] references,
+      boolean semantic) {
     Objects.requireNonNull(russian, "russian");
     Objects.requireNonNull(english, "english");
     Path page = Objects.requireNonNull(pageDirectory, "pageDirectory")
@@ -45,20 +65,35 @@ public final class PublishedSnapshotStore {
       throw new IllegalArgumentException(
           "page directory must be a non-symbolic directory: " + page);
     }
+    Path published = page.resolve("published");
+    if (Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
+      try {
+        validatePublishedLayout(published, semantic);
+      } catch (IOException error) {
+        throw new IllegalStateException(
+            "cannot inspect published snapshot " + published, error);
+      }
+    }
 
     Path staging = null;
     try {
       staging = Files.createTempDirectory(page, ".published-stage-");
       byte[] stagedRussian = russian.clone();
       byte[] stagedEnglish = english.clone();
+      byte[] stagedReferences = references == null ? null : references.clone();
       writeForced(staging.resolve("ru.md"), stagedRussian);
       writeForced(staging.resolve("en.md"), stagedEnglish);
+      if (semantic) {
+        writeForced(staging.resolve("references.json"), stagedReferences);
+      }
       ioHooks.forceDirectory(staging);
       return new FilePendingSnapshot(
           page.resolve("published"),
           staging,
           stagedRussian,
-          stagedEnglish);
+          stagedEnglish,
+          stagedReferences,
+          semantic);
     } catch (IOException | RuntimeException error) {
       if (staging != null) {
         try {
@@ -160,6 +195,8 @@ public final class PublishedSnapshotStore {
     private final Path staging;
     private final byte[] russian;
     private final byte[] english;
+    private final byte[] references;
+    private final boolean semantic;
     private OwnershipState ownershipState = OwnershipState.STAGED_NEW;
     private boolean closed;
 
@@ -167,11 +204,15 @@ public final class PublishedSnapshotStore {
         Path published,
         Path staging,
         byte[] russian,
-        byte[] english) {
+        byte[] english,
+        byte[] references,
+        boolean semantic) {
       this.published = published;
       this.staging = staging;
       this.russian = russian;
       this.english = english;
+      this.references = references;
+      this.semantic = semantic;
     }
 
     @Override
@@ -195,7 +236,7 @@ public final class PublishedSnapshotStore {
       boolean replacement = Files.exists(published, LinkOption.NOFOLLOW_LINKS);
       try {
         if (replacement) {
-          validatePublishedLayout(published);
+          validatePublishedLayout(published, semantic);
           atomicExchange.exchange(published, staging);
           ownershipState = OwnershipState.REPLACEMENT_VISIBLE_WITH_DISPLACED;
         } else {
@@ -214,7 +255,7 @@ public final class PublishedSnapshotStore {
         }
 
         if (!guardsMatch(checkedGuards)
-            || !visiblePairMatches(published, russian, english)) {
+            || !visibleSnapshotMatches(published, russian, english, references, semantic)) {
           ConcurrentPublishedSnapshotException error = concurrentUpdate();
           rollback(error);
           throw error;
@@ -331,20 +372,29 @@ public final class PublishedSnapshotStore {
     return true;
   }
 
-  private static boolean visiblePairMatches(
+  private static boolean visibleSnapshotMatches(
       Path published,
       byte[] russian,
-      byte[] english) {
+      byte[] english,
+      byte[] references,
+      boolean semantic) {
     try {
-      validatePublishedLayout(published);
-      return Arrays.equals(russian, Files.readAllBytes(published.resolve("ru.md")))
-          && Arrays.equals(english, Files.readAllBytes(published.resolve("en.md")));
+      validatePublishedLayout(published, semantic);
+      boolean markdownMatches =
+          Arrays.equals(russian, Files.readAllBytes(published.resolve("ru.md")))
+              && Arrays.equals(english, Files.readAllBytes(published.resolve("en.md")));
+      if (!semantic) {
+        return markdownMatches;
+      }
+      return markdownMatches
+          && Arrays.equals(references, Files.readAllBytes(published.resolve("references.json")));
     } catch (IOException | IllegalArgumentException error) {
       return false;
     }
   }
 
-  private static void validatePublishedLayout(Path published) throws IOException {
+  private static void validatePublishedLayout(Path published, boolean semantic)
+      throws IOException {
     if (Files.isSymbolicLink(published)
         || !Files.isDirectory(published, LinkOption.NOFOLLOW_LINKS)) {
       throw new IllegalArgumentException(
@@ -356,12 +406,26 @@ public final class PublishedSnapshotStore {
           .map(path -> path.getFileName().toString())
           .collect(java.util.stream.Collectors.toUnmodifiableSet());
     }
-    if (!entries.equals(PUBLISHED_FILES)) {
+    Set<String> expectedFiles = semantic ? PUBLISHED_FILES : LEGACY_PUBLISHED_FILES;
+    if (!entries.equals(expectedFiles)) {
+      if (semantic && entries.equals(LEGACY_PUBLISHED_FILES)) {
+        throw new IllegalArgumentException(
+            "published semantic snapshot must include references.json: " + published);
+      }
+      if (!semantic && entries.equals(PUBLISHED_FILES)) {
+        throw new IllegalArgumentException(
+            "published legacy snapshot must not include references.json: " + published);
+      }
       throw new IllegalArgumentException(
-          "published snapshot must contain only ru.md and en.md: " + published);
+          "published snapshot must contain exactly "
+              + (semantic ? "ru.md, en.md, and references.json" : "ru.md and en.md")
+              + ": " + published);
     }
     validatePublishedLeaf(published.resolve("ru.md"));
     validatePublishedLeaf(published.resolve("en.md"));
+    if (semantic) {
+      validatePublishedLeaf(published.resolve("references.json"));
+    }
   }
 
   private static void validatePublishedLeaf(Path path) throws IOException {
