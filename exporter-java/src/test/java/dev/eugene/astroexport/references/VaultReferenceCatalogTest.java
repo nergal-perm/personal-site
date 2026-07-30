@@ -83,6 +83,20 @@ final class VaultReferenceCatalogTest {
     assertEquals(VaultReferenceCatalog.STATE_TOMBSTONE, deleted.entries().get(pageRef).state());
   }
 
+  @Test
+  void allocatesDistinctReferencesForMultipleNewNotesInOneReconciliation() throws IOException {
+    Path vault = temp.resolve("vault-new");
+    writeNote(vault.resolve("notes/One.md"), "One.");
+    writeNote(vault.resolve("notes/Two.md"), "Two.");
+
+    VaultReferenceCatalog catalog = VaultReferenceCatalog.empty()
+        .reconcile(vault, VaultNoteDescriptor.scan(vault));
+
+    assertEquals("vault-ref-0001", catalog.requireByCurrentPath("notes/One.md").pageRef());
+    assertEquals("vault-ref-0002", catalog.requireByCurrentPath("notes/Two.md").pageRef());
+    assertEquals(2, catalog.entries().size());
+  }
+
   private static void writeNote(Path notePath, String body) throws IOException {
     Files.createDirectories(notePath.getParent());
     Files.writeString(notePath, body);

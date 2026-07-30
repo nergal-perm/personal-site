@@ -9,6 +9,7 @@ import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
+import dev.eugene.astroexport.references.VaultNoteDescriptor;
 import dev.eugene.astroexport.references.VaultReferenceResolver;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -46,22 +47,33 @@ public final class ReferenceMigrationInventory {
   public Inventory inspect(Path vault, Path review, Path astro, Path report) {
     Objects.requireNonNull(vault, "vault");
     Objects.requireNonNull(review, "review");
-    VaultReferenceCatalog catalog = VaultReferenceCatalog.loadIfPresent(review);
+    List<VaultNoteDescriptor> descriptors = VaultNoteDescriptor.scan(vault);
+    VaultReferenceCatalog catalog = VaultReferenceCatalog.loadIfPresent(review)
+        .reconcile(vault, descriptors);
     VaultReferenceResolver resolver = new VaultReferenceResolver(catalog);
     RouteScan currentRoutes = scanAstroRoutes(astro);
+    Map<PublishedIdentity, SourceResolution> sourcePaths = sourcePaths(vault, descriptors);
     List<ApprovedSnapshot> snapshots = scanApproved(review);
     List<ReferenceMigrationAligner.MigrationPage> pages = new ArrayList<>();
     ReferenceMigrationAligner aligner = new ReferenceMigrationAligner();
     for (ApprovedSnapshot snapshot : snapshots) {
+      SourceResolution source = snapshot.sourcePath() == null
+          ? sourcePaths.getOrDefault(snapshot.identity(), SourceResolution.unresolved(snapshot.identity()))
+          : SourceResolution.resolved(snapshot.sourcePath());
+      String sourcePath = source.sourcePath();
       String pageRef = snapshot.pageRef();
       if (pageRef == null || pageRef.isBlank()) {
-        pageRef = provisionalPageRef(snapshot.sourcePath());
+        pageRef = catalog.requireByCurrentPathOptional(sourcePath)
+            .map(VaultReferenceCatalog.CatalogEntry::pageRef)
+            .orElseGet(() -> provisionalPageRef(sourcePath));
       }
-      RawInput rawInput = readRawBody(vault, snapshot.sourcePath());
+      RawInput rawInput = source.safe()
+          ? readRawBody(vault, sourcePath)
+          : RawInput.unsafe(source.reason());
       ReferenceMigrationAligner.RawPage rawPage = rawInput.safe()
           ? new ReferenceMigrationAligner.RawPage(
               pageRef,
-              snapshot.sourcePath(),
+              sourcePath,
               rawInput.body(),
               true,
               null,
@@ -71,7 +83,7 @@ public final class ReferenceMigrationInventory {
               snapshot.legacyOrder())
           : new ReferenceMigrationAligner.RawPage(
               pageRef,
-              snapshot.sourcePath(),
+              sourcePath,
               "",
               false,
               rawInput.reason(),
@@ -82,7 +94,7 @@ public final class ReferenceMigrationInventory {
       if (rawInput.safe() && currentRoutes.conflicts().containsKey(pageRef)) {
         rawPage = new ReferenceMigrationAligner.RawPage(
             pageRef,
-            snapshot.sourcePath(),
+            sourcePath,
             rawInput.body(),
             false,
             currentRoutes.conflicts().get(pageRef),
@@ -255,7 +267,8 @@ public final class ReferenceMigrationInventory {
               .toList()) {
             Path published = page.resolve("published");
             if (Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
-              snapshots.add(readSnapshot(published));
+              snapshots.add(readSnapshot(published, new PublishedIdentity(
+                  collection.getFileName().toString(), page.getFileName().toString())));
             }
           }
         }
@@ -266,11 +279,13 @@ public final class ReferenceMigrationInventory {
     return List.copyOf(snapshots);
   }
 
-  private static ApprovedSnapshot readSnapshot(Path published) {
-    SafeLeaf references = readSafeLeaf(published.resolve("references.json"));
+  private static ApprovedSnapshot readSnapshot(Path published, PublishedIdentity identity) {
+    Path referencesPath = published.resolve("references.json");
+    boolean hasReferences = Files.exists(referencesPath, LinkOption.NOFOLLOW_LINKS);
+    SafeLeaf references = hasReferences ? readSafeLeaf(referencesPath) : null;
     String pageRef = null;
-    String sourcePath = published.getParent().getFileName() + ".md";
-    if (references.safe()) {
+    String sourcePath = null;
+    if (hasReferences && references.safe()) {
       try {
         PageReferenceMap map = PageReferenceMapCodec.read(references.bytes(), published.resolve("references.json").toString());
         pageRef = map.pageRef();
@@ -280,9 +295,10 @@ public final class ReferenceMigrationInventory {
         SafeLeaf en = readSafeLeaf(published.resolve("en.md"));
         String unsafe = firstUnsafe(ru, en, references);
         if (unsafe != null) {
-          return unsafeSnapshot(published, pageRef, sourcePath, unsafe, order);
+          return unsafeSnapshot(published, identity, pageRef, sourcePath, unsafe, order);
         }
         return new ApprovedSnapshot(
+            identity,
             pageRef,
             sourcePath,
             true,
@@ -295,11 +311,12 @@ public final class ReferenceMigrationInventory {
     }
     SafeLeaf ru = readSafeLeaf(published.resolve("ru.md"));
     SafeLeaf en = readSafeLeaf(published.resolve("en.md"));
-    String unsafe = firstUnsafe(ru, en, references);
+    String unsafe = hasReferences ? firstUnsafe(ru, en, references) : firstUnsafe(ru, en);
     if (unsafe != null) {
-      return unsafeSnapshot(published, pageRef, sourcePath, unsafe, List.of());
+      return unsafeSnapshot(published, identity, pageRef, sourcePath, unsafe, List.of());
     }
     return new ApprovedSnapshot(
+        identity,
         pageRef,
         sourcePath,
         false,
@@ -310,11 +327,13 @@ public final class ReferenceMigrationInventory {
 
   private static ApprovedSnapshot unsafeSnapshot(
       Path published,
+      PublishedIdentity identity,
       String pageRef,
       String sourcePath,
       String unsafe,
       List<String> order) {
     return new ApprovedSnapshot(
+        identity,
         pageRef,
         sourcePath,
         true,
@@ -370,6 +389,47 @@ public final class ReferenceMigrationInventory {
     } catch (IOException error) {
       return RawInput.unsafe("current source cannot be read: " + sourcePath);
     }
+  }
+
+  private static Map<PublishedIdentity, SourceResolution> sourcePaths(
+      Path vault,
+      List<VaultNoteDescriptor> descriptors) {
+    Map<PublishedIdentity, List<String>> candidates = new LinkedHashMap<>();
+    for (VaultNoteDescriptor descriptor : descriptors) {
+      Path source = bounded(vault, descriptor.vaultPath());
+      try {
+        FrontmatterDocument document = FrontmatterDocument.parse(
+            source,
+            descriptor.vaultPath(),
+            Files.readString(source, StandardCharsets.UTF_8));
+        String collection = metadataText(document.metadata().get("publicCollection"));
+        String publicId = metadataText(document.metadata().get("publicId"));
+        if (collection != null && publicId != null) {
+          candidates.computeIfAbsent(new PublishedIdentity(collection, publicId), ignored -> new ArrayList<>())
+              .add(descriptor.vaultPath());
+        }
+      } catch (IOException | RuntimeException ignored) {
+        // Invalid or unreadable sources remain unavailable to legacy-pair resolution.
+      }
+    }
+    Map<PublishedIdentity, SourceResolution> resolved = new LinkedHashMap<>();
+    for (Map.Entry<PublishedIdentity, List<String>> entry : candidates.entrySet()) {
+      List<String> paths = entry.getValue();
+      if (paths.size() == 1) {
+        resolved.put(entry.getKey(), SourceResolution.resolved(paths.getFirst()));
+      } else {
+        resolved.put(entry.getKey(), SourceResolution.ambiguous(entry.getKey(), paths));
+      }
+    }
+    return Map.copyOf(resolved);
+  }
+
+  private static String metadataText(Object value) {
+    if (!(value instanceof String text)) {
+      return null;
+    }
+    String normalized = text.strip();
+    return normalized.isBlank() ? null : normalized;
   }
 
   private static RouteScan scanAstroRoutes(Path astro) {
@@ -480,6 +540,7 @@ public final class ReferenceMigrationInventory {
   }
 
   private record ApprovedSnapshot(
+      PublishedIdentity identity,
       String pageRef,
       String sourcePath,
       boolean legacyOrderPresent,
@@ -498,6 +559,28 @@ public final class ReferenceMigrationInventory {
 
     static RawInput unsafe(String reason) {
       return new RawInput(false, "", reason);
+    }
+  }
+
+  private record PublishedIdentity(String collection, String publicId) {
+    String display() {
+      return collection + "/" + publicId;
+    }
+  }
+
+  private record SourceResolution(boolean safe, String sourcePath, String reason) {
+    static SourceResolution resolved(String sourcePath) {
+      return new SourceResolution(true, sourcePath, null);
+    }
+
+    static SourceResolution unresolved(PublishedIdentity identity) {
+      return new SourceResolution(false, "unresolved-source:" + identity.display(),
+          "no unique current vault source declares " + identity.display());
+    }
+
+    static SourceResolution ambiguous(PublishedIdentity identity, List<String> paths) {
+      return new SourceResolution(false, "ambiguous-source:" + identity.display(),
+          "multiple current vault sources declare " + identity.display() + ": " + String.join(", ", paths));
     }
   }
 

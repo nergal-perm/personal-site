@@ -168,7 +168,7 @@ final class SemanticReferencePlannerTest {
   }
 
   @Test
-  void flagsAmbiguousReuseWhenSequenceIndexMatchesMultipleOldIds() {
+  void reusesExactSequencePositionWhenHistoryContainsRepeatedIdenticalLinks() {
     SemanticReferencePlanner planner = new SemanticReferencePlanner();
     VaultReferenceResolver resolver = resolver(
         entry("vault-ref-0001", "notes/One.md", "id-one", "One", List.of()));
@@ -190,9 +190,35 @@ final class SemanticReferencePlannerTest {
         resolver);
 
     assertEquals("[One](ref:ref-0001)", ambiguous.markdown());
-    assertEquals(1, ambiguous.diagnostics().size());
-    assertEquals("reference-reconciliation-required", ambiguous.diagnostics().getFirst().field());
-    assertEquals(true, ambiguous.diagnostics().getFirst().blocking());
+    assertEquals(List.of(), ambiguous.diagnostics());
+  }
+
+  @Test
+  void reusesEveryIdentifierForAnUnchangedSequenceOfRepeatedIdenticalLinks() {
+    SemanticReferencePlanner planner = new SemanticReferencePlanner();
+    VaultReferenceResolver resolver = resolver(
+        entry("vault-ref-0001", "notes/One.md", "id-one", "One", List.of()));
+    PageReferenceMap previous = new PageReferenceMap(
+        PageReferenceMap.SCHEMA_VERSION,
+        "vault-ref-page",
+        "blog/Source.md",
+        "ru",
+        "en",
+        List.of("ref-0001", "ref-0002"),
+        Map.of(
+            "ref-0001", new PageReferenceMap.Reference("vault-ref-0001", "One", "", "One"),
+            "ref-0002", new PageReferenceMap.Reference("vault-ref-0001", "One", "", "One")));
+
+    SemanticReferencePlanner.PreparedSemanticBody prepared = planner.prepare(
+        "blog/Source.md",
+        "vault-ref-page",
+        "[[One]] and [[One]]",
+        Optional.of(previous),
+        resolver);
+
+    assertEquals("[One](ref:ref-0001) and [One](ref:ref-0002)", prepared.markdown());
+    assertEquals(List.of("ref-0001", "ref-0002"), prepared.plan().order());
+    assertEquals(List.of(), prepared.diagnostics());
   }
 
   private static VaultReferenceResolver resolver(VaultReferenceCatalog.CatalogEntry... entries) {

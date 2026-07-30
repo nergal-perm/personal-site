@@ -132,6 +132,7 @@ public record VaultReferenceCatalog(int schemaVersion, Map<String, CatalogEntry>
   public VaultReferenceCatalog reconcile(Path vaultRoot, List<VaultNoteDescriptor> descriptors) {
     Map<String, CatalogEntry> active = entries;
     Set<String> preserved = new LinkedHashSet<>();
+    Set<String> allocated = new LinkedHashSet<>(active.keySet());
     Map<String, CatalogEntry> nextEntries = new LinkedHashMap<>();
 
     for (VaultNoteDescriptor descriptor : descriptors) {
@@ -146,14 +147,15 @@ public record VaultReferenceCatalog(int schemaVersion, Map<String, CatalogEntry>
         CatalogEntry reconciled = new CatalogEntry(
             pageRef,
             descriptor.vaultPath(),
-            descriptor.stableNoteId(),
-            descriptor.title(),
-            descriptor.aliases(),
+            descriptor.stableNoteId() == null ? previous.stableNoteId() : descriptor.stableNoteId(),
+            descriptor.title() == null ? previous.title() : descriptor.title(),
+            descriptor.aliases().isEmpty() ? previous.aliases() : descriptor.aliases(),
             previousPaths,
             STATE_ACTIVE);
         nextEntries.put(pageRef, reconciled);
       } else {
-        String nextRef = allocatePageRef(active.keySet());
+        String nextRef = allocatePageRef(allocated);
+        allocated.add(nextRef);
         nextEntries.put(nextRef, new CatalogEntry(
             nextRef,
             descriptor.vaultPath(),

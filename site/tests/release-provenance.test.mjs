@@ -56,6 +56,11 @@ test("rejects a modified managed file", async () => {
   }
 });
 
+test("uses Java-compatible natural ordering for non-ASCII provenance paths", () => {
+  assert.deepEqual(["ä", "z"].sort(comparePaths), ["z", "ä"]);
+  assert.deepEqual(["\uE000", "\u{10000}"].sort(comparePaths), ["\u{10000}", "\uE000"]);
+});
+
 async function runGate(extraEnv = {}) {
   return execFileAsync(process.execPath, [gateScript], {
     cwd: projectRoot,
@@ -239,6 +244,10 @@ async function listTree(root) {
   return results.sort((left, right) =>
     slash(path.relative(root, left)).localeCompare(slash(path.relative(root, right))),
   );
+}
+
+function comparePaths(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function lengthBuffer(length) {

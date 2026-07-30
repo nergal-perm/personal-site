@@ -170,6 +170,31 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
+  void inventoriesLegacyTwoFilePairFromTheVaultPublicationIdentityWithoutCreatingCatalog() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    String sourcePath = "claims/Культура — равновесие структуры, а не свойство людей.md";
+    writeNote(vault, sourcePath, """
+        ---
+        publish: true
+        publicId: culture-as-selection-equilibrium
+        publicCollection: blog
+        publicContentType: essay
+        ---
+        Current source body.
+        """);
+    writeLegacyApprovedPair(review, "blog", "culture-as-selection-equilibrium");
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+
+    assertEquals(sourcePath, inventory.pages().getFirst().sourcePath());
+    assertEquals("vault-ref-0001", inventory.pages().getFirst().pageRef());
+    assertEquals("exact", inventory.pages().getFirst().status().json());
+    assertFalse(Files.exists(review.resolve(".semantic-links/catalog-v1.json")));
+  }
+
+  @Test
   void rawFrontmatterLinksAreNotInventoried() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");
@@ -484,6 +509,13 @@ final class ReferenceMigrationInventoryTest {
         "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
         "order", order,
         "references", Map.of())), StandardCharsets.UTF_8);
+  }
+
+  private static void writeLegacyApprovedPair(Path review, String collection, String publicId) throws Exception {
+    Path published = review.resolve(collection).resolve(publicId).resolve("published");
+    Files.createDirectories(published);
+    Files.writeString(published.resolve("ru.md"), "Approved Russian.\n", StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("en.md"), "Approved English.\n", StandardCharsets.UTF_8);
   }
 
   private static void writeAstroRoute(

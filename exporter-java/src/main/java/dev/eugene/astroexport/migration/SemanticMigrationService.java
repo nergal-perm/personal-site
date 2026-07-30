@@ -13,6 +13,7 @@ import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
+import dev.eugene.astroexport.references.VaultNoteDescriptor;
 import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
 import dev.eugene.astroexport.review.ApprovedPageSnapshot;
 import dev.eugene.astroexport.review.ApprovedSnapshotRepository;
@@ -112,7 +113,10 @@ public final class SemanticMigrationService {
         inventory,
         decisions);
     Path catalog = VaultReferenceCatalog.catalogPath(request.review());
-    byte[] catalogBytes = readSafe(catalog);
+    boolean catalogWasPresent = Files.exists(catalog, LinkOption.NOFOLLOW_LINKS);
+    VaultReferenceCatalog reconciledCatalog = VaultReferenceCatalog.loadIfPresent(request.review())
+        .reconcile(request.vault(), VaultNoteDescriptor.scan(request.vault()));
+    byte[] catalogBytes = reconciledCatalog.write();
     String catalogSha = PageReferenceMapCodec.sha256(catalogBytes);
     Path root = request.review().resolve(".semantic-links");
     Path stagingRoot = root.resolve("staging-v1");
@@ -133,6 +137,7 @@ public final class SemanticMigrationService {
     journal.catalogPublished(request.review().relativize(catalog).toString());
     journal.catalogStaged(request.review().relativize(catalogStage).toString());
     journal.catalogDisplaced(request.review().relativize(recoveryRoot.resolve("catalog-v1.json")).toString());
+    journal.catalogWasPresent(catalogWasPresent);
     journal.catalogState("staged");
     writeJournal(request.review(), journal);
     hooks.after(Boundary.CATALOG_STAGED, 1);
@@ -140,7 +145,7 @@ public final class SemanticMigrationService {
     int index = 0;
     for (ReferenceMigrationAligner.MigrationPage page : inventory.pages()) {
       index++;
-      PageIdentity identity = findPage(request.review(), page.sourcePath());
+      PageIdentity identity = findPage(request.review(), request.vault(), page.sourcePath());
       Path pageStage = stagingRoot.resolve(identity.collection()).resolve(identity.publicId()).resolve("published");
       Files.createDirectories(pageStage);
       byte[] ru = semanticBytes(page.approvedRussian().text(), page, true);
@@ -168,6 +173,7 @@ public final class SemanticMigrationService {
           page.sourcePath(),
           "staged",
           stagedSha,
+          legacySnapshotSha256(published),
           request.review().relativize(published).toString(),
           request.review().relativize(pageStage).toString(),
           request.review().relativize(displaced).toString());
@@ -219,7 +225,12 @@ public final class SemanticMigrationService {
     }
     plan.journal().catalogState("installing");
     writeJournal(plan.review(), plan.journal());
-    atomicExchange.exchange(plan.catalogPublished(), plan.catalogStaged());
+    if (plan.journal().catalogWasPresent()) {
+      atomicExchange.exchange(plan.catalogPublished(), plan.catalogStaged());
+    } else {
+      Files.createDirectories(plan.catalogPublished().getParent());
+      Files.move(plan.catalogStaged(), plan.catalogPublished(), StandardCopyOption.ATOMIC_MOVE);
+    }
     forceDirectory(plan.catalogPublished().getParent());
     plan.journal().catalogState("installed");
     writeJournal(plan.review(), plan.journal());
@@ -228,8 +239,10 @@ public final class SemanticMigrationService {
         .equals(plan.journal().catalogSha256())) {
       throw new IllegalStateException("installed catalog hash mismatch: " + plan.catalogPublished());
     }
-    Files.move(plan.catalogStaged(), plan.catalogDisplaced(), StandardCopyOption.ATOMIC_MOVE);
-    forceDirectory(plan.catalogDisplaced().getParent());
+    if (plan.journal().catalogWasPresent()) {
+      Files.move(plan.catalogStaged(), plan.catalogDisplaced(), StandardCopyOption.ATOMIC_MOVE);
+      forceDirectory(plan.catalogDisplaced().getParent());
+    }
     plan.journal().catalogState("complete");
     writeJournal(plan.review(), plan.journal());
     plan.journal().state("cleanup-pending");
@@ -295,25 +308,30 @@ public final class SemanticMigrationService {
     List<JournalPage> pages = new ArrayList<>(journal.pages());
     pages.sort(Comparator.comparing(JournalPage::published).reversed());
     for (JournalPage page : pages) {
+      requireRollbackRecoverable(review, page);
+    }
+    for (JournalPage page : pages) {
       Path published = review.resolve(page.published());
       Path displaced = review.resolve(page.displaced());
-      if (Files.exists(displaced, LinkOption.NOFOLLOW_LINKS)
-          && Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
+      Path staged = review.resolve(page.staged());
+      if (legacySnapshotMatches(displaced, page.legacySha256())
+          && stagedHashMatches(published, page.stagedSha256())) {
         atomicExchange.exchange(published, displaced);
         forceDirectory(published.getParent());
-      } else if (Files.exists(displaced, LinkOption.NOFOLLOW_LINKS)) {
+        deleteTree(displaced);
+      } else if (legacySnapshotMatches(displaced, page.legacySha256())) {
         Files.createDirectories(published.getParent());
         Files.move(displaced, published, StandardCopyOption.ATOMIC_MOVE);
-      } else if (Files.exists(review.resolve(page.staged()), LinkOption.NOFOLLOW_LINKS)
-          && Files.exists(published, LinkOption.NOFOLLOW_LINKS)
-          && ("installing".equals(page.state())
-              || "installed".equals(page.state())
-              || "verified".equals(page.state()))) {
-        atomicExchange.exchange(published, review.resolve(page.staged()));
+      } else if (legacySnapshotMatches(staged, page.legacySha256())
+          && stagedHashMatches(published, page.stagedSha256())) {
+        atomicExchange.exchange(published, staged);
         forceDirectory(published.getParent());
-      } else if (Files.exists(review.resolve(page.staged()), LinkOption.NOFOLLOW_LINKS)) {
-        deleteTree(review.resolve(page.staged()));
+        deleteTree(staged);
+      } else if (legacySnapshotMatches(published, page.legacySha256())
+          && stagedHashMatches(staged, page.stagedSha256())) {
+        deleteTree(staged);
       }
+      requireLegacySnapshot(published, page.legacySha256());
     }
     rollbackCatalog(review, journal);
     Files.deleteIfExists(SemanticSchemaState.activationMarker(review));
@@ -331,22 +349,34 @@ public final class SemanticMigrationService {
     String state = journal.catalogState();
     if ("staged".equals(state)) {
       requireCatalogHash(staged, journal.catalogSha256());
-      atomicExchange.exchange(published, staged);
-      Files.createDirectories(displaced.getParent());
-      Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
-    } else if ("installing".equals(state)) {
-      if (catalogHashMatches(published, journal.catalogSha256())) {
-        Files.createDirectories(displaced.getParent());
-        Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
-      } else {
-        requireCatalogHash(staged, journal.catalogSha256());
+      if (journal.catalogWasPresent()) {
         atomicExchange.exchange(published, staged);
         Files.createDirectories(displaced.getParent());
         Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
+      } else {
+        Files.createDirectories(published.getParent());
+        Files.move(staged, published, StandardCopyOption.ATOMIC_MOVE);
+      }
+    } else if ("installing".equals(state)) {
+      if (catalogHashMatches(published, journal.catalogSha256())) {
+        if (journal.catalogWasPresent()) {
+          Files.createDirectories(displaced.getParent());
+          Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
+        }
+      } else {
+        requireCatalogHash(staged, journal.catalogSha256());
+        if (journal.catalogWasPresent()) {
+          atomicExchange.exchange(published, staged);
+          Files.createDirectories(displaced.getParent());
+          Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
+        } else {
+          Files.createDirectories(published.getParent());
+          Files.move(staged, published, StandardCopyOption.ATOMIC_MOVE);
+        }
       }
     } else if ("installed".equals(state) || "complete".equals(state)) {
       requireCatalogHash(published, journal.catalogSha256());
-      if (Files.exists(staged, LinkOption.NOFOLLOW_LINKS)
+      if (journal.catalogWasPresent() && Files.exists(staged, LinkOption.NOFOLLOW_LINKS)
           && !Files.exists(displaced, LinkOption.NOFOLLOW_LINKS)) {
         Files.createDirectories(displaced.getParent());
         Files.move(staged, displaced, StandardCopyOption.ATOMIC_MOVE);
@@ -358,6 +388,17 @@ public final class SemanticMigrationService {
     Path published = review.resolve(journal.catalogPublished());
     Path staged = review.resolve(journal.catalogStaged());
     Path displaced = review.resolve(journal.catalogDisplaced());
+    if (!journal.catalogWasPresent()) {
+      if (catalogHashMatches(published, journal.catalogSha256())) {
+        Files.delete(published);
+      } else if (Files.exists(staged, LinkOption.NOFOLLOW_LINKS)) {
+        requireCatalogHash(staged, journal.catalogSha256());
+        Files.delete(staged);
+      } else if (Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
+        throw new IllegalStateException("cannot roll back unverified bootstrap catalog: " + published);
+      }
+      return;
+    }
     if (Files.exists(displaced, LinkOption.NOFOLLOW_LINKS)
         && Files.exists(published, LinkOption.NOFOLLOW_LINKS)) {
       atomicExchange.exchange(published, displaced);
@@ -772,7 +813,13 @@ public final class SemanticMigrationService {
     return new LinkParts(target, label);
   }
 
-  private static PageIdentity findPage(Path review, String sourcePath) throws IOException {
+  private static PageIdentity findPage(Path review, Path vault, String sourcePath) throws IOException {
+    PageIdentity fromVault = sourceIdentity(vault, sourcePath);
+    if (fromVault != null
+        && Files.exists(review.resolve(fromVault.collection()).resolve(fromVault.publicId()).resolve("published"),
+            LinkOption.NOFOLLOW_LINKS)) {
+      return fromVault;
+    }
     try (var collections = Files.list(review)) {
       for (Path collection : collections
           .filter(path -> !path.getFileName().toString().startsWith("."))
@@ -800,6 +847,26 @@ public final class SemanticMigrationService {
     throw new IllegalStateException("no published approved pair for " + sourcePath);
   }
 
+  private static PageIdentity sourceIdentity(Path vault, String sourcePath) throws IOException {
+    Path source = vault.toAbsolutePath().normalize().resolve(sourcePath).normalize();
+    if (!source.startsWith(vault.toAbsolutePath().normalize()) || !Files.isRegularFile(source)) {
+      return null;
+    }
+    try {
+      var document = dev.eugene.astroexport.frontmatter.FrontmatterDocument.parse(
+          source, sourcePath, Files.readString(source, StandardCharsets.UTF_8));
+      Object collection = document.metadata().get("publicCollection");
+      Object publicId = document.metadata().get("publicId");
+      if (collection instanceof String collectionText && !collectionText.isBlank()
+          && publicId instanceof String publicIdText && !publicIdText.isBlank()) {
+        return new PageIdentity(collectionText.strip(), publicIdText.strip());
+      }
+    } catch (RuntimeException ignored) {
+      // The inventory has already made invalid source metadata unsafe.
+    }
+    return null;
+  }
+
   private static String sourcePathFrom(Path published) {
     Path references = published.resolve("references.json");
     if (Files.exists(references, LinkOption.NOFOLLOW_LINKS)) {
@@ -823,6 +890,56 @@ public final class SemanticMigrationService {
     } catch (IOException error) {
       return false;
     }
+  }
+
+  private static String legacySnapshotSha256(Path root) throws IOException {
+    return PageReferenceMapCodec.sha256(legacySnapshotBytes(root));
+  }
+
+  private static boolean legacySnapshotMatches(Path root, String expected) {
+    try {
+      return expected != null && expected.equals(legacySnapshotSha256(root));
+    } catch (IOException error) {
+      return false;
+    }
+  }
+
+  private static void requireLegacySnapshot(Path root, String expected) throws IOException {
+    if (!legacySnapshotMatches(root, expected)) {
+      throw new IllegalStateException("legacy recovery hash mismatch: " + root);
+    }
+  }
+
+  private static byte[] legacySnapshotBytes(Path root) throws IOException {
+    if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+      throw new IOException("legacy snapshot is not a directory: " + root);
+    }
+    List<String> names;
+    try (var entries = Files.list(root)) {
+      names = entries.map(path -> path.getFileName().toString()).sorted().toList();
+    }
+    if (!names.equals(List.of("en.md", "ru.md"))
+        && !names.equals(List.of("en.md", "references.json", "ru.md"))) {
+      throw new IOException("legacy snapshot has unexpected files: " + root);
+    }
+    List<byte[]> parts = new ArrayList<>();
+    for (String name : names) {
+      parts.add(name.getBytes(StandardCharsets.UTF_8));
+      parts.add(readSafe(root.resolve(name)));
+    }
+    return combined(parts.toArray(byte[][]::new));
+  }
+
+  private static void requireRollbackRecoverable(Path review, JournalPage page) throws IOException {
+    Path published = review.resolve(page.published());
+    Path staged = review.resolve(page.staged());
+    Path displaced = review.resolve(page.displaced());
+    if (legacySnapshotMatches(published, page.legacySha256())
+        || legacySnapshotMatches(staged, page.legacySha256())
+        || legacySnapshotMatches(displaced, page.legacySha256())) {
+      return;
+    }
+    throw new IllegalStateException("cannot roll back without verified legacy snapshot: " + published);
   }
 
   private static void requireCatalogHash(Path path, String expected) throws IOException {
@@ -1090,6 +1207,7 @@ public final class SemanticMigrationService {
     private String catalogPublished;
     private String catalogStaged;
     private String catalogDisplaced;
+    private boolean catalogWasPresent;
 
     private Journal(
         String state,
@@ -1156,6 +1274,14 @@ public final class SemanticMigrationService {
       this.catalogDisplaced = catalogDisplaced;
     }
 
+    private boolean catalogWasPresent() {
+      return catalogWasPresent;
+    }
+
+    private void catalogWasPresent(boolean catalogWasPresent) {
+      this.catalogWasPresent = catalogWasPresent;
+    }
+
     private Map<String, Object> toPayload() {
       LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
       payload.put("schemaVersion", 1);
@@ -1166,6 +1292,7 @@ public final class SemanticMigrationService {
       payload.put("catalogPublished", catalogPublished);
       payload.put("catalogStaged", catalogStaged);
       payload.put("catalogDisplaced", catalogDisplaced);
+      payload.put("catalogWasPresent", catalogWasPresent);
       payload.put("recoveryRoot", recoveryRoot);
       payload.put("pages", pages.stream().map(JournalPage::toPayload).toList());
       payload.putAll(extra);
@@ -1185,6 +1312,8 @@ public final class SemanticMigrationService {
       journal.catalogPublished((String) payload.get("catalogPublished"));
       journal.catalogStaged((String) payload.get("catalogStaged"));
       journal.catalogDisplaced((String) payload.get("catalogDisplaced"));
+      journal.catalogWasPresent(
+          !(payload.get("catalogWasPresent") instanceof Boolean present) || present);
       if (payload.get("activatedAt") instanceof String text) {
         journal.extra().put("activatedAt", text);
       }
@@ -1199,6 +1328,7 @@ public final class SemanticMigrationService {
     private final String sourcePath;
     private String state;
     private final String stagedSha256;
+    private final String legacySha256;
     private final String published;
     private final String staged;
     private final String displaced;
@@ -1210,6 +1340,7 @@ public final class SemanticMigrationService {
         String sourcePath,
         String state,
         String stagedSha256,
+        String legacySha256,
         String published,
         String staged,
         String displaced) {
@@ -1219,6 +1350,7 @@ public final class SemanticMigrationService {
       this.sourcePath = sourcePath;
       this.state = state;
       this.stagedSha256 = stagedSha256;
+      this.legacySha256 = legacySha256;
       this.published = published;
       this.staged = staged;
       this.displaced = displaced;
@@ -1252,6 +1384,10 @@ public final class SemanticMigrationService {
       return stagedSha256;
     }
 
+    private String legacySha256() {
+      return legacySha256;
+    }
+
     private String published() {
       return published;
     }
@@ -1272,6 +1408,7 @@ public final class SemanticMigrationService {
       payload.put("sourcePath", sourcePath);
       payload.put("state", state);
       payload.put("stagedSha256", stagedSha256);
+      payload.put("legacySha256", legacySha256);
       payload.put("published", published);
       payload.put("staged", staged);
       payload.put("displaced", displaced);
@@ -1286,6 +1423,7 @@ public final class SemanticMigrationService {
           (String) payload.get("sourcePath"),
           (String) payload.get("state"),
           (String) payload.get("stagedSha256"),
+          (String) payload.get("legacySha256"),
           (String) payload.get("published"),
           (String) payload.get("staged"),
           (String) payload.get("displaced"));

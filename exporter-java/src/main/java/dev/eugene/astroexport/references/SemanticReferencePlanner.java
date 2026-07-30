@@ -195,7 +195,6 @@ public final class SemanticReferencePlanner {
     return SemanticReferenceMarkdown.normalizeHeadingFragment(heading == null ? "" : heading);
   }
 
-  
   private static final class PreviousState {
     private final Map<Integer, String> order;
     private final Map<String, String> signatureById;
@@ -241,14 +240,8 @@ public final class SemanticReferencePlanner {
     ReuseDecision reuse(String signature, int sequenceIndex) {
       String byIndex = order.get(sequenceIndex);
       if (byIndex != null && signature.equals(signatureById.get(byIndex))) {
-        List<String> candidates = idsBySignature.get(signature);
-        if (candidates != null && candidates.size() > 1) {
-          return new ReuseDecision(byIndex, true);
-        }
-        if (candidates != null && candidates.size() == 1) {
-          remove(byIndex, signature);
-          return new ReuseDecision(byIndex, false);
-        }
+        // Position is a stable discriminator for unchanged repeated occurrences.
+        remove(byIndex, signature);
         return new ReuseDecision(byIndex, false);
       }
 

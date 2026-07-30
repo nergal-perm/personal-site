@@ -11,6 +11,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
+import dev.eugene.astroexport.references.VaultReferenceCatalog;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -155,6 +156,39 @@ final class SemanticMigrationServiceTest {
       assertArrayEquals(entry.getValue(), Files.readAllBytes(fixture.review().resolve(entry.getKey())));
     }
     assertEquals(SemanticSchemaState.Mode.LEGACY, SemanticSchemaState.mode(fixture.review()));
+  }
+
+  @Test
+  void rollbackFailsClosedWhenSuccessfulMigrationHasAlreadyRemovedLegacyRecoveryEvidence() throws Exception {
+    Fixture fixture = fixture(1);
+    new SemanticMigrationService().apply(fixture.request(), SemanticMigrationService.MigrationHooks.none());
+
+    assertThrows(
+        SemanticMigrationService.MigrationIncompleteException.class,
+        () -> new SemanticMigrationService().recover(
+            SemanticMigrationService.RecoveryRequest.rollBack(fixture.review())));
+
+    assertEquals(SemanticSchemaState.Mode.SEMANTIC, SemanticSchemaState.mode(fixture.review()));
+    assertTrue(Files.exists(fixture.review().resolve("blog/page-1/published/references.json")));
+    assertTrue(Files.exists(SemanticSchemaState.migrationJournal(fixture.review())));
+  }
+
+  @Test
+  void applyBootstrapsAndInstallsFirstCatalogFromLegacyPairs() throws Exception {
+    Fixture fixture = fixture(2);
+    Files.delete(VaultReferenceCatalog.catalogPath(fixture.review()));
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(fixture.vault(), fixture.review(), fixture.astro(), fixture.report());
+    Files.writeString(fixture.decisions(), """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{}}
+        """.formatted(inventory.inventorySha256()), StandardCharsets.UTF_8);
+
+    new SemanticMigrationService().apply(fixture.request(), SemanticMigrationService.MigrationHooks.none());
+
+    VaultReferenceCatalog catalog = VaultReferenceCatalog.load(fixture.review());
+    assertEquals(2, catalog.entries().size());
+    assertTrue(Files.exists(VaultReferenceCatalog.catalogPath(fixture.review())));
+    assertTrue(Files.exists(fixture.review().resolve("blog/page-1/published/references.json")));
   }
 
   @Test
@@ -343,7 +377,7 @@ final class SemanticMigrationServiceTest {
     Files.createDirectories(astro);
     for (int index = 1; index <= pages; index++) {
       String slug = "page-" + index;
-      writeNote(vault, slug + ".md", "Body " + index + ".");
+      writePublishedSource(vault, slug + ".md", "blog", slug, "Body " + index + ".");
       writePublishedPair(review, slug, slug + ".md", "vault-ref-" + slug);
     }
     writeCatalog(review, pages);
@@ -362,8 +396,8 @@ final class SemanticMigrationServiceTest {
     Path astro = temp.resolve("astro-linked");
     Path report = temp.resolve("inventory-linked.json");
     Files.createDirectories(astro);
-    writeNote(vault, "page-1.md", "See [[page-2|target]].");
-    writeNote(vault, "page-2.md", "Target.");
+    writePublishedSource(vault, "page-1.md", "blog", "page-1", "See [[page-2|target]].");
+    writePublishedSource(vault, "page-2.md", "blog", "page-2", "Target.");
     writeAstroRoute(astro, "src/content/blog/ru/page-1.md", "vault-ref-page-1", "/ru/essays/page-1/");
     writeAstroRoute(astro, "src/content/blog/en/page-1.md", "vault-ref-page-1", "/en/essays/page-1/");
     writeAstroRoute(astro, "src/content/blog/ru/page-2.md", "vault-ref-page-2", "/ru/essays/page-2/");
@@ -392,9 +426,9 @@ final class SemanticMigrationServiceTest {
     Path astro = temp.resolve("astro-order");
     Path report = temp.resolve("inventory-order.json");
     Files.createDirectories(astro);
-    writeNote(vault, "page.md", "[[B|one]] [[C|two]]");
-    writeNote(vault, "b.md", "B.");
-    writeNote(vault, "c.md", "C.");
+    writePublishedSource(vault, "page.md", "blog", "page", "[[B|one]] [[C|two]]");
+    writePublishedSource(vault, "b.md", "blog", "b", "B.");
+    writePublishedSource(vault, "c.md", "blog", "c", "C.");
     writeAstroRoute(astro, "src/content/blog/ru/b.md", "vault-ref-b", "/ru/essays/b/");
     writeAstroRoute(astro, "src/content/blog/en/b.md", "vault-ref-b", "/en/essays/b/");
     writeAstroRoute(astro, "src/content/blog/ru/c.md", "vault-ref-c", "/ru/essays/c/");
@@ -441,7 +475,7 @@ final class SemanticMigrationServiceTest {
     Path astro = temp.resolve("astro-editorial");
     Path report = temp.resolve("inventory-editorial.json");
     Files.createDirectories(astro);
-    writeNote(vault, "home.md", "Home body.");
+    writePublishedSource(vault, "home.md", "editorial", "home", "Home body.");
     writeCatalog(review, "vault-ref-home", "home.md");
     writeEditorialPublishedPair(review);
     ReferenceMigrationInventory.Inventory inventory =
@@ -485,6 +519,23 @@ final class SemanticMigrationServiceTest {
     Path note = vault.resolve(path);
     Files.createDirectories(note.getParent());
     Files.writeString(note, body, StandardCharsets.UTF_8);
+  }
+
+  private static void writePublishedSource(
+      Path vault,
+      String path,
+      String collection,
+      String publicId,
+      String body) throws Exception {
+    writeNote(vault, path, """
+        ---
+        publish: true
+        publicId: %s
+        publicCollection: %s
+        publicContentType: essay
+        ---
+        %s
+        """.formatted(publicId, collection, body));
   }
 
   private static void writeCatalog(Path review, int pages) throws Exception {

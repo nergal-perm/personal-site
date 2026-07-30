@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 EXPORTER_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd)"
 
 VAULT_ROOT="${VAULT_ROOT:-/Users/eugene/Documents/personal-wiki/knowledge-base}"
-ASTRO_ROOT="${ASTRO_ROOT:-/Users/eugene/POS/software-dev/astro-blog}"
+ASTRO_ROOT="${ASTRO_ROOT:-/Users/eugene/Dev/personal-site/site}"
 REPORT_PATH="${REPORT_PATH:-$EXPORTER_ROOT/report.md}"
 
 cd "$EXPORTER_ROOT"

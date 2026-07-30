@@ -209,7 +209,7 @@ function hashPayloadFiles(root) {
       records.push({ path: relative, sha256: sha256(fs.readFileSync(filePath)) });
     }
   }
-  return records.sort((left, right) => left.path.localeCompare(right.path));
+  return records.sort((left, right) => comparePaths(left.path, right.path));
 }
 
 function hashTree(root) {
@@ -255,8 +255,12 @@ function listTree(root) {
   };
   visit(root);
   return results.sort((left, right) =>
-    slash(path.relative(root, left)).localeCompare(slash(path.relative(root, right))),
+    comparePaths(slash(path.relative(root, left)), slash(path.relative(root, right))),
   );
+}
+
+function comparePaths(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
 }
 
 function scanPublicPayload(root, fail) {
