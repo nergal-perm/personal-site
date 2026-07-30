@@ -47,7 +47,7 @@ public final class ApprovedSnapshotRepository {
     List<SnapshotDirectory> approved = scanApproved(reviewRoot);
     List<ApprovedPageSnapshot> snapshots = new ArrayList<>();
     for (String sourcePath : selected) {
-      snapshots.add(loadOne(sourcePath, approved, checkedCatalog));
+      snapshots.add(loadOne(sourcePath, approved, checkedCatalog, reviewRoot));
     }
     rejectDuplicates(snapshots);
     return List.copyOf(snapshots);
@@ -56,7 +56,8 @@ public final class ApprovedSnapshotRepository {
   private ApprovedPageSnapshot loadOne(
       String selectedSourcePath,
       List<SnapshotDirectory> approved,
-      VaultReferenceCatalog catalog) {
+      VaultReferenceCatalog catalog,
+      Path reviewRoot) {
     List<SnapshotDirectory> exact = approved.stream()
         .filter(snapshot -> selectedSourcePath.equals(snapshot.references().sourcePath()))
         .toList();
@@ -67,7 +68,7 @@ public final class ApprovedSnapshotRepository {
           "multiple approved snapshots match " + selectedSourcePath);
     }
     if (exact.size() == 1) {
-      return exact.getFirst().load(selectedSourcePath);
+      return exact.getFirst().load(selectedSourcePath, null);
     }
 
     List<CatalogEntry> entries = catalog.entries().values().stream()
@@ -103,7 +104,7 @@ public final class ApprovedSnapshotRepository {
           selectedSourcePath,
           "no approved snapshot reconciles to " + selectedSourcePath);
     }
-    return reconciled.getFirst().load(selectedSourcePath);
+    return reconciled.getFirst().load(selectedSourcePath, VaultReferenceCatalog.catalogPath(reviewRoot));
   }
 
   private static List<String> selectedSourcePaths(SelectionResult selection) {
@@ -274,7 +275,7 @@ public final class ApprovedSnapshotRepository {
       }
     }
 
-    ApprovedPageSnapshot load(String selectedSourcePath) {
+    ApprovedPageSnapshot load(String selectedSourcePath, Path catalogPath) {
       byte[] russian = readSafeLeaf(published.resolve("ru.md"), selectedSourcePath);
       byte[] english = readSafeLeaf(published.resolve("en.md"), selectedSourcePath);
       try {
@@ -315,7 +316,12 @@ public final class ApprovedSnapshotRepository {
             russianEntry,
             englishEntry,
             references,
-            new SnapshotHashes(references.ruSha256(), references.enSha256()));
+            new SnapshotHashes(references.ruSha256(), references.enSha256()),
+            new ApprovedPageSnapshot.InputFiles(
+                published.resolve("ru.md"),
+                published.resolve("en.md"),
+                published.resolve("references.json"),
+                catalogPath));
       } catch (RuntimeException error) {
         if (error instanceof ApprovedReleaseException releaseError) {
           throw releaseError;
