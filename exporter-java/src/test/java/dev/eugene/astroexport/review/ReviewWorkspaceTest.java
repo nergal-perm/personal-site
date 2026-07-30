@@ -174,6 +174,58 @@ final class ReviewWorkspaceTest {
   }
 
   @Test
+  void parsesApprovedMarkdownWithDerivedReleaseTarget() {
+    ReviewWorkspace.ApprovedMarkdown parsed = ReviewWorkspace.parseApprovedMarkdown("""
+        ---
+        id: essay
+        language: ru
+        reviewType: essay
+        route: /tampered/
+        targetPath: tampered.md
+        ---
+        Approved body.
+        """.getBytes(StandardCharsets.UTF_8), "blog", "ru", "published/ru.md");
+
+    assertEquals("essay", parsed.publicId());
+    assertEquals("src/content/blog/ru/essay.md", parsed.targetPath());
+    assertEquals("/ru/essays/essay/", parsed.route());
+    assertEquals("tampered.md", parsed.metadata().get("targetPath"));
+    assertEquals("Approved body.", parsed.body());
+  }
+
+  @Test
+  void approvedEnglishMustBeReviewed() {
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> ReviewWorkspace.parseApprovedMarkdown("""
+            ---
+            id: essay
+            language: en
+            reviewType: essay
+            translationStatus: generated
+            ---
+            Body.
+            """.getBytes(StandardCharsets.UTF_8), "blog", "en", "published/en.md"));
+
+    assertTrue(error.getMessage().contains("translationStatus"));
+  }
+
+  @Test
+  void approvedMarkdownRejectsDuplicateYamlKeys() {
+    assertThrows(
+        IllegalArgumentException.class,
+        () -> ReviewWorkspace.parseApprovedMarkdown("""
+            ---
+            id: essay
+            id: duplicate
+            language: ru
+            reviewType: essay
+            ---
+            Body.
+            """.getBytes(StandardCharsets.UTF_8), "blog", "ru", "published/ru.md"));
+  }
+
+  @Test
   void parsesHomeCurrentCardsAgainstAuthoredSnapshot() throws Exception {
     ManifestEntry entry = filteredHomeEntry();
     Path path = temp.resolve("review/editorial/home/en.md");

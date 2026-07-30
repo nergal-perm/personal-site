@@ -14,8 +14,10 @@ import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.translation.TranslationPatch;
 import dev.eugene.astroexport.workflow.WorkflowStateService;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
+import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -540,6 +542,104 @@ public final class ReviewWorkspace {
     }
   }
 
+  static ApprovedMarkdown parseApprovedMarkdown(
+      byte[] bytes,
+      String collection,
+      String language,
+      String displayPath) {
+    String markdown;
+    try {
+      markdown = StandardCharsets.UTF_8.newDecoder()
+          .onMalformedInput(CodingErrorAction.REPORT)
+          .onUnmappableCharacter(CodingErrorAction.REPORT)
+          .decode(ByteBuffer.wrap(bytes))
+          .toString();
+    } catch (IOException error) {
+      throw new IllegalArgumentException(displayPath + ": approved Markdown must be valid UTF-8", error);
+    }
+    Frontmatter frontmatter = frontmatter(markdown);
+    String header = markdown.substring(frontmatter.headerStart(), frontmatter.close());
+    if (ALIASED_CONTROL_KEY.matcher(header).find()) {
+      throw new IllegalArgumentException(
+          displayPath + ": approved Markdown must use explicit control-field keys");
+    }
+    ParsedMarkdown parsed = parseMarkdown(markdown, displayPath);
+    LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(parsed.metadata());
+    String publicId = requiredApprovedString(metadata, "id", displayPath);
+    String actualLanguage = requiredApprovedString(metadata, "language", displayPath);
+    if (!language.equals(actualLanguage)) {
+      throw new IllegalArgumentException(displayPath + ": language must be " + language);
+    }
+    if ("en".equals(language)
+        && !"reviewed".equals(requiredApprovedString(metadata, "translationStatus", displayPath))) {
+      throw new IllegalArgumentException(displayPath + ": translationStatus must be reviewed");
+    }
+    String contentType = approvedContentType(metadata, collection, displayPath);
+    String targetPath = approvedTargetPath(collection, publicId, language);
+    String route = approvedRoute(collection, publicId, contentType, language);
+    return new ApprovedMarkdown(
+        publicId,
+        contentType,
+        targetPath,
+        route,
+        metadata,
+        parsed.body().strip());
+  }
+
+  private static String requiredApprovedString(
+      Map<String, Object> metadata,
+      String field,
+      String displayPath) {
+    Object value = metadata.get(field);
+    if (!(value instanceof String text) || text.isBlank()) {
+      throw new IllegalArgumentException(displayPath + ": " + field + " must be a non-empty string");
+    }
+    return text.strip();
+  }
+
+  private static String approvedContentType(
+      Map<String, Object> metadata,
+      String collection,
+      String displayPath) {
+    if ("editorial".equals(collection)) {
+      return "curated_page";
+    }
+    for (String key : List.of("reviewType", "contentType", "publicContentType")) {
+      Object value = metadata.get(key);
+      if (value instanceof String text && !text.isBlank()) {
+        return text.strip();
+      }
+    }
+    throw new IllegalArgumentException(displayPath + ": reviewType must be a non-empty string");
+  }
+
+  private static String approvedTargetPath(String collection, String publicId, String language) {
+    if ("editorial".equals(collection)) {
+      return "src/data/pages/" + language + "/" + publicId + ".json";
+    }
+    return "src/content/" + collection + "/" + language + "/" + publicId + ".md";
+  }
+
+  private static String approvedRoute(
+      String collection,
+      String publicId,
+      String contentType,
+      String language) {
+    if ("editorial".equals(collection)) {
+      return "home".equals(publicId) ? "/" + language + "/" : "/" + language + "/" + publicId + "/";
+    }
+    String section = switch (contentType) {
+      case "essay" -> "essays";
+      case "claim" -> "claims";
+      case "note" -> "notes";
+      case "album" -> "music";
+      case "book" -> "library";
+      case "concept" -> "concepts";
+      default -> throw new IllegalArgumentException("unsupported approved reviewType " + contentType);
+    };
+    return "/" + language + "/" + section + "/" + publicId + "/";
+  }
+
   private static LoadSettings yamlSettings(String label) {
     return LoadSettings.builder()
         .setLabel(label)
@@ -995,6 +1095,14 @@ public final class ReviewWorkspace {
   private record Target(String publicId, String collection, boolean editorial) { }
 
   private record ParsedMarkdown(Map<String, Object> metadata, String body) { }
+
+  record ApprovedMarkdown(
+      String publicId,
+      String contentType,
+      String targetPath,
+      String route,
+      Map<String, Object> metadata,
+      String body) { }
 
   private record Frontmatter(int headerStart, int close) { }
 
