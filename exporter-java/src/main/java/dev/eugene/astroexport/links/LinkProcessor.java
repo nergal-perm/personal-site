@@ -2,6 +2,7 @@ package dev.eugene.astroexport.links;
 
 import dev.eugene.astroexport.markdown.MarkdownScanner;
 import dev.eugene.astroexport.model.Note;
+import dev.eugene.astroexport.references.SemanticReferenceMarkdown;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -154,9 +155,7 @@ public final class LinkProcessor {
   }
 
   private static String headingFragment(String heading) {
-    if (heading == null) return "";
-    String value = heading.substring(1).strip().toLowerCase().replaceAll("[^\\w\\s-]", "").replaceAll("[\\s_-]+", "-").replaceAll("^-|-$", "");
-    return value.isEmpty() ? "" : "#" + value;
+    return SemanticReferenceMarkdown.normalizeHeadingFragment(heading);
   }
 
   private static boolean isAsset(String target) {
