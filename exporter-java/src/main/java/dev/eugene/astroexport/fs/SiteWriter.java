@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.assets.AssetResolver;
 import dev.eugene.astroexport.assets.AssetValidationException;
 import dev.eugene.astroexport.assets.ResolvedAsset;
+import dev.eugene.astroexport.frontmatter.FrontmatterCanonicalizer;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
 import java.io.IOException;
@@ -1072,7 +1073,7 @@ public final class SiteWriter {
   }
 
   private static byte[] serializeMarkdown(ManifestEntry entry, String body) {
-    String metadata = yaml(sorted(entry.metadata())).stripTrailing();
+    String metadata = yaml(FrontmatterCanonicalizer.canonicalize(entry.metadata())).stripTrailing();
     String canonicalBody = canonicalBody(body);
     String result = canonicalBody.isBlank()
         ? "---\n" + metadata + "\n---\n"
@@ -1081,7 +1082,8 @@ public final class SiteWriter {
   }
 
   private static byte[] serializeEditorial(ManifestEntry entry) {
-    return (json(sorted(entry.metadata()), 0) + "\n").getBytes(StandardCharsets.UTF_8);
+    return (json(FrontmatterCanonicalizer.canonicalize(entry.metadata()), 0) + "\n")
+        .getBytes(StandardCharsets.UTF_8);
   }
 
   private static String canonicalBody(String body) {
@@ -1105,26 +1107,6 @@ public final class SiteWriter {
     return String.join("\n", lines);
   }
 
-  private static Map<String, Object> sorted(Map<String, Object> source) {
-    LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-    source.keySet().stream().sorted().forEach(key -> result.put(key, sortedValue(source.get(key))));
-    return result;
-  }
-
-  private static Object sortedValue(Object value) {
-    if (value instanceof Map<?, ?> map) {
-      LinkedHashMap<String, Object> source = new LinkedHashMap<>();
-      for (Map.Entry<?, ?> entry : map.entrySet()) {
-        source.put(String.valueOf(entry.getKey()), entry.getValue());
-      }
-      return sorted(source);
-    }
-    if (value instanceof List<?> list) {
-      return list.stream().map(SiteWriter::sortedValue).toList();
-    }
-    return value;
-  }
-
   private static String yaml(Map<String, Object> metadata) {
     StringBuilder builder = new StringBuilder();
     yamlMap(metadata, 0, builder);
@@ -1141,7 +1123,7 @@ public final class SiteWriter {
   private static void yamlList(List<?> list, int indent, StringBuilder builder) {
     for (Object value : list) {
       if (value instanceof Map<?, ?> nested) {
-        Map<String, Object> map = sorted(castMap(nested));
+        Map<String, Object> map = FrontmatterCanonicalizer.canonicalize(nested);
         if (map.isEmpty()) {
           indent(builder, indent).append("- {}\n");
           continue;
@@ -1177,7 +1159,7 @@ public final class SiteWriter {
         return;
       }
       builder.append('\n');
-      yamlMap(castMap(nested), keyIndent + 2, builder);
+      yamlMap(FrontmatterCanonicalizer.canonicalize(nested), keyIndent + 2, builder);
     } else if (value instanceof List<?> list) {
       if (list.isEmpty()) {
         builder.append(" []\n");
@@ -1280,18 +1262,18 @@ public final class SiteWriter {
       return number.toString();
     }
     if (value instanceof Map<?, ?> map) {
-      Map<String, Object> sorted = sorted(castMap(map));
-      if (sorted.isEmpty()) {
+      Map<String, Object> canonical = FrontmatterCanonicalizer.canonicalize(map);
+      if (canonical.isEmpty()) {
         return "{}";
       }
       StringBuilder builder = new StringBuilder("{\n");
       int index = 0;
-      for (Map.Entry<String, Object> entry : sorted.entrySet()) {
+      for (Map.Entry<String, Object> entry : canonical.entrySet()) {
         indent(builder, indent + 2)
             .append(json(entry.getKey(), indent + 2))
             .append(": ")
             .append(json(entry.getValue(), indent + 2));
-        if (++index < sorted.size()) {
+        if (++index < canonical.size()) {
           builder.append(',');
         }
         builder.append('\n');
@@ -1313,14 +1295,6 @@ public final class SiteWriter {
       return indent(builder, indent).append(']').toString();
     }
     return json(value.toString(), indent);
-  }
-
-  private static Map<String, Object> castMap(Map<?, ?> map) {
-    LinkedHashMap<String, Object> result = new LinkedHashMap<>();
-    for (Map.Entry<?, ?> entry : map.entrySet()) {
-      result.put(String.valueOf(entry.getKey()), entry.getValue());
-    }
-    return result;
   }
 
   private static StringBuilder indent(StringBuilder builder, int count) {
