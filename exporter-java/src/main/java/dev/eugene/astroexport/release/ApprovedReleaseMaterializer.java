@@ -23,9 +23,8 @@ public final class ApprovedReleaseMaterializer {
   private static final Pattern SEMANTIC_DESTINATION = Pattern.compile("\\]\\(ref:[^)]+\\)");
   private static final Pattern VAULT_REF = Pattern.compile("\\bvault-ref-[A-Za-z0-9-]+\\b");
   private static final Pattern CATALOG_PATH = Pattern.compile("catalog-v\\d+\\.json|\\.semantic-links/");
-  private static final Pattern VAULT_PATH = Pattern.compile(
-      "(?:/Users/[^\\s<>\"')]+|(?<![\\w:/])/(?!ru(?:/|\\b)|en(?:/|\\b)|assets(?:/|\\b))[^\\s<>\"')]+"
-          + "|(?<![\\w/])(?:private|review|\\.publication-review|\\.publication-jobs)[\\\\/][^\\s<>\"')]+)");
+  private static final Pattern ABSOLUTE_PATH_TOKEN = Pattern.compile("(?<![\\w:])/[^\\s<>\"')]+");
+  private static final Pattern PATH_LIKE_LEAF = Pattern.compile("(?i).+\\.(md|markdown|json|canvas|base|yaml|yml|png|jpe?g|gif|svg|webp|mp3|mp4)$");
 
   private final LinkProcessor linkProcessor = new LinkProcessor();
 
@@ -70,7 +69,7 @@ public final class ApprovedReleaseMaterializer {
         List.of(),
         List.of(),
         Map.of());
-    rejectInvalidOutput(manifest);
+    rejectInvalidOutput(manifest, vaultRoot);
     ReleaseInputGuard inputGuard = guard.build();
     return new MaterializedRelease(
         manifest,
@@ -170,15 +169,16 @@ public final class ApprovedReleaseMaterializer {
     assets.addAll(linkProcessor.processSemanticEmbedsAndAssets(note).assets());
   }
 
-  private static void rejectInvalidOutput(ManifestResult manifest) {
-    validateEntries(manifest.entries(), "ru");
-    validateEntries(manifest.englishEntries(), "en");
+  private static void rejectInvalidOutput(ManifestResult manifest, Path vaultRoot) {
+    Path normalizedVaultRoot = vaultRoot.toAbsolutePath().normalize();
+    validateEntries(manifest.entries(), "ru", normalizedVaultRoot);
+    validateEntries(manifest.englishEntries(), "en", normalizedVaultRoot);
   }
 
-  private static void validateEntries(List<ManifestEntry> entries, String language) {
+  private static void validateEntries(List<ManifestEntry> entries, String language, Path vaultRoot) {
     for (ManifestEntry entry : entries) {
       validateLanguageRoute(entry, language);
-      validateNoPrivatePayload(entry, language);
+      validateNoPrivatePayload(entry, language, vaultRoot);
     }
   }
 
@@ -197,18 +197,45 @@ public final class ApprovedReleaseMaterializer {
     }
   }
 
-  private static void validateNoPrivatePayload(ManifestEntry entry, String language) {
+  private static void validateNoPrivatePayload(ManifestEntry entry, String language, Path vaultRoot) {
     String metadata = entry.metadata().toString();
     if (SEMANTIC_DESTINATION.matcher(entry.body()).find()
         || VAULT_REF.matcher(entry.body()).find()
         || VAULT_REF.matcher(metadata).find()
         || CATALOG_PATH.matcher(entry.body()).find()
         || CATALOG_PATH.matcher(metadata).find()
-        || VAULT_PATH.matcher(entry.body()).find()
-        || VAULT_PATH.matcher(metadata).find()
+        || containsVaultPath(entry.body(), vaultRoot)
+        || containsVaultPath(metadata, vaultRoot)
         || metadata.contains("authoredTarget")) {
       throw invalidOutput(entry, language + " output contains private semantic payload");
     }
+  }
+
+  private static boolean containsVaultPath(String value, Path vaultRoot) {
+    java.util.regex.Matcher matcher = ABSOLUTE_PATH_TOKEN.matcher(value);
+    while (matcher.find()) {
+      String token = trimTrailingPunctuation(matcher.group());
+      if (token.isBlank() || !PATH_LIKE_LEAF.matcher(token).matches()) {
+        continue;
+      }
+      try {
+        Path path = Path.of(token).toAbsolutePath().normalize();
+        if (path.startsWith(vaultRoot)) {
+          return true;
+        }
+      } catch (RuntimeException ignored) {
+        // Malformed path-looking text is handled by other public-output guards.
+      }
+    }
+    return false;
+  }
+
+  private static String trimTrailingPunctuation(String value) {
+    int end = value.length();
+    while (end > 0 && ".,;:!?".indexOf(value.charAt(end - 1)) >= 0) {
+      end--;
+    }
+    return value.substring(0, end);
   }
 
   private static ApprovedReleaseException invalidOutput(ManifestEntry entry, String message) {

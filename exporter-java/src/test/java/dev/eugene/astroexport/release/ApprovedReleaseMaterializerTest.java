@@ -148,16 +148,48 @@ final class ApprovedReleaseMaterializerTest {
   }
 
   @Test
-  void publicOutputGateRejectsAbsoluteVaultPaths() {
+  void publicOutputGateRejectsAbsoluteVaultPaths() throws Exception {
+    Path source = vault.resolve("source/A.md");
+    Files.createDirectories(source.getParent());
+    Files.writeString(source, "selected source", StandardCharsets.UTF_8);
     ApprovedPageSnapshot a = withRussianBody(
-        approvedTarget("A", "vault-ref-a", "a"),
+        withSourcePath(approvedTarget("A", "vault-ref-a", "a"), source.toString()),
         "Leaked /Users/eugene/Documents/personal-wiki/knowledge-base/private/Note.md");
 
     ApprovedReleaseException error = assertThrows(
         ApprovedReleaseException.class,
-        () -> materialize(List.of(a)));
+        () -> materializer.materialize(
+            List.of(a),
+            Path.of("/Users/eugene/Documents/personal-wiki/knowledge-base")));
 
     assertEquals("invalid-release-output", error.code());
+  }
+
+  @Test
+  void publicOutputGateRejectsPathsInsideVaultRootEvenWhenTheyLookLikeLocaleRoutes() throws Exception {
+    Path source = vault.resolve("source/A.md");
+    Files.createDirectories(source.getParent());
+    Files.writeString(source, "selected source", StandardCharsets.UTF_8);
+    ApprovedPageSnapshot a = withRussianBody(
+        withSourcePath(approvedTarget("A", "vault-ref-a", "a"), source.toString()),
+        "Leaked /ru/private/Note.md");
+
+    ApprovedReleaseException error = assertThrows(
+        ApprovedReleaseException.class,
+        () -> materializer.materialize(List.of(a), Path.of("/ru")));
+
+    assertEquals("invalid-release-output", error.code());
+  }
+
+  @Test
+  void publicOutputGateAllowsPublicRootRelativeLinksOutsideVaultRoot() throws Exception {
+    ApprovedPageSnapshot a = withRussianBody(
+        approvedTarget("A", "vault-ref-a", "a"),
+        "[About](/about/) [Feed](/feed.xml) [Podcast](/podcast/)");
+
+    ApprovedReleaseMaterializer.MaterializedRelease release = materialize(List.of(a));
+
+    assertEquals("[About](/about/) [Feed](/feed.xml) [Podcast](/podcast/)", body(release, "a", "ru"));
   }
 
   @Test
@@ -288,6 +320,33 @@ final class ApprovedReleaseMaterializerTest {
             snapshot.russian().translationSourceHash(),
             snapshot.russian().translationSourceMetadata()),
         snapshot.english(),
+        snapshot.references(),
+        snapshot.hashes(),
+        snapshot.inputFiles());
+  }
+
+  private static ApprovedPageSnapshot withSourcePath(ApprovedPageSnapshot snapshot, String sourcePath) {
+    return new ApprovedPageSnapshot(
+        snapshot.collection(),
+        snapshot.publicId(),
+        snapshot.pageRef(),
+        sourcePath,
+        new ManifestEntry(
+            sourcePath,
+            snapshot.russian().targetPath(),
+            snapshot.russian().route(),
+            snapshot.russian().metadata(),
+            snapshot.russian().body(),
+            snapshot.russian().translationSourceHash(),
+            snapshot.russian().translationSourceMetadata()),
+        new ManifestEntry(
+            sourcePath,
+            snapshot.english().targetPath(),
+            snapshot.english().route(),
+            snapshot.english().metadata(),
+            snapshot.english().body(),
+            snapshot.english().translationSourceHash(),
+            snapshot.english().translationSourceMetadata()),
         snapshot.references(),
         snapshot.hashes(),
         snapshot.inputFiles());
