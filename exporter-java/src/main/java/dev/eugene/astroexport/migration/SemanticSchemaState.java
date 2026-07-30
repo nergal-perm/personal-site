@@ -37,16 +37,35 @@ public final class SemanticSchemaState {
     try {
       @SuppressWarnings("unchecked")
       Map<String, Object> payload = JSON.readValue(Files.readAllBytes(marker), Map.class);
-      if (payload.size() != 4
-          || !Integer.valueOf(1).equals(payload.get("schemaVersion"))
-          || !validSha(payload.get("inventorySha256"))
-          || !validSha(payload.get("catalogSha256"))
-          || !validInstant(payload.get("activatedAt"))) {
+      if (!validMarker(payload)) {
+        return Mode.MIGRATION_INCOMPLETE;
+      }
+      if (hasJournal && !journalMatches(payload, migrationJournal(reviewRoot))) {
         return Mode.MIGRATION_INCOMPLETE;
       }
       return Mode.SEMANTIC;
     } catch (Exception error) {
       return Mode.MIGRATION_INCOMPLETE;
+    }
+  }
+
+  private static boolean validMarker(Map<String, Object> payload) {
+    return payload.size() == 4
+        && Integer.valueOf(1).equals(payload.get("schemaVersion"))
+        && validSha(payload.get("inventorySha256"))
+        && validSha(payload.get("catalogSha256"))
+        && validInstant(payload.get("activatedAt"));
+  }
+
+  private static boolean journalMatches(Map<String, Object> marker, Path journal) {
+    try {
+      @SuppressWarnings("unchecked")
+      Map<String, Object> payload = JSON.readValue(Files.readAllBytes(journal), Map.class);
+      return "complete".equals(payload.get("state"))
+          && marker.get("inventorySha256").equals(payload.get("inventorySha256"))
+          && marker.get("catalogSha256").equals(payload.get("catalogSha256"));
+    } catch (Exception error) {
+      return false;
     }
   }
 

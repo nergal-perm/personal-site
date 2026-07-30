@@ -43,6 +43,37 @@ final class SemanticSchemaStateTest {
   }
 
   @Test
+  void validMarkerWithUnmatchedJournalBlocksAsIncomplete() throws Exception {
+    writeMarker("a".repeat(64), "b".repeat(64));
+    Path journal = temp.resolve(".semantic-links/migration-v1.journal.json");
+    Files.writeString(journal, """
+        {
+          "state": "complete",
+          "inventorySha256": "%s",
+          "catalogSha256": "%s"
+        }
+        """.formatted("a".repeat(64), "c".repeat(64)));
+
+    assertEquals(SemanticSchemaState.Mode.MIGRATION_INCOMPLETE,
+        SemanticSchemaState.mode(temp));
+  }
+
+  @Test
+  void validMarkerWithMatchingCompleteJournalEnablesSemanticMode() throws Exception {
+    writeMarker("a".repeat(64), "b".repeat(64));
+    Path journal = temp.resolve(".semantic-links/migration-v1.journal.json");
+    Files.writeString(journal, """
+        {
+          "state": "complete",
+          "inventorySha256": "%s",
+          "catalogSha256": "%s"
+        }
+        """.formatted("a".repeat(64), "b".repeat(64)));
+
+    assertEquals(SemanticSchemaState.Mode.SEMANTIC, SemanticSchemaState.mode(temp));
+  }
+
+  @Test
   void malformedMarkerBlocksAsIncompleteInsteadOfGuessing() throws Exception {
     Path marker = temp.resolve(".semantic-links/schema-v1.active.json");
     Files.createDirectories(marker.getParent());
@@ -50,5 +81,18 @@ final class SemanticSchemaStateTest {
 
     assertEquals(SemanticSchemaState.Mode.MIGRATION_INCOMPLETE,
         SemanticSchemaState.mode(temp));
+  }
+
+  private void writeMarker(String inventorySha256, String catalogSha256) throws Exception {
+    Path marker = temp.resolve(".semantic-links/schema-v1.active.json");
+    Files.createDirectories(marker.getParent());
+    Files.writeString(marker, """
+        {
+          "schemaVersion": 1,
+          "inventorySha256": "%s",
+          "catalogSha256": "%s",
+          "activatedAt": "2026-07-30T00:00:00Z"
+        }
+        """.formatted(inventorySha256, catalogSha256));
   }
 }

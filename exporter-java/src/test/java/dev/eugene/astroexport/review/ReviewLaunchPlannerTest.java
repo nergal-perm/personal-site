@@ -78,6 +78,23 @@ final class ReviewLaunchPlannerTest {
   }
 
   @Test
+  void activatedSemanticModeRejectsLegacyProposalWhenCandidateTripleIsAbsent() throws Exception {
+    Fixture fixture = fixture();
+    writeSemanticMarker(fixture.reviewRoot());
+
+    ReviewLaunchPlanner.ReviewLaunchException error = assertThrows(
+        ReviewLaunchPlanner.ReviewLaunchException.class,
+        () -> new ReviewLaunchPlanner().plan(
+            fixture.reviewRoot(),
+            fixture.page(),
+            fixture.entry(),
+            fixture.english()));
+
+    assertEquals("stale", error.status());
+    assertTrue(error.getMessage().contains("candidate"));
+  }
+
+  @Test
   void plansPublishedToProposedDiffTargetsWhenBothSnapshotsExist() throws Exception {
     Fixture fixture = fixture();
     Path published = fixture.page().resolve("published");
@@ -407,6 +424,19 @@ final class ReviewLaunchPlannerTest {
             "sourceLanguage", "ru",
             "sourceHash", "a".repeat(64))),
         "Русский текст.\n");
+  }
+
+  private static void writeSemanticMarker(Path reviewRoot) throws Exception {
+    Path marker = reviewRoot.resolve(".semantic-links/schema-v1.active.json");
+    Files.createDirectories(marker.getParent());
+    Files.writeString(marker, """
+        {
+          "schemaVersion": 1,
+          "inventorySha256": "%s",
+          "catalogSha256": "%s",
+          "activatedAt": "2026-07-30T00:00:00Z"
+        }
+        """.formatted("a".repeat(64), "b".repeat(64)));
   }
 
   private record Fixture(

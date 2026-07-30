@@ -12,6 +12,7 @@ import dev.eugene.astroexport.migration.SemanticOperationLock;
 import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
+import dev.eugene.astroexport.model.Note;
 import dev.eugene.astroexport.process.CodexRunner;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
@@ -455,8 +456,14 @@ public final class PrepareWorkflow {
       String normalizedRu;
       String sourceHash = requiredHash(entry);
       try {
-        Path durableRu = ReviewWorkspace.writeRuReviewFile(reviewRoot, entry);
-        normalizedRu = TARGET_PATH_LINE.matcher(Files.readString(durableRu)).replaceFirst("");
+        if (semantic) {
+          normalizedRu = TARGET_PATH_LINE
+              .matcher(ReviewWorkspace.renderRuReview(entry))
+              .replaceFirst("");
+        } else {
+          Path durableRu = ReviewWorkspace.writeRuReviewFile(reviewRoot, entry);
+          normalizedRu = TARGET_PATH_LINE.matcher(Files.readString(durableRu)).replaceFirst("");
+        }
       } catch (RuntimeException | IOException error) {
         return terminal(
             "translation_failed",
@@ -1014,12 +1021,13 @@ public final class PrepareWorkflow {
     PublicationDiscovery discovery = new PublicationDiscovery();
     ManifestBuilder builder = new ManifestBuilder();
     VaultReferenceCatalog catalog = VaultReferenceCatalog.load(reviewRoot);
+    var selection = discovery.select(vault);
     ManifestResult result = builder.buildRussianManifest(
-        discovery.select(vault),
+        selection,
         new SemanticLinkContext(
             catalog,
             new VaultReferenceResolver(catalog),
-            Map.of()));
+            previousApprovedMaps(reviewRoot, selection.included())));
     ManifestEntry entry = result.entries()
         .stream()
         .filter(candidate -> candidate.sourcePath().equals(notePath))
@@ -1027,6 +1035,38 @@ public final class PrepareWorkflow {
         .orElseThrow(() -> new IllegalArgumentException(
             notePath + ": must be selected for publication"));
     return new ResolvedEntry(entry, result.referencePlans().get(notePath));
+  }
+
+  private static Map<String, Optional<PageReferenceMap>> previousApprovedMaps(
+      Path reviewRoot,
+      List<Note> notes) {
+    Map<String, Optional<PageReferenceMap>> maps = new LinkedHashMap<>();
+    for (Note note : notes) {
+      Path published = reviewRoot
+          .resolve(note.publicCollection())
+          .resolve(note.publicId())
+          .resolve("published");
+      Path references = published.resolve("references.json");
+      if (!Files.exists(references, LinkOption.NOFOLLOW_LINKS)) {
+        maps.put(note.vaultPath(), Optional.empty());
+        continue;
+      }
+      try {
+        byte[] ru = Files.readAllBytes(published.resolve("ru.md"));
+        byte[] en = Files.readAllBytes(published.resolve("en.md"));
+        PageReferenceMap map = PageReferenceMapCodec.read(
+            Files.readAllBytes(references),
+            "published/references.json");
+        PageReferenceMapCodec.validate(map, ru, en);
+        maps.put(note.vaultPath(), Optional.of(map));
+      } catch (IOException | RuntimeException error) {
+        throw new IllegalArgumentException(
+            note.vaultPath() + ": invalid approved reference map: "
+                + safeMessage(error),
+            error);
+      }
+    }
+    return maps;
   }
 
   private static List<PublicationDiagnostic> scopeDiagnostics(

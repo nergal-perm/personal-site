@@ -87,3 +87,48 @@ DONE_WITH_CONCERNS
 ## Concerns
 - I did not run the full Maven suite, only the focused suite requested by the brief plus `TranslationProjectionTest`.
 - JNA emits native-access warnings under the current JDK. Tests pass, but future JDKs may require `--enable-native-access=ALL-UNNAMED`.
+
+---
+
+# Fix Round 1 Report
+
+## Status
+DONE_WITH_CONCERNS
+
+## Findings Fixed
+1. Approved reference maps are now loaded from `review/<collection>/<publicId>/published/references.json` in semantic preparation and supplied to `SemanticLinkContext`, so `SemanticReferencePlanner` can reuse approved occurrence IDs.
+2. Activated semantic preparation no longer writes a top-level legacy `ru.md`; it renders the normalized RU review in memory and only exposes a validated `candidate/` triple. `ReviewLaunchPlanner` now rejects top-level proposal fallback while semantic mode is active and `candidate/` is absent.
+3. `SemanticSchemaState` now validates a migration journal when present. A valid marker only enables `SEMANTIC` mode if the journal is complete and its `inventorySha256` and `catalogSha256` match the marker.
+4. `CandidateSnapshotStore` now reports explicit recovery state. Rollback failure raises `CandidateSnapshotRecoveryException` with `CANDIDATE_VISIBLE` and recovery paths; staged cleanup failure raises `STAGED_CANDIDATE`; displaced cleanup failure returns recovery paths from `commit`.
+
+## Covering Tests
+- `PrepareWorkflowTest.semanticPrepareReusesApprovedOccurrenceIdsFromPublishedReferences`
+- `PrepareWorkflowTest.semanticCandidateRejectsEnglishOccurrenceOrderMismatch`
+- `ReviewLaunchPlannerTest.activatedSemanticModeRejectsLegacyProposalWhenCandidateTripleIsAbsent`
+- `SemanticSchemaStateTest.validMarkerWithUnmatchedJournalBlocksAsIncomplete`
+- `SemanticSchemaStateTest.validMarkerWithMatchingCompleteJournalEnablesSemanticMode`
+- `CandidateSnapshotStoreTest.rollbackFailureReportsVisibleCandidateRecoveryPath`
+
+## Commands and Output
+- Red command:
+  - `mvn -q -Dtest=CandidateSnapshotStoreTest,SemanticSchemaStateTest,PrepareWorkflowTest,ReviewLaunchPlannerTest test`
+- Red output:
+  - Failed at test compilation because `CandidateSnapshotStore.CandidateSnapshotRecoveryException` and `CandidateSnapshotStore.RecoveryDisposition` did not exist.
+- Focused green command:
+  - `mvn -q -Dtest=CandidateSnapshotStoreTest,SemanticSchemaStateTest,PrepareWorkflowTest,ReviewLaunchPlannerTest test`
+- Focused green output:
+  - Passed.
+  - JVM emitted JNA native-access warnings.
+- Full Task 3 covering command:
+  - `mvn -q -Dtest=CandidateSnapshotStoreTest,SemanticSchemaStateTest,SemanticOperationLockTest,PrepareWorkflowTest,ManifestBuilderTest,ReviewWorkspaceTest,ReviewLaunchPlannerTest,TranslationProjectionTest test`
+- Full Task 3 covering output:
+  - Passed.
+  - JVM emitted JNA native-access warnings.
+- Whitespace command:
+  - `git diff --check`
+- Whitespace output:
+  - Passed with no output.
+
+## Concerns
+- I did not run the full Maven suite, only the Task 3 covering suite plus focused fix suite.
+- JNA native-access warnings remain under the current JDK.

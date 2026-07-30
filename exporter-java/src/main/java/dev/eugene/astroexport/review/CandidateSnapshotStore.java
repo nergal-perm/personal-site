@@ -100,13 +100,56 @@ public final class CandidateSnapshotStore {
     }
   }
 
+  public enum RecoveryDisposition {
+    CANDIDATE_VISIBLE,
+    STAGED_CANDIDATE
+  }
+
+  public static final class CandidateSnapshotRecoveryException
+      extends IllegalStateException {
+    private final RecoveryDisposition disposition;
+    private final Path candidatePath;
+    private final List<Path> recoveryPaths;
+
+    public CandidateSnapshotRecoveryException(
+        String message,
+        RecoveryDisposition disposition,
+        Path candidatePath,
+        List<Path> recoveryPaths,
+        Throwable cause) {
+      super(message, cause);
+      this.disposition = Objects.requireNonNull(disposition, "disposition");
+      this.candidatePath = Objects.requireNonNull(candidatePath, "candidatePath");
+      this.recoveryPaths = List.copyOf(recoveryPaths);
+    }
+
+    public RecoveryDisposition disposition() {
+      return disposition;
+    }
+
+    public Path candidatePath() {
+      return candidatePath;
+    }
+
+    public List<Path> recoveryPaths() {
+      return recoveryPaths;
+    }
+  }
+
   private final class FilePendingCandidate implements PendingCandidate {
+    private enum OwnershipState {
+      STAGED_NEW,
+      FIRST_CANDIDATE_VISIBLE,
+      REPLACEMENT_VISIBLE_WITH_DISPLACED,
+      COMMITTED
+    }
+
     private final Path candidate;
     private final Path staging;
     private final byte[] russian;
     private final byte[] english;
     private final byte[] references;
-    private boolean committed;
+    private OwnershipState ownershipState = OwnershipState.STAGED_NEW;
     private boolean closed;
 
     private FilePendingCandidate(
@@ -127,8 +170,12 @@ public final class CandidateSnapshotStore {
       if (closed) {
         throw new IllegalStateException("candidate snapshot staging is closed");
       }
-      if (committed) {
+      if (ownershipState == OwnershipState.COMMITTED) {
         throw new IllegalStateException("candidate snapshot is already committed");
+      }
+      if (ownershipState != OwnershipState.STAGED_NEW) {
+        throw new IllegalStateException(
+            "candidate snapshot commit cannot be retried after an incomplete rollback");
       }
       List<WorkflowStateService.SnapshotGuard> checkedGuards =
           List.copyOf(Objects.requireNonNull(guards, "guards"));
@@ -141,22 +188,36 @@ public final class CandidateSnapshotStore {
         if (replacement) {
           validateCandidateLayout(candidate);
           atomicExchange.exchange(candidate, staging);
+          ownershipState = OwnershipState.REPLACEMENT_VISIBLE_WITH_DISPLACED;
         } else {
           Files.move(staging, candidate, StandardCopyOption.ATOMIC_MOVE);
+          ownershipState = OwnershipState.FIRST_CANDIDATE_VISIBLE;
         }
         if (!guardsMatch(checkedGuards)
             || !visibleTripleMatches(candidate, russian, english, references)) {
-          rollback(replacement);
+          rollback(concurrentUpdate());
           throw concurrentUpdate();
         }
-        forceDirectory(candidate.getParent());
-        committed = true;
+        try {
+          forceDirectory(candidate.getParent());
+        } catch (IOException | RuntimeException error) {
+          rollback(error);
+          throw commitFailure(error);
+        }
+        ownershipState = OwnershipState.COMMITTED;
         if (replacement) {
-          deleteTree(staging);
+          try {
+            deleteTree(staging);
+          } catch (IOException cleanupError) {
+            return new CommitResult(List.of(staging));
+          }
         }
         return new CommitResult(List.of());
+      } catch (ConcurrentCandidateSnapshotException
+          | CandidateSnapshotRecoveryException error) {
+        throw error;
       } catch (IOException error) {
-        throw new IllegalStateException("cannot commit candidate snapshot " + candidate, error);
+        throw commitFailure(error);
       }
     }
 
@@ -166,28 +227,60 @@ public final class CandidateSnapshotStore {
         return;
       }
       closed = true;
-      if (committed || !Files.exists(staging, LinkOption.NOFOLLOW_LINKS)) {
+      if (ownershipState != OwnershipState.STAGED_NEW
+          || !Files.exists(staging, LinkOption.NOFOLLOW_LINKS)) {
         return;
       }
       try {
         deleteTree(staging);
       } catch (IOException error) {
-        throw new IllegalStateException("cannot clean staged candidate snapshot " + staging, error);
+        throw new CandidateSnapshotRecoveryException(
+            "cannot clean staged candidate snapshot " + staging,
+            RecoveryDisposition.STAGED_CANDIDATE,
+            candidate,
+            List.of(staging),
+            error);
       }
     }
 
-    private void rollback(boolean replacement) throws IOException {
-      if (replacement) {
-        atomicExchange.exchange(candidate, staging);
-      } else if (Files.exists(candidate, LinkOption.NOFOLLOW_LINKS)) {
-        Files.move(candidate, staging, StandardCopyOption.ATOMIC_MOVE);
+    private void rollback(Throwable failure) {
+      try {
+        switch (ownershipState) {
+          case REPLACEMENT_VISIBLE_WITH_DISPLACED ->
+              atomicExchange.exchange(candidate, staging);
+          case FIRST_CANDIDATE_VISIBLE ->
+              Files.move(candidate, staging, StandardCopyOption.ATOMIC_MOVE);
+          default -> throw new IllegalStateException(
+              "candidate snapshot rollback has no visible candidate");
+        }
+        forceDirectory(candidate.getParent());
+        ownershipState = OwnershipState.STAGED_NEW;
+      } catch (IOException | RuntimeException rollbackError) {
+        rollbackError.addSuppressed(failure);
+        List<Path> recoveryPaths = Files.exists(staging, LinkOption.NOFOLLOW_LINKS)
+            ? List.of(candidate, staging)
+            : List.of(candidate);
+        throw new CandidateSnapshotRecoveryException(
+            "candidate snapshot rollback incomplete: " + candidate,
+            RecoveryDisposition.CANDIDATE_VISIBLE,
+            candidate,
+            recoveryPaths,
+            rollbackError);
       }
-      forceDirectory(candidate.getParent());
     }
 
     private ConcurrentCandidateSnapshotException concurrentUpdate() {
       return new ConcurrentCandidateSnapshotException(
           "candidate snapshot inputs changed during commit: " + candidate);
+    }
+
+    private RuntimeException commitFailure(Exception error) {
+      if (error instanceof RuntimeException runtimeError) {
+        return runtimeError;
+      }
+      return new IllegalStateException(
+          "cannot commit candidate snapshot " + candidate + ": " + error.getMessage(),
+          error);
     }
   }
 

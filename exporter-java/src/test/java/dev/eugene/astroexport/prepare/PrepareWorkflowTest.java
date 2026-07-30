@@ -110,6 +110,44 @@ final class PrepareWorkflowTest {
     assertEquals("candidate", result.diagnostics().getFirst().field());
     assertTrue(result.diagnostics().getFirst().message().contains("reference-order-mismatch"));
     assertFalse(Files.exists(fixture.review().resolve("blog/essay/candidate")));
+    assertFalse(Files.exists(fixture.review().resolve("blog/essay/ru.md")));
+  }
+
+  @Test
+  void semanticPrepareReusesApprovedOccurrenceIdsFromPublishedReferences() throws Exception {
+    Fixture fixture = semanticFixture();
+    byte[] approvedRu = "Сначала [первый](ref:ref-0042), затем [второй](ref:ref-0043).\n"
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    byte[] approvedEn = "First [first](ref:ref-0042), then [second](ref:ref-0043).\n"
+        .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    Path published = fixture.review().resolve("blog/essay/published");
+    Files.createDirectories(published);
+    Files.write(published.resolve("ru.md"), approvedRu);
+    Files.write(published.resolve("en.md"), approvedEn);
+    Files.write(published.resolve("references.json"), dev.eugene.astroexport.references.PageReferenceMapCodec.write(
+        new dev.eugene.astroexport.references.PageReferenceMap(
+            dev.eugene.astroexport.references.PageReferenceMap.SCHEMA_VERSION,
+            "vault-ref-page",
+            "blog/Essay.md",
+            sha256(approvedRu),
+            sha256(approvedEn),
+            List.of("ref-0042", "ref-0043"),
+            Map.of(
+                "ref-0042", new dev.eugene.astroexport.references.PageReferenceMap.Reference(
+                    "vault-ref-0001", "Target One", "", "первый"),
+                "ref-0043", new dev.eugene.astroexport.references.PageReferenceMap.Reference(
+                    "vault-ref-0002", "Target Two", "", "второй")))));
+    RecordingRunner runner = new RecordingRunner(job -> {
+      writeCandidate(job, null, "First [first](ref:ref-0042), then [second](ref:ref-0043).\n");
+      return new CodexRunner.Run(0, "", "", false);
+    });
+
+    PrepareWorkflow.PrepareResult result = workflow(runner)
+        .prepare(fixture.vault(), "blog/Essay.md", fixture.review(), fixture.jobs());
+
+    assertEquals("ready_for_review", result.status());
+    assertTrue(Files.readString(fixture.review().resolve("blog/essay/candidate/ru.md"))
+        .contains("ref:ref-0042"));
   }
 
   @Test

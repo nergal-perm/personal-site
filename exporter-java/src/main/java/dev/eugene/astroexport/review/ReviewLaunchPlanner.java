@@ -1,6 +1,7 @@
 package dev.eugene.astroexport.review;
 
 import dev.eugene.astroexport.fs.JnaFileDescriptor;
+import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
@@ -49,8 +50,14 @@ public final class ReviewLaunchPlanner {
       throw proposalFailure("Review directory escapes the review root.");
     }
 
-    Path proposalDirectory = Files.isDirectory(page.resolve("candidate"), LinkOption.NOFOLLOW_LINKS)
-        ? page.resolve("candidate")
+    Path candidateDirectory = page.resolve("candidate");
+    boolean semantic = SemanticSchemaState.mode(root) == SemanticSchemaState.Mode.SEMANTIC;
+    if (semantic && !Files.isDirectory(candidateDirectory, LinkOption.NOFOLLOW_LINKS)) {
+      throw proposalFailure(
+          "Semantic review requires a complete candidate/ proposal; run prepare again.");
+    }
+    Path proposalDirectory = Files.isDirectory(candidateDirectory, LinkOption.NOFOLLOW_LINKS)
+        ? candidateDirectory
         : page;
     Path proposedRu = proposalDirectory.resolve("ru.md");
     Path proposedEn = proposalDirectory.resolve("en.md");
