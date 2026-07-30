@@ -163,3 +163,85 @@ Result: passed.
 ### Concerns
 
 - No remaining concerns for the listed Critical/Important fix-round findings.
+
+## Fix Round 2
+
+Status: DONE
+
+### Changed
+
+- Added real staged materialized-release parity validation in `SemanticMigrationService`.
+- The service now loads staged semantic snapshots through `ApprovedSnapshotRepository`, materializes them with `ApprovedReleaseMaterializer`, and compares the resulting RU/EN public release entries against the legacy approved projection before the `PARITY_PROJECTED` boundary.
+- Corrected-order decisions are treated as the explicit approved exception for English body parity, using the corrected English file as the expected projection.
+- Parity validation now uses the durable journal on disk for staged page hashes, preserving the journal-as-evidence recovery model.
+- Kept the existing real Astro gate against `.semantic-links/staging-v1`.
+- Added a regression test where a hash-valid staged sidecar retargets a semantic reference to the wrong approved page; apply now rejects it before activation with a parity diagnostic.
+- Updated CLI apply fixture data so the parity comparison has a complete approved target set while read-only bridge tests remain scoped to inventory behavior.
+
+### Files Changed
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/migration/SemanticMigrationService.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/migration/SemanticMigrationServiceTest.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/cli/AstroExportCommandTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-9-report.md`
+
+### Tests Run
+
+```bash
+mvn -q -Dtest=SemanticMigrationServiceTest#stagedMaterializedReleaseMustMatchLegacyProjection test
+```
+
+Initial RED result: failed before the production fix because the service did not reject the hash-valid staged retarget as a parity violation.
+
+Final output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+mvn -q -Dtest=SemanticSchemaStateTest,SemanticMigrationServiceTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+mvn -q -Dtest=SemanticSchemaStateTest,SemanticMigrationServiceTest,ApprovedSnapshotRepositoryTest,AstroExportCommandTest,NativeCliParityTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Result: passed.
+
+```bash
+git diff --check
+```
+
+Output: no output.
+
+Result: passed.
+
+### Concerns
+
+- No remaining concerns for the fix-round 2 parity finding.

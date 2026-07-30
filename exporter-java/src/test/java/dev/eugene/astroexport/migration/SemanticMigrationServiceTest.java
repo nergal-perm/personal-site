@@ -12,6 +12,7 @@ import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -257,9 +258,44 @@ final class SemanticMigrationServiceTest {
     assertFalse(Files.exists(SemanticSchemaState.activationMarker(fixture.review())));
   }
 
+  @Test
+  void stagedMaterializedReleaseMustMatchLegacyProjection() throws Exception {
+    Fixture fixture = linkedFixture();
+
+    SemanticMigrationService.MigrationIncompleteException error = assertThrows(
+        SemanticMigrationService.MigrationIncompleteException.class,
+        () -> new SemanticMigrationService().apply(
+            fixture.request(),
+            new SemanticMigrationService.MigrationHooks() {
+              @Override
+              public void after(SemanticMigrationService.Boundary boundary, int index) throws IOException {
+                if (boundary == SemanticMigrationService.Boundary.PAGE_STAGED && index == 2) {
+                  retargetFirstReferenceAndRefreshJournalHash(fixture.review());
+                }
+              }
+            }));
+
+    assertTrue(causeChainContains(error, "parity"), () -> causeChain(error));
+    assertFalse(Files.exists(SemanticSchemaState.activationMarker(fixture.review())));
+  }
+
   private static void assertBuildBlocked(Path review) {
     assertEquals(SemanticSchemaState.Mode.MIGRATION_INCOMPLETE,
         SemanticSchemaState.mode(review));
+  }
+
+  private static boolean causeChainContains(Throwable error, String text) {
+    return causeChain(error).contains(text);
+  }
+
+  private static String causeChain(Throwable error) {
+    List<String> messages = new ArrayList<>();
+    Throwable current = error;
+    while (current != null) {
+      messages.add(current.getClass().getSimpleName() + ": " + current.getMessage());
+      current = current.getCause();
+    }
+    return String.join("\n", messages);
   }
 
   private static List<String> journalPageStates(Path review) throws Exception {
@@ -310,6 +346,36 @@ final class SemanticMigrationServiceTest {
     return new Fixture(vault, review, astro, report, decisions);
   }
 
+  private Fixture linkedFixture() throws Exception {
+    Path vault = temp.resolve("vault-linked");
+    Path review = temp.resolve("review-linked");
+    Path astro = temp.resolve("astro-linked");
+    Path report = temp.resolve("inventory-linked.json");
+    Files.createDirectories(astro);
+    writeNote(vault, "page-1.md", "See [[page-2|target]].");
+    writeNote(vault, "page-2.md", "Target.");
+    writeAstroRoute(astro, "src/content/blog/ru/page-1.md", "vault-ref-page-1", "/ru/essays/page-1/");
+    writeAstroRoute(astro, "src/content/blog/en/page-1.md", "vault-ref-page-1", "/en/essays/page-1/");
+    writeAstroRoute(astro, "src/content/blog/ru/page-2.md", "vault-ref-page-2", "/ru/essays/page-2/");
+    writeAstroRoute(astro, "src/content/blog/en/page-2.md", "vault-ref-page-2", "/en/essays/page-2/");
+    writeCatalog(review, 2);
+    writeLinkedPublishedPair(review);
+    writePublishedPair(review, "page-2", "page-2.md", "vault-ref-page-2");
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, astro, report);
+    ReferenceMigrationAligner.MigrationOccurrence occurrence =
+        inventory.pages().getFirst().occurrences().getFirst();
+    Path decisions = temp.resolve("decisions-linked.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%d,"end":%d}}}}
+        """.formatted(
+            inventory.inventorySha256(),
+            occurrence.occurrenceKey(),
+            occurrence.proposedEnSpan().start(),
+            occurrence.proposedEnSpan().end()));
+    return new Fixture(vault, review, astro, report, decisions);
+  }
+
   private OrderFixture orderFixture() throws Exception {
     Path vault = temp.resolve("vault-order");
     Path review = temp.resolve("review-order");
@@ -319,11 +385,15 @@ final class SemanticMigrationServiceTest {
     writeNote(vault, "page.md", "[[B|one]] [[C|two]]");
     writeNote(vault, "b.md", "B.");
     writeNote(vault, "c.md", "C.");
+    writeAstroRoute(astro, "src/content/blog/ru/b.md", "vault-ref-b", "/ru/essays/b/");
+    writeAstroRoute(astro, "src/content/blog/en/b.md", "vault-ref-b", "/en/essays/b/");
+    writeAstroRoute(astro, "src/content/blog/ru/c.md", "vault-ref-c", "/ru/essays/c/");
+    writeAstroRoute(astro, "src/content/blog/en/c.md", "vault-ref-c", "/en/essays/c/");
     writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-b", "b.md", "vault-ref-c", "c.md");
     Path published = review.resolve("blog/page/published");
     Files.createDirectories(published);
-    String ru = approved("ru", "page", "First [one](/ru/b/), then [two](/ru/c/).\n");
-    String en = approved("en", "page", "First [two](/en/c/), then [one](/en/b/).\n");
+    String ru = approved("ru", "page", "First [one](/ru/essays/b/), then [two](/ru/essays/c/).\n");
+    String en = approved("en", "page", "First [two](/en/essays/c/), then [one](/en/essays/b/).\n");
     Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
     Files.writeString(published.resolve("en.md"), en, StandardCharsets.UTF_8);
     Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
@@ -337,10 +407,12 @@ final class SemanticMigrationServiceTest {
             "ref-0001", Map.of("targetRef", "vault-ref-b", "authoredTarget", "B", "heading", "", "label", "one"),
             "ref-0002", Map.of("targetRef", "vault-ref-c", "authoredTarget", "C", "heading", "", "label", "two")))),
         StandardCharsets.UTF_8);
+    writePublishedPair(review, "b", "b.md", "vault-ref-b");
+    writePublishedPair(review, "c", "c.md", "vault-ref-c");
     ReferenceMigrationInventory.Inventory inventory =
         new ReferenceMigrationInventory().inspect(vault, review, astro, report);
     Path corrected = temp.resolve("corrected-en.md");
-    String correctedEnglish = approved("en", "page", "First [one](/en/b/), then [two](/en/c/).\n");
+    String correctedEnglish = approved("en", "page", "First [one](/en/essays/b/), then [two](/en/essays/c/).\n");
     Files.writeString(corrected, correctedEnglish, StandardCharsets.UTF_8);
     Path decisions = temp.resolve("decisions-order.json");
     Files.writeString(decisions, """
@@ -426,6 +498,92 @@ final class SemanticMigrationServiceTest {
         "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
         "order", List.of(),
         "references", Map.of())), StandardCharsets.UTF_8);
+  }
+
+  private static void writeLinkedPublishedPair(Path review) throws Exception {
+    Path published = review.resolve("blog/page-1/published");
+    Files.createDirectories(published);
+    String ru = approved("ru", "page-1", "See [target](/ru/essays/page-2/).\n");
+    String en = approved("en", "page-1", "See [target](/en/essays/page-2/).\n");
+    Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("en.md"), en, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "pageRef", "vault-ref-page-1",
+        "sourcePath", "page-1.md",
+        "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
+        "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
+        "order", List.of("ref-0001"),
+        "references", Map.of(
+                "ref-0001", Map.of(
+                "targetRef", "vault-ref-page-2",
+                "authoredTarget", "page-2",
+                "heading", "",
+                "label", "target")))),
+        StandardCharsets.UTF_8);
+  }
+
+  private static void writeAstroRoute(
+      Path astro,
+      String path,
+      String pageRef,
+      String route) throws IOException {
+    Path target = astro.resolve(path);
+    Files.createDirectories(target.getParent());
+    Files.writeString(target, """
+        ---
+        pageRef: %s
+        route: %s
+        ---
+        Body.
+        """.formatted(pageRef, route), StandardCharsets.UTF_8);
+  }
+
+  private static void retargetFirstReferenceAndRefreshJournalHash(Path review) throws IOException {
+    Path staged = review.resolve(".semantic-links/staging-v1/blog/page-1/published");
+    Path references = staged.resolve("references.json");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> payload = JSON.readValue(Files.readAllBytes(references), Map.class);
+    @SuppressWarnings("unchecked")
+    Map<String, Object> refs = (Map<String, Object>) payload.get("references");
+    @SuppressWarnings("unchecked")
+    Map<String, Object> ref = new LinkedHashMap<>((Map<String, Object>) refs.get("ref-0001"));
+    ref.put("targetRef", "vault-ref-page-1");
+    refs.put("ref-0001", ref);
+    byte[] referenceBytes = JSON.writeValueAsBytes(payload);
+    Files.write(references, referenceBytes);
+
+    @SuppressWarnings("unchecked")
+    Map<String, Object> journal = JSON.readValue(
+        Files.readAllBytes(SemanticSchemaState.migrationJournal(review)),
+        Map.class);
+    @SuppressWarnings("unchecked")
+    List<Map<String, Object>> pages = (List<Map<String, Object>>) journal.get("pages");
+    Map<String, Object> page = pages.stream()
+        .filter(candidate -> "page-1".equals(candidate.get("publicId")))
+        .findFirst()
+        .orElseThrow();
+    page.put("stagedSha256", PageReferenceMapCodec.sha256(combined(
+        Files.readAllBytes(staged.resolve("ru.md")),
+        Files.readAllBytes(staged.resolve("en.md")),
+        Files.readAllBytes(references))));
+    Files.writeString(
+        SemanticSchemaState.migrationJournal(review),
+        JSON.writeValueAsString(journal),
+        StandardCharsets.UTF_8);
+  }
+
+  private static byte[] combined(byte[]... parts) {
+    int size = 0;
+    for (byte[] part : parts) {
+      size += part.length + 1;
+    }
+    ByteBuffer buffer = ByteBuffer.allocate(size);
+    for (byte[] part : parts) {
+      buffer.put(part);
+      buffer.put((byte) 0);
+    }
+    return buffer.array();
   }
 
   private static String approved(String language, String publicId, String body) {

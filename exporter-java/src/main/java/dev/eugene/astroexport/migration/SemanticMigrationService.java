@@ -6,9 +6,16 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.fs.AtomicExchange;
 import dev.eugene.astroexport.fs.JnaAtomicExchange;
+import dev.eugene.astroexport.model.ManifestEntry;
+import dev.eugene.astroexport.model.ManifestResult;
+import dev.eugene.astroexport.model.Note;
+import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
+import dev.eugene.astroexport.review.ApprovedPageSnapshot;
+import dev.eugene.astroexport.review.ApprovedSnapshotRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
@@ -169,8 +176,18 @@ public final class SemanticMigrationService {
       hooks.after(Boundary.PAGE_STAGED, index);
       pages.add(new PagePlan(published, pageStage, displaced, journalPage));
     }
-    ApplyPlan plan = new ApplyPlan(request.review(), catalog, catalogStage,
-        recoveryRoot.resolve("catalog-v1.json"), journal, pages, request.astroGate());
+    ApplyPlan plan = new ApplyPlan(
+        request.vault(),
+        request.review(),
+        stagingRoot,
+        inventory,
+        catalog,
+        catalogStage,
+        recoveryRoot.resolve("catalog-v1.json"),
+        journal,
+        pages,
+        correctedOrder,
+        request.astroGate());
     validateStagedCutover(plan);
     hooks.after(Boundary.PARITY_PROJECTED, 1);
     request.astroGate().accept(stagingRoot);
@@ -469,12 +486,227 @@ public final class SemanticMigrationService {
   }
 
   private static void validateStagedCutover(ApplyPlan plan) throws IOException {
-    for (PagePlan page : plan.pages()) {
-      if (!stagedHashMatches(page.staged(), page.journalPage().stagedSha256())) {
-        throw new IllegalStateException("staged semantic page hash mismatch: " + page.staged());
+    Journal durableJournal = readJournal(plan.review());
+    for (JournalPage page : durableJournal.pages()) {
+      Path staged = plan.review().resolve(page.staged());
+      if (!stagedHashMatches(staged, page.stagedSha256())) {
+        throw new IllegalStateException("staged semantic page hash mismatch: " + staged);
       }
     }
-    requireCatalogHash(plan.catalogStaged(), plan.journal().catalogSha256());
+    requireCatalogHash(plan.catalogStaged(), durableJournal.catalogSha256());
+    validateMaterializedReleaseParity(plan, durableJournal);
+  }
+
+  private static void validateMaterializedReleaseParity(ApplyPlan plan, Journal durableJournal) throws IOException {
+    ApprovedSnapshotRepository repository = new ApprovedSnapshotRepository();
+    SelectionResult selection = selectionFromJournal(durableJournal);
+    VaultReferenceCatalog stagedCatalog = VaultReferenceCatalog.read(readSafe(plan.catalogStaged()));
+    List<ApprovedPageSnapshot> staged = repository.loadSelected(selection, plan.stagingRoot(), stagedCatalog);
+    ManifestResult semantic = new ApprovedReleaseMaterializer()
+        .materialize(staged, plan.vault())
+        .manifest();
+
+    Map<String, ManifestEntry> expectedRussian = new LinkedHashMap<>();
+    Map<String, ManifestEntry> expectedEnglish = new LinkedHashMap<>();
+    Map<String, JournalPage> journalPages = pagesBySource(durableJournal);
+    for (ReferenceMigrationAligner.MigrationPage page : plan.inventory().pages()) {
+      JournalPage journalPage = journalPages.get(page.sourcePath());
+      if (journalPage == null) {
+        throw new IllegalStateException("materialized release parity missing journal page for " + page.sourcePath());
+      }
+      expectedRussian.put(page.sourcePath(), approvedEntry(
+          journalPage.collection(),
+          page.sourcePath(),
+          "ru",
+          page.approvedRussian().text()));
+      CorrectedOrderDecision corrected = plan.correctedOrder().get(page.pageRef() + "/order");
+      String english = corrected == null
+          ? page.approvedEnglish().text()
+          : new String(corrected.bytes(), StandardCharsets.UTF_8);
+      expectedEnglish.put(page.sourcePath(), approvedEntry(
+          journalPage.collection(),
+          page.sourcePath(),
+          "en",
+          english));
+    }
+    requireEntriesMatch(expectedRussian, semantic.entries(), "ru");
+    requireEntriesMatch(expectedEnglish, semantic.englishEntries(), "en");
+  }
+
+  private static Map<String, JournalPage> pagesBySource(Journal journal) {
+    LinkedHashMap<String, JournalPage> pages = new LinkedHashMap<>();
+    for (JournalPage page : journal.pages()) {
+      pages.put(page.sourcePath(), page);
+    }
+    return Map.copyOf(pages);
+  }
+
+  private static ManifestEntry approvedEntry(
+      String collection,
+      String sourcePath,
+      String language,
+      String markdown) {
+    ApprovedMarkdown approved = parseApprovedMarkdown(sourcePath, markdown);
+    String publicId = String.valueOf(approved.metadata().get("id"));
+    String reviewType = String.valueOf(approved.metadata().getOrDefault(
+        "reviewType",
+        approved.metadata().getOrDefault("publicContentType", "note")));
+    return new ManifestEntry(
+        sourcePath,
+        "src/content/" + collection + "/" + language + "/" + publicId + ".md",
+        approvedRoute(collection, publicId, reviewType, language),
+        new LinkedHashMap<>(approved.metadata()),
+        approved.body());
+  }
+
+  private static ApprovedMarkdown parseApprovedMarkdown(String sourcePath, String markdown) {
+    if (!markdown.startsWith("---\n") && !markdown.startsWith("---\r\n")) {
+      return new ApprovedMarkdown(Map.of(), markdown);
+    }
+    int firstNewline = markdown.indexOf('\n');
+    int metadataStart = firstNewline + 1;
+    int closing = findClosingDelimiter(markdown, metadataStart);
+    if (closing < 0) {
+      return new ApprovedMarkdown(Map.of(), markdown);
+    }
+    int bodyStart = markdown.indexOf('\n', closing);
+    String body = bodyStart < 0 ? "" : markdown.substring(bodyStart + 1);
+    try {
+      @SuppressWarnings("unchecked")
+      Map<String, Object> metadata = (Map<String, Object>) new org.snakeyaml.engine.v2.api.Load(
+          org.snakeyaml.engine.v2.api.LoadSettings.builder()
+              .setLabel(sourcePath)
+              .build())
+          .loadFromString(markdown.substring(metadataStart, closing));
+      return new ApprovedMarkdown(metadata == null ? Map.of() : metadata, body);
+    } catch (RuntimeException error) {
+      throw new IllegalStateException("invalid approved parity frontmatter: " + sourcePath, error);
+    }
+  }
+
+  private static int findClosingDelimiter(String markdown, int start) {
+    int lineStart = start;
+    while (lineStart < markdown.length()) {
+      int lineEnd = markdown.indexOf('\n', lineStart);
+      int contentEnd = lineEnd < 0 ? markdown.length() : lineEnd;
+      if (contentEnd > lineStart && markdown.charAt(contentEnd - 1) == '\r') {
+        contentEnd--;
+      }
+      if ("---".equals(markdown.substring(lineStart, contentEnd))) {
+        return lineStart;
+      }
+      if (lineEnd < 0) {
+        break;
+      }
+      lineStart = lineEnd + 1;
+    }
+    return -1;
+  }
+
+  private static String approvedRoute(
+      String collection,
+      String publicId,
+      String contentType,
+      String language) {
+    if ("editorial".equals(collection)) {
+      return "home".equals(publicId) ? "/" + language + "/" : "/" + language + "/" + publicId + "/";
+    }
+    String section = switch (contentType) {
+      case "essay" -> "essays";
+      case "claim" -> "claims";
+      case "note" -> "notes";
+      case "album" -> "music";
+      case "book" -> "library";
+      case "concept" -> "concepts";
+      default -> throw new IllegalStateException("unsupported approved reviewType " + contentType);
+    };
+    return "/" + language + "/" + section + "/" + publicId + "/";
+  }
+
+  private static SelectionResult selectionFromJournal(Journal journal) {
+    List<Note> notes = journal.pages().stream()
+        .map(page -> new Note(
+            Path.of(page.sourcePath()),
+            page.sourcePath(),
+            page.publicId(),
+            Map.of(),
+            "",
+            true,
+            page.publicId(),
+            page.collection(),
+            "essay",
+            List.of()))
+        .toList();
+    return new SelectionResult(notes, List.of(), notes.size(), notes.size());
+  }
+
+  private static void requireEntriesMatch(
+      Map<String, ManifestEntry> expected,
+      List<ManifestEntry> actual,
+      String language) {
+    Map<String, ManifestEntry> observed = new LinkedHashMap<>();
+    for (ManifestEntry entry : actual) {
+      observed.put(entry.sourcePath(), entry);
+    }
+    if (!expected.keySet().equals(observed.keySet())) {
+      throw new IllegalStateException(
+          "materialized release parity mismatch for " + language + " sources: expected "
+              + expected.keySet()
+              + " but staged produced "
+              + observed.keySet());
+    }
+    for (Map.Entry<String, ManifestEntry> entry : expected.entrySet()) {
+      ManifestEntry expectedEntry = entry.getValue();
+      ManifestEntry actualEntry = observed.get(entry.getKey());
+      String difference = releaseEntryDifference(expectedEntry, actualEntry);
+      if (difference != null) {
+        throw new IllegalStateException(
+            "materialized release parity mismatch for "
+                + language
+                + " "
+                + entry.getKey()
+                + ": "
+                + difference);
+      }
+    }
+  }
+
+  private static String releaseEntryDifference(ManifestEntry expected, ManifestEntry actual) {
+    if (!expected.sourcePath().equals(actual.sourcePath())) {
+      return "sourcePath expected " + expected.sourcePath() + " but was " + actual.sourcePath();
+    }
+    if (!expected.targetPath().equals(actual.targetPath())) {
+      return "targetPath expected " + expected.targetPath() + " but was " + actual.targetPath();
+    }
+    if (!expected.route().equals(actual.route())) {
+      return "route expected " + expected.route() + " but was " + actual.route();
+    }
+    if (!expected.metadata().equals(actual.metadata())) {
+      return "metadata expected " + expected.metadata() + " but was " + actual.metadata();
+    }
+    if (!expected.body().stripTrailing().equals(actual.body().stripTrailing())) {
+      return "body expected " + expected.body() + " but was " + actual.body();
+    }
+    return null;
+  }
+
+  private static String approvedBody(byte[] markdown) {
+    String text = new String(markdown, StandardCharsets.UTF_8);
+    if (!text.startsWith("---")) {
+      return text;
+    }
+    int headerEnd = text.indexOf("\n---", 3);
+    if (headerEnd < 0) {
+      return text;
+    }
+    int bodyStart = headerEnd + "\n---".length();
+    if (bodyStart < text.length() && text.charAt(bodyStart) == '\r') {
+      bodyStart++;
+    }
+    if (bodyStart < text.length() && text.charAt(bodyStart) == '\n') {
+      bodyStart++;
+    }
+    return text.substring(bodyStart);
   }
 
   private static PageReferenceMap references(
@@ -707,8 +939,11 @@ public final class SemanticMigrationService {
     if (error instanceof MigrationIncompleteException incomplete) {
       return incomplete;
     }
+    String reason = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
     return new MigrationIncompleteException(
-        "semantic migration incomplete; journal="
+        "semantic migration incomplete: "
+            + reason
+            + "; journal="
             + SemanticSchemaState.migrationJournal(review)
             + " recovery="
             + review.resolve(".semantic-links/recovery-v1"),
@@ -798,12 +1033,16 @@ public final class SemanticMigrationService {
   }
 
   private record ApplyPlan(
+      Path vault,
       Path review,
+      Path stagingRoot,
+      ReferenceMigrationInventory.Inventory inventory,
       Path catalogPublished,
       Path catalogStaged,
       Path catalogDisplaced,
       Journal journal,
       List<PagePlan> pages,
+      Map<String, CorrectedOrderDecision> correctedOrder,
       Consumer<Path> astroGate) { }
 
   private record PagePlan(
@@ -826,6 +1065,12 @@ public final class SemanticMigrationService {
   }
 
   private record LinkParts(String authoredTarget, String label) { }
+
+  private record ApprovedMarkdown(Map<String, Object> metadata, String body) {
+    private ApprovedMarkdown {
+      metadata = Map.copyOf(metadata);
+    }
+  }
 
   private static final class Journal {
     private String state;
@@ -974,6 +1219,22 @@ public final class SemanticMigrationService {
 
     private String state() {
       return state;
+    }
+
+    private String collection() {
+      return collection;
+    }
+
+    private String publicId() {
+      return publicId;
+    }
+
+    private String pageRef() {
+      return pageRef;
+    }
+
+    private String sourcePath() {
+      return sourcePath;
     }
 
     private void state(String state) {

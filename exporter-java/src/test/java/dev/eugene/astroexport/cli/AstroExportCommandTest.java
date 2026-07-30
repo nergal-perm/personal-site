@@ -101,7 +101,7 @@ final class AstroExportCommandTest {
         "--report", report.toString(),
         "--json");
 
-    assertEquals(0, result.exitCode(), result.stderr());
+    assertEquals(0, result.exitCode(), result.stdout() + result.stderr());
     Map<String, Object> payload = json(result.stdout());
     assertIterableEquals(BRIDGE_KEYS, payload.keySet());
     assertEquals(3, payload.get("schemaVersion"));
@@ -159,17 +159,29 @@ final class AstroExportCommandTest {
     Files.createDirectories(astro);
     writeRawNote(vault, "page.md", "See [[Target|target]].");
     writeRawNote(vault, "target.md", "Target.");
+    writeAstroRoute(astro, "src/content/blog/ru/target.md", "vault-ref-target", "/ru/essays/target/");
+    writeAstroRoute(astro, "src/content/blog/en/target.md", "vault-ref-target", "/en/essays/target/");
     writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
-    writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
-        "See [target](/ru/target/).",
-        "See [target](/en/target/).");
-    new dev.eugene.astroexport.migration.ReferenceMigrationInventory()
+    writeApprovedPublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
+        "See [target](/ru/essays/target/).",
+        "See [target](/en/essays/target/).");
+    writeApprovedPublishedPair(review, "blog", "target", "target.md", "vault-ref-target",
+        "Target.",
+        "Target.");
+    dev.eugene.astroexport.migration.ReferenceMigrationInventory.Inventory inventory =
+        new dev.eugene.astroexport.migration.ReferenceMigrationInventory()
         .inspect(vault, review, astro, report);
     String inventorySha = (String) json(Files.readString(report)).get("inventorySha256");
+    dev.eugene.astroexport.migration.ReferenceMigrationAligner.MigrationOccurrence occurrence =
+        inventory.pages().getFirst().occurrences().getFirst();
     Path decisions = temp.resolve("decisions.json");
     Files.writeString(decisions, """
-        {"schemaVersion":1,"inventorySha256":"%s","decisions":{}}
-        """.formatted(inventorySha));
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%d,"end":%d}}}}
+        """.formatted(
+            inventorySha,
+            occurrence.occurrenceKey(),
+            occurrence.proposedEnSpan().start(),
+            occurrence.proposedEnSpan().end()));
     List<SiteWriter.GateInvocation> gates = new ArrayList<>();
 
     CommandFixture.Result result = run(
@@ -186,7 +198,7 @@ final class AstroExportCommandTest {
         "--apply",
         "--json");
 
-    assertEquals(0, result.exitCode(), result.stderr());
+    assertEquals(0, result.exitCode(), result.stdout() + result.stderr());
     Map<String, Object> payload = json(result.stdout());
     assertEquals(true, payload.get("ok"));
     assertEquals("applied", payload.get("status"));
@@ -2223,6 +2235,63 @@ final class AstroExportCommandTest {
         "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
         "order", List.of("ref-0001"),
         "references", Map.of())), StandardCharsets.UTF_8);
+  }
+
+  private static void writeApprovedPublishedPair(
+      Path reviewRoot,
+      String collection,
+      String publicId,
+      String sourcePath,
+      String pageRef,
+      String ru,
+      String en) throws Exception {
+    Path published = reviewRoot.resolve(collection).resolve(publicId).resolve("published");
+    Files.createDirectories(published);
+    byte[] russian = approvedRussian(
+        publicId,
+        "/ru/essays/" + publicId + "/",
+        "src/content/" + collection + "/ru/" + publicId + ".md",
+        ru);
+    byte[] english = approvedEnglish(
+        publicId,
+        "/en/essays/" + publicId + "/",
+        "src/content/" + collection + "/en/" + publicId + ".md",
+        en);
+    boolean linksTarget = ru.contains("target]") || en.contains("target]");
+    List<String> order = linksTarget ? List.of("ref-0001") : List.of();
+    Map<String, Object> references = linksTarget
+        ? Map.of("ref-0001", Map.of(
+            "targetRef", "vault-ref-target",
+            "authoredTarget", "Target",
+            "heading", "",
+            "label", "target"))
+        : Map.of();
+    Files.write(published.resolve("ru.md"), russian);
+    Files.write(published.resolve("en.md"), english);
+    Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "pageRef", pageRef,
+        "sourcePath", sourcePath,
+        "ruSha256", PageReferenceMapCodec.sha256(russian),
+        "enSha256", PageReferenceMapCodec.sha256(english),
+        "order", order,
+        "references", references)), StandardCharsets.UTF_8);
+  }
+
+  private static void writeAstroRoute(
+      Path astro,
+      String path,
+      String pageRef,
+      String route) throws IOException {
+    Path target = astro.resolve(path);
+    Files.createDirectories(target.getParent());
+    Files.writeString(target, """
+        ---
+        pageRef: %s
+        route: %s
+        ---
+        Body.
+        """.formatted(pageRef, route), StandardCharsets.UTF_8);
   }
 
   private static void writeSemanticMarker(Path reviewRoot) throws Exception {
