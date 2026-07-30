@@ -149,31 +149,31 @@ final class ApprovedSnapshotRepositoryTest {
   }
 
   @Test
-  void duplicateRouteBlocksBeforeReturningReleaseInput() throws Exception {
+  void duplicateStoredRouteDoesNotBlockWhenDerivedRoutesDiffer() throws Exception {
     Path review = reviewRoot();
     writeApprovedTriple(review, "blog", "a", "blog/A.md", "vault-ref-0001", "body a", "a", "essay");
     writeApprovedTriple(review, "blog", "b", "blog/B.md", "vault-ref-0002", "body b", "b", "essay", "/ru/essays/a/");
 
-    ApprovedReleaseException error = assertThrows(
-        ApprovedReleaseException.class,
-        () -> repository.loadSelected(
-            selection("blog/A.md", "blog/B.md"), review, VaultReferenceCatalog.empty()));
+    List<ApprovedPageSnapshot> snapshots = repository.loadSelected(
+        selection("blog/A.md", "blog/B.md"), review, VaultReferenceCatalog.empty());
 
-    assertEquals("duplicate-route", error.code());
+    assertEquals(List.of("/ru/essays/a/", "/ru/essays/b/"), snapshots.stream()
+        .map(snapshot -> snapshot.russian().route())
+        .toList());
   }
 
   @Test
-  void duplicateTargetPathBlocksBeforeReturningReleaseInput() throws Exception {
+  void duplicateStoredTargetPathDoesNotBlockWhenDerivedTargetPathsDiffer() throws Exception {
     Path review = reviewRoot();
     writeApprovedTriple(review, "blog", "a", "blog/A.md", "vault-ref-0001", "body a", "a", "essay");
     writeApprovedTriple(review, "blog", "b", "blog/B.md", "vault-ref-0002", "body b", "b", "essay", "/ru/essays/b/", "src/content/blog/ru/a.md");
 
-    ApprovedReleaseException error = assertThrows(
-        ApprovedReleaseException.class,
-        () -> repository.loadSelected(
-            selection("blog/A.md", "blog/B.md"), review, VaultReferenceCatalog.empty()));
+    List<ApprovedPageSnapshot> snapshots = repository.loadSelected(
+        selection("blog/A.md", "blog/B.md"), review, VaultReferenceCatalog.empty());
 
-    assertEquals("duplicate-target-path", error.code());
+    assertEquals(List.of("src/content/blog/ru/a.md", "src/content/blog/ru/b.md"), snapshots.stream()
+        .map(snapshot -> snapshot.russian().targetPath())
+        .toList());
   }
 
   @Test

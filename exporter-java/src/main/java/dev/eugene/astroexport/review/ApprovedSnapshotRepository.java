@@ -166,24 +166,8 @@ public final class ApprovedSnapshotRepository {
         snapshots,
         "duplicate-target-path",
         snapshot -> snapshot.english().targetPath());
-    rejectDuplicate(
-        snapshots,
-        "duplicate-target-path",
-        snapshot -> stringMetadata(snapshot.russian().metadata().get("targetPath")));
-    rejectDuplicate(
-        snapshots,
-        "duplicate-target-path",
-        snapshot -> stringMetadata(snapshot.english().metadata().get("targetPath")));
     rejectDuplicate(snapshots, "duplicate-route", snapshot -> snapshot.russian().route());
     rejectDuplicate(snapshots, "duplicate-route", snapshot -> snapshot.english().route());
-    rejectDuplicate(
-        snapshots,
-        "duplicate-route",
-        snapshot -> stringMetadata(snapshot.russian().metadata().get("route")));
-    rejectDuplicate(
-        snapshots,
-        "duplicate-route",
-        snapshot -> stringMetadata(snapshot.english().metadata().get("route")));
   }
 
   private static void rejectDuplicate(
@@ -200,10 +184,6 @@ public final class ApprovedSnapshotRepository {
         throw failure(code, snapshot.sourcePath(), "duplicate approved release key: " + key);
       }
     }
-  }
-
-  private static String stringMetadata(Object value) {
-    return value instanceof String text ? text : null;
   }
 
   private static byte[] readSafeLeaf(Path path, String selectedSourcePath) {

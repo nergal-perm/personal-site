@@ -41,6 +41,7 @@ import org.snakeyaml.engine.v2.api.LoadSettings;
 import org.snakeyaml.engine.v2.api.lowlevel.Compose;
 import org.snakeyaml.engine.v2.common.FlowStyle;
 import org.snakeyaml.engine.v2.exceptions.Mark;
+import org.snakeyaml.engine.v2.nodes.AnchorNode;
 import org.snakeyaml.engine.v2.nodes.MappingNode;
 import org.snakeyaml.engine.v2.nodes.Node;
 import org.snakeyaml.engine.v2.nodes.NodeTuple;
@@ -53,6 +54,9 @@ public final class ReviewWorkspace {
   private static final Pattern TRAILING_LINE_WHITESPACE = Pattern.compile("[ \\t]+(?=\\R|$)");
   private static final Pattern ALIASED_CONTROL_KEY = Pattern.compile(
       "(?m)^\\*[A-Za-z0-9_-]+[ \\t]*:");
+  private static final Pattern ALIASED_CONTROL_VALUE = Pattern.compile(
+      "(?m)^[ \\t]*(?:sourceHash|translationStatus|translatedAt|translationProfile)"
+          + "[ \\t]*:[ \\t]*\\*[A-Za-z0-9_-]+[ \\t]*(?:#.*)?$");
   private static final AtomicExchange ATOMIC_EXCHANGE = new JnaAtomicExchange();
   private static final PublishedSnapshotStore PUBLISHED_SNAPSHOTS =
       new PublishedSnapshotStore();
@@ -563,6 +567,11 @@ public final class ReviewWorkspace {
       throw new IllegalArgumentException(
           displayPath + ": approved Markdown must use explicit control-field keys");
     }
+    if (ALIASED_CONTROL_VALUE.matcher(header).find()) {
+      throw new IllegalArgumentException(
+          displayPath + ": approved Markdown must reject control-field aliases");
+    }
+    rejectControlFieldAliases(header, displayPath);
     ParsedMarkdown parsed = parseMarkdown(markdown, displayPath);
     LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(parsed.metadata());
     String publicId = requiredApprovedString(metadata, "id", displayPath);
@@ -638,6 +647,31 @@ public final class ReviewWorkspace {
       default -> throw new IllegalArgumentException("unsupported approved reviewType " + contentType);
     };
     return "/" + language + "/" + section + "/" + publicId + "/";
+  }
+
+  private static void rejectControlFieldAliases(String header, String displayPath) {
+    Node root;
+    try {
+      root = new Compose(yamlSettings(displayPath)).composeString(header).orElse(null);
+    } catch (RuntimeException error) {
+      throw new IllegalArgumentException(
+          "invalid " + displayPath + " frontmatter: " + error.getMessage(), error);
+    }
+    if (!(root instanceof MappingNode mapping)) {
+      throw new IllegalArgumentException(displayPath + ": approved frontmatter must be a mapping");
+    }
+    for (NodeTuple tuple : mapping.getValue()) {
+      if (tuple.getKeyNode() instanceof AnchorNode) {
+        throw new IllegalArgumentException(
+            displayPath + ": approved Markdown must reject control-field aliases");
+      }
+      if (tuple.getKeyNode() instanceof ScalarNode key
+          && CONTROL_FIELDS.contains(key.getValue())
+          && tuple.getValueNode() instanceof AnchorNode) {
+        throw new IllegalArgumentException(
+            displayPath + ": approved Markdown must reject control-field aliases");
+      }
+    }
   }
 
   private static LoadSettings yamlSettings(String label) {

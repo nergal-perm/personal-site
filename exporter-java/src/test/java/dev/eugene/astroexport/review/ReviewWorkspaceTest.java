@@ -226,6 +226,24 @@ final class ReviewWorkspaceTest {
   }
 
   @Test
+  void approvedMarkdownRejectsControlFieldValueAliases() {
+    IllegalArgumentException error = assertThrows(
+        IllegalArgumentException.class,
+        () -> ReviewWorkspace.parseApprovedMarkdown("""
+            ---
+            id: essay
+            language: en
+            reviewType: essay
+            reviewed: &ok reviewed
+            translationStatus: *ok
+            ---
+            Body.
+            """.getBytes(StandardCharsets.UTF_8), "blog", "en", "published/en.md"));
+
+    assertTrue(error.getMessage().contains("control-field aliases"));
+  }
+
+  @Test
   void parsesHomeCurrentCardsAgainstAuthoredSnapshot() throws Exception {
     ManifestEntry entry = filteredHomeEntry();
     Path path = temp.resolve("review/editorial/home/en.md");
