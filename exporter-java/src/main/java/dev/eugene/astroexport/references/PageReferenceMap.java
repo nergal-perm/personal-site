@@ -22,7 +22,7 @@ public record PageReferenceMap(
 
   public PageReferenceMap withHashes(String ruSha256, String enSha256) {
     return new PageReferenceMap(
-        SCHEMA_VERSION,
+        schemaVersion,
         pageRef,
         sourcePath,
         ruSha256,

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.core.exc.StreamReadException;
+import java.math.BigInteger;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.security.MessageDigest;
@@ -198,10 +199,32 @@ public final class PageReferenceMapCodec {
   }
 
   private static int requiredInt(Object value, String field) {
-    if (!(value instanceof Number valueAsNumber)) {
+    if (value instanceof Integer valueAsInt) {
+      return valueAsInt;
+    }
+    if (value instanceof Long valueAsLong) {
+      if (valueAsLong < Integer.MIN_VALUE || valueAsLong > Integer.MAX_VALUE) {
+        throw new ReferenceValidationException("invalid-json", field + " must be within 32-bit integer range");
+      }
+      return valueAsLong.intValue();
+    }
+    if (value instanceof BigInteger valueAsBigInteger) {
+      if (valueAsBigInteger.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0
+          || valueAsBigInteger.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0) {
+        throw new ReferenceValidationException("invalid-json", field + " must be within 32-bit integer range");
+      }
+      return valueAsBigInteger.intValue();
+    }
+    if (value instanceof Short valueAsShort) {
+      return valueAsShort.intValue();
+    }
+    if (value instanceof Byte valueAsByte) {
+      return valueAsByte.intValue();
+    }
+    if (value instanceof Float || value instanceof Double) {
       throw new ReferenceValidationException("invalid-json", field + " must be an integer");
     }
-    return valueAsNumber.intValue();
+    throw new ReferenceValidationException("invalid-json", field + " must be an integer");
   }
 
   private static String requiredString(Object value, String field) {
