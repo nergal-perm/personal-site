@@ -2154,7 +2154,7 @@ final class AstroExportCommandTest {
         "sourcePath", sourcePath,
         "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
         "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
-        "order", List.of(),
+        "order", List.of("ref-0001"),
         "references", Map.of())), StandardCharsets.UTF_8);
   }
 

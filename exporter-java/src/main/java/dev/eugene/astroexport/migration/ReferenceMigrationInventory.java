@@ -48,7 +48,7 @@ public final class ReferenceMigrationInventory {
     Objects.requireNonNull(review, "review");
     VaultReferenceCatalog catalog = VaultReferenceCatalog.loadIfPresent(review);
     VaultReferenceResolver resolver = new VaultReferenceResolver(catalog);
-    Map<String, ReferenceMigrationAligner.RoutePair> currentRoutes = scanAstroRoutes(astro);
+    RouteScan currentRoutes = scanAstroRoutes(astro);
     List<ApprovedSnapshot> snapshots = scanApproved(review);
     List<ReferenceMigrationAligner.MigrationPage> pages = new ArrayList<>();
     ReferenceMigrationAligner aligner = new ReferenceMigrationAligner();
@@ -65,7 +65,9 @@ public final class ReferenceMigrationInventory {
               rawInput.body(),
               true,
               null,
-              currentRoutes,
+              currentRoutes.routes(),
+              currentRoutes.conflicts(),
+              snapshot.legacyOrderPresent(),
               snapshot.legacyOrder())
           : new ReferenceMigrationAligner.RawPage(
               pageRef,
@@ -73,8 +75,22 @@ public final class ReferenceMigrationInventory {
               "",
               false,
               rawInput.reason(),
-              currentRoutes,
+              currentRoutes.routes(),
+              currentRoutes.conflicts(),
+              snapshot.legacyOrderPresent(),
               snapshot.legacyOrder());
+      if (rawInput.safe() && currentRoutes.conflicts().containsKey(pageRef)) {
+        rawPage = new ReferenceMigrationAligner.RawPage(
+            pageRef,
+            snapshot.sourcePath(),
+            rawInput.body(),
+            false,
+            currentRoutes.conflicts().get(pageRef),
+            currentRoutes.routes(),
+            currentRoutes.conflicts(),
+            snapshot.legacyOrderPresent(),
+            snapshot.legacyOrder());
+      }
       pages.add(aligner.align(
           rawPage,
           snapshot.russian(),
@@ -269,6 +285,7 @@ public final class ReferenceMigrationInventory {
         return new ApprovedSnapshot(
             pageRef,
             sourcePath,
+            true,
             order,
             ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("ru.md").toString(), ru.bytes()),
             ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("en.md").toString(), en.bytes()));
@@ -285,6 +302,7 @@ public final class ReferenceMigrationInventory {
     return new ApprovedSnapshot(
         pageRef,
         sourcePath,
+        false,
         List.of(),
         ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("ru.md").toString(), ru.bytes()),
         ReferenceMigrationAligner.ApprovedDocument.valid(published.resolve("en.md").toString(), en.bytes()));
@@ -299,6 +317,7 @@ public final class ReferenceMigrationInventory {
     return new ApprovedSnapshot(
         pageRef,
         sourcePath,
+        true,
         order,
         ReferenceMigrationAligner.ApprovedDocument.unsafe(published.resolve("ru.md").toString(), unsafe),
         ReferenceMigrationAligner.ApprovedDocument.unsafe(published.resolve("en.md").toString(), unsafe));
@@ -353,11 +372,12 @@ public final class ReferenceMigrationInventory {
     }
   }
 
-  private static Map<String, ReferenceMigrationAligner.RoutePair> scanAstroRoutes(Path astro) {
+  private static RouteScan scanAstroRoutes(Path astro) {
     if (astro == null || !Files.isDirectory(astro, LinkOption.NOFOLLOW_LINKS)) {
-      return Map.of();
+      return new RouteScan(Map.of(), Map.of());
     }
     Map<String, RouteBuilder> routes = new LinkedHashMap<>();
+    Map<String, String> conflicts = new LinkedHashMap<>();
     try (var paths = Files.walk(astro)) {
       for (Path path : paths
           .filter(Files::isRegularFile)
@@ -375,19 +395,19 @@ public final class ReferenceMigrationInventory {
         }
         RouteBuilder builder = routes.computeIfAbsent(pageRef, ignored -> new RouteBuilder());
         if (route.startsWith("/ru/")) {
-          builder.ru = route;
+          builder.add("ru", route, conflicts, pageRef);
         } else if (route.startsWith("/en/")) {
-          builder.en = route;
+          builder.add("en", route, conflicts, pageRef);
         }
       }
     } catch (IOException error) {
-      return Map.of();
+      return new RouteScan(Map.of(), Map.of("astro", "conflicting Astro routes: cannot scan Astro routes"));
     }
     LinkedHashMap<String, ReferenceMigrationAligner.RoutePair> result = new LinkedHashMap<>();
     for (Map.Entry<String, RouteBuilder> entry : routes.entrySet()) {
       result.put(entry.getKey(), new ReferenceMigrationAligner.RoutePair(entry.getValue().ru, entry.getValue().en));
     }
-    return Map.copyOf(result);
+    return new RouteScan(Map.copyOf(result), Map.copyOf(conflicts));
   }
 
   private static Path bounded(Path root, String relative) {
@@ -462,6 +482,7 @@ public final class ReferenceMigrationInventory {
   private record ApprovedSnapshot(
       String pageRef,
       String sourcePath,
+      boolean legacyOrderPresent,
       List<String> legacyOrder,
       ReferenceMigrationAligner.ApprovedDocument russian,
       ReferenceMigrationAligner.ApprovedDocument english) {
@@ -480,9 +501,31 @@ public final class ReferenceMigrationInventory {
     }
   }
 
+  private record RouteScan(
+      Map<String, ReferenceMigrationAligner.RoutePair> routes,
+      Map<String, String> conflicts) {
+  }
+
   private static final class RouteBuilder {
     private String ru;
     private String en;
+
+    private void add(
+        String language,
+        String route,
+        Map<String, String> conflicts,
+        String pageRef) {
+      String current = "ru".equals(language) ? ru : en;
+      if (current != null && !current.equals(route)) {
+        conflicts.put(pageRef, "conflicting Astro routes for " + pageRef + " " + language);
+        return;
+      }
+      if ("ru".equals(language)) {
+        ru = route;
+      } else {
+        en = route;
+      }
+    }
   }
 
   private record SafeLeaf(boolean safe, byte[] bytes, String reason) {

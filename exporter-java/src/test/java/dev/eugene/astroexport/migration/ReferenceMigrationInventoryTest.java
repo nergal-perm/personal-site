@@ -33,7 +33,8 @@ final class ReferenceMigrationInventoryTest {
     writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
     writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
         "See [target](/ru/target/).",
-        "See [target](/en/target/).");
+        "See [target](/en/target/).",
+        List.of("ref-0001"));
     Map<String, ByteBuffer> beforeVault = treeSnapshot(vault);
     Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
 
@@ -65,7 +66,7 @@ final class ReferenceMigrationInventoryTest {
                 1,
                 "vault-ref-target",
                 null,
-                "unique RU/EN/target alignment",
+                "unique monotonic RU/EN/target alignment",
                 Map.of(
                     "id", "ref-0001",
                     "targetRef", "vault-ref-target",
@@ -106,6 +107,26 @@ final class ReferenceMigrationInventoryTest {
         inventory.pages().getFirst().occurrences().stream()
             .map(occurrence -> occurrence.classification().json())
             .toList());
+  }
+
+  @Test
+  void emptySidecarOrderWithProposedOccurrencesIsOrderMismatch() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/)",
+        "[target](/en/target/)",
+        List.of());
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+
+    assertEquals("order-mismatch", inventory.pages().getFirst().status().json());
+    assertEquals("order-mismatch", inventory.pages().getFirst().occurrences().getFirst().classification().json());
+    assertFalse(inventory.pages().getFirst().automatic());
   }
 
   @Test
@@ -159,7 +180,8 @@ final class ReferenceMigrationInventoryTest {
     writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
     writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
         "[target](/ru/essays/current-target/)",
-        "[target](/en/essays/current-target/)");
+        "[target](/en/essays/current-target/)",
+        List.of("ref-0001"));
     writeAstroRoute(astro, "src/content/blog/ru/current-target.md", "vault-ref-target", "/ru/essays/current-target/");
     writeAstroRoute(astro, "src/content/blog/en/current-target.md", "vault-ref-target", "/en/essays/current-target/");
 
@@ -168,6 +190,30 @@ final class ReferenceMigrationInventoryTest {
 
     assertEquals("exact", inventory.pages().getFirst().status().json());
     assertEquals("exact", inventory.pages().getFirst().occurrences().getFirst().classification().json());
+  }
+
+  @Test
+  void duplicateAstroRoutesForSamePageRefAndLanguageAreUnsafe() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    writeNote(vault, "page.md", "[[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/essays/first/)",
+        "[target](/en/essays/target/)",
+        List.of("ref-0001"));
+    writeAstroRoute(astro, "src/content/blog/ru/first.md", "vault-ref-target", "/ru/essays/first/");
+    writeAstroRoute(astro, "src/content/blog/ru/second.md", "vault-ref-target", "/ru/essays/second/");
+    writeAstroRoute(astro, "src/content/blog/en/target.md", "vault-ref-target", "/en/essays/target/");
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, astro, temp.resolve("inventory.json"));
+
+    assertEquals("unsafe", inventory.pages().getFirst().status().json());
+    assertEquals("unsafe-input", inventory.pages().getFirst().occurrences().getFirst().classification().json());
+    assertTrue(inventory.pages().getFirst().occurrences().getFirst().reason().contains("conflicting Astro routes"));
   }
 
   @Test

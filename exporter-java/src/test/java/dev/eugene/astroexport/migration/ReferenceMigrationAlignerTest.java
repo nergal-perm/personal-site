@@ -100,6 +100,19 @@ final class ReferenceMigrationAlignerTest {
   }
 
   @Test
+  void monotonicAssignmentCanResolveExtraEnglishCandidates() {
+    ReferenceMigrationAligner.MigrationPage page = aligner.align(
+        raw("[[B|one]] between [[C|two]]"),
+        approvedRu("[one](/ru/b/) between [two](/ru/c/)"),
+        approvedEn("[one](/en/b/) between [two](/en/c/) and [one](/en/b/)"),
+        resolver(targetB(), targetC()));
+
+    assertEquals(EXACT_PAGE, page.status());
+    assertEquals(List.of(EXACT, EXACT), classifications(page));
+    assertTrue(page.automatic());
+  }
+
+  @Test
   void doesNotInferEnglishOccurrenceFromPlainTranslatedLabelOnly() {
     ReferenceMigrationAligner.MigrationPage page = aligner.align(
         raw("[[B|one]]"),

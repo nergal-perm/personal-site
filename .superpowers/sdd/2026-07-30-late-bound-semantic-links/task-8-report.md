@@ -208,3 +208,111 @@ Output:
 
 - The first full-suite run exposed an order-sensitive `ApprovedReleaseMaterializerTest` failure outside the Task 8 files; the failing test passed in isolation and the full suite passed on rerun.
 - English stripped/plain spans are still allowed only when anchored by rendered surrounding/full-context agreement. Unanchored English plain-label matches remain confirmation-required.
+
+## Fix Round 2/5
+
+### Status
+
+DONE
+
+### Findings Fixed
+
+- Empty loaded `references.json.order` now participates in sidecar-order validation. A loaded empty order mismatches any nonempty proposed occurrence sequence.
+- Added monotonic assignment enumeration for RU and EN candidates. Exact classification now depends on a unique monotonic assignment across the page rather than per-occurrence candidate cardinality.
+- Duplicate Astro routes for the same `pageRef` and language are recorded as conflicts and passed into alignment. Any occurrence targeting a conflicting route page is classified `unsafe-input` instead of allowing arbitrary traversal-order overwrites.
+- Updated CLI migration test fixtures to write complete sidecar order for single-reference exact pages under the stricter invariant.
+
+### Covering Tests Added
+
+- `ReferenceMigrationAlignerTest.monotonicAssignmentCanResolveExtraEnglishCandidates`
+- `ReferenceMigrationInventoryTest.emptySidecarOrderWithProposedOccurrencesIsOrderMismatch`
+- `ReferenceMigrationInventoryTest.duplicateAstroRoutesForSamePageRefAndLanguageAreUnsafe`
+
+### Commands And Output
+
+Red command:
+
+```bash
+mvn -q -Dtest=ReferenceMigrationAlignerTest,ReferenceMigrationInventoryTest test
+```
+
+Output:
+
+```text
+[ERROR] Tests run: 11, Failures: 2, Errors: 0, Skipped: 0, Time elapsed: 0.178 s <<< FAILURE! -- in dev.eugene.astroexport.migration.ReferenceMigrationInventoryTest
+[ERROR] dev.eugene.astroexport.migration.ReferenceMigrationInventoryTest.emptySidecarOrderWithProposedOccurrencesIsOrderMismatch -- Time elapsed: 0.006 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <order-mismatch> but was: <exact>
+...
+[ERROR] dev.eugene.astroexport.migration.ReferenceMigrationInventoryTest.duplicateAstroRoutesForSamePageRefAndLanguageAreUnsafe -- Time elapsed: 0.009 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <unsafe> but was: <confirmed-needed>
+...
+[ERROR] Tests run: 12, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.011 s <<< FAILURE! -- in dev.eugene.astroexport.migration.ReferenceMigrationAlignerTest
+[ERROR] dev.eugene.astroexport.migration.ReferenceMigrationAlignerTest.monotonicAssignmentCanResolveExtraEnglishCandidates -- Time elapsed: 0.001 s <<< FAILURE!
+org.opentest4j.AssertionFailedError: expected: <EXACT_PAGE> but was: <CONFIRMED_NEEDED>
+```
+
+Focused covering command:
+
+```bash
+mvn -q -Dtest=ReferenceMigrationAlignerTest,ReferenceMigrationInventoryTest,AstroExportCommandTest,NativeCliParityTest test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+```
+
+Full regression command:
+
+```bash
+mvn -q test
+```
+
+Output:
+
+```text
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+Usage: astro-export [-hV] [--dry-run] [--out=<out>] [--report=<report>]
+                    [--review=<review>] [--vault=<vault>] [COMMAND]
+Export explicitly published Obsidian notes into Astro source trees.
+      --dry-run           select and report without writing content
+  -h, --help              Show this help message and exit.
+      --out=<out>         Astro project root for atomic write mode
+      --report=<report>   report path
+      --review=<review>   translation review workspace
+  -V, --version           Print version information and exit.
+      --vault=<vault>     Obsidian vault root
+Commands:
+  build-from-review
+  migrate-overrides
+  prepare
+  inspect-publication
+  mark-reviewed
+  migrate-semantic-links
+  refresh-publication-queue
+  write-publication-contract
+```
+
+Whitespace command:
+
+```bash
+git diff --check
+```
+
+Output:
+
+```text
+<empty output, exit 0>
+```
+
+### Concerns
+
+- No remaining concerns specific to this fix round.
