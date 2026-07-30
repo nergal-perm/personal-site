@@ -693,6 +693,9 @@ public final class AstroExportCommand implements Callable<Integer> {
               decode(pair.content()));
           reviewedBytes = reviewed.getBytes(StandardCharsets.UTF_8);
         } catch (IllegalArgumentException error) {
+          if (semanticLease != null) {
+            semanticLease.close();
+          }
           emitJson(bridge("mark-reviewed", false, "translation_failed")
               .note(note)
               .identity(identity)

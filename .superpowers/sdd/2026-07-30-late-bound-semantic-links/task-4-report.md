@@ -205,3 +205,122 @@ exit code 0
 ## Concerns
 
 - Maven/JNA still emits the existing native-access warning under the current JDK; tests exit 0.
+
+---
+
+# Fix Round 2 Report
+
+## Status
+
+DONE
+
+## Finding Fixed
+
+- Important: closed the shared semantic lease when candidate EN validates as fresh but `ReviewWorkspace.setReviewedStatusPreservingContent(...)` throws `IllegalArgumentException` while rewriting `translationStatus` to `reviewed`.
+
+## What Changed
+
+- Added `AstroExportCommandTest.semanticLeaseClosesWhenCandidateEnglishRewriteFails`, which reaches the semantic rewrite-failure branch and verifies that an exclusive semantic-operation lock can be acquired afterward.
+- Added `CommandServices.withEnglishManifestAction(...)` as a focused test seam so the regression can isolate rewrite failure while keeping the real rewrite method under test.
+- Updated `AstroExportCommand.markReviewed(...)` to close `semanticLease` before returning `translation_failed` from the candidate EN rewrite failure branch.
+
+## TDD Evidence
+
+RED:
+
+```text
+mvn -q -Dtest=AstroExportCommandTest#semanticLeaseClosesWhenCandidateEnglishRewriteFails test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+[ERROR] Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 0.445 s <<< FAILURE! -- in dev.eugene.astroexport.cli.AstroExportCommandTest
+[ERROR] dev.eugene.astroexport.cli.AstroExportCommandTest.semanticLeaseClosesWhenCandidateEnglishRewriteFails -- Time elapsed: 0.400 s <<< ERROR!
+dev.eugene.astroexport.migration.SemanticOperationLock$LockBusyException
+	at dev.eugene.astroexport.migration.SemanticOperationLock.acquire(SemanticOperationLock.java:49)
+	at dev.eugene.astroexport.migration.SemanticOperationLock.acquireExclusive(SemanticOperationLock.java:21)
+	at dev.eugene.astroexport.cli.AstroExportCommandTest.semanticLeaseClosesWhenCandidateEnglishRewriteFails(AstroExportCommandTest.java:811)
+exit code 1
+```
+
+Focused regression after fix:
+
+```text
+mvn -q -Dtest=AstroExportCommandTest#semanticLeaseClosesWhenCandidateEnglishRewriteFails test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+exit code 0
+```
+
+Covering suite:
+
+```text
+mvn -q -Dtest=AstroExportCommandTest,ReviewWorkspaceTest,CandidateSnapshotStoreTest test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+exit code 0
+```
+
+Broader selected suite:
+
+```text
+mvn -q -Dtest=PublishedSnapshotStoreTest,CandidateSnapshotStoreTest,ReviewWorkspaceTest,ReviewLaunchPlannerTest,AstroExportCommandTest,PrepareWorkflowTest test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+exit code 0
+```
+
+Full Java suite:
+
+```text
+mvn -q test
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+Usage: astro-export [-hV] [--dry-run] [--out=<out>] [--report=<report>]
+                    [--review=<review>] [--vault=<vault>] [COMMAND]
+Export explicitly published Obsidian notes into Astro source trees.
+      --dry-run           select and report without writing content
+  -h, --help              Show this help message and exit.
+      --out=<out>         Astro project root for atomic write mode
+      --report=<report>   report path
+      --review=<review>   translation review workspace
+  -V, --version           Print version information and exit.
+      --vault=<vault>     Obsidian vault root
+Commands:
+  build-from-review
+  migrate-overrides
+  prepare
+  inspect-publication
+  mark-reviewed
+  refresh-publication-queue
+  write-publication-contract
+exit code 0
+```
+
+Whitespace:
+
+```text
+git diff --check
+exit code 0
+```
+
+## Files Changed In Fix Round 2
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/cli/AstroExportCommand.java`
+- `exporter-java/src/main/java/dev/eugene/astroexport/cli/CommandServices.java`
+- `exporter-java/src/test/java/dev/eugene/astroexport/cli/AstroExportCommandTest.java`
+- `.superpowers/sdd/2026-07-30-late-bound-semantic-links/task-4-report.md`
+
+## Concerns
+
+- Maven/JNA still emits the existing native-access warning under the current JDK; tests exit 0.

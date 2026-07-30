@@ -755,6 +755,65 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void semanticLeaseClosesWhenCandidateEnglishRewriteFails()
+      throws Exception {
+    Path vault = temp.resolve("vault");
+    writeBlogNote(vault);
+    Path review = temp.resolve("review");
+    writeSemanticMarker(review);
+    ManifestEntry entry = currentBlogEntry(vault);
+    byte[] ru = ReviewWorkspace.renderRuReview(entry).getBytes(StandardCharsets.UTF_8);
+    byte[] en = """
+        ---
+        sourceHash: %s
+        ? &statusKey translationStatus
+        : reviewed
+        ? *statusKey
+        : generated
+        translatedAt: 2026-07-17
+        translationProfile: codex-test-v1
+        title: English title
+        description: English description.
+        ---
+        English body.
+        """.formatted(entry.translationSourceHash()).getBytes(StandardCharsets.UTF_8);
+    Path candidate = review.resolve("blog/essay/candidate");
+    Files.createDirectories(candidate);
+    Files.write(candidate.resolve("ru.md"), ru);
+    Files.write(candidate.resolve("en.md"), en);
+    Files.write(candidate.resolve("references.json"), referencesFor(ru, en));
+    CommandServices services = CommandServices.defaults()
+        .withEnglishManifestAction((russian, validationRoot) -> {
+          ManifestEntry russianEntry = russian.entries().getFirst();
+          LinkedHashMap<String, Object> metadata = new LinkedHashMap<>(russianEntry.metadata());
+          metadata.put("translationStatus", "generated");
+          return new ManifestResult(
+              List.of(new ManifestEntry(
+                  russianEntry.sourcePath(),
+                  russianEntry.targetPath(),
+                  russianEntry.route(),
+                  metadata,
+                  russianEntry.body(),
+                  russianEntry.translationSourceHash(),
+                  russianEntry.translationSourceMetadata())),
+              List.of(),
+              List.of(),
+              List.of());
+        });
+
+    CommandFixture.Result result = runMarkReviewed(
+        new AstroExportCommand(services), vault, review, temp.resolve("jobs"));
+    Map<String, Object> payload = json(result.stdout());
+
+    assertEquals(1, result.exitCode());
+    assertEquals(false, payload.get("ok"));
+    assertEquals("translation_failed", payload.get("status"), result.stdout());
+    try (SemanticOperationLock.Lease ignored = SemanticOperationLock.acquireExclusive(review)) {
+      assertTrue(true);
+    }
+  }
+
+  @Test
   void snapshotFailureReturnsReadyForReviewAndRetryCompletesTheBaseline()
       throws Exception {
     Path vault = temp.resolve("vault");

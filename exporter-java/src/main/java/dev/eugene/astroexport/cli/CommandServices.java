@@ -123,6 +123,11 @@ public final class CommandServices {
         writeSiteAction, gateRunner);
   }
 
+  public CommandServices withEnglishManifestAction(EnglishManifestAction replacement) {
+    return copy(clock, selectionAction, manifestAction, replacement, prepareAction,
+        writeSiteAction, gateRunner);
+  }
+
   public CommandServices withGateRunner(SiteWriter.GateRunner replacement) {
     return copy(clock, selectionAction, manifestAction, englishManifestAction, prepareAction,
         writeSiteAction, replacement);
