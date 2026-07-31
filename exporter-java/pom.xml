@@ -17,6 +17,8 @@
     <java-diff-utils.version>4.15</java-diff-utils.version>
     <junit.version>6.1.0</junit.version>
     <native.maven.plugin.version>1.1.4</native.maven.plugin.version>
+    <pitest.version>1.25.7</pitest.version>
+    <pitest-junit5-plugin.version>1.2.3</pitest-junit5-plugin.version>
   </properties>
 
   <dependencies>
@@ -74,6 +76,32 @@
         <version>3.5.0</version>
         <configuration>
           <mainClass>dev.eugene.astroexport.AstroExportApp</mainClass>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.pitest</groupId>
+        <artifactId>pitest-maven</artifactId>
+        <version>${pitest.version}</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.pitest</groupId>
+            <artifactId>pitest-junit5-plugin</artifactId>
+            <version>${pitest-junit5-plugin.version}</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <targetClasses>
+            <param>dev.eugene.astroexport.*</param>
+          </targetClasses>
+          <targetTests>
+            <param>dev.eugene.astroexport.*</param>
+          </targetTests>
+          <outputFormats>
+            <param>HTML</param>
+            <param>XML</param>
+          </outputFormats>
+          <timestampedReports>false</timestampedReports>
+          <reportsDirectory>${project.build.directory}/pit-reports</reportsDirectory>
         </configuration>
       </plugin>
       <plugin>
