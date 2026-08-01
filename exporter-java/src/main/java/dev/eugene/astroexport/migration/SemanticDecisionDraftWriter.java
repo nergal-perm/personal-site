@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ public final class SemanticDecisionDraftWriter {
     if (destination.startsWith(review)) {
       throw new IllegalArgumentException("draft path must be outside the review root");
     }
+    rejectRealPathInsideReview(destination, review);
     Path base = destination.getParent();
     if (base == null) {
       throw new IllegalArgumentException("draft path must have a parent");
@@ -91,6 +93,31 @@ public final class SemanticDecisionDraftWriter {
         && page.approvedEnglish().safe()
         && page.occurrences().stream().allMatch(occurrence ->
             occurrence.targetRef() != null && !occurrence.targetRef().isBlank());
+  }
+
+  private static void rejectRealPathInsideReview(Path destination, Path review) {
+    try {
+      Path reviewReal = review.toRealPath();
+      Path existing = destination;
+      List<Path> unresolvedSuffix = new ArrayList<>();
+      while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
+        Path name = existing.getFileName();
+        if (name == null || existing.getParent() == null) {
+          throw new IllegalArgumentException("draft path cannot be resolved safely");
+        }
+        unresolvedSuffix.add(name);
+        existing = existing.getParent();
+      }
+      Path candidate = existing.toRealPath();
+      for (int index = unresolvedSuffix.size() - 1; index >= 0; index--) {
+        candidate = candidate.resolve(unresolvedSuffix.get(index));
+      }
+      if (candidate.startsWith(reviewReal)) {
+        throw new IllegalArgumentException("draft path resolves inside the review root");
+      }
+    } catch (IOException error) {
+      throw new UncheckedIOException("cannot verify draft path safely", error);
+    }
   }
 
   private static Map<String, Object> occurrencePayload(ReferenceMigrationAligner.MigrationOccurrence occurrence) {

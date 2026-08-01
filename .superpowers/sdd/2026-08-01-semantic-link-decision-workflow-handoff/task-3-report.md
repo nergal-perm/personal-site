@@ -135,3 +135,71 @@ Result: passed with no output.
 - The executable decision gate is fail-closed for unsafe, unresolved, and order-mismatch pages, and independently rejects null/blank target references.
 - The writer still creates mechanical semantic-link scaffolds for safe `confirmed-needed` pages. Those links are review aids, not assertions of intent; conversion requires human editing and removal of `draftOnly`.
 - Pre-existing untracked `exporter-java/reports/` and `exporter-java/review/` artifacts remain untouched. No real vault or real legacy review workspace was used.
+
+## Fix round 2/5: symlinked draft destination protection
+
+### Changes
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/migration/SemanticDecisionDraftWriter.java`
+  - Resolves the review root and the nearest existing destination ancestor with `toRealPath()` before creating any draft directory or file.
+  - Reconstructs the intended destination through unresolved path components and rejects destinations whose real path is inside the real review root.
+  - Retains the lexical check, `draftOnly` boundary, and safe `confirmed-needed`/non-blank-target gating from fix round 1.
+- `exporter-java/src/test/java/dev/eugene/astroexport/cli/AstroExportCommandTest.java`
+  - Added a regression where an outside draft path is a symlink into `review/blog/page/published`; it proves the approved RU snapshot remains byte-identical and no draft write occurs.
+- `.superpowers/sdd/2026-08-01-semantic-link-decision-workflow-handoff/task-3-report.md`
+  - Appended this fix-round report.
+
+### Exact verification
+
+Focused draft regression:
+
+```bash
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q '-Dtest=dev.eugene.astroexport.cli.AstroExportCommandTest#*Draft*' test
+```
+
+Result: exit code 0; 2 tests, 0 failures, 0 errors, 0 skipped.
+
+Required CLI suite:
+
+```bash
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -Dtest=dev.eugene.astroexport.cli.AstroExportCommandTest test
+```
+
+Result: exit code 0; 51 tests, 0 failures, 0 errors, 0 skipped. Maven emitted the existing JNA restricted-native-access warning.
+
+Fixture verification:
+
+```bash
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -Dtest=dev.eugene.astroexport.migration.ReferenceMigrationInventoryTest test
+```
+
+Result: exit code 0; 18 tests, 0 failures, 0 errors, 0 skipped.
+
+Compile check:
+
+```bash
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -DskipTests compile
+```
+
+Result: exit code 0.
+
+Diff check:
+
+```bash
+cd /Users/eugene/Dev/personal-site
+git diff --check
+```
+
+Result: passed with no output.
+
+### Fix-round self-review and concerns
+
+- The safety check now fails closed if the review root or an existing destination ancestor cannot be resolved, and it runs before `Files.createDirectories` and before every atomic write.
+- Symlinked directories and existing symlinked destination files are resolved through the nearest existing ancestor, so lexical escapes cannot route writes into approval-owned snapshots.
+- The `draftOnly` boundary and unsafe/unresolved/order-mismatch gating from fix round 1 remain unchanged.
+- Concern: draft output still requires a human conversion step; only converted payloads with `draftOnly` removed can enter the existing decision validator.
+- Pre-existing untracked `exporter-java/reports/` and `exporter-java/review/` artifacts remain untouched. No real vault or real legacy review workspace was used.

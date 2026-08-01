@@ -211,6 +211,17 @@ final class AstroExportCommandTest {
     assertEquals(1, result.exitCode());
     assertTrue(result.stdout().contains("draft path must be outside the review root"));
     assertArrayEquals(before, Files.readAllBytes(publishedRussian));
+
+    Path symlinkedPublished = temp.resolve("draft-link");
+    Files.createSymbolicLink(symlinkedPublished, publishedRussian.getParent());
+    CommandFixture.Result symlinkResult = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(), "--review", review.toString(), "--astro", astro.toString(),
+        "--report", report.toString(), "--draft", symlinkedPublished.resolve("ru.md").toString(), "--json");
+
+    assertEquals(1, symlinkResult.exitCode());
+    assertTrue(symlinkResult.stdout().contains("draft path resolves inside the review root"));
+    assertArrayEquals(before, Files.readAllBytes(publishedRussian));
   }
 
   @Test
