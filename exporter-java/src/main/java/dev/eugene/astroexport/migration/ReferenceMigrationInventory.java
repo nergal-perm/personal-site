@@ -125,6 +125,10 @@ public final class ReferenceMigrationInventory {
     if (intValue(payload.get("schemaVersion")) != 1) {
       throw new DecisionValidationException("unsupported-schema", "decisions schemaVersion must be 1");
     }
+    if (Boolean.TRUE.equals(payload.get("draftOnly"))) {
+      throw new DecisionValidationException(
+          "draft-not-converted", "decision draft must be human-reviewed and converted before apply");
+    }
     String inventorySha256 = string(payload.get("inventorySha256"));
     if (!inventory.inventorySha256().equals(inventorySha256)) {
       throw new DecisionValidationException("stale-inventory", "decision inventorySha256 does not match inventory");

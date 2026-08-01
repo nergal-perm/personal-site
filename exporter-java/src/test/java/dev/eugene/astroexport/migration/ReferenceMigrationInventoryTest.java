@@ -105,7 +105,7 @@ final class ReferenceMigrationInventoryTest {
     ReferenceMigrationInventory.Inventory inventory =
         new ReferenceMigrationInventory().inspect(vault, review, inventoryReport);
 
-    new SemanticDecisionDraftWriter().write(decisions, inventory);
+    new SemanticDecisionDraftWriter().write(decisions, inventory, review);
     Map<String, Object> payload = JSON.readValue(Files.readAllBytes(decisions), new TypeReference<>() { });
     Map<?, ?> occurrence = (Map<?, ?>) ((List<?>) ((Map<?, ?>) ((List<?>) payload.get("pages")).getFirst())
         .get("occurrences")).getFirst();
@@ -118,8 +118,32 @@ final class ReferenceMigrationInventoryTest {
     Map<?, ?> decision = (Map<?, ?>) ((Map<?, ?>) payload.get("decisions")).get("vault-ref-page/page");
     assertEquals("approve-corrected-page", decision.get("decision"));
     assertEquals(inventory.inventorySha256(), payload.get("inventorySha256"));
-    assertEquals(1, new ReferenceMigrationInventory().validateDecisions(inventory, decisions).decisions().size());
+    assertEquals(true, payload.get("draftOnly"));
+    ReferenceMigrationInventory.DecisionValidationException draftError = assertThrows(
+        ReferenceMigrationInventory.DecisionValidationException.class,
+        () -> new ReferenceMigrationInventory().validateDecisions(inventory, decisions));
+    assertEquals("draft-not-converted", draftError.code());
     assertEquals(beforeReview, treeSnapshot(review));
+  }
+
+  @Test
+  void unresolvedPageDraftContainsContextButNoExecutableDecision() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path decisions = temp.resolve("draft/decisions.json");
+    writeNote(vault, "page.md", "[[Missing|missing]]");
+    writeCatalog(review, "vault-ref-page", "page.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[missing](/ru/missing/)", "[missing](/en/missing/)");
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+    assertEquals("unresolved", inventory.pages().getFirst().status().json());
+    new SemanticDecisionDraftWriter().write(decisions, inventory, review);
+
+    Map<String, Object> payload = JSON.readValue(Files.readAllBytes(decisions), new TypeReference<>() { });
+    assertTrue(((Map<?, ?>) payload.get("decisions")).isEmpty());
+    assertEquals("unresolved", ((Map<?, ?>) ((List<?>) payload.get("pages")).getFirst()).get("status"));
   }
 
   @Test

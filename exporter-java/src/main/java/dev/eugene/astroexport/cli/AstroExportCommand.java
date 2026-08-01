@@ -709,7 +709,7 @@ public final class AstroExportCommand implements Callable<Integer> {
           services.inspectReferenceMigration(vaultRoot, reviewRoot, astroRoot, reportPath);
       ReferenceMigrationInventory.Summary summary = inventory.summary();
       if (draftPath != null) {
-        new SemanticDecisionDraftWriter().write(draftPath, inventory);
+        new SemanticDecisionDraftWriter().write(draftPath, inventory, reviewRoot);
         emitJson(bridge("migrate-semantic-links", true, "draft-written")
             .summary(summary.toPayload())
             .build());

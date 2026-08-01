@@ -76,3 +76,62 @@ Result: passed with no output.
 
 - The initial corrected files are review scaffolds: they replace the first ordered Markdown links with semantic reference links and append placeholders when a page has fewer Markdown links than occurrences. A human must inspect/edit them before applying migration.
 - Unsafe pages do not receive an executable page decision entry; their inventory context remains available in the draft for manual investigation.
+
+## Fix round 1/5: Terra findings addressed
+
+### Changes
+
+- `exporter-java/src/main/java/dev/eugene/astroexport/migration/SemanticDecisionDraftWriter.java`
+  - Now receives the review root and rejects every draft destination inside it before creating directories or files. This protects `review/*/published` and the rest of the legacy review workspace from overwrite.
+  - Marks generated payloads with `draftOnly: true` and `draftStatus: needs-human-conversion`.
+  - Generates executable page-corrected decisions only for `confirmed-needed` pages with safe approved RU/EN snapshots and non-blank `targetRef` on every occurrence. Unsafe, unresolved, and order-mismatch pages remain context-only.
+- `exporter-java/src/main/java/dev/eugene/astroexport/cli/AstroExportCommand.java`
+  - Passes `--review` into the writer so the path safety boundary is enforced at the CLI boundary.
+- `exporter-java/src/main/java/dev/eugene/astroexport/migration/ReferenceMigrationInventory.java`
+  - Rejects `draftOnly` payloads with `draft-not-converted`; a human must convert the review scaffold before `--apply` can validate it.
+- `exporter-java/src/test/java/dev/eugene/astroexport/cli/AstroExportCommandTest.java`
+  - Added a regression attempting to use `review/blog/page/published/ru.md` as the draft destination and proves the approved snapshot remains byte-identical.
+  - Updated the deterministic draft fixture to use a `confirmed-needed` page.
+- `exporter-java/src/test/java/dev/eugene/astroexport/migration/ReferenceMigrationInventoryTest.java`
+  - Proves an untouched generated draft is rejected as `draft-not-converted`.
+  - Proves an unresolved page retains review context but has no executable decision.
+- `.superpowers/sdd/2026-08-01-semantic-link-decision-workflow-handoff/task-3-report.md`
+  - Appended this fix-round report.
+
+### Exact verification
+
+```bash
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -Dtest=dev.eugene.astroexport.cli.AstroExportCommandTest test
+```
+
+Result: exit code 0; 50 tests, 0 failures, 0 errors, 0 skipped. Maven emitted the existing JNA restricted-native-access warning.
+
+```bash
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -Dtest=dev.eugene.astroexport.migration.ReferenceMigrationInventoryTest test
+```
+
+Result: exit code 0; 18 tests, 0 failures, 0 errors, 0 skipped.
+
+```bash
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -DskipTests compile
+```
+
+Result: exit code 0.
+
+```bash
+cd /Users/eugene/Dev/personal-site
+git diff --check
+```
+
+Result: passed with no output.
+
+### Fix-round self-review and concerns
+
+- A generated draft is now visibly and executably non-final: `draftOnly` is rejected by the same live validator used by apply. Removing that marker is the explicit human conversion boundary.
+- Draft path validation runs before draft directory creation and rejects any path under the supplied review root, including approval-owned `published` files.
+- The executable decision gate is fail-closed for unsafe, unresolved, and order-mismatch pages, and independently rejects null/blank target references.
+- The writer still creates mechanical semantic-link scaffolds for safe `confirmed-needed` pages. Those links are review aids, not assertions of intent; conversion requires human editing and removal of `draftOnly`.
+- Pre-existing untracked `exporter-java/reports/` and `exporter-java/review/` artifacts remain untouched. No real vault or real legacy review workspace was used.

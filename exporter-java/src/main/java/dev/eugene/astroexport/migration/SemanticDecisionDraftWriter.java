@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -20,8 +21,15 @@ public final class SemanticDecisionDraftWriter {
   private static final ObjectMapper JSON = new ObjectMapper();
   private static final Pattern MARKDOWN_LINK = Pattern.compile("\\[(?<label>[^\\]\\n]*?)\\]\\((?<destination>[^\\r\\n)]*?)\\)");
 
-  public void write(Path decisionsPath, ReferenceMigrationInventory.Inventory inventory) {
+  public void write(
+      Path decisionsPath,
+      ReferenceMigrationInventory.Inventory inventory,
+      Path reviewRoot) {
     Path destination = decisionsPath.toAbsolutePath().normalize();
+    Path review = Objects.requireNonNull(reviewRoot, "reviewRoot").toAbsolutePath().normalize();
+    if (destination.startsWith(review)) {
+      throw new IllegalArgumentException("draft path must be outside the review root");
+    }
     Path base = destination.getParent();
     if (base == null) {
       throw new IllegalArgumentException("draft path must have a parent");
@@ -30,6 +38,8 @@ public final class SemanticDecisionDraftWriter {
       Files.createDirectories(base);
       LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
       payload.put("schemaVersion", 1);
+      payload.put("draftOnly", true);
+      payload.put("draftStatus", "needs-human-conversion");
       payload.put("inventorySha256", inventory.inventorySha256());
       payload.put("draftFormat", "page-corrected-v1");
       List<Map<String, Object>> pages = new ArrayList<>();
@@ -45,7 +55,7 @@ public final class SemanticDecisionDraftWriter {
         pagePayload.put("status", page.status().json());
         pagePayload.put("automatic", page.automatic());
         pagePayload.put("occurrences", occurrences);
-        if (!page.automatic() && page.approvedRussian().safe() && page.approvedEnglish().safe()) {
+        if (executablePage(page)) {
           String folder = "pages/%03d-%s".formatted(pageNumber++, safeName(page.pageRef()));
           Path russianPath = base.resolve(folder).resolve("corrected-ru.md");
           Path englishPath = base.resolve(folder).resolve("corrected-en.md");
@@ -73,6 +83,14 @@ public final class SemanticDecisionDraftWriter {
     } catch (IOException error) {
       throw new UncheckedIOException("cannot write semantic decision draft", error);
     }
+  }
+
+  private static boolean executablePage(ReferenceMigrationAligner.MigrationPage page) {
+    return page.status() == ReferenceMigrationAligner.PageStatus.CONFIRMED_NEEDED
+        && page.approvedRussian().safe()
+        && page.approvedEnglish().safe()
+        && page.occurrences().stream().allMatch(occurrence ->
+            occurrence.targetRef() != null && !occurrence.targetRef().isBlank());
   }
 
   private static Map<String, Object> occurrencePayload(ReferenceMigrationAligner.MigrationOccurrence occurrence) {

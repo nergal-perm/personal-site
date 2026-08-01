@@ -159,7 +159,7 @@ final class AstroExportCommandTest {
     Path report = temp.resolve("inventory.json");
     Path draft = temp.resolve("decision-draft.json");
     Files.createDirectories(astro);
-    writeRawNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeRawNote(vault, "page.md", "[[Target|target]]");
     writeRawNote(vault, "target.md", "Target.");
     writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
     writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
@@ -185,6 +185,32 @@ final class AstroExportCommandTest {
     assertEquals("vault-ref-page/page", ((Map<?, ?>) draftPayload.get("decisions")).keySet().iterator().next());
     assertEquals(beforeReview, treeSnapshot(review));
     assertTrue(Files.exists(draft.getParent().resolve("pages/001-vault-ref-page/corrected-ru.md")));
+  }
+
+  @Test
+  void migrateSemanticLinksDraftRejectsReviewRootAndPublishedDestinations() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    Path report = temp.resolve("inventory.json");
+    Path publishedRussian = review.resolve("blog/page/published/ru.md");
+    Files.createDirectories(astro);
+    writeRawNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeRawNote(vault, "target.md", "Target.");
+    writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)");
+    byte[] before = Files.readAllBytes(publishedRussian);
+
+    CommandFixture.Result result = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(), "--review", review.toString(), "--astro", astro.toString(),
+        "--report", report.toString(), "--draft", publishedRussian.toString(), "--json");
+
+    assertEquals(1, result.exitCode());
+    assertTrue(result.stdout().contains("draft path must be outside the review root"));
+    assertArrayEquals(before, Files.readAllBytes(publishedRussian));
   }
 
   @Test
