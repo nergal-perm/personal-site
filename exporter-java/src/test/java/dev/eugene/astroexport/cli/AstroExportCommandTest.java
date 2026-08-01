@@ -2,6 +2,7 @@ package dev.eugene.astroexport.cli;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertIterableEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -148,6 +149,42 @@ final class AstroExportCommandTest {
     assertEquals(false, payload.get("ok"));
     assertEquals("decisions-required", payload.get("status"));
     assertEquals(1, ((Map<?, ?>) payload.get("summary")).get("confirmedNeeded"));
+  }
+
+  @Test
+  void migrateSemanticLinksDraftIsDeterministicAndDoesNotTouchApprovedSnapshots() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    Path report = temp.resolve("inventory.json");
+    Path draft = temp.resolve("decision-draft.json");
+    Files.createDirectories(astro);
+    writeRawNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeRawNote(vault, "target.md", "Target.");
+    writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)");
+    Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
+
+    CommandFixture.Result first = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(), "--review", review.toString(), "--astro", astro.toString(),
+        "--report", report.toString(), "--draft", draft.toString(), "--json");
+    byte[] firstDraft = Files.readAllBytes(draft);
+    CommandFixture.Result second = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(), "--review", review.toString(), "--astro", astro.toString(),
+        "--report", report.toString(), "--draft", draft.toString(), "--json");
+
+    assertEquals(0, first.exitCode(), first.stdout() + first.stderr());
+    assertEquals(0, second.exitCode(), second.stdout() + second.stderr());
+    assertEquals("draft-written", json(first.stdout()).get("status"));
+    assertArrayEquals(firstDraft, Files.readAllBytes(draft));
+    Map<String, Object> draftPayload = json(Files.readString(draft));
+    assertEquals("vault-ref-page/page", ((Map<?, ?>) draftPayload.get("decisions")).keySet().iterator().next());
+    assertEquals(beforeReview, treeSnapshot(review));
+    assertTrue(Files.exists(draft.getParent().resolve("pages/001-vault-ref-page/corrected-ru.md")));
   }
 
   @Test

@@ -8,6 +8,7 @@ import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.migration.SemanticOperationLock;
 import dev.eugene.astroexport.migration.ReferenceMigrationInventory;
+import dev.eugene.astroexport.migration.SemanticDecisionDraftWriter;
 import dev.eugene.astroexport.migration.SemanticMigrationService;
 import dev.eugene.astroexport.model.ManifestEntry;
 import dev.eugene.astroexport.model.ManifestResult;
@@ -623,8 +624,16 @@ public final class AstroExportCommand implements Callable<Integer> {
       Path decisionsPath,
       boolean apply,
       boolean rollForward,
-      boolean rollBack) {
+      boolean rollBack,
+      Path draftPath) {
     int modes = (apply ? 1 : 0) + (rollForward ? 1 : 0) + (rollBack ? 1 : 0);
+    if (draftPath != null && modes > 0) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "draft", "--draft is available only in read-only inventory mode.", true)))
+          .build());
+      return 1;
+    }
     if (modes > 1) {
       emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
           .diagnostics(List.of(new PublicationDiagnostic(
@@ -699,6 +708,13 @@ public final class AstroExportCommand implements Callable<Integer> {
       ReferenceMigrationInventory.Inventory inventory =
           services.inspectReferenceMigration(vaultRoot, reviewRoot, astroRoot, reportPath);
       ReferenceMigrationInventory.Summary summary = inventory.summary();
+      if (draftPath != null) {
+        new SemanticDecisionDraftWriter().write(draftPath, inventory);
+        emitJson(bridge("migrate-semantic-links", true, "draft-written")
+            .summary(summary.toPayload())
+            .build());
+        return 0;
+      }
       boolean ok = !summary.decisionsRequired();
       emitJson(bridge(
               "migrate-semantic-links",
@@ -2174,6 +2190,7 @@ public final class AstroExportCommand implements Callable<Integer> {
     @Option(names = "--astro") Path astro;
     @Option(names = "--report") Path report;
     @Option(names = "--decisions") Path decisions;
+    @Option(names = "--draft") Path draft;
     @Option(names = "--apply") boolean apply;
     @Option(names = "--roll-forward") boolean rollForward;
     @Option(names = "--roll-back") boolean rollBack;
@@ -2189,7 +2206,8 @@ public final class AstroExportCommand implements Callable<Integer> {
           decisions,
           apply,
           rollForward,
-          rollBack);
+          rollBack,
+          draft);
     }
   }
 

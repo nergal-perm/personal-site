@@ -89,6 +89,40 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
+  void decisionDraftContainsReviewContextAndValidatedPageCorrectedPayload() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path inventoryReport = temp.resolve("inventory.json");
+    Path decisions = temp.resolve("draft/decisions.json");
+    writeNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)",
+        List.of("ref-0001", "ref-0002"));
+    Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, inventoryReport);
+
+    new SemanticDecisionDraftWriter().write(decisions, inventory);
+    Map<String, Object> payload = JSON.readValue(Files.readAllBytes(decisions), new TypeReference<>() { });
+    Map<?, ?> occurrence = (Map<?, ?>) ((List<?>) ((Map<?, ?>) ((List<?>) payload.get("pages")).getFirst())
+        .get("occurrences")).getFirst();
+    assertEquals("vault-ref-page/ref-0001", occurrence.get("occurrenceKey"));
+    assertEquals("[[Target|target]]", occurrence.get("rawWikilink"));
+    assertEquals("vault-ref-target", occurrence.get("targetRef"));
+    assertTrue(occurrence.containsKey("heading"));
+    assertTrue(occurrence.containsKey("reason"));
+    assertTrue(occurrence.containsKey("sourceContext"));
+    Map<?, ?> decision = (Map<?, ?>) ((Map<?, ?>) payload.get("decisions")).get("vault-ref-page/page");
+    assertEquals("approve-corrected-page", decision.get("decision"));
+    assertEquals(inventory.inventorySha256(), payload.get("inventorySha256"));
+    assertEquals(1, new ReferenceMigrationInventory().validateDecisions(inventory, decisions).decisions().size());
+    assertEquals(beforeReview, treeSnapshot(review));
+  }
+
+  @Test
   void sidecarOrderMismatchPreventsExactAutomaticInventory() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");
