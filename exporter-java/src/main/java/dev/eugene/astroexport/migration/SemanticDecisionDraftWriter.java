@@ -26,18 +26,15 @@ public final class SemanticDecisionDraftWriter {
       Path decisionsPath,
       ReferenceMigrationInventory.Inventory inventory,
       Path reviewRoot) {
-    Path destination = decisionsPath.toAbsolutePath().normalize();
     Path review = Objects.requireNonNull(reviewRoot, "reviewRoot").toAbsolutePath().normalize();
-    if (destination.startsWith(review)) {
-      throw new IllegalArgumentException("draft path must be outside the review root");
-    }
-    rejectRealPathInsideReview(destination, review);
+    Path destination = SemanticOutputSafety.preflight(decisionsPath, review, "draft path");
     Path base = destination.getParent();
     if (base == null) {
       throw new IllegalArgumentException("draft path must have a parent");
     }
+    Path outputRoot = base.resolve(destination.getFileName() + ".files").normalize();
+    SemanticOutputSafety.preflight(outputRoot, review, "draft output tree");
     try {
-      Files.createDirectories(base);
       LinkedHashMap<String, Object> payload = new LinkedHashMap<>();
       payload.put("schemaVersion", 1);
       payload.put("draftOnly", true);
@@ -46,6 +43,7 @@ public final class SemanticDecisionDraftWriter {
       payload.put("draftFormat", "page-corrected-v1");
       List<Map<String, Object>> pages = new ArrayList<>();
       LinkedHashMap<String, Object> decisions = new LinkedHashMap<>();
+      List<OutputFile> outputs = new ArrayList<>();
       int pageNumber = 1;
       for (ReferenceMigrationAligner.MigrationPage page : inventory.pages()) {
         List<Map<String, Object>> occurrences = page.occurrences().stream()
@@ -59,12 +57,12 @@ public final class SemanticDecisionDraftWriter {
         pagePayload.put("occurrences", occurrences);
         if (executablePage(page)) {
           String folder = "pages/%03d-%s".formatted(pageNumber++, safeName(page.pageRef()));
-          Path russianPath = base.resolve(folder).resolve("corrected-ru.md");
-          Path englishPath = base.resolve(folder).resolve("corrected-en.md");
+          Path russianPath = outputRoot.resolve(folder).resolve("corrected-ru.md");
+          Path englishPath = outputRoot.resolve(folder).resolve("corrected-en.md");
           byte[] russian = corrected(page.approvedRussian().text(), page.occurrences());
           byte[] english = corrected(page.approvedEnglish().text(), page.occurrences());
-          writeFile(russianPath, russian);
-          writeFile(englishPath, english);
+          outputs.add(new OutputFile(russianPath, russian, "corrected Russian draft"));
+          outputs.add(new OutputFile(englishPath, english, "corrected English draft"));
           LinkedHashMap<String, Object> decision = new LinkedHashMap<>();
           decision.put("decision", "approve-corrected-page");
           decision.put("correctedRussianPath", base.relativize(russianPath).toString());
@@ -81,7 +79,14 @@ public final class SemanticDecisionDraftWriter {
       }
       payload.put("pages", pages);
       payload.put("decisions", decisions);
-      writeFile(destination, JSON.writeValueAsBytes(payload));
+      outputs.add(new OutputFile(destination, JSON.writeValueAsBytes(payload), "decision draft"));
+      for (OutputFile output : outputs) {
+        SemanticOutputSafety.preflight(output.path(), review, output.kind());
+        SemanticOutputSafety.rejectConflict(output.path(), output.bytes(), output.kind());
+      }
+      for (OutputFile output : outputs) {
+        writeFile(output.path(), output.bytes(), review, output.kind());
+      }
     } catch (IOException error) {
       throw new UncheckedIOException("cannot write semantic decision draft", error);
     }
@@ -93,31 +98,6 @@ public final class SemanticDecisionDraftWriter {
         && page.approvedEnglish().safe()
         && page.occurrences().stream().allMatch(occurrence ->
             occurrence.targetRef() != null && !occurrence.targetRef().isBlank());
-  }
-
-  private static void rejectRealPathInsideReview(Path destination, Path review) {
-    try {
-      Path reviewReal = review.toRealPath();
-      Path existing = destination;
-      List<Path> unresolvedSuffix = new ArrayList<>();
-      while (!Files.exists(existing, LinkOption.NOFOLLOW_LINKS)) {
-        Path name = existing.getFileName();
-        if (name == null || existing.getParent() == null) {
-          throw new IllegalArgumentException("draft path cannot be resolved safely");
-        }
-        unresolvedSuffix.add(name);
-        existing = existing.getParent();
-      }
-      Path candidate = existing.toRealPath();
-      for (int index = unresolvedSuffix.size() - 1; index >= 0; index--) {
-        candidate = candidate.resolve(unresolvedSuffix.get(index));
-      }
-      if (candidate.startsWith(reviewReal)) {
-        throw new IllegalArgumentException("draft path resolves inside the review root");
-      }
-    } catch (IOException error) {
-      throw new UncheckedIOException("cannot verify draft path safely", error);
-    }
   }
 
   private static Map<String, Object> occurrencePayload(ReferenceMigrationAligner.MigrationOccurrence occurrence) {
@@ -179,14 +159,38 @@ public final class SemanticDecisionDraftWriter {
     return value.replaceAll("[^A-Za-z0-9._-]", "_");
   }
 
-  private static void writeFile(Path path, byte[] bytes) throws IOException {
-    Files.createDirectories(path.getParent());
+  private static void writeFile(Path path, byte[] bytes, Path review, String kind) throws IOException {
+    Path parent = path.getParent();
+    if (parent == null) {
+      throw new IllegalArgumentException(kind + " must have a parent");
+    }
+    SemanticOutputSafety.createDirectories(parent, review, kind);
+    SemanticOutputSafety.preflight(path, review, kind);
+    SemanticOutputSafety.rejectConflict(path, bytes, kind);
+    if (Files.exists(path, LinkOption.NOFOLLOW_LINKS)) {
+      return;
+    }
     Path temporary = Files.createTempFile(path.getParent(), "." + path.getFileName(), ".tmp");
     try {
       Files.write(temporary, bytes);
-      Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+      SemanticOutputSafety.preflight(temporary, review, kind + " temporary");
+      SemanticOutputSafety.preflight(path, review, kind);
+      Files.move(temporary, path, StandardCopyOption.ATOMIC_MOVE);
+    } catch (java.nio.file.FileAlreadyExistsException error) {
+      throw new IllegalArgumentException(kind + " already exists", error);
     } finally {
       Files.deleteIfExists(temporary);
+    }
+  }
+
+  private record OutputFile(Path path, byte[] bytes, String kind) {
+    private OutputFile {
+      bytes = bytes.clone();
+    }
+
+    @Override
+    public byte[] bytes() {
+      return bytes.clone();
     }
   }
 }

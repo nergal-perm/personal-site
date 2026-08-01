@@ -302,7 +302,7 @@ public final class CommandServices {
   public ReferenceMigrationInventory.DecisionSet validateReferenceMigration(
       ReferenceMigrationInventory.Inventory inventory,
       Path decisions) {
-    return referenceMigrationInventory.validateDecisions(inventory, decisions);
+    return semanticMigrationService.validateForApply(inventory, decisions);
   }
 
   public SemanticMigrationService.ApplyResult applySemanticMigration(

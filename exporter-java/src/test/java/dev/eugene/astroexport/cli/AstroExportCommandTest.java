@@ -184,7 +184,7 @@ final class AstroExportCommandTest {
     Map<String, Object> draftPayload = json(Files.readString(draft));
     assertEquals("vault-ref-page/page", ((Map<?, ?>) draftPayload.get("decisions")).keySet().iterator().next());
     assertEquals(beforeReview, treeSnapshot(review));
-    assertTrue(Files.exists(draft.getParent().resolve("pages/001-vault-ref-page/corrected-ru.md")));
+    assertTrue(Files.exists(draft.getParent().resolve("decision-draft.json.files/pages/001-vault-ref-page/corrected-ru.md")));
   }
 
   @Test
@@ -220,7 +220,7 @@ final class AstroExportCommandTest {
         "--report", report.toString(), "--draft", symlinkedPublished.resolve("ru.md").toString(), "--json");
 
     assertEquals(1, symlinkResult.exitCode());
-    assertTrue(symlinkResult.stdout().contains("draft path resolves inside the review root"));
+    assertTrue(symlinkResult.stdout().contains("draft path contains a symlink component"));
     assertArrayEquals(before, Files.readAllBytes(publishedRussian));
   }
 
@@ -236,9 +236,10 @@ final class AstroExportCommandTest {
     writeAstroRoute(astro, "src/content/blog/ru/target.md", "vault-ref-target", "/ru/essays/target/");
     writeAstroRoute(astro, "src/content/blog/en/target.md", "vault-ref-target", "/en/essays/target/");
     writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeRawNote(vault, "page.md", "No semantic links.");
     writeApprovedPublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
-        "See [target](/ru/essays/target/).",
-        "See [target](/en/essays/target/).");
+        "No semantic links.",
+        "No semantic links.");
     writeApprovedPublishedPair(review, "blog", "target", "target.md", "vault-ref-target",
         "Target.",
         "Target.");
@@ -246,16 +247,10 @@ final class AstroExportCommandTest {
         new dev.eugene.astroexport.migration.ReferenceMigrationInventory()
         .inspect(vault, review, astro, report);
     String inventorySha = (String) json(Files.readString(report)).get("inventorySha256");
-    dev.eugene.astroexport.migration.ReferenceMigrationAligner.MigrationOccurrence occurrence =
-        inventory.pages().getFirst().occurrences().getFirst();
     Path decisions = temp.resolve("decisions.json");
     Files.writeString(decisions, """
-        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%d,"end":%d}}}}
-        """.formatted(
-            inventorySha,
-            occurrence.occurrenceKey(),
-            occurrence.proposedEnSpan().start(),
-            occurrence.proposedEnSpan().end()));
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{}}
+        """.formatted(inventorySha));
     List<SiteWriter.GateInvocation> gates = new ArrayList<>();
 
     CommandFixture.Result result = run(
@@ -334,6 +329,63 @@ final class AstroExportCommandTest {
       assertEquals(beforeReview, treeSnapshot(review));
       assertFalse(Files.exists(modeRoot.resolve("inventory.json")));
     }
+  }
+
+  @Test
+  void migrateSemanticLinksValidateChecksFullPartialEmptyStaleAndChangedByteDecisions() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path astro = temp.resolve("astro");
+    Path report = temp.resolve("inventory.json");
+    Path draft = temp.resolve("full.json");
+    Files.createDirectories(astro);
+    writeRawNote(vault, "page.md", "[[Target|target]] [[Target|target]] [[Other|other]]");
+    writeRawNote(vault, "target.md", "Target.");
+    writeRawNote(vault, "other.md", "Other.");
+    writeSemanticCatalog(review,
+        "vault-ref-page", "page.md", "vault-ref-target", "target.md", "vault-ref-other", "other.md");
+    writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/) [other](/ru/other/)",
+        "[target](/en/target/) [target](/en/target/) [other](/en/other/)",
+        List.of("ref-0001", "ref-0002", "ref-0003"));
+
+    CommandFixture.Result drafted = run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(), "--review", review.toString(), "--astro", astro.toString(),
+        "--report", report.toString(), "--draft", draft.toString(), "--json");
+    assertEquals(0, drafted.exitCode(), drafted.stdout() + drafted.stderr());
+    Path full = temp.resolve("full-converted.json");
+    convertDraft(draft, full);
+    CommandFixture.Result fullResult = runValidate(vault, review, astro, report, full);
+    assertEquals("validated", json(fullResult.stdout()).get("status"), fullResult.stdout() + fullResult.stderr());
+
+    Path partial = temp.resolve("partial.json");
+    var inventory = new dev.eugene.astroexport.migration.ReferenceMigrationInventory()
+        .inspect(vault, review, astro, report);
+    var exactOccurrence = inventory.pages().getFirst().occurrences().stream()
+        .filter(occurrence -> occurrence.proposedEnSpan() != null)
+        .findFirst().orElseThrow();
+    Files.writeString(partial, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%d,"end":%d}}}}
+        """.formatted(inventory.inventorySha256(), exactOccurrence.occurrenceKey(),
+            exactOccurrence.proposedEnSpan().start(), exactOccurrence.proposedEnSpan().end()),
+        StandardCharsets.UTF_8);
+    assertEquals("unsafe-input", json(runValidate(vault, review, astro, report, partial).stdout()).get("status"));
+
+    Path empty = temp.resolve("empty.json");
+    Files.writeString(empty, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{}}
+        """.formatted(inventory.inventorySha256()), StandardCharsets.UTF_8);
+    assertEquals("unsafe-input", json(runValidate(vault, review, astro, report, empty).stdout()).get("status"));
+
+    Path stale = temp.resolve("stale.json");
+    Files.writeString(stale, """
+        {"schemaVersion":1,"inventorySha256":"stale","decisions":{}}
+        """, StandardCharsets.UTF_8);
+    assertEquals("unsafe-input", json(runValidate(vault, review, astro, report, stale).stdout()).get("status"));
+
+    Files.writeString(review.resolve("blog/page/published/en.md"), "changed approved English", StandardCharsets.UTF_8);
+    assertEquals("unsafe-input", json(runValidate(vault, review, astro, report, full).stdout()).get("status"));
   }
 
   @Test
@@ -2197,6 +2249,30 @@ final class AstroExportCommandTest {
     return JSON.readValue(stripped, new TypeReference<LinkedHashMap<String, Object>>() { });
   }
 
+  private CommandFixture.Result runValidate(
+      Path vault,
+      Path review,
+      Path astro,
+      Path report,
+      Path decisions) {
+    return run(command(),
+        "migrate-semantic-links",
+        "--vault", vault.toString(),
+        "--review", review.toString(),
+        "--astro", astro.toString(),
+        "--report", report.toString(),
+        "--decisions", decisions.toString(),
+        "--validate", "--json");
+  }
+
+  private static void convertDraft(Path draft, Path converted) throws Exception {
+    Map<String, Object> payload = JSON.readValue(
+        Files.readAllBytes(draft), new TypeReference<LinkedHashMap<String, Object>>() { });
+    payload.remove("draftOnly");
+    payload.remove("draftStatus");
+    Files.write(converted, JSON.writeValueAsBytes(payload));
+  }
+
   private static void assertNonRefreshBridgeIoFailure(
       CommandFixture.Result result,
       String command,
@@ -2373,6 +2449,18 @@ final class AstroExportCommandTest {
       String pageRef,
       String ru,
       String en) throws Exception {
+    writePublishedPair(reviewRoot, collection, publicId, sourcePath, pageRef, ru, en, List.of("ref-0001"));
+  }
+
+  private static void writePublishedPair(
+      Path reviewRoot,
+      String collection,
+      String publicId,
+      String sourcePath,
+      String pageRef,
+      String ru,
+      String en,
+      List<String> order) throws Exception {
     Path published = reviewRoot.resolve(collection).resolve(publicId).resolve("published");
     Files.createDirectories(published);
     Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
@@ -2383,7 +2471,7 @@ final class AstroExportCommandTest {
         "sourcePath", sourcePath,
         "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
         "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
-        "order", List.of("ref-0001"),
+        "order", order,
         "references", Map.of())), StandardCharsets.UTF_8);
   }
 

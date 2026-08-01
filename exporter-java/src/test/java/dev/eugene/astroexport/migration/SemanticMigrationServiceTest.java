@@ -363,7 +363,7 @@ final class SemanticMigrationServiceTest {
   }
 
   @Test
-  void stagedMaterializedReleaseMustMatchLegacyProjection() throws Exception {
+  void stagedMaterializedReleaseRejectsTamperedStagedReferences() throws Exception {
     Fixture fixture = linkedFixture();
 
     SemanticMigrationService.MigrationIncompleteException error = assertThrows(
@@ -379,7 +379,21 @@ final class SemanticMigrationServiceTest {
               }
             }));
 
-    assertTrue(causeChainContains(error, "parity"), () -> causeChain(error));
+    assertTrue(causeChainContains(error, "installed semantic page hash mismatch"), () -> causeChain(error));
+    assertFalse(Files.exists(SemanticSchemaState.activationMarker(fixture.review())));
+  }
+
+  @Test
+  void unsafePageCannotBeCorrected() throws Exception {
+    Fixture fixture = linkedFixture(true);
+
+    SemanticMigrationService.MigrationIncompleteException error = assertThrows(
+        SemanticMigrationService.MigrationIncompleteException.class,
+        () -> new SemanticMigrationService().apply(
+            fixture.request(), SemanticMigrationService.MigrationHooks.none()));
+
+    assertTrue(causeChainContains(error, "corrected page applies only to safe confirmed-needed pages"),
+        () -> causeChain(error));
     assertFalse(Files.exists(SemanticSchemaState.activationMarker(fixture.review())));
   }
 
@@ -461,32 +475,52 @@ final class SemanticMigrationServiceTest {
   }
 
   private Fixture linkedFixture() throws Exception {
+    return linkedFixture(false);
+  }
+
+  private Fixture linkedFixture(boolean unsafeApproved) throws Exception {
     Path vault = temp.resolve("vault-linked");
     Path review = temp.resolve("review-linked");
     Path astro = temp.resolve("astro-linked");
     Path report = temp.resolve("inventory-linked.json");
     Files.createDirectories(astro);
-    writePublishedSource(vault, "page-1.md", "blog", "page-1", "See [[page-2|target]].");
+    String rawBody = unsafeApproved
+        ? "See [[page-2|target]]."
+        : "See [[page-2|target]]. See [[page-2|target]].";
+    writePublishedSource(vault, "page-1.md", "blog", "page-1", rawBody);
     writePublishedSource(vault, "page-2.md", "blog", "page-2", "Target.");
     writeAstroRoute(astro, "src/content/blog/ru/page-1.md", "vault-ref-page-1", "/ru/essays/page-1/");
     writeAstroRoute(astro, "src/content/blog/en/page-1.md", "vault-ref-page-1", "/en/essays/page-1/");
     writeAstroRoute(astro, "src/content/blog/ru/page-2.md", "vault-ref-page-2", "/ru/essays/page-2/");
     writeAstroRoute(astro, "src/content/blog/en/page-2.md", "vault-ref-page-2", "/en/essays/page-2/");
     writeCatalog(review, 2);
-    writeLinkedPublishedPair(review);
+    writeLinkedPublishedPair(review, unsafeApproved);
     writePublishedPair(review, "page-2", "page-2.md", "vault-ref-page-2");
     ReferenceMigrationInventory.Inventory inventory =
         new ReferenceMigrationInventory().inspect(vault, review, astro, report);
-    ReferenceMigrationAligner.MigrationOccurrence occurrence =
-        inventory.pages().getFirst().occurrences().getFirst();
+    ReferenceMigrationAligner.MigrationPage page = inventory.pages().getFirst();
+    assertEquals(
+        unsafeApproved
+            ? ReferenceMigrationAligner.PageStatus.UNSAFE_PAGE
+            : ReferenceMigrationAligner.PageStatus.CONFIRMED_NEEDED,
+        page.status());
+    String correctedRu = approved("ru", "page-1", "See [target](ref:ref-0001). See [target](ref:ref-0002).\n");
+    String correctedEn = approved("en", "page-1", "See [target](ref:ref-0001). See [target](ref:ref-0002).\n");
+    Path correctedRuPath = temp.resolve("corrected-linked/ru.md");
+    Path correctedEnPath = temp.resolve("corrected-linked/en.md");
+    Files.createDirectories(correctedRuPath.getParent());
+    Files.writeString(correctedRuPath, correctedRu, StandardCharsets.UTF_8);
+    Files.writeString(correctedEnPath, correctedEn, StandardCharsets.UTF_8);
     Path decisions = temp.resolve("decisions-linked.json");
     Files.writeString(decisions, """
-        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%d,"end":%d}}}}
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s/page":{"decision":"approve-corrected-page","correctedRussianPath":"%s","correctedEnglishPath":"%s","approvedRussianSha256":"%s","approvedEnglishSha256":"%s","correctedRussianSha256":"%s","correctedEnglishSha256":"%s"}}}
         """.formatted(
-            inventory.inventorySha256(),
-            occurrence.occurrenceKey(),
-            occurrence.proposedEnSpan().start(),
-            occurrence.proposedEnSpan().end()));
+            inventory.inventorySha256(), page.pageRef(),
+            temp.relativize(correctedRuPath), temp.relativize(correctedEnPath),
+            PageReferenceMapCodec.sha256(page.approvedRussian().text().getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(page.approvedEnglish().text().getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(correctedRu.getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(correctedEn.getBytes(StandardCharsets.UTF_8))));
     return new Fixture(vault, review, astro, report, decisions);
   }
 
@@ -705,11 +739,17 @@ final class SemanticMigrationServiceTest {
         "references", Map.of())), StandardCharsets.UTF_8);
   }
 
-  private static void writeLinkedPublishedPair(Path review) throws Exception {
+  private static void writeLinkedPublishedPair(Path review, boolean unsafeApproved) throws Exception {
     Path published = review.resolve("blog/page-1/published");
     Files.createDirectories(published);
-    String ru = approved("ru", "page-1", "See [target](/ru/essays/page-2/).\n");
-    String en = approved("en", "page-1", "See [target](/en/essays/page-2/).\n");
+    String ruBody = unsafeApproved
+        ? "See [target](/ru/essays/page-2/).\n"
+        : "See [target](/ru/essays/page-2/). See [target](/ru/essays/page-2/).\n";
+    String enBody = unsafeApproved
+        ? "See [target](/en/essays/page-2/).\n"
+        : "See [target](/en/essays/page-2/). See [target](/en/essays/page-2/).\n";
+    String ru = approved("ru", "page-1", ruBody);
+    String en = approved("en", "page-1", enBody);
     Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
     Files.writeString(published.resolve("en.md"), en, StandardCharsets.UTF_8);
     Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
@@ -718,9 +758,20 @@ final class SemanticMigrationServiceTest {
         "sourcePath", "page-1.md",
         "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
         "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
-        "order", List.of("ref-0001"),
-        "references", Map.of(
+        "order", unsafeApproved ? List.of("ref-0001") : List.of("ref-0001", "ref-0002"),
+        "references", unsafeApproved
+            ? Map.of("ref-0001", Map.of(
+                "targetRef", "vault-ref-page-2",
+                "authoredTarget", "page-2",
+                "heading", "",
+                "label", "target"))
+            : Map.of(
                 "ref-0001", Map.of(
+                "targetRef", "vault-ref-page-2",
+                "authoredTarget", "page-2",
+                "heading", "",
+                "label", "target"),
+                "ref-0002", Map.of(
                 "targetRef", "vault-ref-page-2",
                 "authoredTarget", "page-2",
                 "heading", "",

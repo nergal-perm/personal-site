@@ -8,6 +8,7 @@ import dev.eugene.astroexport.manifest.ManifestBuilder;
 import dev.eugene.astroexport.migration.SemanticSchemaState;
 import dev.eugene.astroexport.migration.SemanticOperationLock;
 import dev.eugene.astroexport.migration.ReferenceMigrationInventory;
+import dev.eugene.astroexport.migration.SemanticOutputSafety;
 import dev.eugene.astroexport.migration.SemanticDecisionDraftWriter;
 import dev.eugene.astroexport.migration.SemanticMigrationService;
 import dev.eugene.astroexport.model.ManifestEntry;
@@ -699,6 +700,12 @@ public final class AstroExportCommand implements Callable<Integer> {
       return 1;
     }
     try {
+      if (!rollForward && !rollBack) {
+        SemanticOutputSafety.preflight(reportPath, reviewRoot, "inventory report");
+        if (draftPath != null) {
+          SemanticOutputSafety.preflight(draftPath, reviewRoot, "draft path");
+        }
+      }
       if (rollForward || rollBack) {
         services.recoverSemanticMigration(new SemanticMigrationService.RecoveryRequest(
             reviewRoot,

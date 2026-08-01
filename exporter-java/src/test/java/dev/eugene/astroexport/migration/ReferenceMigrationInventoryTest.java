@@ -89,6 +89,31 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
+  void inspectRejectsReportDestinationsInsideReviewIncludingSymlinkedParents() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    Path published = review.resolve("blog/page/published");
+    writeNote(vault, "page.md", "See [[Target|target]].");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "See [target](/ru/target/).", "See [target](/en/target/).", List.of("ref-0001"));
+    byte[] before = Files.readAllBytes(published.resolve("ru.md"));
+
+    assertThrows(IllegalArgumentException.class,
+        () -> new ReferenceMigrationInventory().inspect(
+            vault, review, published.resolve("ru.md")));
+    assertEquals(ByteBuffer.wrap(before), ByteBuffer.wrap(Files.readAllBytes(published.resolve("ru.md"))));
+
+    Path outsideLink = temp.resolve("report-link");
+    Files.createSymbolicLink(outsideLink, published);
+    assertThrows(IllegalArgumentException.class,
+        () -> new ReferenceMigrationInventory().inspect(
+            vault, review, outsideLink.resolve("ru.md")));
+    assertEquals(ByteBuffer.wrap(before), ByteBuffer.wrap(Files.readAllBytes(published.resolve("ru.md"))));
+  }
+
+  @Test
   void decisionDraftContainsReviewContextAndValidatedPageCorrectedPayload() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");
@@ -124,6 +149,42 @@ final class ReferenceMigrationInventoryTest {
         () -> new ReferenceMigrationInventory().validateDecisions(inventory, decisions));
     assertEquals("draft-not-converted", draftError.code());
     assertEquals(beforeReview, treeSnapshot(review));
+  }
+
+  @Test
+  void draftOutputsUseDedicatedTreesAndDoNotOverwriteHumanEdits() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)", List.of("ref-0001", "ref-0002"));
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review);
+    Path first = temp.resolve("first.json");
+    Path second = temp.resolve("second.json");
+
+    SemanticDecisionDraftWriter writer = new SemanticDecisionDraftWriter();
+    writer.write(first, inventory, review);
+    Map<String, Object> firstPayload = JSON.readValue(Files.readAllBytes(first), new TypeReference<>() { });
+    Path firstRussian = first.getParent().resolve(
+        (String) ((Map<?, ?>) ((Map<?, ?>) firstPayload.get("decisions")).get("vault-ref-page/page"))
+            .get("correctedRussianPath"));
+    Files.writeString(firstRussian, "human edit", StandardCharsets.UTF_8);
+
+    writer.write(second, inventory, review);
+    Map<String, Object> secondPayload = JSON.readValue(Files.readAllBytes(second), new TypeReference<>() { });
+    String firstPath = (String) ((Map<?, ?>) ((Map<?, ?>) firstPayload.get("decisions")).get("vault-ref-page/page"))
+        .get("correctedRussianPath");
+    String secondPath = (String) ((Map<?, ?>) ((Map<?, ?>) secondPayload.get("decisions")).get("vault-ref-page/page"))
+        .get("correctedRussianPath");
+    assertFalse(firstPath.equals(secondPath));
+    assertEquals("human edit", Files.readString(firstRussian));
+
+    assertThrows(IllegalArgumentException.class, () -> writer.write(first, inventory, review));
+    assertEquals("human edit", Files.readString(firstRussian));
   }
 
   @Test
@@ -377,7 +438,7 @@ final class ReferenceMigrationInventoryTest {
     Files.writeString(decisions, """
         {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/ref-0001":{"decision":"confirm","enSpan":{"start":0,"end":6}}}}
         """.formatted(inventory.inventorySha256()));
-    assertDecisionRejected(inventory, decisions, "hash-mismatch");
+    assertDecisionRejected(inventory, decisions, "ineligible-decision");
 
     Files.writeString(decisions, """
         {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/ref-0001":{"decision":"delete"}}}
@@ -388,6 +449,88 @@ final class ReferenceMigrationInventoryTest {
         {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"../escape.md","correctedEnglishSha256":"abc"}}}
         """.formatted(inventory.inventorySha256()));
     assertDecisionRejected(inventory, decisions, "escaping-corrected-path");
+  }
+
+  @Test
+  void decisionsRejectIneligibleAndConflictingDecisionForms() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)", List.of("ref-0001", "ref-0002"));
+    ReferenceMigrationInventory.Inventory ambiguous =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("ambiguous.json"));
+    Path decisions = temp.resolve("decisions.json");
+
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order"}}}
+        """.formatted(ambiguous.inventorySha256()), StandardCharsets.UTF_8);
+    assertDecisionRejected(ambiguous, decisions, "ineligible-decision");
+
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/page":{"decision":"approve-corrected-page"},"vault-ref-page/ref-0001":{"decision":"confirm","enSpan":{"start":0,"end":1}}}}
+        """.formatted(ambiguous.inventorySha256()), StandardCharsets.UTF_8);
+    assertDecisionRejected(ambiguous, decisions, "conflicting-decision");
+
+    Path exactVault = temp.resolve("exact-vault");
+    Path exactReview = temp.resolve("exact-review");
+    writeNote(exactVault, "page.md", "See [[Target|target]].");
+    writeNote(exactVault, "target.md", "Target.");
+    writeCatalog(exactReview, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(exactReview, "blog", "page", "page.md", "vault-ref-page",
+        "See [target](/ru/target/).", "See [target](/en/target/).", List.of("ref-0001"));
+    ReferenceMigrationInventory.Inventory exact =
+        new ReferenceMigrationInventory().inspect(exactVault, exactReview);
+    ReferenceMigrationAligner.MigrationOccurrence occurrence = exact.pages().getFirst().occurrences().getFirst();
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/page":{"decision":"approve-corrected-page"}}}
+        """.formatted(exact.inventorySha256()),
+        StandardCharsets.UTF_8);
+    assertDecisionRejected(exact, decisions, "ineligible-decision");
+  }
+
+  @Test
+  void decisionsRejectMalformedNumbersAndRetainedDraftMarkers() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "See [[Target|target]].");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "See [target](/ru/target/).", "See [target](/en/target/).", List.of("ref-0001"));
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review);
+    Path decisions = temp.resolve("decisions.json");
+
+    for (String schema : List.of("1.0", "1e0")) {
+      Files.writeString(decisions, """
+          {"schemaVersion":%s,"inventorySha256":"%s","decisions":{}}
+          """.formatted(schema, inventory.inventorySha256()), StandardCharsets.UTF_8);
+      assertDecisionRejected(inventory, decisions, "invalid-decision");
+    }
+
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/ref-0001":{"decision":"confirm","enSpan":{"start":4.5,"end":25.5}}}}
+        """.formatted(inventory.inventorySha256()), StandardCharsets.UTF_8);
+    assertDecisionRejected(inventory, decisions, "invalid-decision");
+
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"draftOnly":false,"inventorySha256":"%s","decisions":{}}
+        """.formatted(inventory.inventorySha256()), StandardCharsets.UTF_8);
+    assertDecisionRejected(inventory, decisions, "draft-not-converted");
+
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"draftOnly":"true","inventorySha256":"%s","decisions":{}}
+        """.formatted(inventory.inventorySha256()), StandardCharsets.UTF_8);
+    assertDecisionRejected(inventory, decisions, "invalid-decision");
+
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"draftStatus":true,"inventorySha256":"%s","decisions":{}}
+        """.formatted(inventory.inventorySha256()), StandardCharsets.UTF_8);
+    assertDecisionRejected(inventory, decisions, "invalid-decision");
   }
 
   @Test
@@ -414,8 +557,7 @@ final class ReferenceMigrationInventoryTest {
         {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/ref-0001":{"decision":"confirm","enSpan":{"start":0,"end":1}}}}
         """.formatted(inventory.inventorySha256()));
 
-    assertDecisionRejected(inventory, decisions, "hash-mismatch",
-        "confirmed English span does not match inventory");
+    assertDecisionRejected(inventory, decisions, "ineligible-decision");
   }
 
   @Test
@@ -522,6 +664,11 @@ final class ReferenceMigrationInventoryTest {
     assertEquals("corrected/page-en.md", correctedDecision.correctedEnglishPath());
     assertEquals("[one](/en/b/) [two](/en/c/)",
         new String(correctedDecision.correctedEnglishBytes(), StandardCharsets.UTF_8));
+
+    Files.writeString(review.resolve("blog/page/published/en.md"), "changed approved English", StandardCharsets.UTF_8);
+    assertDecisionRejected(inventory, decisions, "hash-mismatch");
+    Files.writeString(review.resolve("blog/page/published/en.md"),
+        "[two](/en/c/) [one](/en/b/)", StandardCharsets.UTF_8);
 
     Files.writeString(corrected, "changed", StandardCharsets.UTF_8);
     assertDecisionRejected(inventory, decisions, "hash-mismatch");

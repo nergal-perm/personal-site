@@ -102,12 +102,21 @@ public final class SemanticMigrationService {
     }
   }
 
+  /** Validates the decision contract and complete apply coverage without staging or writing. */
+  public ReferenceMigrationInventory.DecisionSet validateForApply(
+      ReferenceMigrationInventory.Inventory inventory,
+      Path decisions) {
+    ReferenceMigrationInventory.DecisionSet validated =
+        inventoryService.validateDecisions(inventory, decisions);
+    requireDecisionCoverage(inventory, validated);
+    return validated;
+  }
+
   private ApplyPlan stagePlan(ApplyRequest request, MigrationHooks hooks) throws IOException {
     ReferenceMigrationInventory.Inventory inventory =
         inventoryService.inspect(request.vault(), request.review(), request.astro(), request.report());
     ReferenceMigrationInventory.DecisionSet decisions =
-        inventoryService.validateDecisions(inventory, request.decisions());
-    requireDecisionCoverage(inventory, decisions);
+        validateForApply(inventory, request.decisions());
     ReferenceMigrationInventory.ExecutableDecisions executableDecisions = decisions.executable();
     Map<String, ReferenceMigrationInventory.CorrectedOrderDecision> correctedOrder =
         executableDecisions.correctedOrder();

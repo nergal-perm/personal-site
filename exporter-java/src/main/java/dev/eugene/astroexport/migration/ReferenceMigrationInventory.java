@@ -13,6 +13,7 @@ import dev.eugene.astroexport.references.VaultNoteDescriptor;
 import dev.eugene.astroexport.references.VaultReferenceResolver;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.math.BigInteger;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
 import java.nio.charset.CodingErrorAction;
@@ -47,6 +48,9 @@ public final class ReferenceMigrationInventory {
   public Inventory inspect(Path vault, Path review, Path astro, Path report) {
     Objects.requireNonNull(vault, "vault");
     Objects.requireNonNull(review, "review");
+    if (report != null) {
+      SemanticOutputSafety.preflight(report, review, "inventory report");
+    }
     List<VaultNoteDescriptor> descriptors = VaultNoteDescriptor.scan(vault);
     VaultReferenceCatalog catalog = VaultReferenceCatalog.loadIfPresent(review)
         .reconcile(vault, descriptors);
@@ -113,7 +117,7 @@ public final class ReferenceMigrationInventory {
     byte[] canonical = writeCanonical(withoutHash.toPayload(false));
     Inventory inventory = withoutHash.withHash(PageReferenceMapCodec.sha256(canonical));
     if (report != null) {
-      writeReport(report, writeCanonical(inventory.toPayload(true)));
+      writeReport(report, review, writeCanonical(inventory.toPayload(true)));
     }
     return inventory;
   }
@@ -122,10 +126,16 @@ public final class ReferenceMigrationInventory {
     Objects.requireNonNull(inventory, "inventory");
     Objects.requireNonNull(decisionsPath, "decisionsPath");
     Map<String, Object> payload = readJson(decisionsPath);
-    if (intValue(payload.get("schemaVersion")) != 1) {
+    if (intValue(payload.get("schemaVersion"), "schemaVersion") != 1) {
       throw new DecisionValidationException("unsupported-schema", "decisions schemaVersion must be 1");
     }
-    if (Boolean.TRUE.equals(payload.get("draftOnly"))) {
+    if (payload.containsKey("draftOnly") && !(payload.get("draftOnly") instanceof Boolean)) {
+      throw new DecisionValidationException("invalid-decision", "draftOnly must be a boolean");
+    }
+    if (payload.containsKey("draftStatus") && !(payload.get("draftStatus") instanceof String)) {
+      throw new DecisionValidationException("invalid-decision", "draftStatus must be a string");
+    }
+    if (payload.containsKey("draftOnly") || payload.containsKey("draftStatus")) {
       throw new DecisionValidationException(
           "draft-not-converted", "decision draft must be human-reviewed and converted before apply");
     }
@@ -150,6 +160,7 @@ public final class ReferenceMigrationInventory {
       }
     }
     List<Decision> validated = new ArrayList<>();
+    Map<String, String> decisionTypes = new LinkedHashMap<>();
     for (Map.Entry<?, ?> entry : decisions.entrySet()) {
       String key = string(entry.getKey());
       if (!known.contains(key) && !orderKeys.contains(key) && !pageKeys.contains(key)) {
@@ -159,8 +170,15 @@ public final class ReferenceMigrationInventory {
         throw new DecisionValidationException("invalid-decision", "decision must be an object");
       }
       String decisionType = string(decision.get("decision"));
+      decisionTypes.put(key, decisionType);
+    }
+    validateDecisionConflicts(inventory, decisionTypes, known, orderKeys, pageKeys);
+    for (Map.Entry<?, ?> entry : decisions.entrySet()) {
+      String key = string(entry.getKey());
+      Map<?, ?> decision = (Map<?, ?>) entry.getValue();
+      String decisionType = decisionTypes.get(key);
       if ("confirm".equals(decisionType)) {
-        ReferenceMigrationAligner.Span span = validateConfirm(occurrences.get(key), decision);
+        ReferenceMigrationAligner.Span span = validateConfirm(inventory, key, occurrences.get(key), decision);
         validated.add(new SpanConfirmDecision(key, span));
       } else if ("approve-corrected-page".equals(decisionType)) {
         validated.add(validateCorrectedPage(inventory, key, decisionsPath, decision));
@@ -174,6 +192,8 @@ public final class ReferenceMigrationInventory {
   }
 
   private static ReferenceMigrationAligner.Span validateConfirm(
+      Inventory inventory,
+      String key,
       ReferenceMigrationAligner.MigrationOccurrence occurrence,
       Map<?, ?> decision) {
     if (occurrence == null) {
@@ -182,8 +202,16 @@ public final class ReferenceMigrationInventory {
     if (!(decision.get("enSpan") instanceof Map<?, ?> span)) {
       throw new DecisionValidationException("missing-en-span", "confirm requires enSpan");
     }
-    int start = intValue(span.get("start"));
-    int end = intValue(span.get("end"));
+    int start = intValue(span.get("start"), "enSpan.start");
+    int end = intValue(span.get("end"), "enSpan.end");
+    ReferenceMigrationAligner.MigrationPage page = pageForOccurrence(inventory, key);
+    if (occurrence.proposedEnSpan() == null
+        || occurrence.proposedEnDestination() == null
+        || page.status() != ReferenceMigrationAligner.PageStatus.CONFIRMED_NEEDED) {
+      throw new DecisionValidationException(
+          "ineligible-decision",
+          "confirm requires a proposed span on a confirmed-needed page");
+    }
     ReferenceMigrationAligner.Span proposed = occurrence.proposedEnSpan();
     if (proposed == null || proposed.start() != start || proposed.end() != end) {
       throw new DecisionValidationException("hash-mismatch", "confirmed English span does not match inventory");
@@ -196,6 +224,14 @@ public final class ReferenceMigrationInventory {
       String key,
       Path decisionsPath,
       Map<?, ?> decision) {
+    ReferenceMigrationAligner.MigrationPage page = inventory.pages().stream()
+        .filter(candidate -> key.equals(candidate.pageRef() + "/order"))
+        .findFirst()
+        .orElseThrow(() -> new DecisionValidationException("unknown-decision", "unknown order decision"));
+    if (page.status() != ReferenceMigrationAligner.PageStatus.ORDER_MISMATCH_PAGE) {
+      throw new DecisionValidationException(
+          "ineligible-decision", "corrected order applies only to order-mismatch pages");
+    }
     String relative = string(decision.get("correctedEnglishPath"));
     Path corrected = resolveCorrected(decisionsPath, relative);
     byte[] bytes;
@@ -211,10 +247,6 @@ public final class ReferenceMigrationInventory {
     if (!PageReferenceMapCodec.sha256(bytes).equals(expectedHash)) {
       throw new DecisionValidationException("hash-mismatch", "corrected English hash does not match");
     }
-    ReferenceMigrationAligner.MigrationPage page = inventory.pages().stream()
-        .filter(candidate -> key.equals(candidate.pageRef() + "/order"))
-        .findFirst()
-        .orElseThrow(() -> new DecisionValidationException("unknown-decision", "unknown order decision"));
     List<String> correctedOrder = englishLinkDestinations(new String(bytes, StandardCharsets.UTF_8));
     List<String> expectedOrder = page.occurrences().stream()
         .map(ReferenceMigrationInventory::englishDestination)
@@ -232,7 +264,44 @@ public final class ReferenceMigrationInventory {
       throw new DecisionValidationException(
           "hash-mismatch", "approved English hash does not match inventory");
     }
+    validateApprovedSnapshotBinding(page.approvedEnglish(), approvedHash, "English");
     return new CorrectedOrderDecision(key, relative, approvedHash, expectedHash, bytes);
+  }
+
+  private static void validateDecisionConflicts(
+      Inventory inventory,
+      Map<String, String> decisionTypes,
+      Set<String> known,
+      Set<String> orderKeys,
+      Set<String> pageKeys) {
+    Map<String, List<String>> byPage = new LinkedHashMap<>();
+    for (String key : decisionTypes.keySet()) {
+      String pageRef = key;
+      int slash = key.indexOf('/');
+      if (known.contains(key)) {
+        pageRef = key.substring(0, slash);
+      } else if (orderKeys.contains(key) || pageKeys.contains(key)) {
+        pageRef = key.substring(0, slash);
+      }
+      byPage.computeIfAbsent(pageRef, ignored -> new ArrayList<>()).add(key);
+    }
+    for (List<String> keys : byPage.values()) {
+      boolean hasWholePage = keys.stream().anyMatch(key ->
+          orderKeys.contains(key) || pageKeys.contains(key));
+      if (hasWholePage && keys.size() > 1) {
+        throw new DecisionValidationException(
+            "conflicting-decision", "page decision conflicts with another decision: " + keys);
+      }
+    }
+  }
+
+  private static ReferenceMigrationAligner.MigrationPage pageForOccurrence(
+      Inventory inventory, String key) {
+    return inventory.pages().stream()
+        .filter(page -> page.occurrences().stream()
+            .anyMatch(occurrence -> key.equals(occurrence.occurrenceKey())))
+        .findFirst()
+        .orElseThrow(() -> new DecisionValidationException("unknown-decision", "unknown occurrence decision"));
   }
 
   private static PageCorrectedDecision validateCorrectedPage(
@@ -244,6 +313,15 @@ public final class ReferenceMigrationInventory {
         .filter(candidate -> key.equals(candidate.pageRef() + "/page"))
         .findFirst()
         .orElseThrow(() -> new DecisionValidationException("unknown-decision", "unknown page decision"));
+    if (page.status() != ReferenceMigrationAligner.PageStatus.CONFIRMED_NEEDED
+        || !page.approvedRussian().safe()
+        || !page.approvedEnglish().safe()
+        || page.occurrences().stream().anyMatch(occurrence ->
+            occurrence.targetRef() == null || occurrence.targetRef().isBlank())) {
+      throw new DecisionValidationException(
+          "ineligible-decision",
+          "corrected page applies only to safe confirmed-needed pages with resolved targets");
+    }
     SnapshotBytes russian = readCorrectedSnapshot(
         decisionsPath,
         string(decision.get("correctedRussianPath")),
@@ -647,26 +725,47 @@ public final class ReferenceMigrationInventory {
     }
   }
 
-  private static void writeReport(Path report, byte[] bytes) {
+  private static void writeReport(Path report, Path review, byte[] bytes) {
     try {
-      Path destination = report.toAbsolutePath().normalize();
+      Path destination = SemanticOutputSafety.preflight(report, review, "inventory report");
       Path parent = destination.getParent();
       if (parent != null) {
-        Files.createDirectories(parent);
+        SemanticOutputSafety.createDirectories(parent, review, "inventory report");
       }
       Path temporary = Files.createTempFile(parent, "." + destination.getFileName(), ".tmp");
+      SemanticOutputSafety.preflight(temporary, review, "inventory report temporary");
       Files.write(temporary, bytes);
+      SemanticOutputSafety.preflight(destination, review, "inventory report");
       Files.move(temporary, destination, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
     } catch (IOException error) {
       throw new UncheckedIOException("cannot write inventory report", error);
     }
   }
 
-  private static int intValue(Object value) {
-    if (value instanceof Number number) {
-      return number.intValue();
+  private static int intValue(Object value, String field) {
+    if (value instanceof Integer valueAsInt) {
+      return valueAsInt;
     }
-    throw new DecisionValidationException("invalid-decision", "expected integer");
+    if (value instanceof Long valueAsLong) {
+      if (valueAsLong < Integer.MIN_VALUE || valueAsLong > Integer.MAX_VALUE) {
+        throw new DecisionValidationException("invalid-decision", field + " must be within 32-bit integer range");
+      }
+      return valueAsLong.intValue();
+    }
+    if (value instanceof BigInteger valueAsBigInteger) {
+      if (valueAsBigInteger.compareTo(BigInteger.valueOf(Integer.MIN_VALUE)) < 0
+          || valueAsBigInteger.compareTo(BigInteger.valueOf(Integer.MAX_VALUE)) > 0) {
+        throw new DecisionValidationException("invalid-decision", field + " must be within 32-bit integer range");
+      }
+      return valueAsBigInteger.intValue();
+    }
+    if (value instanceof Short valueAsShort) {
+      return valueAsShort.intValue();
+    }
+    if (value instanceof Byte valueAsByte) {
+      return valueAsByte.intValue();
+    }
+    throw new DecisionValidationException("invalid-decision", field + " must be an integer");
   }
 
   private static String string(Object value) {
