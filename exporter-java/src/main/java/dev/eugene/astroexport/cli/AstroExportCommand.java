@@ -635,6 +635,15 @@ public final class AstroExportCommand implements Callable<Integer> {
           .build());
       return 1;
     }
+    if (validate && modes > 0) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "migration",
+              "--validate cannot be combined with --apply, --roll-forward, or --roll-back.",
+              true)))
+          .build());
+      return 1;
+    }
     if (modes > 1) {
       emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
           .diagnostics(List.of(new PublicationDiagnostic(

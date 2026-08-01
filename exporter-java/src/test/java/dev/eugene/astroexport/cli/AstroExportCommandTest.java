@@ -302,6 +302,41 @@ final class AstroExportCommandTest {
   }
 
   @Test
+  void migrateSemanticLinksValidateCannotSelectMutationOrRecoveryMode() throws Exception {
+    for (String mutationMode : List.of("--apply", "--roll-forward", "--roll-back")) {
+      Path modeRoot = temp.resolve(mutationMode.substring(2));
+      Path review = modeRoot.resolve("review");
+      Files.createDirectories(review);
+      Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
+      List<String> args = new ArrayList<>(List.of(
+          "migrate-semantic-links",
+          "--review", review.toString(),
+          "--validate",
+          "--decisions", modeRoot.resolve("decisions.json").toString(),
+          mutationMode,
+          "--json"));
+      if ("--apply".equals(mutationMode)) {
+        Path vault = modeRoot.resolve("vault");
+        Path astro = modeRoot.resolve("astro");
+        Files.createDirectories(vault);
+        Files.createDirectories(astro);
+        args.addAll(1, List.of(
+            "--vault", vault.toString(),
+            "--astro", astro.toString(),
+            "--report", modeRoot.resolve("inventory.json").toString()));
+      }
+
+      CommandFixture.Result result = run(command(), args.toArray(String[]::new));
+
+      assertEquals(1, result.exitCode(), mutationMode + ": " + result.stdout() + result.stderr());
+      assertEquals("metadata_blocked", json(result.stdout()).get("status"));
+      assertTrue(result.stdout().contains("--validate cannot be combined"));
+      assertEquals(beforeReview, treeSnapshot(review));
+      assertFalse(Files.exists(modeRoot.resolve("inventory.json")));
+    }
+  }
+
+  @Test
   void inspectBridgeHasExactSchemaAndIsReadOnlyWithWorkspaceHealth() throws Exception {
     Path vault = temp.resolve("vault");
     writeBlogNote(vault);
