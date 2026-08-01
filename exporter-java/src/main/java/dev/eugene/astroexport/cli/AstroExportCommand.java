@@ -625,9 +625,10 @@ public final class AstroExportCommand implements Callable<Integer> {
       boolean apply,
       boolean rollForward,
       boolean rollBack,
-      Path draftPath) {
+      Path draftPath,
+      boolean validate) {
     int modes = (apply ? 1 : 0) + (rollForward ? 1 : 0) + (rollBack ? 1 : 0);
-    if (draftPath != null && modes > 0) {
+    if (draftPath != null && (modes > 0 || validate)) {
       emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
           .diagnostics(List.of(new PublicationDiagnostic(
               "draft", "--draft is available only in read-only inventory mode.", true)))
@@ -671,6 +672,13 @@ public final class AstroExportCommand implements Callable<Integer> {
           .build());
       return 1;
     }
+    if (validate && decisionsPath == null) {
+      emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
+          .diagnostics(List.of(new PublicationDiagnostic(
+              "decisions", "--validate requires --decisions.", true)))
+          .build());
+      return 1;
+    }
     if (!rollForward && !rollBack
         && (astroRoot == null || !Files.isDirectory(astroRoot, LinkOption.NOFOLLOW_LINKS))) {
       emitJson(bridge("migrate-semantic-links", false, "metadata_blocked")
@@ -708,6 +716,13 @@ public final class AstroExportCommand implements Callable<Integer> {
       ReferenceMigrationInventory.Inventory inventory =
           services.inspectReferenceMigration(vaultRoot, reviewRoot, astroRoot, reportPath);
       ReferenceMigrationInventory.Summary summary = inventory.summary();
+      if (validate) {
+        services.validateReferenceMigration(inventory, decisionsPath);
+        emitJson(bridge("migrate-semantic-links", true, "validated")
+            .summary(summary.toPayload())
+            .build());
+        return 0;
+      }
       if (draftPath != null) {
         new SemanticDecisionDraftWriter().write(draftPath, inventory, reviewRoot);
         emitJson(bridge("migrate-semantic-links", true, "draft-written")
@@ -2191,6 +2206,7 @@ public final class AstroExportCommand implements Callable<Integer> {
     @Option(names = "--report") Path report;
     @Option(names = "--decisions") Path decisions;
     @Option(names = "--draft") Path draft;
+    @Option(names = "--validate") boolean validate;
     @Option(names = "--apply") boolean apply;
     @Option(names = "--roll-forward") boolean rollForward;
     @Option(names = "--roll-back") boolean rollBack;
@@ -2207,7 +2223,8 @@ public final class AstroExportCommand implements Callable<Integer> {
           apply,
           rollForward,
           rollBack,
-          draft);
+          draft,
+          validate);
     }
   }
 

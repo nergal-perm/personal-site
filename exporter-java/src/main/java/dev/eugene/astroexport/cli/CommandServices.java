@@ -299,6 +299,12 @@ public final class CommandServices {
     return referenceMigrationInventory.inspect(vault, review, astro, report);
   }
 
+  public ReferenceMigrationInventory.DecisionSet validateReferenceMigration(
+      ReferenceMigrationInventory.Inventory inventory,
+      Path decisions) {
+    return referenceMigrationInventory.validateDecisions(inventory, decisions);
+  }
+
   public SemanticMigrationService.ApplyResult applySemanticMigration(
       SemanticMigrationService.ApplyRequest request) {
     return semanticMigrationService.apply(request, SemanticMigrationService.MigrationHooks.none());
