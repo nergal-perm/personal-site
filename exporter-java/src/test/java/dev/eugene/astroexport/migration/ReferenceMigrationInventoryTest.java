@@ -2,6 +2,7 @@ package dev.eugene.astroexport.migration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -332,6 +333,56 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
+  void ambiguousTranslationWithNoProposedEnglishSpanCannotBeConfirmed() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)",
+        List.of("ref-0001", "ref-0002"));
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+    ReferenceMigrationAligner.MigrationOccurrence occurrence =
+        inventory.pages().getFirst().occurrences().getFirst();
+    assertEquals("ambiguous-translation", occurrence.classification().json());
+    assertNull(occurrence.proposedEnSpan());
+
+    Path decisions = temp.resolve("decisions.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/ref-0001":{"decision":"confirm","enSpan":{"start":0,"end":1}}}}
+        """.formatted(inventory.inventorySha256()));
+
+    assertDecisionRejected(inventory, decisions, "hash-mismatch",
+        "confirmed English span does not match inventory");
+  }
+
+  @Test
+  void ambiguousTranslationConfirmationRequiresEnglishSpan() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)",
+        List.of("ref-0001", "ref-0002"));
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+    Path decisions = temp.resolve("decisions.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/ref-0001":{"decision":"confirm"}}}
+        """.formatted(inventory.inventorySha256()));
+
+    assertDecisionRejected(inventory, decisions, "missing-en-span", "confirm requires enSpan");
+  }
+
+  @Test
   void correctedEnglishDecisionRequiresCompleteReviewWithRuOrder() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");
@@ -386,10 +437,21 @@ final class ReferenceMigrationInventoryTest {
       ReferenceMigrationInventory.Inventory inventory,
       Path decisions,
       String code) {
+    assertDecisionRejected(inventory, decisions, code, null);
+  }
+
+  private static void assertDecisionRejected(
+      ReferenceMigrationInventory.Inventory inventory,
+      Path decisions,
+      String code,
+      String message) {
     ReferenceMigrationInventory.DecisionValidationException error = assertThrows(
         ReferenceMigrationInventory.DecisionValidationException.class,
         () -> new ReferenceMigrationInventory().validateDecisions(inventory, decisions));
     assertEquals(code, error.code());
+    if (message != null) {
+      assertEquals(message, error.getMessage());
+    }
   }
 
   private static byte[] canonicalWithoutHash(Map<String, Object> payload) throws Exception {
