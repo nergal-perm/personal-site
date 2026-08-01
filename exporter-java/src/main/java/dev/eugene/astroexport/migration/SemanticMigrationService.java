@@ -108,10 +108,8 @@ public final class SemanticMigrationService {
     ReferenceMigrationInventory.DecisionSet decisions =
         inventoryService.validateDecisions(inventory, request.decisions());
     requireDecisionCoverage(inventory, decisions);
-    Map<String, CorrectedOrderDecision> correctedOrder = correctedOrderDecisions(
-        request.decisions(),
-        inventory,
-        decisions);
+    Map<String, ReferenceMigrationInventory.PageCorrectedDecision> correctedOrder =
+        decisions.correctedOrder();
     Path catalog = VaultReferenceCatalog.catalogPath(request.review());
     boolean catalogWasPresent = Files.exists(catalog, LinkOption.NOFOLLOW_LINKS);
     VaultReferenceCatalog reconciledCatalog = VaultReferenceCatalog.loadIfPresent(request.review())
@@ -149,10 +147,11 @@ public final class SemanticMigrationService {
       Path pageStage = stagingRoot.resolve(identity.collection()).resolve(identity.publicId()).resolve("published");
       Files.createDirectories(pageStage);
       byte[] ru = semanticBytes(page.approvedRussian().text(), page, true);
-      CorrectedOrderDecision corrected = correctedOrder.get(page.pageRef() + "/order");
+      ReferenceMigrationInventory.PageCorrectedDecision corrected =
+          correctedOrder.get(page.pageRef() + "/order");
       byte[] en = corrected == null
           ? semanticBytes(page.approvedEnglish().text(), page, false)
-          : semanticBytes(new String(corrected.bytes(), StandardCharsets.UTF_8), page, false);
+          : semanticBytes(new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8), page, false);
       PageReferenceMap references = references(page, ru, en);
       byte[] referenceBytes = PageReferenceMapCodec.write(references);
       PageReferenceMapCodec.validate(
@@ -483,49 +482,6 @@ public final class SemanticMigrationService {
     }
   }
 
-  private static Map<String, CorrectedOrderDecision> correctedOrderDecisions(
-      Path decisionsPath,
-      ReferenceMigrationInventory.Inventory inventory,
-      ReferenceMigrationInventory.DecisionSet decisions) throws IOException {
-    Set<String> accepted = Set.copyOf(decisions.keys());
-    @SuppressWarnings("unchecked")
-    Map<String, Object> payload = JSON.readValue(Files.readAllBytes(decisionsPath), Map.class);
-    Object raw = payload.get("decisions");
-    if (!(raw instanceof Map<?, ?> rawDecisions)) {
-      return Map.of();
-    }
-    LinkedHashMap<String, CorrectedOrderDecision> corrected = new LinkedHashMap<>();
-    for (ReferenceMigrationAligner.MigrationPage page : inventory.pages()) {
-      String key = page.pageRef() + "/order";
-      if (!accepted.contains(key)) {
-        continue;
-      }
-      Object rawDecision = rawDecisions.get(key);
-      if (!(rawDecision instanceof Map<?, ?> decision)
-          || !"approve-corrected-order".equals(decision.get("decision"))) {
-        continue;
-      }
-      String relative = String.valueOf(decision.get("correctedEnglishPath"));
-      Path correctedPath = resolveDecisionSibling(decisionsPath, relative);
-      byte[] bytes = Files.readAllBytes(correctedPath);
-      corrected.put(key, new CorrectedOrderDecision(bytes));
-    }
-    return Map.copyOf(corrected);
-  }
-
-  private static Path resolveDecisionSibling(Path decisionsPath, String relative) {
-    Path candidate = Path.of(relative);
-    if (candidate.isAbsolute()) {
-      throw new IllegalStateException("correctedEnglishPath must be relative");
-    }
-    Path base = decisionsPath.toAbsolutePath().normalize().getParent();
-    Path resolved = base.resolve(candidate).normalize();
-    if (!resolved.startsWith(base)) {
-      throw new IllegalStateException("correctedEnglishPath escapes decision directory");
-    }
-    return resolved;
-  }
-
   private static void validateStagedCutover(ApplyPlan plan) throws IOException {
     Journal durableJournal = readJournal(plan.review());
     for (JournalPage page : durableJournal.pages()) {
@@ -560,10 +516,11 @@ public final class SemanticMigrationService {
           page.sourcePath(),
           "ru",
           page.approvedRussian().text()));
-      CorrectedOrderDecision corrected = plan.correctedOrder().get(page.pageRef() + "/order");
+      ReferenceMigrationInventory.PageCorrectedDecision corrected =
+          plan.correctedOrder().get(page.pageRef() + "/order");
       String english = corrected == null
           ? page.approvedEnglish().text()
-          : new String(corrected.bytes(), StandardCharsets.UTF_8);
+          : new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8);
       expectedEnglish.put(page.sourcePath(), approvedEntry(
           journalPage.collection(),
           page.sourcePath(),
@@ -1166,7 +1123,7 @@ public final class SemanticMigrationService {
       Path catalogDisplaced,
       Journal journal,
       List<PagePlan> pages,
-      Map<String, CorrectedOrderDecision> correctedOrder,
+      Map<String, ReferenceMigrationInventory.PageCorrectedDecision> correctedOrder,
       Consumer<Path> astroGate) { }
 
   private record PagePlan(
@@ -1176,17 +1133,6 @@ public final class SemanticMigrationService {
       JournalPage journalPage) { }
 
   private record PageIdentity(String collection, String publicId) { }
-
-  private record CorrectedOrderDecision(byte[] bytes) {
-    private CorrectedOrderDecision {
-      bytes = bytes.clone();
-    }
-
-    @Override
-    public byte[] bytes() {
-      return bytes.clone();
-    }
-  }
 
   private record LinkParts(String authoredTarget, String label) { }
 

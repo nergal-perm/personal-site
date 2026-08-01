@@ -460,10 +460,15 @@ final class SemanticMigrationServiceTest {
     Files.writeString(corrected, correctedEnglish, StandardCharsets.UTF_8);
     Path decisions = temp.resolve("decisions-order.json");
     Files.writeString(decisions, """
-        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"%s","correctedEnglishSha256":"%s"}}}
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"%s","approvedEnglishSha256":"%s","correctedEnglishSha256":"%s"}}}
         """.formatted(
             inventory.inventorySha256(),
             corrected.getFileName(),
+            PageReferenceMapCodec.sha256(
+                inventory.pages().stream()
+                    .filter(page -> page.pageRef().equals("vault-ref-page"))
+                    .findFirst().orElseThrow().approvedEnglish().text()
+                    .getBytes(StandardCharsets.UTF_8)),
             PageReferenceMapCodec.sha256(correctedEnglish.getBytes(StandardCharsets.UTF_8))),
         StandardCharsets.UTF_8);
     return new OrderFixture(vault, review, astro, report, decisions);

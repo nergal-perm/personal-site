@@ -400,13 +400,21 @@ final class ReferenceMigrationInventoryTest {
     Files.writeString(corrected, "[one](/en/b/) [two](/en/c/)", StandardCharsets.UTF_8);
     Path decisions = temp.resolve("decisions.json");
     Files.writeString(decisions, """
-        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"corrected/page-en.md","correctedEnglishSha256":"%s"}}}
-        """.formatted(inventory.inventorySha256(), PageReferenceMapCodec.sha256(Files.readAllBytes(corrected))));
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"corrected/page-en.md","approvedEnglishSha256":"%s","correctedEnglishSha256":"%s"}}}
+        """.formatted(inventory.inventorySha256(), approvedEnglishHash(inventory), PageReferenceMapCodec.sha256(Files.readAllBytes(corrected))));
 
     ReferenceMigrationInventory.DecisionSet decisionSet =
         new ReferenceMigrationInventory().validateDecisions(inventory, decisions);
 
     assertEquals(List.of("vault-ref-page/order"), decisionSet.keys());
+    ReferenceMigrationInventory.PageCorrectedDecision correctedDecision =
+        (ReferenceMigrationInventory.PageCorrectedDecision) decisionSet.decisions().getFirst();
+    assertEquals("corrected/page-en.md", correctedDecision.correctedEnglishPath());
+    assertEquals("[one](/en/b/) [two](/en/c/)",
+        new String(correctedDecision.correctedEnglishBytes(), StandardCharsets.UTF_8));
+
+    Files.writeString(corrected, "changed", StandardCharsets.UTF_8);
+    assertDecisionRejected(inventory, decisions, "hash-mismatch");
   }
 
   @Test
@@ -427,8 +435,8 @@ final class ReferenceMigrationInventoryTest {
     Files.writeString(corrected, "[two](/en/c/) [one](/en/b/)", StandardCharsets.UTF_8);
     Path decisions = temp.resolve("decisions.json");
     Files.writeString(decisions, """
-        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"corrected/page-en.md","correctedEnglishSha256":"%s"}}}
-        """.formatted(inventory.inventorySha256(), PageReferenceMapCodec.sha256(Files.readAllBytes(corrected))));
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/order":{"decision":"approve-corrected-order","correctedEnglishPath":"corrected/page-en.md","approvedEnglishSha256":"%s","correctedEnglishSha256":"%s"}}}
+        """.formatted(inventory.inventorySha256(), approvedEnglishHash(inventory), PageReferenceMapCodec.sha256(Files.readAllBytes(corrected))));
 
     assertDecisionRejected(inventory, decisions, "order-mismatch");
   }
@@ -438,6 +446,11 @@ final class ReferenceMigrationInventoryTest {
       Path decisions,
       String code) {
     assertDecisionRejected(inventory, decisions, code, null);
+  }
+
+  private static String approvedEnglishHash(ReferenceMigrationInventory.Inventory inventory) {
+    return PageReferenceMapCodec.sha256(
+        inventory.pages().getFirst().approvedEnglish().text().getBytes(StandardCharsets.UTF_8));
   }
 
   private static void assertDecisionRejected(

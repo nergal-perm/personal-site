@@ -143,7 +143,7 @@ public final class ReferenceMigrationInventory {
         occurrences.put(occurrence.occurrenceKey(), occurrence);
       }
     }
-    List<String> accepted = new ArrayList<>();
+    List<Decision> validated = new ArrayList<>();
     for (Map.Entry<?, ?> entry : decisions.entrySet()) {
       String key = string(entry.getKey());
       if (!known.contains(key) && !orderKeys.contains(key)) {
@@ -154,18 +154,18 @@ public final class ReferenceMigrationInventory {
       }
       String decisionType = string(decision.get("decision"));
       if ("confirm".equals(decisionType)) {
-        validateConfirm(occurrences.get(key), decision);
+        ReferenceMigrationAligner.Span span = validateConfirm(occurrences.get(key), decision);
+        validated.add(new SpanConfirmDecision(key, span));
       } else if ("approve-corrected-order".equals(decisionType)) {
-        validateCorrectedOrder(inventory, key, decisionsPath, decision);
+        validated.add(validateCorrectedOrder(inventory, key, decisionsPath, decision));
       } else {
         throw new DecisionValidationException("unsupported-decision", "unsupported decision: " + decisionType);
       }
-      accepted.add(key);
     }
-    return new DecisionSet(List.copyOf(accepted));
+    return new DecisionSet(List.copyOf(validated));
   }
 
-  private static void validateConfirm(
+  private static ReferenceMigrationAligner.Span validateConfirm(
       ReferenceMigrationAligner.MigrationOccurrence occurrence,
       Map<?, ?> decision) {
     if (occurrence == null) {
@@ -180,9 +180,10 @@ public final class ReferenceMigrationInventory {
     if (proposed == null || proposed.start() != start || proposed.end() != end) {
       throw new DecisionValidationException("hash-mismatch", "confirmed English span does not match inventory");
     }
+    return new ReferenceMigrationAligner.Span(start, end);
   }
 
-  private static void validateCorrectedOrder(
+  private static PageCorrectedDecision validateCorrectedOrder(
       Inventory inventory,
       String key,
       Path decisionsPath,
@@ -216,6 +217,14 @@ public final class ReferenceMigrationInventory {
     if (!correctedOrder.equals(expectedOrder)) {
       throw new DecisionValidationException("order-mismatch", "corrected English order must match Russian order");
     }
+    String approvedHash = string(decision.get("approvedEnglishSha256"));
+    String inventoryApprovedHash = PageReferenceMapCodec.sha256(
+        page.approvedEnglish().text().getBytes(StandardCharsets.UTF_8));
+    if (!inventoryApprovedHash.equals(approvedHash)) {
+      throw new DecisionValidationException(
+          "hash-mismatch", "approved English hash does not match inventory");
+    }
+    return new PageCorrectedDecision(key, relative, approvedHash, expectedHash, bytes);
   }
 
   private static String englishDestination(ReferenceMigrationAligner.MigrationOccurrence occurrence) {
@@ -749,10 +758,65 @@ public final class ReferenceMigrationInventory {
     }
   }
 
-  public record DecisionSet(List<String> keys) {
+  public record DecisionSet(List<Decision> decisions) {
     public DecisionSet {
-      keys = List.copyOf(keys);
+      decisions = List.copyOf(decisions);
     }
+
+    public List<String> keys() {
+      return decisions.stream().map(Decision::key).toList();
+    }
+
+    public Map<String, PageCorrectedDecision> correctedOrder() {
+      LinkedHashMap<String, PageCorrectedDecision> corrected = decisions.stream()
+          .filter(PageCorrectedDecision.class::isInstance)
+          .map(PageCorrectedDecision.class::cast)
+          .collect(java.util.stream.Collectors.toMap(
+              PageCorrectedDecision::key,
+              decision -> decision,
+              (first, second) -> first,
+              LinkedHashMap::new));
+      return Map.copyOf(corrected);
+    }
+  }
+
+  public sealed interface Decision permits SpanConfirmDecision, PageCorrectedDecision {
+    String key();
+  }
+
+  public record SpanConfirmDecision(String key, ReferenceMigrationAligner.Span enSpan)
+      implements Decision {
+    public SpanConfirmDecision {
+      key = requireText(key, "key");
+      Objects.requireNonNull(enSpan, "enSpan");
+    }
+  }
+
+  public record PageCorrectedDecision(
+      String key,
+      String correctedEnglishPath,
+      String approvedEnglishSha256,
+      String correctedEnglishSha256,
+      byte[] correctedEnglishBytes) implements Decision {
+    public PageCorrectedDecision {
+      key = requireText(key, "key");
+      correctedEnglishPath = requireText(correctedEnglishPath, "correctedEnglishPath");
+      approvedEnglishSha256 = requireText(approvedEnglishSha256, "approvedEnglishSha256");
+      correctedEnglishSha256 = requireText(correctedEnglishSha256, "correctedEnglishSha256");
+      correctedEnglishBytes = correctedEnglishBytes.clone();
+    }
+
+    @Override
+    public byte[] correctedEnglishBytes() {
+      return correctedEnglishBytes.clone();
+    }
+  }
+
+  private static String requireText(String value, String field) {
+    if (value == null || value.isBlank()) {
+      throw new IllegalArgumentException(field + " must not be blank");
+    }
+    return value;
   }
 
   public static final class DecisionValidationException extends RuntimeException {
