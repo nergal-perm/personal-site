@@ -136,6 +136,8 @@ public final class ReferenceMigrationAligner {
         null,
         null,
         null,
+        null,
+        null,
         null);
   }
 
@@ -161,6 +163,8 @@ public final class ReferenceMigrationAligner {
           null,
           null,
           null,
+          null,
+          null,
           null));
     }
     for (RawOccurrence occurrence : rawOccurrences) {
@@ -175,6 +179,8 @@ public final class ReferenceMigrationAligner {
           null,
           blankToNull(occurrence.heading()),
           reason == null ? "unsafe approved input" : reason,
+          null,
+          null,
           null,
           null,
           null,
@@ -222,6 +228,8 @@ public final class ReferenceMigrationAligner {
         reason,
         classification == EXACT ? refId : null,
         reference,
+        ruSpan == null ? null : ruSpan.destination(),
+        ruSpan == null ? null : new Span(ruSpan.start(), ruSpan.end()),
         enSpan == null ? null : enSpan.destination(),
         enSpan == null ? null : new Span(enSpan.start(), enSpan.end()));
   }
@@ -277,12 +285,14 @@ public final class ReferenceMigrationAligner {
       List<ApprovedSpan> en = occurrence.enCandidates();
       ApprovedSpan ruAssignment = russian.spansByOccurrence().get(index);
       ApprovedSpan enAssignment = english.spansByOccurrence().get(index);
-      if (!duplicate && ruAssignment != null && enAssignment != null
+      if (ruAssignment != null && enAssignment != null
           && russian.unique() && english.unique()) {
         ru = List.of(ruAssignment);
         en = List.of(enAssignment);
-        classification = EXACT;
-        reason = "unique monotonic RU/EN/target alignment";
+        if (!duplicate) {
+          classification = EXACT;
+          reason = "unique monotonic RU/EN/target alignment";
+        }
       } else if (classification != UNRESOLVED_TARGET && classification != UNSAFE_INPUT) {
         classification = AMBIGUOUS_TRANSLATION;
         if (!english.unique() && english.count() > 1) {
@@ -859,6 +869,8 @@ public final class ReferenceMigrationAligner {
       String reason,
       String proposedReferenceId,
       PageReferenceMap.Reference proposedReference,
+      String proposedRuDestination,
+      Span proposedRuSpan,
       String proposedEnDestination,
       Span proposedEnSpan) {
   }

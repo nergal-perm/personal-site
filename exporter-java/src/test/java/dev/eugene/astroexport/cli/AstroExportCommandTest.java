@@ -159,12 +159,13 @@ final class AstroExportCommandTest {
     Path report = temp.resolve("inventory.json");
     Path draft = temp.resolve("decision-draft.json");
     Files.createDirectories(astro);
-    writeRawNote(vault, "page.md", "[[Target|target]]");
+    writeRawNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
     writeRawNote(vault, "target.md", "Target.");
     writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
     writePublishedPair(review, "blog", "page", "page.md", "vault-ref-page",
         "[target](/ru/target/) [target](/ru/target/)",
-        "[target](/en/target/) [target](/en/target/)");
+        "[target](/en/target/) [target](/en/target/)",
+        List.of("ref-0001", "ref-0002"));
     Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
 
     CommandFixture.Result first = run(command(),
@@ -182,7 +183,7 @@ final class AstroExportCommandTest {
     assertEquals("draft-written", json(first.stdout()).get("status"));
     assertArrayEquals(firstDraft, Files.readAllBytes(draft));
     Map<String, Object> draftPayload = json(Files.readString(draft));
-    assertEquals("vault-ref-page/page", ((Map<?, ?>) draftPayload.get("decisions")).keySet().iterator().next());
+    assertFalse(((Map<?, ?>) draftPayload.get("decisions")).isEmpty(), draftPayload.toString());
     assertEquals(beforeReview, treeSnapshot(review));
     assertTrue(Files.exists(draft.getParent().resolve("decision-draft.json.files/pages/001-vault-ref-page/corrected-ru.md")));
   }

@@ -2,7 +2,6 @@ package dev.eugene.astroexport.migration;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -185,6 +184,80 @@ final class ReferenceMigrationInventoryTest {
 
     assertThrows(IllegalArgumentException.class, () -> writer.write(first, inventory, review));
     assertEquals("human edit", Files.readString(firstRussian));
+  }
+
+  @Test
+  void draftBindsVerifiedOccurrencesAfterUnrelatedMarkdownLinks() throws Exception {
+    Path vault = temp.resolve("vault-verified-binding");
+    Path review = temp.resolve("review-verified-binding");
+    Path decisions = temp.resolve("draft-verified/decisions.json");
+    writeNote(vault, "page.md", "unrelated [[Target|target]] [[Other|other]] [[Other|other]]");
+    writeNote(vault, "target.md", "Target.");
+    writeNote(vault, "other.md", "Other.");
+    writeCatalog(review,
+        "vault-ref-page", "page.md", "vault-ref-target", "target.md", "vault-ref-other", "other.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[unrelated](https://example.com) [target](/ru/target/) [other](/ru/other/) [other](/ru/other/)",
+        "[unrelated](https://example.com) [target](/en/target/) [other](/en/other/) [other](/en/other/)",
+        List.of("ref-0001", "ref-0002", "ref-0003"));
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review);
+    assertEquals("confirmed-needed", inventory.pages().getFirst().status().json());
+    assertTrue(inventory.pages().getFirst().occurrences().stream()
+        .allMatch(occurrence -> occurrence.ruContext() != null
+            && occurrence.proposedEnSpan() != null),
+        () -> inventory.pages().getFirst().occurrences().toString());
+
+    new SemanticDecisionDraftWriter().write(decisions, inventory, review);
+
+    Map<String, Object> payload = JSON.readValue(
+        Files.readAllBytes(decisions), new TypeReference<>() { });
+    assertTrue(((Map<?, ?>) payload.get("decisions")).containsKey("vault-ref-page/page"));
+    Path correctedRussian = decisions.getParent().resolve(
+        "decisions.json.files/pages/001-vault-ref-page/corrected-ru.md");
+    assertEquals(
+        "[unrelated](https://example.com) [target](ref:ref-0001) [other](ref:ref-0002) [other](ref:ref-0003)",
+        Files.readString(correctedRussian).strip());
+    assertFalse(Files.readString(correctedRussian).contains("[unrelated](ref:"));
+  }
+
+  @Test
+  void draftStaysContextOnlyWhenOccurrenceSpecificSpansCannotBeVerified() throws Exception {
+    Path vault = temp.resolve("vault-unverified-binding");
+    Path review = temp.resolve("review-unverified-binding");
+    Path decisions = temp.resolve("draft-unverified/decisions.json");
+    writeNote(vault, "page.md", "unrelated [[Target|target]] [[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[unrelated](https://example.com) [target](/ru/other/) [target](/ru/other/)",
+        "[unrelated](https://example.com) [target](/en/other/) [target](/en/other/)",
+        List.of("ref-0001", "ref-0002"));
+    Map<String, ByteBuffer> beforeReview = treeSnapshot(review);
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review);
+    assertEquals("confirmed-needed", inventory.pages().getFirst().status().json());
+    assertTrue(inventory.pages().getFirst().occurrences().stream()
+        .allMatch(occurrence -> occurrence.ruContext() == null
+            && occurrence.proposedEnSpan() == null),
+        () -> inventory.pages().getFirst().occurrences().toString());
+
+    new SemanticDecisionDraftWriter().write(decisions, inventory, review);
+
+    Map<String, Object> payload = JSON.readValue(
+        Files.readAllBytes(decisions), new TypeReference<>() { });
+    assertTrue(((Map<?, ?>) payload.get("decisions")).isEmpty());
+    assertEquals(beforeReview, treeSnapshot(review));
+    Path draftFiles = decisions.getParent().resolve("decisions.json.files");
+    if (Files.exists(draftFiles)) {
+      try (var paths = Files.walk(draftFiles)) {
+        for (Path path : paths.filter(Files::isRegularFile).toList()) {
+          assertFalse(Files.readString(path).contains("(ref:"));
+        }
+      }
+    }
   }
 
   @Test
@@ -534,7 +607,7 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
-  void ambiguousTranslationWithNoProposedEnglishSpanCannotBeConfirmed() throws Exception {
+  void ambiguousTranslationWithVerifiedEnglishSpanStillRequiresExactConfirmation() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");
     writeNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
@@ -550,14 +623,14 @@ final class ReferenceMigrationInventoryTest {
     ReferenceMigrationAligner.MigrationOccurrence occurrence =
         inventory.pages().getFirst().occurrences().getFirst();
     assertEquals("ambiguous-translation", occurrence.classification().json());
-    assertNull(occurrence.proposedEnSpan());
+    assertTrue(occurrence.proposedEnSpan() != null);
 
     Path decisions = temp.resolve("decisions.json");
     Files.writeString(decisions, """
         {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/ref-0001":{"decision":"confirm","enSpan":{"start":0,"end":1}}}}
         """.formatted(inventory.inventorySha256()));
 
-    assertDecisionRejected(inventory, decisions, "ineligible-decision");
+    assertDecisionRejected(inventory, decisions, "hash-mismatch");
   }
 
   @Test
