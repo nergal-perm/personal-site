@@ -918,6 +918,20 @@ public final class ReferenceMigrationInventory {
               LinkedHashMap::new));
       return Map.copyOf(corrected);
     }
+
+    /** Returns the validated decisions in the shape consumed by the apply planner. */
+    public ExecutableDecisions executable() {
+      return new ExecutableDecisions(correctedOrder(), correctedPages());
+    }
+  }
+
+  public record ExecutableDecisions(
+      Map<String, CorrectedOrderDecision> correctedOrder,
+      Map<String, PageCorrectedDecision> correctedPages) {
+    public ExecutableDecisions {
+      correctedOrder = Map.copyOf(correctedOrder);
+      correctedPages = Map.copyOf(correctedPages);
+    }
   }
 
   public sealed interface Decision permits SpanConfirmDecision, CorrectedOrderDecision, PageCorrectedDecision {

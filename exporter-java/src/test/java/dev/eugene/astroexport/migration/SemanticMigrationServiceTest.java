@@ -9,9 +9,15 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.astroexport.fs.AtomicExchange;
+import dev.eugene.astroexport.model.ManifestEntry;
+import dev.eugene.astroexport.model.Note;
+import dev.eugene.astroexport.model.SelectionResult;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.PageReferenceMapCodec;
 import dev.eugene.astroexport.references.VaultReferenceCatalog;
+import dev.eugene.astroexport.release.ApprovedReleaseMaterializer;
+import dev.eugene.astroexport.review.ApprovedPageSnapshot;
+import dev.eugene.astroexport.review.ApprovedSnapshotRepository;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
@@ -254,14 +260,64 @@ final class SemanticMigrationServiceTest {
   void correctedPageDecisionAppliesAmbiguousConfirmedNeededPage() throws Exception {
     Fixture fixture = correctedPageFixture();
 
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(
+            fixture.vault(), fixture.review(), fixture.astro(), fixture.report());
+    ReferenceMigrationAligner.MigrationOccurrence occurrence = inventory.pages().stream()
+        .filter(page -> page.pageRef().equals("vault-ref-page"))
+        .findFirst().orElseThrow().occurrences().getFirst();
+    assertEquals(ReferenceMigrationAligner.Classification.AMBIGUOUS_TRANSLATION,
+        occurrence.classification());
+    assertTrue(occurrence.proposedEnSpan() == null);
+    assertTrue(occurrence.proposedEnDestination() == null);
+
     new SemanticMigrationService().apply(fixture.request(), SemanticMigrationService.MigrationHooks.none());
 
-    assertTrue(Files.readString(
-        fixture.review().resolve("blog/page/published/ru.md"), StandardCharsets.UTF_8)
-        .contains("ref:ref-0001"));
-    assertTrue(Files.readString(
-        fixture.review().resolve("blog/page/published/en.md"), StandardCharsets.UTF_8)
-        .contains("ref:ref-0002"));
+    byte[] russian = Files.readAllBytes(fixture.review().resolve("blog/page/published/ru.md"));
+    byte[] english = Files.readAllBytes(fixture.review().resolve("blog/page/published/en.md"));
+    PageReferenceMap map = PageReferenceMapCodec.read(
+        Files.readAllBytes(fixture.review().resolve("blog/page/published/references.json")),
+        "references.json");
+    PageReferenceMapCodec.validate(map, russian, english);
+    assertTrue(new String(russian, StandardCharsets.UTF_8).contains("ref:ref-0001"));
+    assertTrue(new String(english, StandardCharsets.UTF_8).contains("ref:ref-0002"));
+
+    List<Note> notes = List.of(
+        new Note(Path.of("page.md"), "page.md", "page", Map.of(), "", true,
+            "page", "blog", "essay", List.of()),
+        new Note(Path.of("target.md"), "target.md", "target", Map.of(), "", true,
+            "target", "blog", "essay", List.of()));
+    SelectionResult selection = new SelectionResult(notes, List.of(), notes.size(), notes.size());
+    List<ApprovedPageSnapshot> snapshots = new ApprovedSnapshotRepository().loadSelected(
+        selection, fixture.review(), VaultReferenceCatalog.load(fixture.review()));
+    var manifest = new ApprovedReleaseMaterializer().materialize(snapshots, fixture.vault()).manifest();
+    for (ManifestEntry entry : manifest.entries()) {
+      assertFalse(entry.body().contains("ref:"));
+      assertFalse(entry.body().contains("vault-ref-"));
+    }
+    for (ManifestEntry entry : manifest.englishEntries()) {
+      assertFalse(entry.body().contains("ref:"));
+      assertFalse(entry.body().contains("vault-ref-"));
+    }
+  }
+
+  @Test
+  void ambiguousPageApplyFailsWithoutDecision() throws Exception {
+    Fixture fixture = correctedPageFixture();
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(
+            fixture.vault(), fixture.review(), fixture.astro(), fixture.report());
+    Files.writeString(fixture.decisions(),
+        "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"decisions\":{}}"
+            .formatted(inventory.inventorySha256()), StandardCharsets.UTF_8);
+
+    SemanticMigrationService.MigrationIncompleteException error = assertThrows(
+        SemanticMigrationService.MigrationIncompleteException.class,
+        () -> new SemanticMigrationService().apply(
+            fixture.request(), SemanticMigrationService.MigrationHooks.none()));
+
+    assertTrue(causeChain(error).contains("missing migration decisions"));
+    assertFalse(Files.exists(SemanticSchemaState.activationMarker(fixture.review())));
   }
 
   @Test

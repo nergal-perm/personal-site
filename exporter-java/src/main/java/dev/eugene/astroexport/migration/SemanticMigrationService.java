@@ -108,10 +108,11 @@ public final class SemanticMigrationService {
     ReferenceMigrationInventory.DecisionSet decisions =
         inventoryService.validateDecisions(inventory, request.decisions());
     requireDecisionCoverage(inventory, decisions);
+    ReferenceMigrationInventory.ExecutableDecisions executableDecisions = decisions.executable();
     Map<String, ReferenceMigrationInventory.CorrectedOrderDecision> correctedOrder =
-        decisions.correctedOrder();
+        executableDecisions.correctedOrder();
     Map<String, ReferenceMigrationInventory.PageCorrectedDecision> correctedPages =
-        decisions.correctedPages();
+        executableDecisions.correctedPages();
     Path catalog = VaultReferenceCatalog.catalogPath(request.review());
     boolean catalogWasPresent = Files.exists(catalog, LinkOption.NOFOLLOW_LINKS);
     VaultReferenceCatalog reconciledCatalog = VaultReferenceCatalog.loadIfPresent(request.review())
@@ -151,15 +152,15 @@ public final class SemanticMigrationService {
       ReferenceMigrationInventory.PageCorrectedDecision correctedPage =
           correctedPages.get(page.pageRef() + "/page");
       byte[] ru = correctedPage == null
-          ? semanticBytes(page.approvedRussian().text(), page, true)
+          ? buildMigrated(page.approvedRussian().text(), page, true)
           : correctedPage.correctedRussianBytes();
       ReferenceMigrationInventory.CorrectedOrderDecision corrected =
           correctedOrder.get(page.pageRef() + "/order");
       byte[] en = correctedPage != null
           ? correctedPage.correctedEnglishBytes()
           : corrected == null
-              ? semanticBytes(page.approvedEnglish().text(), page, false)
-              : semanticBytes(new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8), page, false);
+              ? buildMigrated(page.approvedEnglish().text(), page, false)
+              : buildMigrated(new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8), page, false);
       PageReferenceMap references = references(page, ru, en);
       byte[] referenceBytes = PageReferenceMapCodec.write(references);
       PageReferenceMapCodec.validate(
@@ -421,7 +422,7 @@ public final class SemanticMigrationService {
     }
   }
 
-  private static byte[] semanticBytes(
+  private static byte[] buildMigrated(
       String markdown,
       ReferenceMigrationAligner.MigrationPage page,
       boolean russian) {
@@ -431,6 +432,11 @@ public final class SemanticMigrationService {
     }
     String converted = markdown;
     for (ReferenceMigrationAligner.MigrationOccurrence occurrence : occurrences) {
+      if (occurrence.proposedEnDestination() == null) {
+        throw new IllegalStateException(
+            "occurrence " + occurrence.occurrenceKey()
+                + " has no proposed English destination; approve a corrected page before apply");
+      }
       String destination = russian
           ? occurrence.proposedEnDestination().replace("/en/", "/ru/")
           : occurrence.proposedEnDestination();
