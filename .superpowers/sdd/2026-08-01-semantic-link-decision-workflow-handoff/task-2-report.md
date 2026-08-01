@@ -70,3 +70,60 @@ Result: passed with no output.
 ## Concerns
 
 Decision producers must add the new required `approvedEnglishSha256` field to every `approve-corrected-order` decision. No compatibility shim was added because accepting an unbound corrected snapshot would weaken the executable safety boundary.
+
+## Fix round 1/5
+
+Addressed both Terra findings.
+
+- Added the page-level key `<pageRef>/page` and decision type `approve-corrected-page`.
+- A page decision carries corrected Russian and English UTF-8 snapshots, four corrected/approved byte hashes, and defensive copies of both byte arrays.
+- Page decisions cover every occurrence on a non-automatic page, including `confirmed-needed` pages whose occurrences have no proposed English destination. Coverage requires both corrected snapshots to contain the page occurrence IDs in inventory order as `ref:` links.
+- Apply now consumes the validated page payload directly and stages the corrected RU/EN bytes; the ambiguous-page apply regression passes.
+- Approved Russian and English files are re-read and hash-checked during decision validation, so mutation after inventory inspection is rejected even when the decision JSON remains otherwise valid.
+- Existing occurrence-confirm and corrected-order compatibility paths remain intact.
+
+### Fix-round tests
+
+Focused page-contract validation:
+
+```text
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -Dtest='dev.eugene.astroexport.migration.ReferenceMigrationInventoryTest' test
+```
+
+Result: passed with exit code 0; 16 tests, 0 failures, 0 errors, 0 skipped.
+
+Focused end-to-end apply:
+
+```text
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -Dtest='dev.eugene.astroexport.migration.SemanticMigrationServiceTest#correctedPageDecisionAppliesAmbiguousConfirmedNeededPage' test
+```
+
+Result: passed with exit code 0; 1 test, 0 failures, 0 errors, 0 skipped. Maven emitted only the existing JNA restricted-native-access warning.
+
+Required migration suite:
+
+```text
+cd /Users/eugene/Dev/personal-site/exporter-java
+mvn -q -Dtest='dev.eugene.astroexport.migration.*Test' test
+```
+
+Result: passed with exit code 0; 63 tests, 0 failures, 0 errors, 0 skipped. Maven emitted only the existing JNA restricted-native-access warning.
+
+Additional check:
+
+```text
+cd /Users/eugene/Dev/personal-site
+git diff --check
+```
+
+Result: passed with no output.
+
+### Fix-round self-review and concerns
+
+- The real blocker is now executable: a duplicate/ambiguous confirmed-needed page is accepted by one page decision and successfully applied from corrected RU/EN semantic snapshots.
+- The approved-English mutation regression changes the review `en.md` bytes after inventory creation while retaining a valid decision file; validation rejects it with `hash-mismatch`.
+- Unknown keys, stale inventory hashes, path escape, UTF-8, corrected-byte hashes, and coverage checks remain fail-closed.
+- No real vault or real legacy review workspace was touched; the new regressions use temporary fixtures.
+- Concern: page-corrected decision producers must emit final semantic `ref:<occurrence-id>` links in both snapshots and include all six required hash/path fields. This is intentional: it makes human correction executable without guessing an ambiguous EN destination.

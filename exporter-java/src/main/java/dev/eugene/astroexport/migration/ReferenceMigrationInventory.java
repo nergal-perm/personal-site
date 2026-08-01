@@ -135,9 +135,11 @@ public final class ReferenceMigrationInventory {
     }
     Set<String> known = new LinkedHashSet<>();
     Set<String> orderKeys = new LinkedHashSet<>();
+    Set<String> pageKeys = new LinkedHashSet<>();
     Map<String, ReferenceMigrationAligner.MigrationOccurrence> occurrences = new LinkedHashMap<>();
     for (ReferenceMigrationAligner.MigrationPage page : inventory.pages()) {
       orderKeys.add(page.pageRef() + "/order");
+      pageKeys.add(page.pageRef() + "/page");
       for (ReferenceMigrationAligner.MigrationOccurrence occurrence : page.occurrences()) {
         known.add(occurrence.occurrenceKey());
         occurrences.put(occurrence.occurrenceKey(), occurrence);
@@ -146,7 +148,7 @@ public final class ReferenceMigrationInventory {
     List<Decision> validated = new ArrayList<>();
     for (Map.Entry<?, ?> entry : decisions.entrySet()) {
       String key = string(entry.getKey());
-      if (!known.contains(key) && !orderKeys.contains(key)) {
+      if (!known.contains(key) && !orderKeys.contains(key) && !pageKeys.contains(key)) {
         throw new DecisionValidationException("unknown-decision", "unknown decision key: " + key);
       }
       if (!(entry.getValue() instanceof Map<?, ?> decision)) {
@@ -156,6 +158,8 @@ public final class ReferenceMigrationInventory {
       if ("confirm".equals(decisionType)) {
         ReferenceMigrationAligner.Span span = validateConfirm(occurrences.get(key), decision);
         validated.add(new SpanConfirmDecision(key, span));
+      } else if ("approve-corrected-page".equals(decisionType)) {
+        validated.add(validateCorrectedPage(inventory, key, decisionsPath, decision));
       } else if ("approve-corrected-order".equals(decisionType)) {
         validated.add(validateCorrectedOrder(inventory, key, decisionsPath, decision));
       } else {
@@ -183,7 +187,7 @@ public final class ReferenceMigrationInventory {
     return new ReferenceMigrationAligner.Span(start, end);
   }
 
-  private static PageCorrectedDecision validateCorrectedOrder(
+  private static CorrectedOrderDecision validateCorrectedOrder(
       Inventory inventory,
       String key,
       Path decisionsPath,
@@ -224,7 +228,127 @@ public final class ReferenceMigrationInventory {
       throw new DecisionValidationException(
           "hash-mismatch", "approved English hash does not match inventory");
     }
-    return new PageCorrectedDecision(key, relative, approvedHash, expectedHash, bytes);
+    return new CorrectedOrderDecision(key, relative, approvedHash, expectedHash, bytes);
+  }
+
+  private static PageCorrectedDecision validateCorrectedPage(
+      Inventory inventory,
+      String key,
+      Path decisionsPath,
+      Map<?, ?> decision) {
+    ReferenceMigrationAligner.MigrationPage page = inventory.pages().stream()
+        .filter(candidate -> key.equals(candidate.pageRef() + "/page"))
+        .findFirst()
+        .orElseThrow(() -> new DecisionValidationException("unknown-decision", "unknown page decision"));
+    SnapshotBytes russian = readCorrectedSnapshot(
+        decisionsPath,
+        string(decision.get("correctedRussianPath")),
+        string(decision.get("correctedRussianSha256")),
+        "Russian");
+    SnapshotBytes english = readCorrectedSnapshot(
+        decisionsPath,
+        string(decision.get("correctedEnglishPath")),
+        string(decision.get("correctedEnglishSha256")),
+        "English");
+    validateApprovedSnapshotBinding(
+        page.approvedRussian(),
+        string(decision.get("approvedRussianSha256")),
+        "Russian");
+    validateApprovedSnapshotBinding(
+        page.approvedEnglish(),
+        string(decision.get("approvedEnglishSha256")),
+        "English");
+    validateCorrectedPageCoverage(page, russian.bytes(), english.bytes());
+    return new PageCorrectedDecision(
+        key,
+        russian.path(),
+        english.path(),
+        PageReferenceMapCodec.sha256(page.approvedRussian().text().getBytes(StandardCharsets.UTF_8)),
+        PageReferenceMapCodec.sha256(page.approvedEnglish().text().getBytes(StandardCharsets.UTF_8)),
+        russian.hash(),
+        english.hash(),
+        russian.bytes(),
+        english.bytes());
+  }
+
+  private static SnapshotBytes readCorrectedSnapshot(
+      Path decisionsPath,
+      String relative,
+      String expectedHash,
+      String language) {
+    Path path = resolveCorrected(decisionsPath, relative);
+    byte[] bytes;
+    try {
+      bytes = Files.readAllBytes(path);
+      decode(bytes);
+    } catch (CharacterCodingException error) {
+      throw new DecisionValidationException("unsafe-input", "corrected " + language + " must be valid UTF-8");
+    } catch (IOException error) {
+      throw new DecisionValidationException("missing-corrected-" + language.toLowerCase(),
+          "corrected " + language + " snapshot is missing");
+    }
+    String actualHash = PageReferenceMapCodec.sha256(bytes);
+    if (!actualHash.equals(expectedHash)) {
+      throw new DecisionValidationException("hash-mismatch", "corrected " + language + " hash does not match");
+    }
+    return new SnapshotBytes(path.toString(), actualHash, bytes);
+  }
+
+  private static void validateApprovedSnapshotBinding(
+      ReferenceMigrationAligner.ApprovedDocument approved,
+      String expectedHash,
+      String language) {
+    String inventoryHash = PageReferenceMapCodec.sha256(
+        approved.text().getBytes(StandardCharsets.UTF_8));
+    if (!inventoryHash.equals(expectedHash)) {
+      throw new DecisionValidationException(
+          "hash-mismatch", "approved " + language + " hash does not match inventory");
+    }
+    try {
+      byte[] current = Files.readAllBytes(Path.of(approved.path()));
+      decode(current);
+      if (!PageReferenceMapCodec.sha256(current).equals(expectedHash)) {
+        throw new DecisionValidationException(
+            "hash-mismatch", "approved " + language + " snapshot changed after inventory");
+      }
+    } catch (CharacterCodingException error) {
+      throw new DecisionValidationException("unsafe-input", "approved " + language + " must be valid UTF-8");
+    } catch (IOException error) {
+      throw new DecisionValidationException("missing-approved-" + language.toLowerCase(),
+          "approved " + language + " snapshot is missing");
+    }
+  }
+
+  private static void validateCorrectedPageCoverage(
+      ReferenceMigrationAligner.MigrationPage page,
+      byte[] russian,
+      byte[] english) {
+    List<String> expected = page.occurrences().stream()
+        .map(ReferenceMigrationInventory::referenceId)
+        .toList();
+    List<String> russianIds = semanticReferenceIds(new String(russian, StandardCharsets.UTF_8));
+    List<String> englishIds = semanticReferenceIds(new String(english, StandardCharsets.UTF_8));
+    if (!russianIds.equals(expected) || !englishIds.equals(expected)) {
+      throw new DecisionValidationException(
+          "incomplete-corrected-page", "corrected Russian and English snapshots must cover occurrences in order");
+    }
+  }
+
+  private static List<String> semanticReferenceIds(String markdown) {
+    java.util.regex.Matcher matcher = java.util.regex.Pattern.compile(
+        "\\]\\(ref:([^#)\\r\\n]+)(?:#[^)]*)?\\)").matcher(markdown);
+    List<String> ids = new ArrayList<>();
+    while (matcher.find()) {
+      ids.add(matcher.group(1));
+    }
+    return List.copyOf(ids);
+  }
+
+  private static String referenceId(ReferenceMigrationAligner.MigrationOccurrence occurrence) {
+    if (occurrence.proposedReferenceId() != null && !occurrence.proposedReferenceId().isBlank()) {
+      return occurrence.proposedReferenceId();
+    }
+    return "ref-%04d".formatted(occurrence.sourceOrdinal());
   }
 
   private static String englishDestination(ReferenceMigrationAligner.MigrationOccurrence occurrence) {
@@ -767,7 +891,19 @@ public final class ReferenceMigrationInventory {
       return decisions.stream().map(Decision::key).toList();
     }
 
-    public Map<String, PageCorrectedDecision> correctedOrder() {
+    public Map<String, CorrectedOrderDecision> correctedOrder() {
+      LinkedHashMap<String, CorrectedOrderDecision> corrected = decisions.stream()
+          .filter(CorrectedOrderDecision.class::isInstance)
+          .map(CorrectedOrderDecision.class::cast)
+          .collect(java.util.stream.Collectors.toMap(
+              CorrectedOrderDecision::key,
+              decision -> decision,
+              (first, second) -> first,
+              LinkedHashMap::new));
+      return Map.copyOf(corrected);
+    }
+
+    public Map<String, PageCorrectedDecision> correctedPages() {
       LinkedHashMap<String, PageCorrectedDecision> corrected = decisions.stream()
           .filter(PageCorrectedDecision.class::isInstance)
           .map(PageCorrectedDecision.class::cast)
@@ -780,7 +916,7 @@ public final class ReferenceMigrationInventory {
     }
   }
 
-  public sealed interface Decision permits SpanConfirmDecision, PageCorrectedDecision {
+  public sealed interface Decision permits SpanConfirmDecision, CorrectedOrderDecision, PageCorrectedDecision {
     String key();
   }
 
@@ -792,13 +928,13 @@ public final class ReferenceMigrationInventory {
     }
   }
 
-  public record PageCorrectedDecision(
+  public record CorrectedOrderDecision(
       String key,
       String correctedEnglishPath,
       String approvedEnglishSha256,
       String correctedEnglishSha256,
       byte[] correctedEnglishBytes) implements Decision {
-    public PageCorrectedDecision {
+    public CorrectedOrderDecision {
       key = requireText(key, "key");
       correctedEnglishPath = requireText(correctedEnglishPath, "correctedEnglishPath");
       approvedEnglishSha256 = requireText(approvedEnglishSha256, "approvedEnglishSha256");
@@ -809,6 +945,50 @@ public final class ReferenceMigrationInventory {
     @Override
     public byte[] correctedEnglishBytes() {
       return correctedEnglishBytes.clone();
+    }
+  }
+
+  public record PageCorrectedDecision(
+      String key,
+      String correctedRussianPath,
+      String correctedEnglishPath,
+      String approvedRussianSha256,
+      String approvedEnglishSha256,
+      String correctedRussianSha256,
+      String correctedEnglishSha256,
+      byte[] correctedRussianBytes,
+      byte[] correctedEnglishBytes) implements Decision {
+    public PageCorrectedDecision {
+      key = requireText(key, "key");
+      correctedRussianPath = requireText(correctedRussianPath, "correctedRussianPath");
+      correctedEnglishPath = requireText(correctedEnglishPath, "correctedEnglishPath");
+      approvedRussianSha256 = requireText(approvedRussianSha256, "approvedRussianSha256");
+      approvedEnglishSha256 = requireText(approvedEnglishSha256, "approvedEnglishSha256");
+      correctedRussianSha256 = requireText(correctedRussianSha256, "correctedRussianSha256");
+      correctedEnglishSha256 = requireText(correctedEnglishSha256, "correctedEnglishSha256");
+      correctedRussianBytes = correctedRussianBytes.clone();
+      correctedEnglishBytes = correctedEnglishBytes.clone();
+    }
+
+    @Override
+    public byte[] correctedRussianBytes() {
+      return correctedRussianBytes.clone();
+    }
+
+    @Override
+    public byte[] correctedEnglishBytes() {
+      return correctedEnglishBytes.clone();
+    }
+  }
+
+  private record SnapshotBytes(String path, String hash, byte[] bytes) {
+    private SnapshotBytes {
+      bytes = bytes.clone();
+    }
+
+    @Override
+    public byte[] bytes() {
+      return bytes.clone();
     }
   }
 

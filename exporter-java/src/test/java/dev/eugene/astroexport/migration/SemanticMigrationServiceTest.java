@@ -251,6 +251,20 @@ final class SemanticMigrationServiceTest {
   }
 
   @Test
+  void correctedPageDecisionAppliesAmbiguousConfirmedNeededPage() throws Exception {
+    Fixture fixture = correctedPageFixture();
+
+    new SemanticMigrationService().apply(fixture.request(), SemanticMigrationService.MigrationHooks.none());
+
+    assertTrue(Files.readString(
+        fixture.review().resolve("blog/page/published/ru.md"), StandardCharsets.UTF_8)
+        .contains("ref:ref-0001"));
+    assertTrue(Files.readString(
+        fixture.review().resolve("blog/page/published/en.md"), StandardCharsets.UTF_8)
+        .contains("ref:ref-0002"));
+  }
+
+  @Test
   void completeJournalWithCleanupPendingPageStillActivatesSemanticMode() throws Exception {
     Fixture fixture = fixture(1);
     new SemanticMigrationService().apply(fixture.request(), SemanticMigrationService.MigrationHooks.none());
@@ -472,6 +486,57 @@ final class SemanticMigrationServiceTest {
             PageReferenceMapCodec.sha256(correctedEnglish.getBytes(StandardCharsets.UTF_8))),
         StandardCharsets.UTF_8);
     return new OrderFixture(vault, review, astro, report, decisions);
+  }
+
+  private Fixture correctedPageFixture() throws Exception {
+    Path vault = temp.resolve("vault-corrected-page");
+    Path review = temp.resolve("review-corrected-page");
+    Path astro = temp.resolve("astro-corrected-page");
+    Path report = temp.resolve("inventory-corrected-page.json");
+    Files.createDirectories(astro);
+    writePublishedSource(vault, "page.md", "blog", "page", "[[Target|target]] [[Target|target]]");
+    writePublishedSource(vault, "target.md", "blog", "target", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writePublishedPair(review, "target", "target.md", "vault-ref-target");
+    Path published = review.resolve("blog/page/published");
+    Files.createDirectories(published);
+    String ru = approved("ru", "page", "[target](/ru/essays/target/) [target](/ru/essays/target/)");
+    String en = approved("en", "page", "[target](/en/essays/target/) [target](/en/essays/target/)");
+    Files.writeString(published.resolve("ru.md"), ru, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("en.md"), en, StandardCharsets.UTF_8);
+    Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "pageRef", "vault-ref-page",
+        "sourcePath", "page.md",
+        "ruSha256", PageReferenceMapCodec.sha256(ru.getBytes(StandardCharsets.UTF_8)),
+        "enSha256", PageReferenceMapCodec.sha256(en.getBytes(StandardCharsets.UTF_8)),
+        "order", List.of("ref-0001", "ref-0002"),
+        "references", Map.of())), StandardCharsets.UTF_8);
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, astro, report);
+    ReferenceMigrationAligner.MigrationPage page = inventory.pages().stream()
+        .filter(candidate -> candidate.pageRef().equals("vault-ref-page"))
+        .findFirst().orElseThrow();
+    String correctedRu = approved("ru", "page", "[target](ref:ref-0001) [target](ref:ref-0002)");
+    String correctedEn = approved("en", "page", "[target](ref:ref-0001) [target](ref:ref-0002)");
+    Path correctedRuPath = temp.resolve("corrected-page/ru.md");
+    Path correctedEnPath = temp.resolve("corrected-page/en.md");
+    Files.createDirectories(correctedRuPath.getParent());
+    Files.writeString(correctedRuPath, correctedRu, StandardCharsets.UTF_8);
+    Files.writeString(correctedEnPath, correctedEn, StandardCharsets.UTF_8);
+    Path decisions = temp.resolve("decisions-corrected-page.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/page":{"decision":"approve-corrected-page","correctedRussianPath":"%s","correctedEnglishPath":"%s","approvedRussianSha256":"%s","approvedEnglishSha256":"%s","correctedRussianSha256":"%s","correctedEnglishSha256":"%s"}}}
+        """.formatted(
+            inventory.inventorySha256(),
+            temp.relativize(correctedRuPath),
+            temp.relativize(correctedEnPath),
+            PageReferenceMapCodec.sha256(page.approvedRussian().text().getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(page.approvedEnglish().text().getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(correctedRu.getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(correctedEn.getBytes(StandardCharsets.UTF_8))),
+        StandardCharsets.UTF_8);
+    return new Fixture(vault, review, astro, report, decisions);
   }
 
   private Fixture editorialFixture() throws Exception {

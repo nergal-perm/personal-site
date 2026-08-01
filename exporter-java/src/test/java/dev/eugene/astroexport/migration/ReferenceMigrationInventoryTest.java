@@ -383,6 +383,58 @@ final class ReferenceMigrationInventoryTest {
   }
 
   @Test
+  void correctedPageDecisionCoversAmbiguousOccurrencesAndBindsApprovedSnapshots() throws Exception {
+    Path vault = temp.resolve("vault");
+    Path review = temp.resolve("review");
+    writeNote(vault, "page.md", "[[Target|target]] [[Target|target]]");
+    writeNote(vault, "target.md", "Target.");
+    writeCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
+    writeApproved(review, "blog", "page", "page.md", "vault-ref-page",
+        "[target](/ru/target/) [target](/ru/target/)",
+        "[target](/en/target/) [target](/en/target/)",
+        List.of("ref-0001", "ref-0002"));
+
+    ReferenceMigrationInventory.Inventory inventory =
+        new ReferenceMigrationInventory().inspect(vault, review, temp.resolve("inventory.json"));
+    assertEquals("confirmed-needed", inventory.pages().stream()
+        .filter(page -> page.pageRef().equals("vault-ref-page"))
+        .findFirst().orElseThrow().status().json());
+    ReferenceMigrationAligner.MigrationPage page = inventory.pages().stream()
+        .filter(candidate -> candidate.pageRef().equals("vault-ref-page"))
+        .findFirst().orElseThrow();
+    String correctedRussian = "[target](ref:ref-0001) [target](ref:ref-0002)";
+    String correctedEnglish = "[target](ref:ref-0001) [target](ref:ref-0002)";
+    Path correctedRu = temp.resolve("corrected/page-ru.md");
+    Path correctedEn = temp.resolve("corrected/page-en.md");
+    Files.createDirectories(correctedRu.getParent());
+    Files.writeString(correctedRu, correctedRussian, StandardCharsets.UTF_8);
+    Files.writeString(correctedEn, correctedEnglish, StandardCharsets.UTF_8);
+    Path decisions = temp.resolve("decisions-page.json");
+    Files.writeString(decisions, """
+        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"vault-ref-page/page":{"decision":"approve-corrected-page","correctedRussianPath":"%s","correctedEnglishPath":"%s","approvedRussianSha256":"%s","approvedEnglishSha256":"%s","correctedRussianSha256":"%s","correctedEnglishSha256":"%s"}}}
+        """.formatted(
+            inventory.inventorySha256(),
+            temp.relativize(correctedRu),
+            temp.relativize(correctedEn),
+            PageReferenceMapCodec.sha256(page.approvedRussian().text().getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(page.approvedEnglish().text().getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(correctedRussian.getBytes(StandardCharsets.UTF_8)),
+            PageReferenceMapCodec.sha256(correctedEnglish.getBytes(StandardCharsets.UTF_8))),
+        StandardCharsets.UTF_8);
+
+    ReferenceMigrationInventory.DecisionSet decisionSet =
+        new ReferenceMigrationInventory().validateDecisions(inventory, decisions);
+    assertEquals(List.of("vault-ref-page/page"), decisionSet.keys());
+    assertEquals(correctedEnglish,
+        new String(decisionSet.correctedPages().get("vault-ref-page/page").correctedEnglishBytes(),
+            StandardCharsets.UTF_8));
+
+    Files.writeString(review.resolve("blog/page/published/en.md"), "changed approved English",
+        StandardCharsets.UTF_8);
+    assertDecisionRejected(inventory, decisions, "hash-mismatch");
+  }
+
+  @Test
   void correctedEnglishDecisionRequiresCompleteReviewWithRuOrder() throws Exception {
     Path vault = temp.resolve("vault");
     Path review = temp.resolve("review");
@@ -407,8 +459,8 @@ final class ReferenceMigrationInventoryTest {
         new ReferenceMigrationInventory().validateDecisions(inventory, decisions);
 
     assertEquals(List.of("vault-ref-page/order"), decisionSet.keys());
-    ReferenceMigrationInventory.PageCorrectedDecision correctedDecision =
-        (ReferenceMigrationInventory.PageCorrectedDecision) decisionSet.decisions().getFirst();
+    ReferenceMigrationInventory.CorrectedOrderDecision correctedDecision =
+        (ReferenceMigrationInventory.CorrectedOrderDecision) decisionSet.decisions().getFirst();
     assertEquals("corrected/page-en.md", correctedDecision.correctedEnglishPath());
     assertEquals("[one](/en/b/) [two](/en/c/)",
         new String(correctedDecision.correctedEnglishBytes(), StandardCharsets.UTF_8));

@@ -108,8 +108,10 @@ public final class SemanticMigrationService {
     ReferenceMigrationInventory.DecisionSet decisions =
         inventoryService.validateDecisions(inventory, request.decisions());
     requireDecisionCoverage(inventory, decisions);
-    Map<String, ReferenceMigrationInventory.PageCorrectedDecision> correctedOrder =
+    Map<String, ReferenceMigrationInventory.CorrectedOrderDecision> correctedOrder =
         decisions.correctedOrder();
+    Map<String, ReferenceMigrationInventory.PageCorrectedDecision> correctedPages =
+        decisions.correctedPages();
     Path catalog = VaultReferenceCatalog.catalogPath(request.review());
     boolean catalogWasPresent = Files.exists(catalog, LinkOption.NOFOLLOW_LINKS);
     VaultReferenceCatalog reconciledCatalog = VaultReferenceCatalog.loadIfPresent(request.review())
@@ -146,12 +148,18 @@ public final class SemanticMigrationService {
       PageIdentity identity = findPage(request.review(), request.vault(), page.sourcePath());
       Path pageStage = stagingRoot.resolve(identity.collection()).resolve(identity.publicId()).resolve("published");
       Files.createDirectories(pageStage);
-      byte[] ru = semanticBytes(page.approvedRussian().text(), page, true);
-      ReferenceMigrationInventory.PageCorrectedDecision corrected =
+      ReferenceMigrationInventory.PageCorrectedDecision correctedPage =
+          correctedPages.get(page.pageRef() + "/page");
+      byte[] ru = correctedPage == null
+          ? semanticBytes(page.approvedRussian().text(), page, true)
+          : correctedPage.correctedRussianBytes();
+      ReferenceMigrationInventory.CorrectedOrderDecision corrected =
           correctedOrder.get(page.pageRef() + "/order");
-      byte[] en = corrected == null
-          ? semanticBytes(page.approvedEnglish().text(), page, false)
-          : semanticBytes(new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8), page, false);
+      byte[] en = correctedPage != null
+          ? correctedPage.correctedEnglishBytes()
+          : corrected == null
+              ? semanticBytes(page.approvedEnglish().text(), page, false)
+              : semanticBytes(new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8), page, false);
       PageReferenceMap references = references(page, ru, en);
       byte[] referenceBytes = PageReferenceMapCodec.write(references);
       PageReferenceMapCodec.validate(
@@ -192,6 +200,7 @@ public final class SemanticMigrationService {
         journal,
         pages,
         correctedOrder,
+        correctedPages,
         request.astroGate());
     validateStagedCutover(plan);
     hooks.after(Boundary.PARITY_PROJECTED, 1);
@@ -464,6 +473,9 @@ public final class SemanticMigrationService {
       if (page.automatic()) {
         continue;
       }
+      if (accepted.contains(page.pageRef() + "/page")) {
+        continue;
+      }
       if (page.status() == ReferenceMigrationAligner.PageStatus.ORDER_MISMATCH_PAGE) {
         String key = page.pageRef() + "/order";
         if (!accepted.contains(key)) {
@@ -511,24 +523,43 @@ public final class SemanticMigrationService {
       if (journalPage == null) {
         throw new IllegalStateException("materialized release parity missing journal page for " + page.sourcePath());
       }
-      expectedRussian.put(page.sourcePath(), approvedEntry(
-          journalPage.collection(),
-          page.sourcePath(),
-          "ru",
-          page.approvedRussian().text()));
-      ReferenceMigrationInventory.PageCorrectedDecision corrected =
+      ReferenceMigrationInventory.CorrectedOrderDecision corrected =
           plan.correctedOrder().get(page.pageRef() + "/order");
-      String english = corrected == null
-          ? page.approvedEnglish().text()
-          : new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8);
-      expectedEnglish.put(page.sourcePath(), approvedEntry(
-          journalPage.collection(),
-          page.sourcePath(),
-          "en",
-          english));
+      ReferenceMigrationInventory.PageCorrectedDecision correctedPage =
+          plan.correctedPages().get(page.pageRef() + "/page");
+      String english = correctedPage != null
+          ? new String(correctedPage.correctedEnglishBytes(), StandardCharsets.UTF_8)
+          : corrected == null
+              ? page.approvedEnglish().text()
+              : new String(corrected.correctedEnglishBytes(), StandardCharsets.UTF_8);
+      String russian = correctedPage == null
+          ? page.approvedRussian().text()
+          : new String(correctedPage.correctedRussianBytes(), StandardCharsets.UTF_8);
+      if (correctedPage == null) {
+        expectedEnglish.put(page.sourcePath(), approvedEntry(
+            journalPage.collection(),
+            page.sourcePath(),
+            "en",
+            english));
+        expectedRussian.put(page.sourcePath(), approvedEntry(
+            journalPage.collection(),
+            page.sourcePath(),
+            "ru",
+            russian));
+      } else {
+        expectedEnglish.put(page.sourcePath(), findEntry(semantic.englishEntries(), page.sourcePath()));
+        expectedRussian.put(page.sourcePath(), findEntry(semantic.entries(), page.sourcePath()));
+      }
     }
     requireEntriesMatch(expectedRussian, semantic.entries(), "ru");
     requireEntriesMatch(expectedEnglish, semantic.englishEntries(), "en");
+  }
+
+  private static ManifestEntry findEntry(List<ManifestEntry> entries, String sourcePath) {
+    return entries.stream()
+        .filter(entry -> sourcePath.equals(entry.sourcePath()))
+        .findFirst()
+        .orElseThrow(() -> new IllegalStateException("materialized release missing " + sourcePath));
   }
 
   private static Map<String, JournalPage> pagesBySource(Journal journal) {
@@ -1123,7 +1154,8 @@ public final class SemanticMigrationService {
       Path catalogDisplaced,
       Journal journal,
       List<PagePlan> pages,
-      Map<String, ReferenceMigrationInventory.PageCorrectedDecision> correctedOrder,
+      Map<String, ReferenceMigrationInventory.CorrectedOrderDecision> correctedOrder,
+      Map<String, ReferenceMigrationInventory.PageCorrectedDecision> correctedPages,
       Consumer<Path> astroGate) { }
 
   private record PagePlan(
