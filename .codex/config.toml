@@ -1,0 +1,7 @@
+[agents]
+enabled = true
+max_concurrent_threads_per_session = 3
+
+# Intentionally omit default_subagent_model. The SDD role-routing policy in
+# AGENTS.md selects Terra and Sol explicitly and lets implementers inherit
+# Spark from a Spark parent until explicit Spark spawning is supported.
