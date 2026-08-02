@@ -1,5 +1,11 @@
 # Late-Bound Semantic Wikilinks Implementation Plan
 
+> **Historical execution plan — do not resume.** The implementation recorded by
+> this plan is already present in the repository, while its unchecked boxes are
+> not a trustworthy progress ledger. The new source-ID admission slice is
+> governed by `dec-20260802-bind-the-vanilla-publication-frontier-zettelkast-b77c183c`
+> and its dedicated 2026-08-02 plan. This file remains for provenance only.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use
 > superpowers:subagent-driven-development (recommended) or
 > superpowers:executing-plans to implement this plan task-by-task. Steps use

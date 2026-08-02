@@ -1,5 +1,12 @@
 # Semantic Link Decision Workflow Handoff
 
+> **Historical completed plan — not current slice authority.** Its decision-draft
+> and validation machinery is already implemented through commit `e7f8fc3`;
+> the real migration apply remains separately human-approval-gated. Do not use
+> the unchecked boxes below to infer unfinished source-ID work. Current work is
+> governed by `dec-20260802-bind-the-vanilla-publication-frontier-zettelkast-b77c183c`
+> and its dedicated 2026-08-02 plan.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the one-time semantic-link migration practically executable for approved legacy review snapshots that currently report `decisions-required`.

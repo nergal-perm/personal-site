@@ -1,5 +1,15 @@
 # Late-Bound Semantic Wikilinks and Approved-Only Releases
 
+> **Historical substrate — not current identity authority.** This design remains
+> useful for the implemented occurrence-map, approval, and late-bound release
+> invariants. Its registry/path-based target-identity assumptions are superseded
+> by the binding decision
+> `dec-20260802-bind-the-vanilla-publication-frontier-zettelkast-b77c183c` and
+> the canonical source-ID specification at
+> `docs/superpowers/specs/2026-08-02-publication-frontier-zettelkasten-identity.md`.
+> Agents must not derive new identity allocation or path-fallback work from this
+> historical document.
+
 ## Context
 
 A published vault note can contain an inline Obsidian wikilink to another note

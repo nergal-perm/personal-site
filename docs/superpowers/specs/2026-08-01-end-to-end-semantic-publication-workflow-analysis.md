@@ -1,10 +1,16 @@
 # End-to-End Semantic Publication Workflow
 
+> **Deprecated as implementation authority.** This analysis predates the binding
+> source-ID decision. In particular, its Obsidian graph-payload and lazy
+> registry-allocation recommendations are rejected for the current design.
+> Preserve this file only as historical analysis; implement from
+> `dec-20260802-bind-the-vanilla-publication-frontier-zettelkast-b77c183c` and
+> `docs/superpowers/specs/2026-08-02-publication-frontier-zettelkasten-identity.md`.
+
 ## Status
 
-Analysis and design direction. This document describes the target workflow and
-the changes required to make it operational. It does not authorize a site
-migration or mutation of the real review workspace.
+Historical analysis. It does not authorize implementation, site migration, or
+mutation of the real review workspace.
 
 ## Executive conclusion
 

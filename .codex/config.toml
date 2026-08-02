@@ -5,3 +5,27 @@ max_concurrent_threads_per_session = 3
 # Intentionally omit default_subagent_model. The SDD role-routing policy in
 # AGENTS.md selects Terra and Sol explicitly and lets implementers inherit
 # Spark from a Spark parent until explicit Spark spawning is supported.
+
+[mcp_servers.haft]
+command = "haft"
+args = ["serve"]
+startup_timeout_sec = 10
+tool_timeout_sec = 60
+
+[mcp_servers.haft.env]
+HAFT_PROJECT_ROOT = "."
+
+[mcp_servers.haft.tools.haft_query]
+approval_mode = "approve"
+
+[mcp_servers.haft.tools.haft_solution]
+approval_mode = "approve"
+
+[mcp_servers.haft.tools.haft_problem]
+approval_mode = "approve"
+
+[mcp_servers.haft.tools.haft_note]
+approval_mode = "approve"
+
+[mcp_servers.haft.tools.haft_decision]
+approval_mode = "approve"
