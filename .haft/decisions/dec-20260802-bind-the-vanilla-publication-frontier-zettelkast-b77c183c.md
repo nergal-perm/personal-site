@@ -1,19 +1,23 @@
 ---
 id: dec-20260802-bind-the-vanilla-publication-frontier-zettelkast-b77c183c
 kind: DecisionRecord
-version: 1
+version: 2
 status: active
 title: Publication-frontier Zettelkasten identity (base)
 context: semantic-links
 mode: deep
 valid_until: 2026-11-02T00:00:00Z
 created_at: 2026-08-02T10:30:59Z
-updated_at: 2026-08-02T10:30:59Z
+updated_at: 2026-08-02T14:21:38Z
 links:
   - ref: prob-20260802-1803dd18
     type: based_on
   - ref: sol-20260802-2618001e
     type: based_on
+  - ref: TS.environment-change.002
+    type: governs
+  - ref: TS.environment-change.003
+    type: governs
 ---
 
 # Publication-frontier Zettelkasten identity (base)
@@ -51,6 +55,10 @@ links:
 - Current-vault backlinks, if inspected manually, are only potential referrers; approved PageReferenceMaps remain authoritative for actual activation impact.
 - New targets do not silently rewrite or reapprove existing referrers; legacy upgrades and newly public linked targets use the ordinary Prepare, review, and mark-reviewed workflow.
 - No source note, candidate, approved snapshot, review baseline, or publication state is automatically rewritten merely to repair identity metadata.
+
+**Spec sections:**
+- TS.environment-change.002
+- TS.environment-change.003
 
 ## 3. Rationale
 
