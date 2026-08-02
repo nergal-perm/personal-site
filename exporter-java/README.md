@@ -71,6 +71,14 @@ the only command that advances `published/`.
 
 ## Semantic migration and release commands
 
+> **Historical migration/recovery surface, not the selected implementation
+> path.** The binding source-ID decision upgrades legacy pages through ordinary
+> Prepare, review, and `mark-reviewed`; it does not authorize the command below
+> to mutate a real review workspace. `migrate-semantic-links --apply` remains
+> available for recovery-compatible legacy tooling, but every real invocation
+> requires separate, explicit human approval against a fresh validated
+> inventory and decisions file.
+
 Semantic migration state lives under `review/.semantic-links/`:
 
 - `catalog-v1.json` maps stable private page references to current vault paths.
