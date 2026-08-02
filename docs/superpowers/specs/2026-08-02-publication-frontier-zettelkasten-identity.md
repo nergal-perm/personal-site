@@ -46,13 +46,16 @@ is crossed.
 - **Direct target:** a non-embedded inline Obsidian wikilink occurrence outside
   escaped or protected Markdown contexts.
 - **Uniquely resolved target:** a direct target that the exporter maps to
-  exactly one current vault note using authored path, filename stem, title, or
-  alias. These are lookup clues, not semantic identity.
+  exactly one current vault note using its source ID or using authored path,
+  filename stem, title, or alias. All matching layers are considered together:
+  matches to different notes are ambiguous, even when one match is a source
+  ID. A source-ID match is an identity match; the other values are lookup clues
+  and never become semantic identity.
 - **Publication frontier:** the current note plus the deduplicated uniquely
   resolved direct targets, ordered with the current note first and targets by
   their first authored occurrence.
-- **Admission:** a read-only check that returns all source-ID defects in the
-  frontier in one deterministic result.
+- **Admission:** a read-only check that returns all source-ID and frontier-
+  resolution consistency defects in one deterministic result.
 
 ## Global invariants
 
@@ -64,16 +67,22 @@ is crossed.
    semantic Prepare.
 4. When an existing catalog entry records a non-null stable ID for the same
    current path, a different source ID blocks as an identity change. Complete
-   rename-safe immutability belongs to the later identity-index slice.
-5. Unresolved and ambiguous links retain their existing fail-closed planner
-   behavior. The ID gate neither guesses their destination nor converts them
-   into identities.
-6. Admission cannot write the source note, catalog, candidate, translation job,
+   rename-safe immutability belongs to the later identity-index slice. More
+   than one active catalog entry claiming that path is itself a deterministic
+   block, never a first-match choice.
+5. Unresolved links retain the planner's existing nonblocking diagnostic and
+   label fallback. Ambiguous links remain blocking. The ID gate neither guesses
+   a destination nor converts an unresolved clue into identity.
+6. Every authored target is cross-checked against both live descriptors and
+   the current catalog. Live ambiguity, live/catalog disagreement, or a catalog
+   target absent from the live identity scan blocks before the catalog-backed
+   planner can run.
+7. Admission cannot write the source note, catalog, candidate, translation job,
    approved snapshot, review baseline, or publication output.
-7. `PageReferenceMap` remains authoritative for actual approved referrer impact.
-8. New targets and legacy pages pass through ordinary Prepare, review, and
+8. `PageReferenceMap` remains authoritative for actual approved referrer impact.
+9. New targets and legacy pages pass through ordinary Prepare, review, and
    `mark-reviewed`; no existing referrer is silently rewritten or reapproved.
-9. `migrate-semantic-links --apply` remains separately approval-gated and is not
+10. `migrate-semantic-links --apply` remains separately approval-gated and is not
    part of this implementation slice.
 
 ## First implementation slice: fail-closed identity admission
@@ -92,6 +101,8 @@ Obsidian integration.
    - parse the current body with the same wikilink/protected-span rules used by
      `SemanticReferencePlanner`;
    - resolve direct targets against the live note descriptors;
+   - cross-check each authored target against the current catalog so a stale
+     historical or copied ID cannot bypass live identity validation;
    - build the deterministic frontier;
    - collect every identity defect.
 4. If any defect exists, return `PrepareResult.status() == "metadata_blocked"`
@@ -121,7 +132,8 @@ from byte-for-byte no-mutation assertions.
 
 The slice is accepted only when tests demonstrate all of the following:
 
-- valid IDs on the current note and every direct target admit Prepare;
+- valid IDs on the current note and every uniquely resolved direct target admit
+  Prepare when live and catalog resolution agree;
 - a missing current-note ID blocks before the translation runner starts;
 - one call reports every missing, malformed, duplicate, copied, or changed ID
   in deterministic frontier order;
@@ -130,8 +142,14 @@ The slice is accepted only when tests demonstrate all of the following:
 - repeated occurrences of one target produce one repair item;
 - embeds, escaped wikilinks, protected-context wikilinks, unresolved targets,
   and ambiguous targets do not get guessed into the identity frontier;
-- source, catalog, jobs, candidate, approved snapshot, and publication bytes
-  remain unchanged on identity failure;
+- a stale catalog cannot admit an old or copied source ID, a live/catalog
+  disagreement, a live ambiguity, or a catalog target now represented by a
+  symlink or absent note;
+- multiple active catalog entries for one current path block deterministically
+  instead of selecting an arbitrary prior identity;
+- source, catalog, jobs, candidate, approved snapshot, and publication trees
+  retain the same entries, kinds, symlink targets, and file bytes on identity
+  failure;
 - existing semantic Prepare tests use explicit source IDs and still reach their
   prior expected outcomes;
 - focused reference and Prepare tests pass, followed by the complete Maven test
