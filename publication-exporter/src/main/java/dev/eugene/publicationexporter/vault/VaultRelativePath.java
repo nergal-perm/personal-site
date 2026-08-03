@@ -1,11 +1,12 @@
 package dev.eugene.publicationexporter.vault;
 
-public final class VaultRelativePath {
+import java.util.Arrays;
+import java.util.Objects;
 
-    private final String value;
+public record VaultRelativePath(String value) {
 
-    private VaultRelativePath(String value) {
-        this.value = value;
+    public VaultRelativePath {
+        Objects.requireNonNull(value, "value");
     }
 
     public static VaultRelativePath of(String rawPath) {
@@ -13,21 +14,32 @@ public final class VaultRelativePath {
     }
 
     public boolean isWithinVault() {
-        if (value == null || value.isEmpty()) {
+        if (isBlank()) {
             return false;
         }
-        if (value.contains("\\") || value.startsWith("/")) {
+        if (isAbsolute() || usesWindowsSeparator()) {
             return false;
         }
-        for (String segment : value.split("/", -1)) {
-            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
-                return false;
-            }
-        }
-        return true;
+        return hasOnlyOrdinarySegments();
     }
 
-    public String value() {
-        return value;
+    private boolean isBlank() {
+        return value.isEmpty();
+    }
+
+    private boolean isAbsolute() {
+        return value.startsWith("/");
+    }
+
+    private boolean usesWindowsSeparator() {
+        return value.contains("\\");
+    }
+
+    private boolean hasOnlyOrdinarySegments() {
+        return Arrays.stream(value.split("/", -1)).noneMatch(this::isTraversalOrEmptySegment);
+    }
+
+    private boolean isTraversalOrEmptySegment(String segment) {
+        return segment.isEmpty() || segment.equals(".") || segment.equals("..");
     }
 }

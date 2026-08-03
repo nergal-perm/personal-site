@@ -2,7 +2,9 @@ package dev.eugene.publicationexporter.vault;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VaultRelativePathTest {
@@ -25,5 +27,30 @@ class VaultRelativePathTest {
     @Test
     void backslashEscapesVault() {
         assertFalse(VaultRelativePath.of("blog\\..\\secrets.md").isWithinVault());
+    }
+
+    @Test
+    void emptyPathEscapesVault() {
+        assertFalse(VaultRelativePath.of("").isWithinVault());
+    }
+
+    @Test
+    void soloDotSegmentEscapesVault() {
+        assertFalse(VaultRelativePath.of("./blog/note.md").isWithinVault());
+    }
+
+    @Test
+    void trailingSlashProducesEmptySegmentAndEscapesVault() {
+        assertFalse(VaultRelativePath.of("blog/").isWithinVault());
+    }
+
+    @Test
+    void nullPathIsRejectedAtConstruction() {
+        assertThrows(NullPointerException.class, () -> VaultRelativePath.of(null));
+    }
+
+    @Test
+    void equalPathsBuiltSeparatelyAreEqual() {
+        assertEquals(VaultRelativePath.of("blog/note.md"), VaultRelativePath.of("blog/note.md"));
     }
 }
