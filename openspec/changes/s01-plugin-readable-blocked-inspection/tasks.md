@@ -1079,17 +1079,14 @@ test("plugin's real bridge client accepts a schema-conformant blocked response",
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+Note: unlike Tasks 2–8, this task adds no new production code — `bridge-client.js` (existing) and `bridge-contract/schema-v2.json` (Task 6) both already exist by the time this task runs, so there is no RED phase to demonstrate; go straight to verifying green, same as Task 6's `SchemaConformanceTest`.
 
-Run: `node --test obsidian-plugin/tests/schema-conformance.test.cjs`
-Expected: FAIL — `ENOENT`, `bridge-contract/schema-v2.json` not readable (only true if run before Task 6; if Task 6 is already done, this step instead confirms PASS immediately — record whichever is observed)
-
-- [ ] **Step 3: Run test to verify it passes**
+- [ ] **Step 2: Run test to verify it passes**
 
 Run: `node --test obsidian-plugin/tests/schema-conformance.test.cjs`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 3: Commit**
 
 ```bash
 git add obsidian-plugin/tests/schema-conformance.test.cjs
