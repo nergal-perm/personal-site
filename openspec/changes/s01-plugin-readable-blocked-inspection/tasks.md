@@ -112,12 +112,14 @@ git commit -m "chore(publication-exporter): scaffold Maven project (Java 17)"
 
 ### Task 2: `VaultRelativePath` — pure path-safety value type
 
+Revised after Task 2's SDD review round (three parallel reviewers — spec/quality, `/applying-sbpp`, `/oo-design-heuristics` — independently found the same gaps in the original hand-written-class version of this task: no `equals`/`hashCode`/`toString` on a published Whole Value, `of(null)` silently succeeding instead of failing fast, and `isWithinVault()` mixing abstraction levels instead of reading as a Composed Method). Human-confirmed resolution: convert to a `record` (consistent with Task 3's `Diagnostic`/`BridgeResponse`, which get the same treatment), extract named predicate methods, validate null in the compact constructor. The published interface (`of`/`isWithinVault`/`value`) is unchanged, so this revision does not affect Tasks 4, 5, 7, 8.
+
 **Files:**
 - Create: `publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/VaultRelativePath.java`
 - Test: `publication-exporter/src/test/java/dev/eugene/publicationexporter/vault/VaultRelativePathTest.java`
 
 **Interfaces:**
-- Produces: `VaultRelativePath.of(String rawPath): VaultRelativePath`, `VaultRelativePath#isWithinVault(): boolean`, `VaultRelativePath#value(): String` — consumed by Tasks 4, 5, 7, 8.
+- Produces: `VaultRelativePath.of(String rawPath): VaultRelativePath`, `VaultRelativePath#isWithinVault(): boolean`, `VaultRelativePath#value(): String`, plus record-derived `equals`/`hashCode`/`toString` — consumed by Tasks 4, 5, 7, 8.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -126,7 +128,9 @@ package dev.eugene.publicationexporter.vault;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class VaultRelativePathTest {
@@ -150,6 +154,31 @@ class VaultRelativePathTest {
     void backslashEscapesVault() {
         assertFalse(VaultRelativePath.of("blog\\..\\secrets.md").isWithinVault());
     }
+
+    @Test
+    void emptyPathEscapesVault() {
+        assertFalse(VaultRelativePath.of("").isWithinVault());
+    }
+
+    @Test
+    void soloDotSegmentEscapesVault() {
+        assertFalse(VaultRelativePath.of("./blog/note.md").isWithinVault());
+    }
+
+    @Test
+    void trailingSlashProducesEmptySegmentAndEscapesVault() {
+        assertFalse(VaultRelativePath.of("blog/").isWithinVault());
+    }
+
+    @Test
+    void nullPathIsRejectedAtConstruction() {
+        assertThrows(NullPointerException.class, () -> VaultRelativePath.of(null));
+    }
+
+    @Test
+    void equalPathsBuiltSeparatelyAreEqual() {
+        assertEquals(VaultRelativePath.of("blog/note.md"), VaultRelativePath.of("blog/note.md"));
+    }
 }
 ```
 
@@ -163,12 +192,13 @@ Expected: FAIL — compile error, `VaultRelativePath` does not exist
 ```java
 package dev.eugene.publicationexporter.vault;
 
-public final class VaultRelativePath {
+import java.util.Arrays;
+import java.util.Objects;
 
-    private final String value;
+public record VaultRelativePath(String value) {
 
-    private VaultRelativePath(String value) {
-        this.value = value;
+    public VaultRelativePath {
+        Objects.requireNonNull(value, "value");
     }
 
     public static VaultRelativePath of(String rawPath) {
@@ -176,30 +206,43 @@ public final class VaultRelativePath {
     }
 
     public boolean isWithinVault() {
-        if (value == null || value.isEmpty()) {
+        if (isBlank()) {
             return false;
         }
-        if (value.contains("\\") || value.startsWith("/")) {
+        if (isAbsolute() || usesWindowsSeparator()) {
             return false;
         }
-        for (String segment : value.split("/", -1)) {
-            if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
-                return false;
-            }
-        }
-        return true;
+        return hasOnlyOrdinarySegments();
     }
 
-    public String value() {
-        return value;
+    private boolean isBlank() {
+        return value.isEmpty();
+    }
+
+    private boolean isAbsolute() {
+        return value.startsWith("/");
+    }
+
+    private boolean usesWindowsSeparator() {
+        return value.contains("\\");
+    }
+
+    private boolean hasOnlyOrdinarySegments() {
+        return Arrays.stream(value.split("/", -1)).noneMatch(this::isTraversalOrEmptySegment);
+    }
+
+    private boolean isTraversalOrEmptySegment(String segment) {
+        return segment.isEmpty() || segment.equals(".") || segment.equals("..");
     }
 }
 ```
 
+`value()`, `equals()`, `hashCode()`, and `toString()` all come from the record declaration — no hand-written code needed for them. The compact constructor rejects `null` before any query method ever sees it; `isWithinVault()` now reads as a table of contents (blank → absolute/Windows-style → traversal segments) with each rule named instead of inlined.
+
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=VaultRelativePathTest`
-Expected: PASS — 4 tests, 0 failures
+Expected: PASS — 9 tests, 0 failures
 
 - [ ] **Step 5: Commit**
 
@@ -208,6 +251,8 @@ git add publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/
         publication-exporter/src/test/java/dev/eugene/publicationexporter/vault/VaultRelativePathTest.java
 git commit -m "feat(publication-exporter): add VaultRelativePath path-safety value type"
 ```
+
+Note on scope: a reviewer also flagged that this class does not enforce a `.md` extension (a parity gap with `bridge-client.js`'s client-side `validateNotePath`). That is a deliberate S01 scope boundary, not an oversight — BRG-01's in-scope text for this slice covers only "unsafe or absent note path," and extension validation belongs to a later slice's Markdown-handling scope. Do not add it here.
 
 ---
 
