@@ -1,0 +1,24 @@
+id: publication-frontier-id-admission-p2
+revision: p2
+title: Publication-frontier source-ID admission
+repo_ref: local:/Users/eugene/Dev/personal-site
+base_sha: a98781ec5d653bdc56d6066d30855b3ed3b8dd8f
+target_branch: codex/semantic-id-admission
+projection_policy: local_only
+delivery_policy: workspace_patch_manual
+valid_for: 72h
+defaults:
+    allowed_actions:
+        - edit_files
+        - run_tests
+    evidence_requirements:
+        - mvn -q -f exporter-java/pom.xml -Dtest=FileSystemTest test
+        - mvn -q -f exporter-java/pom.xml -Dtest=VaultNoteScannerTest test
+        - mvn -q -f exporter-java/pom.xml -Dtest=PublicationFrontierIdentityAdmissionTest test
+        - mvn -q -f exporter-java/pom.xml -Dtest=PrepareWorkflowTest test
+        - mvn -q -f exporter-java/pom.xml -Dtest=VaultReferenceCatalogTest test
+        - mvn -q -f exporter-java/pom.xml -Dtest=VaultReferenceResolverTest test
+        - mvn -q -f exporter-java/pom.xml -Dtest=SemanticReferencePlannerTest test
+        - mvn -f exporter-java/pom.xml test
+decisions:
+    - ref: dec-20260802-bind-the-vanilla-publication-frontier-zettelkast-b77c183c

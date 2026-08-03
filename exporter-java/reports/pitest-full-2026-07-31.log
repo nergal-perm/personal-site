@@ -1,0 +1,188 @@
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ----------------------< dev.eugene:astro-export >-----------------------
+[INFO] Building astro-export 0.1.0-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- resources:3.4.0:resources (default-resources) @ astro-export ---
+[INFO] Copying 4 resources from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.14.0:compile (default-compile) @ astro-export ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- resources:3.4.0:testResources (default-testResources) @ astro-export ---
+[INFO] skip non existing resourceDirectory /Users/eugene/Dev/personal-site/exporter-java/src/test/resources
+[INFO] 
+[INFO] --- compiler:3.14.0:testCompile (default-testCompile) @ astro-export ---
+[INFO] Nothing to compile - all classes are up to date.
+[INFO] 
+[INFO] --- pitest:1.25.7:mutationCoverage (default-cli) @ astro-export ---
+[INFO] Root dir is : /Users/eugene/Dev/personal-site/exporter-java
+[INFO] Found plugin : Default csv report plugin
+[INFO] Found plugin : Default xml report plugin
+[INFO] Found plugin : Log progress during mutation analysis
+[INFO] Found plugin : Default html report plugin
+[INFO] Found plugin : Static initializer code detector plugin
+[INFO] Found plugin : Excluded annotations plugin
+[INFO] Found plugin : Try with resources filter
+[INFO] Found plugin : Inlined finally block filter plugin
+[INFO] Found plugin : Implicit null check filter
+[INFO] Found plugin : Method reference null check filter
+[INFO] Found plugin : For each loop filter
+[INFO] Found plugin : Enum junk filter
+[INFO] Found plugin : Record junk mutation filter
+[INFO] Found plugin : String switch filter
+[INFO] Found plugin : Assertions filter
+[INFO] Found plugin : Enum switch filter
+[INFO] Found plugin : Logging calls filter
+[INFO] Found plugin : Infinite for loop filter
+[INFO] Found plugin : Long running iterator loop filter
+[INFO] Found plugin : For loop counter filter
+[INFO] Found plugin : Kotlin junk mutations filter
+[INFO] Found plugin : Groovy junk mutations filter
+[INFO] Found plugin : Max mutations per class limit
+[INFO] Found plugin : Equals shortcut equivalent mutant filter
+[INFO] Found plugin : Trivial return vals equivalence filter
+[INFO] Found plugin : Filters mutants with line number <= 1
+[INFO] Found plugin : Division by one equivalent mutant filter
+[INFO] Found plugin : Lombok junk mutations filter
+[INFO] Found plugin : Filter mutations to defensive wrappers such as unmodifiableCollection on return or field write
+[INFO] Found plugin : Final field null assignment equivalent mutant filter
+[INFO] Found plugin : Mutant export plugin
+[INFO] Found plugin : Auto add java.awt.headless=true to keep keyboard focus on Mac OS
+[INFO] Found plugin : Auto set number of threads based on machine
+[INFO] Found plugin : Automatically add -ea to launch args to enable assertions
+[INFO] Found plugin : Default build verifier
+[INFO] Found plugin : Detect missing JUnit5 plugin
+[INFO] Found plugin : Detect missing TestNG plugin
+[INFO] Found plugin : Detect missing kotlin plugin
+[INFO] Found plugin : Detect missing spring plugin
+[INFO] Found plugin : Default coverage exporter
+[INFO] Found plugin : Basic test statistics
+[INFO] Found shared classpath plugin : Default mutation engine
+[INFO] Found shared classpath plugin : JUnit 5 test framework support
+[INFO] Found shared classpath plugin : JUnit plugin
+[INFO] Found shared classpath plugin : Support for mocking frameworks using javassist
+[INFO] Found shared classpath plugin : Disable JaCoCo
+[INFO] Found shared classpath plugin : Reset environment for javassist
+[INFO] Available mutators : EXPERIMENTAL_ARGUMENT_PROPAGATION,FALSE_RETURNS,TRUE_RETURNS,CONDITIONALS_BOUNDARY,CONSTRUCTOR_CALLS,EMPTY_RETURNS,INCREMENTS,INLINE_CONSTS,INVERT_NEGS,MATH,NEGATE_CONDITIONALS,NON_VOID_METHOD_CALLS,NULL_RETURNS,PRIMITIVE_RETURNS,REMOVE_CONDITIONALS_EQUAL_IF,REMOVE_CONDITIONALS_EQUAL_ELSE,REMOVE_CONDITIONALS_ORDER_IF,REMOVE_CONDITIONALS_ORDER_ELSE,VOID_METHOD_CALLS,EXPERIMENTAL_BIG_DECIMAL,EXPERIMENTAL_BIG_INTEGER,EXPERIMENTAL_MEMBER_VARIABLE,EXPERIMENTAL_NAKED_RECEIVER,REMOVE_INCREMENTS,EXPERIMENTAL_SWITCH
+[INFO] Adding org.pitest:pitest-junit5-plugin to SUT classpath
+[INFO] Adding org.pitest:pitest to SUT classpath
+[INFO] Auto adding org.junit.platform:junit-platform-launcher:jar:6.1.0 < central (https://repo1.maven.org/maven2, default, releases+snapshots) to classpath.
+[INFO] Mutating from /Users/eugene/Dev/personal-site/exporter-java/target/classes
+10:24:16 AM PIT >> INFO : Verbose logging is disabled. If you encounter a problem, please enable it before reporting an issue.
+10:24:16 AM PIT >> INFO : Created 252 mutation test units in pre scan
+10:24:16 AM PIT >> INFO : Sending 390 test classes to minion
+10:24:16 AM PIT >> INFO : Sent tests to minion
+/-\|/-\|/-\|/-\|/-\|/-\|/10:24:17 AM PIT >> INFO : MINION : WARNING: A restricted method in java.lang.System has been called
+10:24:17 AM PIT >> INFO : MINION : WARNING: java.lang.System::load has been called by com.sun.jna.Native in an unnamed module (file:/Users/eugene/.m2/repository/net/java/dev/jna/jna/5.19.0/jna-5.19.0.jar)
+10:24:17 AM PIT >> INFO : MINION : WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+10:24:17 AM PIT >> INFO : MINION : WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+10:24:17 AM PIT >> INFO : MINION : 
+-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-10:24:33 AM PIT >> INFO : Calculated coverage in 17 seconds.
+10:24:33 AM PIT >> INFO : 0 tests took longer than 2000 ms
+10:24:33 AM PIT >> INFO : Slowest test ([engine:junit-jupiter]/[class:dev.eugene.astroexport.nativeimage.NativeCliParityTest]/[method:nativeExecutableExercisesSemanticSubcommandsBeyondHelp()]) took 1955 ms
+10:24:33 AM PIT >> INFO : Largest test ([engine:junit-jupiter]/[class:dev.eugene.astroexport.cli.AstroExportCommandTest]/[method:migrateSemanticLinksApplyInstallsJournalAndActivationMarker()]) covered 4875 blocks
+10:24:34 AM PIT >> WARNING : Found more than one mutation similar on same line in a finally block. Can't correct for inlining.
+10:24:34 AM PIT >> INFO : Created 145 mutation test units
+/-\|10:38:15 AM PIT >> WARNING : Minion exited abnormally due to TIMED_OUT
+/10:41:26 AM PIT >> WARNING : Minion exited abnormally due to TIMED_OUT
+-\|/-10:46:08 AM PIT >> WARNING : Minion exited abnormally due to TIMED_OUT
+\|/-\|/-\|/10:53:05 AM PIT >> WARNING : Minion exited abnormally due to TIMED_OUT
+-\|10:55:08 AM PIT >> WARNING : Minion exited abnormally due to TIMED_OUT
+/-\|/-\|/-\|10:59:55 AM PIT >> WARNING : Minion exited abnormally due to TIMED_OUT
+/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/-11:11:25 AM PIT >> WARNING : Minion exited abnormally due to TIMED_OUT
+\|/-\|/-\|/-\|/-\|/-\|/-\|/-\|/11:13:24 AM PIT >> INFO : Completed in 2948 seconds
+================================================================================
+- Mutators
+================================================================================
+> org.pitest.mutationtest.engine.gregor.mutators.ConditionalsBoundaryMutator
+>> Generated 160 Killed 55 (34%)
+> KILLED 55 SURVIVED 92 TIMED_OUT 0 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 13 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.returns.PrimitiveReturnsMutator
+>> Generated 82 Killed 41 (50%)
+> KILLED 40 SURVIVED 7 TIMED_OUT 1 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 34 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.IncrementsMutator
+>> Generated 45 Killed 18 (40%)
+> KILLED 18 SURVIVED 5 TIMED_OUT 0 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 22 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.VoidMethodCallMutator
+>> Generated 697 Killed 351 (50%)
+> KILLED 351 SURVIVED 206 TIMED_OUT 0 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 140 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.returns.BooleanTrueReturnValsMutator
+>> Generated 239 Killed 120 (50%)
+> KILLED 120 SURVIVED 72 TIMED_OUT 0 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 47 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.returns.NullReturnValsMutator
+>> Generated 621 Killed 462 (74%)
+> KILLED 462 SURVIVED 34 TIMED_OUT 0 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 125 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.MathMutator
+>> Generated 100 Killed 70 (70%)
+> KILLED 66 SURVIVED 15 TIMED_OUT 4 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 15 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.returns.EmptyObjectReturnValsMutator
+>> Generated 598 Killed 458 (77%)
+> KILLED 457 SURVIVED 47 TIMED_OUT 1 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 93 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.returns.BooleanFalseReturnValsMutator
+>> Generated 111 Killed 84 (76%)
+> KILLED 84 SURVIVED 13 TIMED_OUT 0 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 14 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+> org.pitest.mutationtest.engine.gregor.mutators.NegateConditionalsMutator
+>> Generated 2538 Killed 2091 (82%)
+> KILLED 2090 SURVIVED 243 TIMED_OUT 1 NON_VIABLE 0 
+> MEMORY_ERROR 0 NOT_STARTED 0 STARTED 0 RUN_ERROR 0 
+> NO_COVERAGE 204 EQUIVALENT 0 
+--------------------------------------------------------------------------------
+================================================================================
+- Timings
+================================================================================
+> pre-scan for mutations : < 1 second
+> scan classpath : < 1 second
+> coverage and dependency analysis : 17 seconds
+> build mutation tests : < 1 second
+> run mutation analysis : 48 minutes and 50 seconds
+--------------------------------------------------------------------------------
+> Total  : 49 minutes and 8 seconds
+--------------------------------------------------------------------------------
+> 0 tests took longer than 2000 ms
+> Slowest test ([engine:junit-jupiter]/[class:dev.eugene.astroexport.nativeimage.NativeCliParityTest]/[method:nativeExecutableExercisesSemanticSubcommandsBeyondHelp()]) took 1955 ms
+> Largest test ([engine:junit-jupiter]/[class:dev.eugene.astroexport.cli.AstroExportCommandTest]/[method:migrateSemanticLinksApplyInstallsJournalAndActivationMarker()]) covered 4875 blocks
+================================================================================
+- Statistics
+================================================================================
+>> Line Coverage (for mutated classes only): 9198/11014 (84%)
+>> 390 tests examined
+>> Generated 5191 mutations Killed 3750 (72%)
+>> Mutations with no coverage 707. Test strength 84%
+>> Ran 27356 tests (5.27 tests per mutation)
+Enhanced functionality available at https://www.arcmutate.com/
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD SUCCESS
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  49:09 min
+[INFO] Finished at: 2026-07-31T11:13:24+04:00
+[INFO] ------------------------------------------------------------------------
