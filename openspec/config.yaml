@@ -1,5 +1,24 @@
 schema: spec-driven
 
+context: |
+  BoundedContext: PersonalSite_Publication_2026-08-03
+  System under specification: a greenfield replacement publication exporter.
+  Neighbouring actors/systems: operator, Obsidian plugin, vault, translation worker,
+  review workspace, Astro site, and deployment platform.
+  Normative baseline carrier: openspec/requirements-baseline.md.
+  Existing implementation is behavioural evidence, not a required architecture.
+  Approval is the only authority that advances approved publication snapshots.
+  Initial plugin compatibility requires bridge schema major version 2.
+
+rules:
+  specs:
+    - Give every requirement a stable capability-prefixed ID.
+    - Use SHALL or SHALL NOT for obligations.
+    - Bind every requirement to at least one GIVEN-WHEN-THEN scenario.
+    - Keep candidate snapshot, approved snapshot, and release projection distinct.
+    - Identify evidence using openspec/requirements-baseline.md.
+    - State exclusions or unresolved choices outside normative requirements.
+
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 # Add your tech stack, conventions, style guides, domain knowledge, etc.
