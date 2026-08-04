@@ -1200,7 +1200,7 @@ git commit -m "feat(publication-exporter): wire inspect-publication CLI entry po
 **Interfaces:**
 - Consumes: `bridge-contract/schema-v2.json` (Task 6, read directly, never copied), `createBridgeClient` from `obsidian-plugin/bridge-client.js` (existing, exported at `bridge-client.js:237-240`).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```javascript
 const assert = require("node:assert/strict");
@@ -1316,12 +1316,12 @@ test("plugin's real bridge client accepts a schema-conformant blocked response",
 
 Note: unlike Tasks 2–8, this task adds no new production code — `bridge-client.js` (existing) and `bridge-contract/schema-v2.json` (Task 6) both already exist by the time this task runs, so there is no RED phase to demonstrate; go straight to verifying green, same as Task 6's `SchemaConformanceTest`.
 
-- [ ] **Step 2: Run test to verify it passes**
+- [x] **Step 2: Run test to verify it passes**
 
 Run: `node --test obsidian-plugin/tests/schema-conformance.test.cjs`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add obsidian-plugin/tests/schema-conformance.test.cjs
