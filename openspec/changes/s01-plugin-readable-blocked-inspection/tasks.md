@@ -556,7 +556,7 @@ git commit -m "feat(publication-exporter): add Diagnostic and BridgeResponse sch
 - Consumes: `VaultRelativePath` (Task 2).
 - Produces: `VaultReader#exists(VaultRelativePath): boolean` and `VaultReader.createNull(VaultRelativePath...): VaultReader` (Nullables two-channel factory — default embedded behaviour is "nothing exists") — the factory, not the concrete `NullVaultReader` class, is what Tasks 5, 6, 8 consume. `VaultReader.create(Path)` is added in Task 7 once a real adapter exists to back it.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.vault;
@@ -592,12 +592,12 @@ class NullVaultReaderTest {
 
 Note: `NullVaultReaderTest` sits in the same package as `NullVaultReader`, so it is allowed to use the plain constructor directly (Nullables: "the plain constructor is the test seam" for the wrapper's own test) — the third test proves the public `VaultReader.createNull()` factory that every other consumer must use instead.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullVaultReaderTest`
 Expected: FAIL — compile error, `VaultReader`/`NullVaultReader` do not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.vault;
@@ -638,12 +638,12 @@ final class NullVaultReader implements VaultReader {
 
 `NullVaultReader` is package-private on purpose: callers outside `vault` reach it only through `VaultReader.createNull(...)`, so the concrete adapter choice never leaks into `InspectPublicationHandler` or the CLI layer (oo-design-guide 2.1/2.2).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullVaultReaderTest`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/VaultReader.java \
