@@ -627,7 +627,7 @@ git commit -m "feat(publication-exporter): add PublicationIdentity value type"
 
 **Design note (oo-design-guide 3.9, same departure as `InspectPublicationHandler`):** `EssayAdmission` has one public method. It stays a class, not a static function, because it is the seam Task 6 depends on and this task's own test exercises directly — a real collaborator boundary matching S01 Task 5's precedent, not an operation wrapped in a class for its own sake.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.admission;
@@ -776,12 +776,12 @@ class EssayAdmissionTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=EssayAdmissionTest`
 Expected: FAIL — compile error, `EssayAdmission` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.admission;
@@ -922,12 +922,12 @@ public final class EssayAdmission {
 
 `admit` is a Composed Method table of contents: the `publish` guard clause first (it short-circuits everything else, mirroring the compatibility-oracle's own precedent that an unpublished note gets exactly one diagnostic), then four named `requireX` steps that each check one field and append to the shared `diagnostics` Collecting Parameter (SBPP-BEH-31), then one assembly step. `requireContentType` depends on `collection` because an invalid collection makes "allowed content types" undefined — same dependency the compatibility oracle's `PublicationValidator` encodes, reproduced here as evidence, not copied as code. `Result`'s two factories enforce their own invariant (`blocked` cannot be called with zero diagnostics) directly in the class definition (heuristic 4.9) rather than trusting every call site.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=EssayAdmissionTest`
 Expected: PASS — 7 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/EssayAdmission.java \
