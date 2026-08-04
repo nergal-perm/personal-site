@@ -103,6 +103,22 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void blankTranslationOutputInstallsNoCandidate() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull(" \n\t"), workspace);
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void unadmittedNoteIsBlockedBeforeReachingTheWorker() {
         String essayWithoutSourceId = """
                 ---

@@ -44,6 +44,10 @@ public final class PrepareHandler {
                     Diagnostic.blocking("candidate", translation.failureReason()));
         }
         String enBody = translation.enBody();
+        if (enBody.isBlank()) {
+            return BridgeResponse.translationFailed(COMMAND,
+                    Diagnostic.blocking("candidate", "Translation worker produced a blank candidate."));
+        }
         ReferenceMap referenceMap = ReferenceMap.empty(identity, sha256Hex(ruBody), sha256Hex(enBody));
         candidateWorkspace.install(identity, ruBody, enBody, referenceMap);
         return BridgeResponse.prepared(COMMAND, identity);
