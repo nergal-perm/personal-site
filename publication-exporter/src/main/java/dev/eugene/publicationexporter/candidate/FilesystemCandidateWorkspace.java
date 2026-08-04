@@ -8,17 +8,19 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.Objects;
+import java.util.Optional;
 
 final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
-    private final Path reviewRoot;
+    private final Path canonicalReviewRoot;
 
     FilesystemCandidateWorkspace(Path reviewRoot) {
-        this.reviewRoot = Objects.requireNonNull(reviewRoot, "reviewRoot");
+        this.canonicalReviewRoot = canonicalize(Objects.requireNonNull(reviewRoot, "reviewRoot"));
     }
 
     @Override
@@ -28,32 +30,84 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         Objects.requireNonNull(enBody, "enBody");
         Objects.requireNonNull(referenceMap, "referenceMap");
 
+        Path destination = candidateDirectory(identity);
         Path staging = createStagingDirectory();
         try {
             writeTriple(staging, ruBody, enBody, referenceMap);
-            publishStagingCandidate(staging, identity);
+            publishStagingCandidate(staging, destination);
         } catch (IOException error) {
             deleteRecursively(staging);
             throw new UncheckedIOException(error);
         }
     }
 
-    private void publishStagingCandidate(Path staging, PublicationIdentity identity) throws IOException {
-        Path destination = candidateDirectory(identity);
+    private void publishStagingCandidate(Path staging, Path destination) throws IOException {
+        requireWithinReviewRoot(destination);
         Files.createDirectories(destination.getParent());
+        requireWithinReviewRoot(destination);
         Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private Path candidateDirectory(PublicationIdentity identity) {
-        return reviewRoot.resolve(identity.publicCollection()).resolve(identity.publicId()).resolve("candidate");
+        Path candidate = canonicalReviewRoot.resolve(identity.publicCollection())
+                .resolve(identity.publicId())
+                .resolve("candidate")
+                .normalize();
+        requireWithinReviewRoot(candidate);
+        return candidate;
     }
 
     private Path createStagingDirectory() {
         try {
-            Files.createDirectories(reviewRoot);
-            return Files.createTempDirectory(reviewRoot, "candidate-staging-");
+            Files.createDirectories(canonicalReviewRoot);
+            return Files.createTempDirectory(canonicalReviewRoot, "candidate-staging-");
         } catch (IOException error) {
             throw new UncheckedIOException(error);
+        }
+    }
+
+    private void requireWithinReviewRoot(Path candidate) {
+        if (!candidate.startsWith(canonicalReviewRoot)) {
+            throw new CandidateWorkspaceConfinementException(
+                    candidate, candidate, canonicalReviewRoot);
+        }
+        if (Files.notExists(canonicalReviewRoot, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        Path resolvedCandidate = resolveThroughNearestExistingAncestor(candidate);
+        Path resolvedReviewRoot = realPathOf(canonicalReviewRoot).orElse(canonicalReviewRoot);
+        if (!resolvedCandidate.startsWith(resolvedReviewRoot)) {
+            throw new CandidateWorkspaceConfinementException(
+                    candidate, resolvedCandidate, resolvedReviewRoot);
+        }
+    }
+
+    private static Path resolveThroughNearestExistingAncestor(Path candidate) {
+        Path existingAncestor = candidate;
+        while (existingAncestor != null
+                && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+            existingAncestor = existingAncestor.getParent();
+        }
+        if (existingAncestor == null) {
+            return candidate.toAbsolutePath().normalize();
+        }
+        try {
+            Path realAncestor = existingAncestor.toRealPath();
+            return realAncestor.resolve(existingAncestor.relativize(candidate)).normalize();
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private static Path canonicalize(Path reviewRoot) {
+        return realPathOf(reviewRoot).orElseGet(() -> reviewRoot.toAbsolutePath().normalize());
+    }
+
+    private static Optional<Path> realPathOf(Path path) {
+        try {
+            return Optional.of(path.toRealPath());
+        } catch (IOException | SecurityException unresolvable) {
+            return Optional.empty();
         }
     }
 

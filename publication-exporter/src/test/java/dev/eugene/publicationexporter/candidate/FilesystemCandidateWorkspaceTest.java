@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -16,6 +17,9 @@ class FilesystemCandidateWorkspaceTest {
 
     @TempDir
     Path reviewRoot;
+
+    @TempDir
+    Path outsideRoot;
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
 
@@ -65,5 +69,49 @@ class FilesystemCandidateWorkspaceTest {
                 () -> workspace.install(IDENTITY, null, "EN", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
 
         assertTrue(Files.notExists(freshRoot));
+    }
+
+    @Test
+    void installRejectsCollectionParentSegmentBeforeAnyWrite() {
+        Path freshRoot = reviewRoot.resolve("fresh-review-root");
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(freshRoot);
+        PublicationIdentity escapingIdentity = PublicationIdentity.of("..", "essay", "escaped-collection");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> workspace.install(escapingIdentity, "RU", "EN",
+                        ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash")));
+
+        assertTrue(failure.getMessage().contains("escapes review root"));
+        assertTrue(Files.notExists(freshRoot));
+        assertTrue(Files.notExists(reviewRoot.resolve("escaped-collection")));
+    }
+
+    @Test
+    void installRejectsPublicIdParentSegmentBeforeAnyWrite() {
+        Path freshRoot = reviewRoot.resolve("fresh-review-root");
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(freshRoot);
+        PublicationIdentity escapingIdentity = PublicationIdentity.of("blog", "essay", "../../escaped-id");
+
+        assertThrows(IllegalStateException.class,
+                () -> workspace.install(escapingIdentity, "RU", "EN",
+                        ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash")));
+
+        assertTrue(Files.notExists(freshRoot));
+        assertTrue(Files.notExists(reviewRoot.resolve("escaped-id")));
+    }
+
+    @Test
+    void installRejectsSymlinkedChildEscapingReviewRoot() throws Exception {
+        Files.createSymbolicLink(reviewRoot.resolve("blog"), outsideRoot);
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+
+        assertThrows(IllegalStateException.class,
+                () -> workspace.install(IDENTITY, "RU", "EN",
+                        ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
+
+        assertTrue(Files.notExists(outsideRoot.resolve("my-essay/candidate")));
+        try (var entries = Files.list(reviewRoot)) {
+            assertFalse(entries.anyMatch(path -> path.getFileName().toString().startsWith("candidate-staging-")));
+        }
     }
 }
