@@ -25,6 +25,10 @@ class BridgeResponseJsonTest {
         assertEquals("metadata_blocked", parsed.get("status").asText());
         assertTrue(parsed.get("diagnostics").isArray());
         assertEquals(1, parsed.get("diagnostics").size());
+        JsonNode diagnostic = parsed.get("diagnostics").get(0);
+        assertEquals("note", diagnostic.get("field").asText());
+        assertEquals("Note was not found in the vault.", diagnostic.get("message").asText());
+        assertEquals(true, diagnostic.get("blocking").asBoolean());
         assertTrue(parsed.get("workspaceHealth").isArray());
         assertEquals(0, parsed.get("workspaceHealth").size());
     }

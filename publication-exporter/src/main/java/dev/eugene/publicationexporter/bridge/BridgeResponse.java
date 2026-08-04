@@ -25,11 +25,12 @@ public final class BridgeResponse {
         this.command = Objects.requireNonNull(command, "command");
         this.ok = ok;
         this.status = Objects.requireNonNull(status, "status");
-        this.diagnostics = diagnostics;
-        this.workspaceHealth = workspaceHealth;
+        this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
+        this.workspaceHealth = Objects.requireNonNull(workspaceHealth, "workspaceHealth");
     }
 
     public static BridgeResponse blocked(String command, Diagnostic diagnostic) {
+        Objects.requireNonNull(diagnostic, "diagnostic");
         return new BridgeResponse(2, command, false, "metadata_blocked",
                 List.of(diagnostic), List.of());
     }
