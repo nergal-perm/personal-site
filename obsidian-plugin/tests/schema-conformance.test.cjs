@@ -289,3 +289,39 @@ test("validator refuses to silently ignore an unsupported schema keyword", () =>
     /unsupported schema keyword/i,
   );
 });
+
+function essayInspectedFixture() {
+  return {
+    schemaVersion: 2,
+    command: "inspect-publication",
+    ok: true,
+    status: "not_prepared",
+    identity: { publicCollection: "blog", publicContentType: "essay", publicId: "my-essay" },
+    candidateState: "absent",
+    approvedSnapshotState: "absent",
+    semanticReferenceState: "absent",
+    releaseState: "absent",
+    diagnostics: [],
+    workspaceHealth: [],
+  };
+}
+
+test("valid-essay fixture conforms to bridge-contract/schema-v2.json", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedFixture();
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.deepEqual(errors, []);
+});
+
+test("plugin's real bridge client accepts a schema-conformant valid-essay response", async () => {
+  const fixture = essayInspectedFixture();
+  const client = createBridgeClient({
+    spawn: createFakeSpawn({ stdout: JSON.stringify(fixture), exitCode: 0 }),
+    exporterRoot: "/tmp/exporter-root",
+    vaultPath: "/tmp/vault",
+    exporterBinary: "/tmp/exporter-root/publication-exporter",
+  });
+
+  const result = await client.run("inspect-publication", "blog/my-essay.md");
+  assert.deepEqual(result, fixture);
+});
