@@ -50,7 +50,17 @@ function validateObject(schema, instance, definitions) {
       errors.push(...validateAgainstSchema(propSchema, instance[key], definitions));
     }
   }
+  errors.push(...validateAdditionalProperties(schema, instance));
   return errors;
+}
+
+function validateAdditionalProperties(schema, instance) {
+  if (schema.additionalProperties !== false) return [];
+
+  const declared = new Set(Object.keys(schema.properties || {}));
+  return Object.keys(instance)
+    .filter((key) => !declared.has(key))
+    .map((key) => `unexpected additional property "${key}"`);
 }
 
 function validateArray(schema, instance, definitions) {
@@ -59,9 +69,22 @@ function validateArray(schema, instance, definitions) {
     return [`expected array, got ${instance === null ? "null" : typeof instance}`];
   }
 
+  const errors = validateArrayLength(schema, instance);
+  if (schema.items) {
+    for (const item of instance) {
+      errors.push(...validateAgainstSchema(schema.items, item, definitions));
+    }
+  }
+  return errors;
+}
+
+function validateArrayLength(schema, instance) {
   const errors = [];
-  for (const item of instance) {
-    errors.push(...validateAgainstSchema(schema.items, item, definitions));
+  if (Number.isInteger(schema.minItems) && instance.length < schema.minItems) {
+    errors.push(`expected at least ${schema.minItems} items, got ${instance.length}`);
+  }
+  if (Number.isInteger(schema.maxItems) && instance.length > schema.maxItems) {
+    errors.push(`expected at most ${schema.maxItems} items, got ${instance.length}`);
   }
   return errors;
 }
@@ -79,8 +102,38 @@ function validatePrimitiveType(schema, instance) {
   return [];
 }
 
+// Keywords this hand-rolled validator actually interprets. Anything outside the
+// list is refused loudly rather than ignored, so a future tightening of
+// bridge-contract/schema-v2.json can never pass unchecked while this gate
+// reports green.
+const SUPPORTED_KEYWORDS = new Set([
+  "$schema",
+  "$id",
+  "$ref",
+  "title",
+  "description",
+  "definitions",
+  "type",
+  "const",
+  "enum",
+  "required",
+  "properties",
+  "additionalProperties",
+  "items",
+  "minItems",
+  "maxItems",
+]);
+
+function assertOnlySupportedKeywords(schema) {
+  const unsupported = Object.keys(schema).filter((key) => !SUPPORTED_KEYWORDS.has(key));
+  if (unsupported.length > 0) {
+    throw new Error(`unsupported schema keyword(s): ${unsupported.join(", ")}`);
+  }
+}
+
 function validateAgainstSchema(schema, instance, definitions) {
   definitions = definitions || schema.definitions || {};
+  assertOnlySupportedKeywords(schema);
 
   if (schema.$ref) {
     return validateAgainstSchema(resolveRef(schema.$ref, definitions), instance, definitions);
@@ -188,3 +241,51 @@ for (const { name, mutate } of NONCONFORMANT_CASES) {
     assert.ok(errors.length > 0, `expected validation errors for case: ${name}`);
   });
 }
+
+// bridge-contract/schema-v2.json deliberately sets `additionalProperties: true`
+// everywhere for forward compatibility, and declares no array-length bounds, so
+// these keywords are exercised against a small inline schema instead. Without
+// them the validator would silently accept a future contract that tightens the
+// shape — the same class of gap the negative controls above guard against.
+const STRICT_SCHEMA = {
+  type: "object",
+  required: ["name", "tags"],
+  additionalProperties: false,
+  properties: {
+    name: { type: "string" },
+    tags: { type: "array", minItems: 1, maxItems: 2, items: { type: "string" } },
+  },
+};
+
+const STRICT_CASES = [
+  {
+    name: "undeclared property under additionalProperties: false",
+    instance: { name: "note", tags: ["a"], sneaky: true },
+  },
+  {
+    name: "empty array under minItems",
+    instance: { name: "note", tags: [] },
+  },
+  {
+    name: "oversized array under maxItems",
+    instance: { name: "note", tags: ["a", "b", "c"] },
+  },
+];
+
+test("validator accepts an instance satisfying additionalProperties/minItems/maxItems", () => {
+  assert.deepEqual(validateAgainstSchema(STRICT_SCHEMA, { name: "note", tags: ["a"] }), []);
+});
+
+for (const { name, instance } of STRICT_CASES) {
+  test(`validator rejects strict-schema violation: ${name}`, () => {
+    const errors = validateAgainstSchema(STRICT_SCHEMA, instance);
+    assert.ok(errors.length > 0, `expected validation errors for case: ${name}`);
+  });
+}
+
+test("validator refuses to silently ignore an unsupported schema keyword", () => {
+  assert.throws(
+    () => validateAgainstSchema({ type: "string", pattern: "^a" }, "b"),
+    /unsupported schema keyword/i,
+  );
+});
