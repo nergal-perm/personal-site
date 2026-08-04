@@ -5,6 +5,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
@@ -83,7 +84,7 @@ public final class ProcessTranslationWorker implements TranslationWorker {
 
     private TranslationResult collectResult(Path workdir) {
         Path resultFile = workdir.resolve(RESULT_FILE_NAME);
-        if (!Files.isRegularFile(resultFile)) {
+        if (!Files.isRegularFile(resultFile, LinkOption.NOFOLLOW_LINKS)) {
             return TranslationResult.failure(
                     "Translation worker completed without writing " + RESULT_FILE_NAME + ".");
         }

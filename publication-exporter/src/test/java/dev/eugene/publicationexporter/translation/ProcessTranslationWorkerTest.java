@@ -1,7 +1,11 @@
 package dev.eugene.publicationexporter.translation;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
@@ -12,6 +16,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ProcessTranslationWorkerTest {
+
+    @TempDir
+    Path externalRoot;
 
     @Test
     void resultFileWrittenByTheProcessIsReturnedAsSuccess() {
@@ -77,6 +84,27 @@ class ProcessTranslationWorkerTest {
                         Duration.ofNanos(500)));
 
         assertTrue(error.getMessage().contains("at least 1ms"));
+    }
+
+    @Test
+    void symlinkedResultFileIsReportedAsMissing() throws Exception {
+        Path externalResult = externalRoot.resolve("external-candidate.md");
+        Files.writeString(externalResult, "Content outside the worker scratch directory");
+        TranslationCommand writesSymlinkedResult = (workdir, prompt) -> {
+            try {
+                Files.createSymbolicLink(workdir.resolve("candidate.en.md"), externalResult);
+            } catch (IOException error) {
+                throw new UncheckedIOException(error);
+            }
+            return List.of("sh", "-c", "true");
+        };
+        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+                writesSymlinkedResult, Duration.ofSeconds(5));
+
+        TranslationResult result = worker.translate("ignored");
+
+        assertFalse(result.succeeded());
+        assertTrue(result.failureReason().contains("without writing candidate.en.md"));
     }
 
     private static TranslationCommand writesFixedResult(String content) {
