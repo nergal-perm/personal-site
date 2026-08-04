@@ -1562,17 +1562,17 @@ git commit -m "test(obsidian-plugin): add valid-essay schema-v2 conformance fixt
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Run the full Java suite**
+- [x] **Step 1: Run the full Java suite**
 
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: `BUILD SUCCESS`, all tests from Tasks 1–8 passing alongside every S01 test, unmodified and green
 
-- [ ] **Step 2: Run the full JS suite (existing + new)**
+- [x] **Step 2: Run the full JS suite (existing + new)**
 
 Run: `node --test obsidian-plugin/tests/bridge-client.test.cjs obsidian-plugin/tests/schema-conformance.test.cjs`
 Expected: all tests passing, no regressions in `bridge-client.test.cjs` or S01's schema-conformance tests
 
-- [ ] **Step 3: Confirm OpenSpec status**
+- [x] **Step 3: Confirm OpenSpec status**
 
 Run: `openspec status --change s02-inspect-valid-essay`
 Expected: `4/4 artifacts complete`
