@@ -1006,7 +1006,7 @@ git commit -m "feat(publication-exporter): add FilesystemVaultReader real adapte
 - Consumes: `InspectPublicationHandler#inspect` (Task 5), `VaultReader.create(Path)` (Task 7), `VaultRelativePath.of` (Task 2), `BridgeResponse#ok()` (Task 3).
 - Produces: the `publication-exporter inspect-publication --vault <path> --note <path> --review <path> --json` CLI entry point matching `bridge-client.js`'s real argv contract. Wiring this binary as the plugin's active `exporterBinary` is out of scope for S01.
 
-- [ ] **Step 1: Write the failing acceptance test**
+- [x] **Step 1: Write the failing acceptance test**
 
 ```java
 package dev.eugene.publicationexporter.cli;
@@ -1104,12 +1104,12 @@ class InspectPublicationCliAcceptanceTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationCliAcceptanceTest`
 Expected: FAIL — compile error, `Main`/`InspectPublicationCommand` do not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.cli;
@@ -1176,12 +1176,12 @@ public final class InspectPublicationCommand implements Callable<Integer> {
 
 `reviewDirectory` is accepted (bridge-client.js always sends `--review`) but unused until review-workspace behaviour arrives in a later slice — a field-level Role Suggesting Name still communicates that intent while it sits idle.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationCliAcceptanceTest`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/cli/Main.java \
