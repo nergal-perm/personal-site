@@ -1,10 +1,12 @@
 package dev.eugene.publicationexporter.bridge;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 import java.util.Objects;
 
+@JsonInclude(JsonInclude.Include.NON_NULL)
 public final class BridgeResponse {
 
     private final int schemaVersion;
@@ -13,6 +15,11 @@ public final class BridgeResponse {
     private final String status;
     private final List<Diagnostic> diagnostics;
     private final List<Diagnostic> workspaceHealth;
+    private final PublicationIdentity identity;
+    private final String candidateState;
+    private final String approvedSnapshotState;
+    private final String semanticReferenceState;
+    private final String releaseState;
 
     private BridgeResponse(
             int schemaVersion,
@@ -20,19 +27,48 @@ public final class BridgeResponse {
             boolean ok,
             String status,
             List<Diagnostic> diagnostics,
-            List<Diagnostic> workspaceHealth) {
+            List<Diagnostic> workspaceHealth,
+            PublicationIdentity identity,
+            String candidateState,
+            String approvedSnapshotState,
+            String semanticReferenceState,
+            String releaseState) {
         this.schemaVersion = schemaVersion;
         this.command = Objects.requireNonNull(command, "command");
         this.ok = ok;
         this.status = Objects.requireNonNull(status, "status");
         this.diagnostics = Objects.requireNonNull(diagnostics, "diagnostics");
         this.workspaceHealth = Objects.requireNonNull(workspaceHealth, "workspaceHealth");
+        this.identity = identity;
+        this.candidateState = candidateState;
+        this.approvedSnapshotState = approvedSnapshotState;
+        this.semanticReferenceState = semanticReferenceState;
+        this.releaseState = releaseState;
     }
 
     public static BridgeResponse blocked(String command, Diagnostic diagnostic) {
-        Objects.requireNonNull(diagnostic, "diagnostic");
+        return blocked(command, List.of(Objects.requireNonNull(diagnostic, "diagnostic")));
+    }
+
+    public static BridgeResponse blocked(String command, List<Diagnostic> diagnostics) {
         return new BridgeResponse(2, command, false, "metadata_blocked",
-                List.of(diagnostic), List.of());
+                List.copyOf(diagnostics), List.of(), null, null, null, null, null);
+    }
+
+    public static BridgeResponse essayInspected(
+            String command,
+            String status,
+            PublicationIdentity identity,
+            String candidateState,
+            String approvedSnapshotState,
+            String semanticReferenceState,
+            String releaseState) {
+        return new BridgeResponse(2, command, true, status, List.of(), List.of(),
+                Objects.requireNonNull(identity, "identity"),
+                Objects.requireNonNull(candidateState, "candidateState"),
+                Objects.requireNonNull(approvedSnapshotState, "approvedSnapshotState"),
+                Objects.requireNonNull(semanticReferenceState, "semanticReferenceState"),
+                Objects.requireNonNull(releaseState, "releaseState"));
     }
 
     @JsonProperty("schemaVersion")
@@ -65,6 +101,31 @@ public final class BridgeResponse {
         return workspaceHealth;
     }
 
+    @JsonProperty("identity")
+    public PublicationIdentity identity() {
+        return identity;
+    }
+
+    @JsonProperty("candidateState")
+    public String candidateState() {
+        return candidateState;
+    }
+
+    @JsonProperty("approvedSnapshotState")
+    public String approvedSnapshotState() {
+        return approvedSnapshotState;
+    }
+
+    @JsonProperty("semanticReferenceState")
+    public String semanticReferenceState() {
+        return semanticReferenceState;
+    }
+
+    @JsonProperty("releaseState")
+    public String releaseState() {
+        return releaseState;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -78,18 +139,26 @@ public final class BridgeResponse {
                 && command.equals(that.command)
                 && status.equals(that.status)
                 && diagnostics.equals(that.diagnostics)
-                && workspaceHealth.equals(that.workspaceHealth);
+                && workspaceHealth.equals(that.workspaceHealth)
+                && Objects.equals(identity, that.identity)
+                && Objects.equals(candidateState, that.candidateState)
+                && Objects.equals(approvedSnapshotState, that.approvedSnapshotState)
+                && Objects.equals(semanticReferenceState, that.semanticReferenceState)
+                && Objects.equals(releaseState, that.releaseState);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(schemaVersion, command, ok, status, diagnostics, workspaceHealth);
+        return Objects.hash(schemaVersion, command, ok, status, diagnostics, workspaceHealth,
+                identity, candidateState, approvedSnapshotState, semanticReferenceState, releaseState);
     }
 
     @Override
     public String toString() {
         return "BridgeResponse[schemaVersion=" + schemaVersion + ", command=" + command
                 + ", ok=" + ok + ", status=" + status + ", diagnostics=" + diagnostics
-                + ", workspaceHealth=" + workspaceHealth + "]";
+                + ", workspaceHealth=" + workspaceHealth + ", identity=" + identity
+                + ", candidateState=" + candidateState + ", approvedSnapshotState=" + approvedSnapshotState
+                + ", semanticReferenceState=" + semanticReferenceState + ", releaseState=" + releaseState + "]";
     }
 }

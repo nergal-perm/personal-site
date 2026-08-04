@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -52,5 +55,48 @@ class BridgeResponseJsonTest {
         NullPointerException exception = assertThrows(NullPointerException.class,
                 () -> BridgeResponse.blocked(null, Diagnostic.blocking("note", "msg")));
         assertEquals("command", exception.getMessage());
+    }
+
+    @Test
+    void essayInspectedResponseSerializesToSchemaV2Shape() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        BridgeResponse response = BridgeResponse.essayInspected(
+                "inspect-publication", "not_prepared", identity,
+                "absent", "absent", "absent", "absent");
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertEquals(2, parsed.get("schemaVersion").asInt());
+        assertEquals(true, parsed.get("ok").asBoolean());
+        assertEquals("not_prepared", parsed.get("status").asText());
+        assertEquals("blog", parsed.get("identity").get("publicCollection").asText());
+        assertEquals("absent", parsed.get("candidateState").asText());
+        assertEquals("absent", parsed.get("approvedSnapshotState").asText());
+        assertEquals("absent", parsed.get("semanticReferenceState").asText());
+        assertEquals("absent", parsed.get("releaseState").asText());
+        assertTrue(parsed.get("diagnostics").isArray());
+        assertEquals(0, parsed.get("diagnostics").size());
+    }
+
+    @Test
+    void blockedResponseOmitsIdentityAndStateFieldsFromJson() throws Exception {
+        BridgeResponse response = BridgeResponse.blocked(
+                "inspect-publication", Diagnostic.blocking("sourceId", "Note has no source ID."));
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertFalse(parsed.has("identity"));
+        assertFalse(parsed.has("candidateState"));
+    }
+
+    @Test
+    void blockedResponseAcceptsMultipleDiagnostics() {
+        BridgeResponse response = BridgeResponse.blocked("inspect-publication", List.of(
+                Diagnostic.blocking("publicCollection", "must be \"blog\""),
+                Diagnostic.blocking("publicContentType", "requires a valid publicCollection")));
+
+        assertEquals(2, response.diagnostics().size());
     }
 }
