@@ -28,7 +28,8 @@ public final class Frontmatter {
         if (header == null) {
             return new Frontmatter(Map.of(), noteSource);
         }
-        return new Frontmatter(header.values(), bodyAfter(lines, header.closingDelimiterLineIndex()));
+        return new Frontmatter(header.values(),
+                bodyAfter(noteSource, header.closingDelimiterLineIndex()));
     }
 
     public Optional<String> string(String key) {
@@ -66,8 +67,8 @@ public final class Frontmatter {
 
     /**
      * Scans the same lines the original single-purpose loop scanned, but now also records where the
-     * closing delimiter was found, so {@link #bodyAfter} can slice the same {@code lines} list without
-     * a second, independent scan. Returns {@code null} exactly when the original loop would have
+     * closing delimiter was found, so {@link #bodyAfter} can slice the original source at the matching
+     * character offset. Returns {@code null} exactly when the original loop would have
      * treated the block as absent: a malformed line before any closing delimiter is found, or no
      * closing delimiter at all.
      */
@@ -85,8 +86,30 @@ public final class Frontmatter {
         return null;
     }
 
-    private static String bodyAfter(List<String> lines, int closingDelimiterLineIndex) {
-        return String.join("\n", lines.subList(closingDelimiterLineIndex + 1, lines.size()));
+    private static String bodyAfter(String noteSource, int closingDelimiterLineIndex) {
+        return noteSource.substring(offsetAfterLineTerminator(noteSource, closingDelimiterLineIndex));
+    }
+
+    private static int offsetAfterLineTerminator(String source, int lineIndex) {
+        int offset = 0;
+        for (int currentLine = 0; currentLine <= lineIndex; currentLine++) {
+            while (offset < source.length()
+                    && source.charAt(offset) != '\n'
+                    && source.charAt(offset) != '\r') {
+                offset++;
+            }
+            if (offset == source.length()) {
+                return offset;
+            }
+            if (source.charAt(offset) == '\r'
+                    && offset + 1 < source.length()
+                    && source.charAt(offset + 1) == '\n') {
+                offset += 2;
+            } else {
+                offset++;
+            }
+        }
+        return offset;
     }
 
     private static boolean addKeyValue(Map<String, FrontmatterScalar> values, String line) {

@@ -207,4 +207,40 @@ class FrontmatterTest {
 
         assertEquals("", frontmatter.body());
     }
+
+    @Test
+    void bodyPreservesCrLfLineEndingsByteForByte() {
+        String source = "---\r\npublicId: my-essay\r\n---\r\n# My Essay\r\nPlain prose.\r\n";
+
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        assertEquals("# My Essay\r\nPlain prose.\r\n", frontmatter.body());
+    }
+
+    @Test
+    void bodyPreservesLoneCrLineEndingsByteForByte() {
+        String source = "---\rpublicId: my-essay\r---\r# My Essay\rPlain prose.\r";
+
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        assertEquals("# My Essay\rPlain prose.\r", frontmatter.body());
+    }
+
+    @Test
+    void bodyPreservesAbsenceOfTrailingNewline() {
+        String source = "---\npublicId: my-essay\n---\n# My Essay\nPlain prose.";
+
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        assertEquals("# My Essay\nPlain prose.", frontmatter.body());
+    }
+
+    @Test
+    void bodyPreservesMultipleTrailingNewlines() {
+        String source = "---\npublicId: my-essay\n---\n# My Essay\n\n\n";
+
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        assertEquals("# My Essay\n\n\n", frontmatter.body());
+    }
 }
