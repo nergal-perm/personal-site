@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FilesystemCandidateWorkspaceTest {
@@ -53,5 +54,16 @@ class FilesystemCandidateWorkspaceTest {
                     .count();
             assertEquals(0, stagingLeftovers);
         }
+    }
+
+    @Test
+    void installRejectsNullBodyBeforeCreatingTheReviewRoot() {
+        Path freshRoot = reviewRoot.resolve("not-created-for-null-input");
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(freshRoot);
+
+        assertThrows(NullPointerException.class,
+                () -> workspace.install(IDENTITY, null, "EN", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
+
+        assertTrue(Files.notExists(freshRoot));
     }
 }

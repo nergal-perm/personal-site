@@ -13,26 +13,35 @@ import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.util.Objects;
 
-public final class FilesystemCandidateWorkspace implements CandidateWorkspace {
+final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
     private final Path reviewRoot;
 
-    public FilesystemCandidateWorkspace(Path reviewRoot) {
+    FilesystemCandidateWorkspace(Path reviewRoot) {
         this.reviewRoot = Objects.requireNonNull(reviewRoot, "reviewRoot");
     }
 
     @Override
     public void install(PublicationIdentity identity, String ruBody, String enBody, ReferenceMap referenceMap) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(ruBody, "ruBody");
+        Objects.requireNonNull(enBody, "enBody");
+        Objects.requireNonNull(referenceMap, "referenceMap");
+
         Path staging = createStagingDirectory();
         try {
             writeTriple(staging, ruBody, enBody, referenceMap);
-            Path destination = candidateDirectory(identity);
-            Files.createDirectories(destination.getParent());
-            Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+            publishStagingCandidate(staging, identity);
         } catch (IOException error) {
             deleteRecursively(staging);
             throw new UncheckedIOException(error);
         }
+    }
+
+    private void publishStagingCandidate(Path staging, PublicationIdentity identity) throws IOException {
+        Path destination = candidateDirectory(identity);
+        Files.createDirectories(destination.getParent());
+        Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
     }
 
     private Path candidateDirectory(PublicationIdentity identity) {
