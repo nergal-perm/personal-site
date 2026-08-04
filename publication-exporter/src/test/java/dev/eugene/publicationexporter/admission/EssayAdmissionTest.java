@@ -19,7 +19,7 @@ class EssayAdmissionTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
-                sourceId: 8f2c-my-essay
+                id: 8f2c-my-essay
                 ---
                 """);
 
@@ -37,7 +37,7 @@ class EssayAdmissionTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
-                sourceId: 8f2c-my-essay
+                id: 8f2c-my-essay
                 ---
                 """);
 
@@ -56,7 +56,7 @@ class EssayAdmissionTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: My_Essay
-                sourceId: 8f2c-my-essay
+                id: 8f2c-my-essay
                 ---
                 """);
 
@@ -74,7 +74,7 @@ class EssayAdmissionTest {
                 publicCollection: bibliography
                 publicContentType: essay
                 publicId: my-essay
-                sourceId: 8f2c-my-essay
+                id: 8f2c-my-essay
                 ---
                 """);
 
@@ -94,7 +94,7 @@ class EssayAdmissionTest {
                 publicCollection: blog
                 publicContentType: claim
                 publicId: my-essay
-                sourceId: 8f2c-my-essay
+                id: 8f2c-my-essay
                 ---
                 """);
 
@@ -119,7 +119,7 @@ class EssayAdmissionTest {
         EssayAdmission.Result result = admission.admit(frontmatter);
 
         assertFalseAccepted(result);
-        assertEquals("sourceId", result.diagnostics().get(0).field());
+        assertEquals("id", result.diagnostics().get(0).field());
     }
 
     @Test
@@ -130,14 +130,14 @@ class EssayAdmissionTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
-                sourceId: "   "
+                id: "   "
                 ---
                 """);
 
         EssayAdmission.Result result = admission.admit(frontmatter);
 
         assertFalseAccepted(result);
-        assertEquals("sourceId", result.diagnostics().get(0).field());
+        assertEquals("id", result.diagnostics().get(0).field());
     }
 
     @Test
@@ -148,14 +148,14 @@ class EssayAdmissionTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
-                sourceId: null
+                id: null
                 ---
                 """);
 
         EssayAdmission.Result result = admission.admit(frontmatter);
 
         assertFalseAccepted(result);
-        assertEquals("sourceId", result.diagnostics().get(0).field());
+        assertEquals("id", result.diagnostics().get(0).field());
     }
 
     @Test

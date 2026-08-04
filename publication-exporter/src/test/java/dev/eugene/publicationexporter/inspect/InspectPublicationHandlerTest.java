@@ -62,7 +62,7 @@ class InspectPublicationHandlerTest {
             publicCollection: blog
             publicContentType: essay
             publicId: my-essay
-            sourceId: 8f2c-my-essay
+            id: 8f2c-my-essay
             ---
             """;
 
@@ -102,7 +102,7 @@ class InspectPublicationHandlerTest {
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
-        assertEquals("sourceId", response.diagnostics().get(0).field());
+        assertEquals("id", response.diagnostics().get(0).field());
     }
 
     @Test
@@ -113,7 +113,7 @@ class InspectPublicationHandlerTest {
                 publicCollection: blog
                 publicContentType: claim
                 publicId: my-claim
-                sourceId: 8f2c-my-claim
+                id: 8f2c-my-claim
                 ---
                 """;
         VaultRelativePath path = VaultRelativePath.of("blog/my-claim.md");

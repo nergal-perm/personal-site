@@ -82,7 +82,7 @@ class BridgeResponseJsonTest {
     @Test
     void blockedResponseOmitsIdentityAndStateFieldsFromJson() throws Exception {
         BridgeResponse response = BridgeResponse.blocked(
-                "inspect-publication", Diagnostic.blocking("sourceId", "Note has no source ID."));
+                "inspect-publication", Diagnostic.blocking("id", "Note has no source ID."));
 
         ObjectMapper mapper = new ObjectMapper();
         JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));

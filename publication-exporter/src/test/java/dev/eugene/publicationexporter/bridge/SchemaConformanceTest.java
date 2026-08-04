@@ -52,7 +52,7 @@ class SchemaConformanceTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
-                sourceId: 8f2c-my-essay
+                id: 8f2c-my-essay
                 ---
                 """;
         VaultReader vaultReader = VaultReader.createNull(java.util.Map.of(path, validEssay));

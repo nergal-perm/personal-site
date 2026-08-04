@@ -129,7 +129,7 @@ class InspectPublicationCliAcceptanceTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
-                sourceId: 8f2c-my-essay
+                id: 8f2c-my-essay
                 ---
                 # My Essay""");
 
@@ -180,7 +180,7 @@ class InspectPublicationCliAcceptanceTest {
         JsonNode response = soleJsonValueOnStdout();
         assertConformsToSchemaV2(response);
         assertFalse(response.get("ok").asBoolean());
-        assertEquals("sourceId", response.get("diagnostics").get(0).get("field").asText());
+        assertEquals("id", response.get("diagnostics").get(0).get("field").asText());
     }
 
     private int inspect(String notePath) {
@@ -198,7 +198,7 @@ class InspectPublicationCliAcceptanceTest {
             publicCollection: blog
             publicContentType: essay
             publicId: my-essay
-            sourceId: 8f2c-my-essay
+            id: 8f2c-my-essay
             ---
             # My Essay""";
 

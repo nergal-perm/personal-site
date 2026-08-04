@@ -74,9 +74,9 @@ public final class EssayAdmission {
     }
 
     private String requireSourceId(Frontmatter frontmatter, List<Diagnostic> diagnostics) {
-        String sourceId = frontmatter.string("sourceId").filter(value -> !value.isBlank()).orElse(null);
+        String sourceId = frontmatter.string("id").filter(value -> !value.isBlank()).orElse(null);
         if (sourceId == null) {
-            diagnostics.add(Diagnostic.blocking("sourceId", "Note has no source ID."));
+            diagnostics.add(Diagnostic.blocking("id", "Note has no source ID."));
         }
         return sourceId;
     }
