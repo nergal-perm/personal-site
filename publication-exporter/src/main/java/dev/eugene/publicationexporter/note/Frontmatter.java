@@ -44,13 +44,15 @@ public final class Frontmatter {
 
     private static Map<String, String> parseKeyValueLines(List<String> lines) {
         Map<String, String> values = new LinkedHashMap<>();
+        boolean delimiterFound = false;
         for (String line : lines.subList(1, lines.size())) {
             if (DELIMITER.equals(line.strip())) {
+                delimiterFound = true;
                 break;
             }
             addKeyValueIfPresent(values, line);
         }
-        return values;
+        return delimiterFound ? values : Map.of();
     }
 
     private static void addKeyValueIfPresent(Map<String, String> values, String line) {

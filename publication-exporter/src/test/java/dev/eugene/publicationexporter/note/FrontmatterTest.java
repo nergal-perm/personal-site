@@ -91,4 +91,16 @@ class FrontmatterTest {
                 () -> Frontmatter.parse(null));
         assertEquals("noteSource", exception.getMessage());
     }
+
+    @Test
+    void unterminatedFrontmatterBlockDoesNotParseBodyAsMetadata() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publicId: my-essay
+                # Body starts here
+                Note: see also the appendix""");
+
+        assertEquals(Optional.empty(), frontmatter.string("publicId"));
+        assertEquals(Optional.empty(), frontmatter.string("Note"));
+    }
 }
