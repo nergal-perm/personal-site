@@ -1363,7 +1363,7 @@ git commit -m "feat(publication-exporter): wire InspectPublicationHandler to rea
 **Interfaces:**
 - Consumes: `InspectPublicationHandler#inspect` (Task 6).
 
-- [ ] **Step 1: Write the failing test (append to `SchemaConformanceTest`)**
+- [x] **Step 1: Write the failing test (append to `SchemaConformanceTest`)**
 
 ```java
     @Test
@@ -1394,17 +1394,17 @@ git commit -m "feat(publication-exporter): wire InspectPublicationHandler to rea
     }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=SchemaConformanceTest`
 Expected: FAIL until Task 6 lands — since Task 6 is a prerequisite already merged by this point in the plan, this step should instead PASS immediately (this test exercises already-green Task 6 logic against the schema file, same as S01 Task 6's own note)
 
-- [ ] **Step 3: Run test to verify it passes**
+- [x] **Step 3: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=SchemaConformanceTest`
 Expected: PASS — 2 tests, 0 failures
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add publication-exporter/src/test/java/dev/eugene/publicationexporter/bridge/SchemaConformanceTest.java
