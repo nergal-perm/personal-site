@@ -1334,17 +1334,17 @@ git commit -m "test(obsidian-plugin): add JS-side schema-v2 conformance test"
 
 **Files:** none (verification only).
 
-- [ ] **Step 1: Run the full Java suite**
+- [x] **Step 1: Run the full Java suite**
 
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: `BUILD SUCCESS`, all tests from Tasks 2–8 passing
 
-- [ ] **Step 2: Run the full JS suite (existing + new)**
+- [x] **Step 2: Run the full JS suite (existing + new)**
 
 Run: `node --test obsidian-plugin/tests/bridge-client.test.cjs obsidian-plugin/tests/schema-conformance.test.cjs`
 Expected: all tests passing, no regressions in the pre-existing `bridge-client.test.cjs` suite
 
-- [ ] **Step 3: Confirm OpenSpec status**
+- [x] **Step 3: Confirm OpenSpec status**
 
 Run: `openspec status --change s01-plugin-readable-blocked-inspection`
 Expected: `4/4 artifacts complete`
