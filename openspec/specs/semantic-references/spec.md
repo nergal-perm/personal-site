@@ -3,9 +3,7 @@
 ## Purpose
 
 Preserve stable semantic note identity across moves and activate localized public links only from approved target state. Evidence: E-REF, E-REL, E-GOV, and `e2e/run-synthetic.sh`.
-
 ## Requirements
-
 ### Requirement: SEM-01 Require stable source-owned semantic identities
 
 Every selected source note and every directly referenced private target SHALL have a stable, unique, human-assigned source ID before semantic preparation or release; the exporter SHALL NOT derive identity from a path, title, public ID, or route.
@@ -49,6 +47,12 @@ The reference map SHALL use the declared schema edition and bind publication ide
 - **WHEN** semantic candidate validation runs
 - **THEN** the candidate is blocked before approval
 
+#### Scenario: First-publication candidate has no semantic references
+- **GIVEN** a first-publication RU/EN candidate whose body contains no eligible semantic link occurrences
+- **WHEN** semantic candidate validation runs
+- **THEN** the reference map is accepted as a schema-valid empty map bound to the candidate's publication identity and exact RU/EN hashes
+- **AND** it is not treated as missing, malformed, or a validation failure
+
 ### Requirement: SEM-04 Resolve links late from approved target state
 
 Release SHALL render an occurrence as a localized public link only when its target has a currently selected, complete approved snapshot; otherwise release SHALL render the approved visible label as plain text.
@@ -82,3 +86,4 @@ Changing a target's path, title, localization, publication route, or approval st
 - **GIVEN** a referrer already contains an approved plain-label occurrence and its target completes ordinary prepare, review, and approval
 - **WHEN** release is rebuilt
 - **THEN** the link activates without creating a referrer candidate or approval request
+
