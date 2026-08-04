@@ -30,7 +30,7 @@
 **Interfaces:**
 - Produces: `Frontmatter.parse(String noteSource): Frontmatter`, `Frontmatter#string(String key): Optional<String>`, `Frontmatter#flag(String key): boolean` — consumed by Task 4.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.note;
@@ -129,12 +129,12 @@ class FrontmatterTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FrontmatterTest`
 Expected: FAIL — compile error, `Frontmatter` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.note;
@@ -214,12 +214,12 @@ public final class Frontmatter {
 
 `parse` reads as a Composed Method: reject `null`, check for the opening delimiter (guard clause), delegate line-scanning to a named helper. `parseKeyValueLines`/`addKeyValueIfPresent`/`unquote` each stay at one abstraction level. The constructor takes an already-built `Map` and copies it defensively (`Map.copyOf`) — no parsing logic inside the constructor itself (Constructor Parameter Method, SBPP-BEH-03).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FrontmatterTest`
 Expected: PASS — 8 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/note/Frontmatter.java \
