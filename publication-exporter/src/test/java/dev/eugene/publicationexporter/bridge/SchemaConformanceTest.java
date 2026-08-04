@@ -37,4 +37,31 @@ class SchemaConformanceTest {
 
         assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
     }
+
+    @Test
+    void validEssayResponseConformsToSchemaV2() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+        JsonSchema schema = factory.getSchema(Files.newInputStream(SCHEMA_PATH));
+
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        String validEssay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                sourceId: 8f2c-my-essay
+                ---
+                """;
+        VaultReader vaultReader = VaultReader.createNull(java.util.Map.of(path, validEssay));
+
+        InspectPublicationHandler handler = new InspectPublicationHandler();
+        BridgeResponse response = handler.inspect(path, vaultReader);
+
+        JsonNode responseNode = mapper.valueToTree(response);
+        Set<ValidationMessage> errors = schema.validate(responseNode);
+
+        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+    }
 }
