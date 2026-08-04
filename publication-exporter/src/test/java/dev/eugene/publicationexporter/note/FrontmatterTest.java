@@ -161,4 +161,50 @@ class FrontmatterTest {
         assertEquals(Optional.empty(), frontmatter.string("publicId"));
         assertEquals(Optional.empty(), frontmatter.string("Note"));
     }
+
+    @Test
+    void bodyReturnsTextAfterTheClosingDelimiter() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publicId: my-essay
+                ---
+                # My Essay
+
+                Plain prose body.""");
+
+        assertEquals("# My Essay\n\nPlain prose body.", frontmatter.body());
+    }
+
+    @Test
+    void bodyIsTheWholeSourceWhenNoFrontmatterBlockExists() {
+        Frontmatter frontmatter = Frontmatter.parse("# Just a body, no frontmatter block");
+
+        assertEquals("# Just a body, no frontmatter block", frontmatter.body());
+    }
+
+    @Test
+    void bodyIsTheWholeSourceWhenAFrontmatterLineIsMalformed() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                : missing-key
+                ---
+                # Body""");
+
+        assertEquals(Optional.empty(), frontmatter.string("publicId"));
+        assertEquals("""
+                ---
+                : missing-key
+                ---
+                # Body""", frontmatter.body());
+    }
+
+    @Test
+    void bodyIsEmptyWhenNothingFollowsTheClosingDelimiter() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publicId: my-essay
+                ---""");
+
+        assertEquals("", frontmatter.body());
+    }
 }
