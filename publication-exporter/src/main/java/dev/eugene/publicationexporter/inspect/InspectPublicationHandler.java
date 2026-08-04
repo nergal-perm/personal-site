@@ -11,14 +11,22 @@ public final class InspectPublicationHandler {
 
     public BridgeResponse inspect(VaultRelativePath notePath, VaultReader vaultReader) {
         if (!notePath.isWithinVault()) {
-            return BridgeResponse.blocked(COMMAND,
-                    Diagnostic.blocking("note", "Note path escapes the vault root."));
+            return blockedForVaultEscape();
         }
         if (!vaultReader.exists(notePath)) {
-            return BridgeResponse.blocked(COMMAND,
-                    Diagnostic.blocking("note", "Note was not found in the vault."));
+            return blockedForMissingNote();
         }
         throw new UnsupportedOperationException(
                 "Valid-note inspection is not implemented until S02.");
+    }
+
+    private BridgeResponse blockedForVaultEscape() {
+        return BridgeResponse.blocked(COMMAND,
+                Diagnostic.blocking("note", "Note path escapes the vault root."));
+    }
+
+    private BridgeResponse blockedForMissingNote() {
+        return BridgeResponse.blocked(COMMAND,
+                Diagnostic.blocking("note", "Note was not found in the vault."));
     }
 }
