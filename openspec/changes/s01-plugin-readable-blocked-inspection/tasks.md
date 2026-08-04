@@ -666,7 +666,7 @@ git commit -m "feat(publication-exporter): add VaultReader port with NullVaultRe
 
 **Design note (oo-design-guide 3.9):** `InspectPublicationHandler` has a single public method, which is the shape 3.9 warns about ("do not turn operations into classes"). It is kept as a class rather than a static method because it is the seam Task 8's CLI layer depends on and Task 6's conformance test exercises directly — a real collaborator boundary, not a bare function wrapped for its own sake. Noted as an intentional departure, not an oversight.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.inspect;
@@ -711,12 +711,12 @@ class InspectPublicationHandlerTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationHandlerTest`
 Expected: FAIL — compile error, `InspectPublicationHandler` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.inspect;
@@ -745,12 +745,12 @@ public final class InspectPublicationHandler {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationHandlerTest`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/inspect/InspectPublicationHandler.java \
