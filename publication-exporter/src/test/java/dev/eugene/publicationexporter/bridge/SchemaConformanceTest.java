@@ -24,27 +24,16 @@ class SchemaConformanceTest {
 
     @Test
     void blockedResponseConformsToSchemaV2() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
-        JsonSchema schema = factory.getSchema(Files.newInputStream(SCHEMA_PATH));
-
         InspectPublicationHandler handler = new InspectPublicationHandler();
         VaultReader vaultReader = VaultReader.createNull();
         BridgeResponse response = handler.inspect(
                 VaultRelativePath.of("../../etc/passwd.md"), vaultReader);
 
-        JsonNode responseNode = mapper.valueToTree(response);
-        Set<ValidationMessage> errors = schema.validate(responseNode);
-
-        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+        assertConformsToSchemaV2(response);
     }
 
     @Test
     void validEssayResponseConformsToSchemaV2() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
-        JsonSchema schema = factory.getSchema(Files.newInputStream(SCHEMA_PATH));
-
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         String validEssay = """
                 ---
@@ -63,39 +52,34 @@ class SchemaConformanceTest {
         assertTrue(response.ok());
         assertEquals("not_prepared", response.status());
 
-        JsonNode responseNode = mapper.valueToTree(response);
-        Set<ValidationMessage> errors = schema.validate(responseNode);
-
-        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+        assertConformsToSchemaV2(response);
     }
 
     @Test
     void preparedResponseConformsToSchemaV2() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
-        JsonSchema schema = factory.getSchema(Files.newInputStream(SCHEMA_PATH));
-
         BridgeResponse response = BridgeResponse.prepared(
                 "prepare", dev.eugene.publicationexporter.bridge.PublicationIdentity.of("blog", "essay", "my-essay"));
 
-        JsonNode responseNode = mapper.valueToTree(response);
-        Set<ValidationMessage> errors = schema.validate(responseNode);
-
-        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+        assertConformsToSchemaV2(response);
     }
 
     @Test
     void translationFailedResponseConformsToSchemaV2() throws Exception {
-        ObjectMapper mapper = new ObjectMapper();
-        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
-        JsonSchema schema = factory.getSchema(Files.newInputStream(SCHEMA_PATH));
-
         BridgeResponse response = BridgeResponse.translationFailed("prepare",
                 dev.eugene.publicationexporter.bridge.Diagnostic.blocking("candidate", "worker crashed"));
 
-        JsonNode responseNode = mapper.valueToTree(response);
-        Set<ValidationMessage> errors = schema.validate(responseNode);
+        assertConformsToSchemaV2(response);
+    }
 
-        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+    private void assertConformsToSchemaV2(BridgeResponse response) throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+        try (var schemaStream = Files.newInputStream(SCHEMA_PATH)) {
+            JsonSchema schema = factory.getSchema(schemaStream);
+            JsonNode responseNode = mapper.valueToTree(response);
+            Set<ValidationMessage> errors = schema.validate(responseNode);
+
+            assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+        }
     }
 }
