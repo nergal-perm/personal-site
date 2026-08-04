@@ -1421,7 +1421,7 @@ git commit -m "test(publication-exporter): validate valid-essay response against
 **Interfaces:**
 - Consumes: `InspectPublicationHandler#inspect` (Task 6), via the real CLI entry point.
 
-- [ ] **Step 1: Write the failing tests (append to `InspectPublicationCliAcceptanceTest`)**
+- [x] **Step 1: Write the failing tests (append to `InspectPublicationCliAcceptanceTest`)**
 
 ```java
     @Test
@@ -1475,17 +1475,17 @@ git commit -m "test(publication-exporter): validate valid-essay response against
 
 Add import `static org.junit.jupiter.api.Assertions.assertTrue` if not already present in this file.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationCliAcceptanceTest`
 Expected: PASS immediately — Task 6 already wired the handler; this task's role is to prove the same behaviour end-to-end through real `@TempDir` files and the real CLI process wiring, not to drive new production code (same category as S01 Task 9's note)
 
-- [ ] **Step 3: Run the full existing acceptance test class to confirm no regressions**
+- [x] **Step 3: Run the full existing acceptance test class to confirm no regressions**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationCliAcceptanceTest`
 Expected: PASS — 8 tests, 0 failures (6 existing S01 tests + 2 new)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add publication-exporter/src/test/java/dev/eugene/publicationexporter/cli/InspectPublicationCliAcceptanceTest.java
