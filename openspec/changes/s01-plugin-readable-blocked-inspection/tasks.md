@@ -767,7 +767,7 @@ git commit -m "feat(publication-exporter): add InspectPublicationHandler blocked
 - Test: `publication-exporter/src/test/java/dev/eugene/publicationexporter/bridge/SchemaConformanceTest.java`
 
 **Interfaces:**
-- Consumes: `InspectPublicationHandler#execute` (Task 5), `BridgeResponse`/`Diagnostic` (Task 3).
+- Consumes: `InspectPublicationHandler#inspect` (Task 5), `BridgeResponse`/`Diagnostic` (Task 3).
 - Produces: the single-sourced schema file at repo root, read directly (never copied) by this test and by Task 9's JS test.
 
 - [ ] **Step 1: Create the schema file**
