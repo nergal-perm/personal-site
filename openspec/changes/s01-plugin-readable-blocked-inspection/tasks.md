@@ -293,13 +293,17 @@ Note on scope: a reviewer also flagged that this class does not enforce a `.md` 
 
 ### Task 3: `Diagnostic` + `BridgeResponse` — schema-v2 value types
 
+**Revised before implementation** per Task 2's resolution (see Task 2's "Revised a second time..." note): these are Whole Values built via named Constructor Methods (`blocking`, `blocked`), so — same as `VaultRelativePath` — they must NOT be Java `record`s. A public record's canonical constructor is necessarily public, which would give callers a second, unguarded construction path (`new Diagnostic(...)` / `new BridgeResponse(...)`) alongside the named factories, violating this plan's Global Constraint. Both are hand-written `final` classes with `private` constructors, hand-written `equals`/`hashCode`/`toString`, and constructor-time null validation — matching the pattern `VaultRelativePath` settled on.
+
+Unlike `VaultRelativePath`, these two ARE serialized to JSON (Task 6's `SchemaConformanceTest`, Task 8's CLI output), and a plain class's bare-named accessors (`schemaVersion()`, `command()`, …) are not auto-detected as bean properties by Jackson the way a record's components are. Each accessor carries an explicit `@JsonProperty("...")` annotation (from `com.fasterxml.jackson.annotation`, already transitively available via the `jackson-databind` dependency — no `pom.xml` change needed) naming the exact schema-v2 field, so `new ObjectMapper().writeValueAsString(...)` produces byte-identical JSON to what the record would have produced.
+
 **Files:**
 - Create: `publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/Diagnostic.java`
 - Create: `publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/BridgeResponse.java`
 - Test: `publication-exporter/src/test/java/dev/eugene/publicationexporter/bridge/BridgeResponseJsonTest.java`
 
 **Interfaces:**
-- Produces: `Diagnostic(String field, String message, boolean blocking)`, `Diagnostic.blocking(String field, String message): Diagnostic`; `BridgeResponse(int schemaVersion, String command, boolean ok, String status, List<Diagnostic> diagnostics, List<Diagnostic> workspaceHealth)`, `BridgeResponse.blocked(String command, Diagnostic diagnostic): BridgeResponse` — consumed by Tasks 5, 6, 8.
+- Produces: `Diagnostic.blocking(String field, String message): Diagnostic` with accessors `field()`, `message()`, `blocking()`, plus hand-written `equals`/`hashCode`/`toString`; `BridgeResponse.blocked(String command, Diagnostic diagnostic): BridgeResponse` with accessors `schemaVersion()`, `command()`, `ok()`, `status()`, `diagnostics()`, `workspaceHealth()`, plus hand-written `equals`/`hashCode`/`toString` — consumed by Tasks 5, 6, 8. Both constructors are `private`; the named factory is the sole public construction path.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -311,6 +315,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class BridgeResponseJsonTest {
@@ -333,6 +338,27 @@ class BridgeResponseJsonTest {
         assertTrue(parsed.get("workspaceHealth").isArray());
         assertEquals(0, parsed.get("workspaceHealth").size());
     }
+
+    @Test
+    void blockedResponsesBuiltSeparatelyWithSameValuesAreEqual() {
+        assertEquals(
+                BridgeResponse.blocked("inspect-publication", Diagnostic.blocking("note", "msg")),
+                BridgeResponse.blocked("inspect-publication", Diagnostic.blocking("note", "msg")));
+    }
+
+    @Test
+    void diagnosticFieldIsRejectedAtConstruction() {
+        NullPointerException exception = assertThrows(NullPointerException.class,
+                () -> Diagnostic.blocking(null, "msg"));
+        assertEquals("field", exception.getMessage());
+    }
+
+    @Test
+    void bridgeResponseCommandIsRejectedAtConstruction() {
+        NullPointerException exception = assertThrows(NullPointerException.class,
+                () -> BridgeResponse.blocked(null, Diagnostic.blocking("note", "msg")));
+        assertEquals("command", exception.getMessage());
+    }
 }
 ```
 
@@ -346,10 +372,60 @@ Expected: FAIL — compile error, `Diagnostic`/`BridgeResponse` do not exist
 ```java
 package dev.eugene.publicationexporter.bridge;
 
-public record Diagnostic(String field, String message, boolean blocking) {
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+import java.util.Objects;
+
+public final class Diagnostic {
+
+    private final String field;
+    private final String message;
+    private final boolean blocking;
+
+    private Diagnostic(String field, String message, boolean blocking) {
+        this.field = Objects.requireNonNull(field, "field");
+        this.message = Objects.requireNonNull(message, "message");
+        this.blocking = blocking;
+    }
 
     public static Diagnostic blocking(String field, String message) {
         return new Diagnostic(field, message, true);
+    }
+
+    @JsonProperty("field")
+    public String field() {
+        return field;
+    }
+
+    @JsonProperty("message")
+    public String message() {
+        return message;
+    }
+
+    @JsonProperty("blocking")
+    public boolean blocking() {
+        return blocking;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof Diagnostic that)) {
+            return false;
+        }
+        return blocking == that.blocking && field.equals(that.field) && message.equals(that.message);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(field, message, blocking);
+    }
+
+    @Override
+    public String toString() {
+        return "Diagnostic[field=" + field + ", message=" + message + ", blocking=" + blocking + "]";
     }
 }
 ```
@@ -357,27 +433,106 @@ public record Diagnostic(String field, String message, boolean blocking) {
 ```java
 package dev.eugene.publicationexporter.bridge;
 
-import java.util.List;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
-public record BridgeResponse(
-        int schemaVersion,
-        String command,
-        boolean ok,
-        String status,
-        List<Diagnostic> diagnostics,
-        List<Diagnostic> workspaceHealth) {
+import java.util.List;
+import java.util.Objects;
+
+public final class BridgeResponse {
+
+    private final int schemaVersion;
+    private final String command;
+    private final boolean ok;
+    private final String status;
+    private final List<Diagnostic> diagnostics;
+    private final List<Diagnostic> workspaceHealth;
+
+    private BridgeResponse(
+            int schemaVersion,
+            String command,
+            boolean ok,
+            String status,
+            List<Diagnostic> diagnostics,
+            List<Diagnostic> workspaceHealth) {
+        this.schemaVersion = schemaVersion;
+        this.command = Objects.requireNonNull(command, "command");
+        this.ok = ok;
+        this.status = Objects.requireNonNull(status, "status");
+        this.diagnostics = diagnostics;
+        this.workspaceHealth = workspaceHealth;
+    }
 
     public static BridgeResponse blocked(String command, Diagnostic diagnostic) {
         return new BridgeResponse(2, command, false, "metadata_blocked",
                 List.of(diagnostic), List.of());
     }
+
+    @JsonProperty("schemaVersion")
+    public int schemaVersion() {
+        return schemaVersion;
+    }
+
+    @JsonProperty("command")
+    public String command() {
+        return command;
+    }
+
+    @JsonProperty("ok")
+    public boolean ok() {
+        return ok;
+    }
+
+    @JsonProperty("status")
+    public String status() {
+        return status;
+    }
+
+    @JsonProperty("diagnostics")
+    public List<Diagnostic> diagnostics() {
+        return diagnostics;
+    }
+
+    @JsonProperty("workspaceHealth")
+    public List<Diagnostic> workspaceHealth() {
+        return workspaceHealth;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof BridgeResponse that)) {
+            return false;
+        }
+        return schemaVersion == that.schemaVersion
+                && ok == that.ok
+                && command.equals(that.command)
+                && status.equals(that.status)
+                && diagnostics.equals(that.diagnostics)
+                && workspaceHealth.equals(that.workspaceHealth);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(schemaVersion, command, ok, status, diagnostics, workspaceHealth);
+    }
+
+    @Override
+    public String toString() {
+        return "BridgeResponse[schemaVersion=" + schemaVersion + ", command=" + command
+                + ", ok=" + ok + ", status=" + status + ", diagnostics=" + diagnostics
+                + ", workspaceHealth=" + workspaceHealth + "]";
+    }
 }
 ```
+
+Both constructors stay `private` — `blocking(...)`/`blocked(...)` are the sole public construction paths, same invariant Task 2 restored for `VaultRelativePath`. `@JsonProperty` on each bare-named accessor is what keeps JSON output identical to the record version: without it, Jackson's default bean-property detection would look for `getSchemaVersion()`-style names and silently miss every field.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BridgeResponseJsonTest`
-Expected: PASS
+Expected: PASS — 4 tests, 0 failures
 
 - [ ] **Step 5: Commit**
 
