@@ -112,14 +112,20 @@ git commit -m "chore(publication-exporter): scaffold Maven project (Java 17)"
 
 ### Task 2: `VaultRelativePath` — pure path-safety value type
 
-Revised after Task 2's SDD review round (three parallel reviewers — spec/quality, `/applying-sbpp`, `/oo-design-heuristics` — independently found the same gaps in the original hand-written-class version of this task: no `equals`/`hashCode`/`toString` on a published Whole Value, `of(null)` silently succeeding instead of failing fast, and `isWithinVault()` mixing abstraction levels instead of reading as a Composed Method). Human-confirmed resolution: convert to a `record` (consistent with Task 3's `Diagnostic`/`BridgeResponse`, which get the same treatment), extract named predicate methods, validate null in the compact constructor. The published interface (`of`/`isWithinVault`/`value`) is unchanged, so this revision does not affect Tasks 4, 5, 7, 8.
+Revised after Task 2's SDD review round (three parallel reviewers — spec/quality, `/applying-sbpp`, `/oo-design-heuristics` — independently found the same gaps in the original hand-written-class version of this task: no `equals`/`hashCode`/`toString` on a published Whole Value, `of(null)` silently succeeding instead of failing fast, and `isWithinVault()` mixing abstraction levels instead of reading as a Composed Method).
+
+**Revised a second time** after the fix round's own re-review (four parallel Codex reviewers — spec compliance, code quality, `/applying-sbpp`, `/oo-design-heuristics`): the first revision's chosen fix (convert to a `public record`) was itself found to be a defect by the SBPP and OO-design reviewers, independently and convergently — a public record's canonical constructor is necessarily public, so `new VaultRelativePath(...)` became a second, unguarded public construction path alongside `of(String)`, violating this plan's own Global Constraint that Whole Values are built via named Constructor Methods "rather than bare `new`." Human-confirmed final resolution: **do not use a record.** Revert to a hand-written `final` class with a `private` constructor (restoring `of(String)` as the sole construction path) and manually-written `equals`/`hashCode`/`toString` (restoring the value-equality the original review round required). This same resolution applies going forward to Task 3's `Diagnostic`/`BridgeResponse` — they must NOT be converted to records either.
+
+The code-quality reviewer also found two issues in the fix diff, folded into this revision: the null-rejection test asserted only the exception type (would also pass for an unrelated NPE) — fixed by asserting the exception's message; and the extracted predicate `isBlank()` was misnamed (it only checks emptiness, not whitespace) — renamed to `isEmpty()`.
+
+The published interface (`of`/`isWithinVault`/`value`) is unchanged, so this revision does not affect Tasks 4, 5, 7, 8.
 
 **Files:**
 - Create: `publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/VaultRelativePath.java`
 - Test: `publication-exporter/src/test/java/dev/eugene/publicationexporter/vault/VaultRelativePathTest.java`
 
 **Interfaces:**
-- Produces: `VaultRelativePath.of(String rawPath): VaultRelativePath`, `VaultRelativePath#isWithinVault(): boolean`, `VaultRelativePath#value(): String`, plus record-derived `equals`/`hashCode`/`toString` — consumed by Tasks 4, 5, 7, 8.
+- Produces: `VaultRelativePath.of(String rawPath): VaultRelativePath`, `VaultRelativePath#isWithinVault(): boolean`, `VaultRelativePath#value(): String`, plus hand-written `equals`/`hashCode`/`toString` (NOT record-derived — the constructor stays `private`) — consumed by Tasks 4, 5, 7, 8.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -172,7 +178,9 @@ class VaultRelativePathTest {
 
     @Test
     void nullPathIsRejectedAtConstruction() {
-        assertThrows(NullPointerException.class, () -> VaultRelativePath.of(null));
+        NullPointerException exception = assertThrows(NullPointerException.class,
+                () -> VaultRelativePath.of(null));
+        assertEquals("value", exception.getMessage());
     }
 
     @Test
@@ -195,10 +203,12 @@ package dev.eugene.publicationexporter.vault;
 import java.util.Arrays;
 import java.util.Objects;
 
-public record VaultRelativePath(String value) {
+public final class VaultRelativePath {
 
-    public VaultRelativePath {
-        Objects.requireNonNull(value, "value");
+    private final String value;
+
+    private VaultRelativePath(String value) {
+        this.value = Objects.requireNonNull(value, "value");
     }
 
     public static VaultRelativePath of(String rawPath) {
@@ -206,7 +216,7 @@ public record VaultRelativePath(String value) {
     }
 
     public boolean isWithinVault() {
-        if (isBlank()) {
+        if (isEmpty()) {
             return false;
         }
         if (isAbsolute() || usesWindowsSeparator()) {
@@ -215,7 +225,32 @@ public record VaultRelativePath(String value) {
         return hasOnlyOrdinarySegments();
     }
 
-    private boolean isBlank() {
+    public String value() {
+        return value;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof VaultRelativePath that)) {
+            return false;
+        }
+        return value.equals(that.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return value.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "VaultRelativePath[value=" + value + "]";
+    }
+
+    private boolean isEmpty() {
         return value.isEmpty();
     }
 
@@ -237,7 +272,7 @@ public record VaultRelativePath(String value) {
 }
 ```
 
-`value()`, `equals()`, `hashCode()`, and `toString()` all come from the record declaration — no hand-written code needed for them. The compact constructor rejects `null` before any query method ever sees it; `isWithinVault()` now reads as a table of contents (blank → absolute/Windows-style → traversal segments) with each rule named instead of inlined.
+The constructor stays `private` — `of(String)` is the sole public construction path, restoring the plan's "Constructor Method, never bare `new`" requirement. `equals()`/`hashCode()`/`toString()` are hand-written (value-based, matching what the record would have derived) since a `record` would force a public canonical constructor. `Objects.requireNonNull(value, "value")` in the constructor rejects `null` before any query method sees it and gives the null-rejection test a stable message to assert on. `isWithinVault()` reads as a table of contents (empty → absolute/Windows-style → traversal segments) with each rule named instead of inlined; the guard predicate is named `isEmpty()` (not `isBlank()` — it only checks emptiness, not whitespace).
 
 - [ ] **Step 4: Run test to verify it passes**
 
