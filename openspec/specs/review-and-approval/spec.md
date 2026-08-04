@@ -3,9 +3,7 @@
 ## Purpose
 
 Expose exact review evidence and make explicit human approval the sole transition that advances the approved publication baseline. Evidence: E-REVIEW, E-PREP, E-GOV, and `exporter-java/README.md`.
-
 ## Requirements
-
 ### Requirement: RVA-01 Inspect publication state without mutation
 
 The exporter SHALL provide a read-only inspection result that distinguishes candidate state, approved-snapshot state, semantic-reference state, release state, freshness, and diagnostics.
@@ -21,6 +19,13 @@ The exporter SHALL provide a read-only inspection result that distinguishes cand
 - **WHEN** the operator inspects the publication
 - **THEN** approved-snapshot state is blocked with a specific diagnostic
 - **AND** absence is not misreported as a complete baseline
+
+#### Scenario: No candidate, approval, or release exists yet
+- **GIVEN** a validly admitted note with no candidate, approved snapshot, semantic-reference map, or release ever produced
+- **WHEN** the operator inspects the publication
+- **THEN** candidate state, approved-snapshot state, semantic-reference state, and release state are each reported as absent
+- **AND** absence in one dimension does not block or collapse the report of the other independent dimensions
+- **AND** the response is successful (`ok: true`), since an admitted note with nothing prepared yet is not a blocked note
 
 ### Requirement: RVA-02 Produce an exact review plan
 

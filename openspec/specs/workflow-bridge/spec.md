@@ -3,9 +3,7 @@
 ## Purpose
 
 Provide the Obsidian plugin and operator with a stable, machine-readable, fail-closed command surface and truthful workflow observations. Evidence: E-BRIDGE, E-PREP, E-REVIEW, and the verified plugin/exporter schema mismatch.
-
 ## Requirements
-
 ### Requirement: BRG-01 Support the plugin command set without shell interpretation
 
 The exporter bridge SHALL support `prepare`, `inspect-publication`, `mark-reviewed`, and `refresh-publication-queue`; note-scoped commands SHALL accept one validated vault-relative Markdown path, while refresh SHALL accept no current-note path.
@@ -67,6 +65,12 @@ Inspection responses SHALL report candidate, approved-snapshot, semantic-referen
 - **GIVEN** candidate and approved snapshots are complete but semantic references are inconsistent
 - **WHEN** inspection runs
 - **THEN** semantic-reference and release states explain the block independently of candidate freshness
+
+#### Scenario: No publication work has started
+- **GIVEN** an admitted note with a valid publication identity and no candidate, approved snapshot, semantic-reference map, or release ever produced
+- **WHEN** inspection runs
+- **THEN** candidate, approved-snapshot, semantic-reference, and release state are each reported as absent, independently of one another
+- **AND** the response is `ok: true` with a workflow status that reflects "admitted, nothing prepared yet" rather than collapsing to `metadata_blocked`
 
 ### Requirement: BRG-05 Use the six-state workflow vocabulary consistently
 
