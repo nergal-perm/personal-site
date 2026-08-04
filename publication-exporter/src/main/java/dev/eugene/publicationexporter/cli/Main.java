@@ -3,7 +3,7 @@ package dev.eugene.publicationexporter.cli;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 
-@Command(name = "publication-exporter", subcommands = { InspectPublicationCommand.class })
+@Command(name = "publication-exporter", subcommands = { InspectPublicationCommand.class, PrepareCommand.class })
 public final class Main implements Runnable {
 
     public static void main(String[] args) {
