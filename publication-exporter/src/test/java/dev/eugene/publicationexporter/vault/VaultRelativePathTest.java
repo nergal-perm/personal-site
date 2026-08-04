@@ -46,7 +46,9 @@ class VaultRelativePathTest {
 
     @Test
     void nullPathIsRejectedAtConstruction() {
-        assertThrows(NullPointerException.class, () -> VaultRelativePath.of(null));
+        NullPointerException exception = assertThrows(NullPointerException.class,
+                () -> VaultRelativePath.of(null));
+        assertEquals("value", exception.getMessage());
     }
 
     @Test

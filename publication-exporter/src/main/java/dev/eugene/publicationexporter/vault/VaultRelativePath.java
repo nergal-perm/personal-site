@@ -3,10 +3,12 @@ package dev.eugene.publicationexporter.vault;
 import java.util.Arrays;
 import java.util.Objects;
 
-public record VaultRelativePath(String value) {
+public final class VaultRelativePath {
 
-    public VaultRelativePath {
-        Objects.requireNonNull(value, "value");
+    private final String value;
+
+    private VaultRelativePath(String value) {
+        this.value = Objects.requireNonNull(value, "value");
     }
 
     public static VaultRelativePath of(String rawPath) {
@@ -14,7 +16,7 @@ public record VaultRelativePath(String value) {
     }
 
     public boolean isWithinVault() {
-        if (isBlank()) {
+        if (isEmpty()) {
             return false;
         }
         if (isAbsolute() || usesWindowsSeparator()) {
@@ -23,7 +25,32 @@ public record VaultRelativePath(String value) {
         return hasOnlyOrdinarySegments();
     }
 
-    private boolean isBlank() {
+    public String value() {
+        return value;
+    }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof VaultRelativePath that)) {
+            return false;
+        }
+        return value.equals(that.value);
+    }
+
+    @Override
+    public int hashCode() {
+        return value.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "VaultRelativePath[value=" + value + "]";
+    }
+
+    private boolean isEmpty() {
         return value.isEmpty();
     }
 
