@@ -305,7 +305,7 @@ Unlike `VaultRelativePath`, these two ARE serialized to JSON (Task 6's `SchemaCo
 **Interfaces:**
 - Produces: `Diagnostic.blocking(String field, String message): Diagnostic` with accessors `field()`, `message()`, `blocking()`, plus hand-written `equals`/`hashCode`/`toString`; `BridgeResponse.blocked(String command, Diagnostic diagnostic): BridgeResponse` with accessors `schemaVersion()`, `command()`, `ok()`, `status()`, `diagnostics()`, `workspaceHealth()`, plus hand-written `equals`/`hashCode`/`toString` — consumed by Tasks 5, 6, 8. Both constructors are `private`; the named factory is the sole public construction path.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.bridge;
@@ -362,12 +362,12 @@ class BridgeResponseJsonTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BridgeResponseJsonTest`
 Expected: FAIL — compile error, `Diagnostic`/`BridgeResponse` do not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.bridge;
@@ -529,12 +529,12 @@ public final class BridgeResponse {
 
 Both constructors stay `private` — `blocking(...)`/`blocked(...)` are the sole public construction paths, same invariant Task 2 restored for `VaultRelativePath`. `@JsonProperty` on each bare-named accessor is what keeps JSON output identical to the record version: without it, Jackson's default bean-property detection would look for `getSchemaVersion()`-style names and silently miss every field.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BridgeResponseJsonTest`
 Expected: PASS — 4 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/Diagnostic.java \
