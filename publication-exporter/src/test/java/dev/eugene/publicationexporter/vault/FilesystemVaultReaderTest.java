@@ -5,8 +5,11 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.NoSuchElementException;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FilesystemVaultReaderTest {
@@ -87,5 +90,34 @@ class FilesystemVaultReaderTest {
 
         VaultReader reader = VaultReader.create(vaultRoot);
         assertTrue(reader.exists(VaultRelativePath.of("blog/real-note.md")));
+    }
+
+    @Test
+    void readSourceReturnsRealFileContent() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/real-note.md"), "---\npublish: true\n---\n");
+
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertEquals("---\npublish: true\n---\n",
+                reader.readSource(VaultRelativePath.of("blog/real-note.md")));
+    }
+
+    @Test
+    void readSourceThrowsForMissingFile() {
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertThrows(NoSuchElementException.class,
+                () -> reader.readSource(VaultRelativePath.of("blog/missing.md")));
+    }
+
+    @Test
+    void readSourceThrowsForSymlinkEscapingTheVaultRoot() throws Exception {
+        Path secret = Files.writeString(
+                outsideVaultRoot.resolve("secret.md"), "# Outside the vault");
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.createSymbolicLink(vaultRoot.resolve("blog/link.md"), secret);
+
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertThrows(NoSuchElementException.class,
+                () -> reader.readSource(VaultRelativePath.of("blog/link.md")));
     }
 }
