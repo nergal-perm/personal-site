@@ -56,6 +56,12 @@ public final class Frontmatter {
     }
 
     private record ParsedHeader(Map<String, FrontmatterScalar> values, int closingDelimiterLineIndex) {
+        private ParsedHeader {
+        }
+
+        private static ParsedHeader of(Map<String, FrontmatterScalar> values, int closingDelimiterLineIndex) {
+            return new ParsedHeader(values, closingDelimiterLineIndex);
+        }
     }
 
     /**
@@ -70,7 +76,7 @@ public final class Frontmatter {
         for (int index = 1; index < lines.size(); index++) {
             String line = lines.get(index);
             if (DELIMITER.equals(line.strip())) {
-                return new ParsedHeader(values, index);
+                return ParsedHeader.of(values, index);
             }
             if (!addKeyValue(values, line)) {
                 return null;
