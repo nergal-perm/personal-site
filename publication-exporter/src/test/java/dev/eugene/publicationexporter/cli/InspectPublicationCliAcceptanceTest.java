@@ -120,6 +120,54 @@ class InspectPublicationCliAcceptanceTest {
                 response.get("diagnostics").get(0).get("message").asText());
     }
 
+    @Test
+    void validEssayNoteProducesSuccessSchemaV2Response() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.md"), """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                sourceId: 8f2c-my-essay
+                ---
+                # My Essay""");
+
+        int exitCode = inspect("blog/my-essay.md");
+
+        assertEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("not_prepared", response.get("status").asText());
+        assertEquals("my-essay", response.get("identity").get("publicId").asText());
+        assertEquals("absent", response.get("candidateState").asText());
+        assertEquals("absent", response.get("approvedSnapshotState").asText());
+        assertEquals("absent", response.get("semanticReferenceState").asText());
+        assertEquals("absent", response.get("releaseState").asText());
+    }
+
+    @Test
+    void essayMissingSourceIdProducesBlockedSchemaV2Response() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.md"), """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                ---
+                # My Essay""");
+
+        int exitCode = inspect("blog/my-essay.md");
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("sourceId", response.get("diagnostics").get(0).get("field").asText());
+    }
+
     private int inspect(String notePath) {
         return new CommandLine(new Main()).execute(
                 "inspect-publication",
