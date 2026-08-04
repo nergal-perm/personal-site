@@ -10,11 +10,15 @@ import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 class PrepareHandlerTest {
 
@@ -54,16 +58,24 @@ class PrepareHandlerTest {
     void unrelatedInvalidPublicationIsNotTouchedByPreparingTheValidOne() {
         VaultRelativePath validPath = VaultRelativePath.of("blog/my-essay.md");
         VaultRelativePath invalidPath = VaultRelativePath.of("blog/broken.md");
-        String invalidEssay = """
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                publicId: broken
-                ---
-                # Broken, no source id""";
-        VaultReader vaultReader = VaultReader.createNull(
-                Map.of(validPath, VALID_ESSAY, invalidPath, invalidEssay));
+        VaultReader validNoteReader = VaultReader.createNull(Map.of(validPath, VALID_ESSAY));
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                if (notePath.equals(invalidPath)) {
+                    fail("Prepare must not query the unrelated invalid note.");
+                }
+                return validNoteReader.exists(notePath);
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                if (notePath.equals(invalidPath)) {
+                    fail("Prepare must not read the unrelated invalid note.");
+                }
+                return validNoteReader.readSource(notePath);
+            }
+        };
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(TranslationWorker.createNull("Translated body"), workspace);
 
@@ -169,5 +181,67 @@ class PrepareHandlerTest {
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
         assertEquals("Note was not found in the vault.", response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void nonMarkdownPathIsBlockedBeforeReading() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.txt");
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return fail("Prepare must not read a non-Markdown path.");
+            }
+        };
+        PrepareHandler handler = new PrepareHandler(TranslationWorker.createNull("EN"), CandidateWorkspace.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("Note path must name a Markdown file.", response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void vanishedNoteDuringReadIsReportedAsMissing() {
+        PrepareHandler handler = new PrepareHandler(TranslationWorker.createNull("EN"), CandidateWorkspace.createNull());
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+
+        BridgeResponse response = handler.prepare(path,
+                failingReader(new NoSuchElementException("gone")));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("Note was not found in the vault.", response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void unreadableNoteDuringReadIsReportedAsMissing() {
+        PrepareHandler handler = new PrepareHandler(TranslationWorker.createNull("EN"), CandidateWorkspace.createNull());
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+
+        BridgeResponse response = handler.prepare(path,
+                failingReader(new UncheckedIOException(new IOException("unreadable"))));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("Note was not found in the vault.", response.diagnostics().get(0).message());
+    }
+
+    private VaultReader failingReader(RuntimeException failure) {
+        return new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                throw failure;
+            }
+        };
     }
 }
