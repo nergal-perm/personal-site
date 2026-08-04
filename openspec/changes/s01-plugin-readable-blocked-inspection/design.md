@@ -127,12 +127,22 @@ review.
   the plan's literal "smallest possible surface" framing suggests for a first slice.
   **Mitigation:** each addition is a single-method interface, a single value type, or a
   widely-used library with no transitive surprises; none introduces cross-cutting state.
-- **[Risk]** `VaultRelativePath.isWithinVault()` path-containment logic is easy to get subtly
-  wrong (symlinks, `..` segments, case-insensitive filesystems). **Mitigation:** normalize and
-  compare against the resolved vault root using `Path.normalize()`/`startsWith()`, and cover it
-  with the acceptance test's unsafe-path scenario plus a few adversarial cases (`../`, absolute
-  path, empty segments) mirroring what `bridge-client.js`'s `validateNotePath()` already rejects
-  client-side — S01 must not rely on that client-side check as its only defense.
+- **[Risk]** Path containment is easy to get subtly wrong (symlinks, `..` segments,
+  drive-qualified paths, case-insensitive filesystems). **Mitigation:** containment is enforced
+  in two layers, because one layer cannot cover both halves. `VaultRelativePath.isWithinVault()`
+  stays a pure lexical check — no I/O — rejecting `..`/`.` segments, absolute paths, backslashes,
+  empty segments, and Windows drive prefixes (`C:/…`, `c:…`) via a plain-text pattern so the
+  verdict is platform-independent. Lexical checks cannot see a symlink, so the filesystem half
+  lives in the `FilesystemVaultReader` adapter: it canonicalizes the vault root once with
+  `Path.toRealPath()`, resolves each candidate through symlinks with `toRealPath()`, and reports
+  a note whose real path falls outside the canonical root as absent — no separate diagnostic, no
+  information leak about what is really there. Unresolvable paths (broken links, unrepresentable
+  names) are absent too, so no `IOException`/`InvalidPathException` escapes the CLI. Covered by
+  the acceptance test's unsafe-path scenario, adversarial `VaultRelativePath` cases mirroring
+  what `bridge-client.js`'s `validateNotePath()` rejects client-side, and `@TempDir` symlink
+  tests at both the adapter and full-CLI level — S01 must not rely on the client-side check as
+  its only defense. **Known residual:** a *hard* link inside the vault to an external file is
+  indistinguishable from a genuine in-vault file by path resolution alone and is not blocked.
 - **[Risk]** Jackson + json-schema-validator are new runtime dependencies for a CLI that's
   meant to stay small and fast to start. **Mitigation:** both are mature, narrowly-scoped
   libraries already common in this kind of tooling; startup cost is not a stated constraint

@@ -14,6 +14,9 @@ class FilesystemVaultReaderTest {
     @TempDir
     Path vaultRoot;
 
+    @TempDir
+    Path outsideVaultRoot;
+
     @Test
     void reportsTrueForRealFile() throws Exception {
         Files.createDirectories(vaultRoot.resolve("blog"));
@@ -27,6 +30,54 @@ class FilesystemVaultReaderTest {
     void reportsFalseForMissingFile() {
         FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
         assertFalse(reader.exists(VaultRelativePath.of("blog/missing.md")));
+    }
+
+    @Test
+    void reportsFalseForSymlinkEscapingTheVaultRoot() throws Exception {
+        Path secret = Files.writeString(
+                outsideVaultRoot.resolve("secret.md"), "# Outside the vault");
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.createSymbolicLink(vaultRoot.resolve("blog/link.md"), secret);
+
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertFalse(reader.exists(VaultRelativePath.of("blog/link.md")));
+    }
+
+    @Test
+    void reportsFalseForSymlinkedDirectoryEscapingTheVaultRoot() throws Exception {
+        Files.writeString(outsideVaultRoot.resolve("secret.md"), "# Outside the vault");
+        Files.createSymbolicLink(vaultRoot.resolve("blog"), outsideVaultRoot);
+
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertFalse(reader.exists(VaultRelativePath.of("blog/secret.md")));
+    }
+
+    @Test
+    void reportsTrueForSymlinkResolvingInsideTheVaultRoot() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("notes"));
+        Path target = Files.writeString(vaultRoot.resolve("notes/target.md"), "# Inside the vault");
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.createSymbolicLink(vaultRoot.resolve("blog/alias.md"), target);
+
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertTrue(reader.exists(VaultRelativePath.of("blog/alias.md")));
+    }
+
+    @Test
+    void reportsFalseForBrokenSymlink() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.createSymbolicLink(vaultRoot.resolve("blog/dangling.md"), vaultRoot.resolve("notes/gone.md"));
+
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertFalse(reader.exists(VaultRelativePath.of("blog/dangling.md")));
+    }
+
+    @Test
+    void reportsFalseForPathTheFilesystemCannotRepresent() {
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        String pathWithNulCharacter = "blog/nul\0byte.md";
+
+        assertFalse(reader.exists(VaultRelativePath.of(pathWithNulCharacter)));
     }
 
     @Test

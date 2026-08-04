@@ -2,8 +2,11 @@ package dev.eugene.publicationexporter.vault;
 
 import java.util.Arrays;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 public final class VaultRelativePath {
+
+    private static final Pattern DRIVE_PREFIX = Pattern.compile("^[A-Za-z]:");
 
     private final String value;
 
@@ -19,7 +22,7 @@ public final class VaultRelativePath {
         if (isEmpty()) {
             return false;
         }
-        if (isAbsolute() || usesWindowsSeparator()) {
+        if (isAbsolute() || isDriveQualified() || usesWindowsSeparator()) {
             return false;
         }
         return hasOnlyOrdinarySegments();
@@ -56,6 +59,16 @@ public final class VaultRelativePath {
 
     private boolean isAbsolute() {
         return value.startsWith("/");
+    }
+
+    /**
+     * Rejects Windows drive-qualified forms such as {@code C:/etc/passwd.md} (drive-absolute) and
+     * {@code c:blog/note.md} (drive-relative). Checked as plain text rather than through
+     * {@link java.nio.file.Path} so the verdict is identical on every platform, and so a colon
+     * elsewhere in a segment — legal in an Obsidian note name — stays allowed.
+     */
+    private boolean isDriveQualified() {
+        return DRIVE_PREFIX.matcher(value).find();
     }
 
     private boolean usesWindowsSeparator() {

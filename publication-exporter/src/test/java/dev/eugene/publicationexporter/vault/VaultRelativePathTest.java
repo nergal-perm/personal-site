@@ -30,6 +30,21 @@ class VaultRelativePathTest {
     }
 
     @Test
+    void driveQualifiedPathEscapesVault() {
+        assertFalse(VaultRelativePath.of("C:/etc/passwd.md").isWithinVault());
+    }
+
+    @Test
+    void lowercaseDriveQualifiedPathEscapesVault() {
+        assertFalse(VaultRelativePath.of("c:blog/note.md").isWithinVault());
+    }
+
+    @Test
+    void colonInsideAnOrdinarySegmentStaysWithinVault() {
+        assertTrue(VaultRelativePath.of("blog/note: a title.md").isWithinVault());
+    }
+
+    @Test
     void emptyPathEscapesVault() {
         assertFalse(VaultRelativePath.of("").isWithinVault());
     }
