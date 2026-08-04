@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://personal-site.internal/bridge-contract/schema-v2.json",
+  "title": "Publication bridge response (schema v2)",
+  "type": "object",
+  "required": ["schemaVersion", "command", "ok", "status", "diagnostics", "workspaceHealth"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "command": {
+      "type": "string",
+      "enum": ["prepare", "inspect-publication", "mark-reviewed", "refresh-publication-queue"]
+    },
+    "ok": { "type": "boolean" },
+    "status": { "type": "string" },
+    "diagnostics": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/diagnostic" }
+    },
+    "workspaceHealth": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/diagnostic" }
+    }
+  },
+  "definitions": {
+    "diagnostic": {
+      "type": "object",
+      "required": ["field", "message", "blocking"],
+      "additionalProperties": true,
+      "properties": {
+        "field": { "type": "string" },
+        "message": { "type": "string" },
+        "blocking": { "type": "boolean" }
+      }
+    }
+  }
+}
