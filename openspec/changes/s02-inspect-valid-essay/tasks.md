@@ -490,7 +490,7 @@ git commit -m "feat(publication-exporter): add VaultReader#readSource to both ad
 **Interfaces:**
 - Produces: `PublicationIdentity.of(String publicCollection, String publicContentType, String publicId): PublicationIdentity` with accessors and hand-written `equals`/`hashCode`/`toString` — consumed by Tasks 4, 5.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.bridge;
@@ -527,12 +527,12 @@ class PublicationIdentityTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=PublicationIdentityTest`
 Expected: FAIL — compile error, `PublicationIdentity` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.bridge;
@@ -600,12 +600,12 @@ public final class PublicationIdentity {
 
 Same shape as `Diagnostic` (Task 3 of S01): `private` constructor, `of(...)` as the sole Constructor Method, hand-written `equals`/`hashCode`/`toString`, `@JsonProperty`-annotated bare accessors — not a `record`, per the standing invariant.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=PublicationIdentityTest`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/PublicationIdentity.java \
