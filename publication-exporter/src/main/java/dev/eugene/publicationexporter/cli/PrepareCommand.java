@@ -14,12 +14,23 @@ import picocli.CommandLine.Option;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.concurrent.Callable;
 
 @Command(name = "prepare")
 public final class PrepareCommand implements Callable<Integer> {
 
     private static final Duration TRANSLATION_TIMEOUT = Duration.ofSeconds(900);
+
+    private final TranslationWorker translationWorker;
+
+    public PrepareCommand() {
+        this(new ProcessTranslationWorker(new CodexTranslationCommand(), TRANSLATION_TIMEOUT));
+    }
+
+    PrepareCommand(TranslationWorker translationWorker) {
+        this.translationWorker = Objects.requireNonNull(translationWorker, "translationWorker");
+    }
 
     @Option(names = "--vault", required = true)
     Path vaultRoot;
@@ -30,14 +41,15 @@ public final class PrepareCommand implements Callable<Integer> {
     @Option(names = "--review", required = true)
     Path reviewDirectory;
 
+    @Option(names = "--jobs", required = true)
+    Path jobsDirectory;
+
     @Option(names = "--json")
     boolean json;
 
     @Override
     public Integer call() throws Exception {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
-        TranslationWorker translationWorker = new ProcessTranslationWorker(
-                new CodexTranslationCommand(), TRANSLATION_TIMEOUT);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         BridgeResponse response = new PrepareHandler(translationWorker, candidateWorkspace)
                 .prepare(VaultRelativePath.of(notePath), vaultReader);

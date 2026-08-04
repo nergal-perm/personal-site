@@ -159,8 +159,9 @@ function blockedFixture(message) {
   };
 }
 
-function createFakeSpawn({ stdout, exitCode }) {
-  return () => {
+function createFakeSpawn({ stdout, exitCode, onSpawn = () => {} }) {
+  return (command, args, options) => {
+    onSpawn(command, args, options);
     const child = new EventEmitter();
     child.stdout = new EventEmitter();
     child.stderr = new EventEmitter();
@@ -385,4 +386,31 @@ test("plugin's real bridge client accepts a schema-conformant prepared response"
 
   const result = await client.run("prepare", "blog/my-essay.md");
   assert.deepEqual(result, fixture);
+});
+
+test("plugin prepare invocation includes the jobs directory in exporter argv", async () => {
+  let capturedArgs;
+  const client = createBridgeClient({
+    spawn: createFakeSpawn({
+      stdout: JSON.stringify(preparedFixture()),
+      exitCode: 0,
+      onSpawn: (_command, args) => {
+        capturedArgs = args;
+      },
+    }),
+    exporterRoot: "/tmp/exporter-root",
+    vaultPath: "/tmp/vault",
+    exporterBinary: "/tmp/exporter-root/publication-exporter",
+  });
+
+  await client.run("prepare", "blog/my-essay.md");
+
+  assert.deepEqual(capturedArgs, [
+    "prepare",
+    "--vault", "/tmp/vault",
+    "--note", "blog/my-essay.md",
+    "--review", "/tmp/exporter-root/review",
+    "--jobs", "/tmp/exporter-root/.publication-jobs",
+    "--json",
+  ]);
 });

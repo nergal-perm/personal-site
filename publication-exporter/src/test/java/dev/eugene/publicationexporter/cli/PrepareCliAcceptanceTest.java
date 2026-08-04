@@ -7,6 +7,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -103,12 +104,51 @@ class PrepareCliAcceptanceTest {
         assertEquals("id", response.get("diagnostics").get(0).get("field").asText());
     }
 
+    @Test
+    void pluginPrepareArgvIncludingJobsInvokesPrepareCommand() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.md"), """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: source-my-essay
+                ---
+                # My Essay""");
+        PrepareCommand prepareCommand = new PrepareCommand(
+                TranslationWorker.createNull("# My Essay in English"));
+        CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
+            @Override
+            public <K> K create(Class<K> cls) throws Exception {
+                if (cls == PrepareCommand.class) {
+                    return cls.cast(prepareCommand);
+                }
+                return CommandLine.defaultFactory().create(cls);
+            }
+        });
+
+        int exitCode = commandLine.execute(
+                "prepare",
+                "--vault", vaultRoot.toString(),
+                "--note", "blog/my-essay.md",
+                "--review", vaultRoot.resolve("review").toString(),
+                "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
+                "--json");
+
+        assertEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertEquals("prepare", response.get("command").asText());
+        assertEquals("ready_for_review", response.get("status").asText());
+    }
+
     private int prepare(String notePath) {
         return new CommandLine(new Main()).execute(
                 "prepare",
                 "--vault", vaultRoot.toString(),
                 "--note", notePath,
                 "--review", vaultRoot.resolve("review").toString(),
+                "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
                 "--json");
     }
 
