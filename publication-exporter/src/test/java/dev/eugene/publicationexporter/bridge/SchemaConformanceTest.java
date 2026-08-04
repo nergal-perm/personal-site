@@ -68,4 +68,34 @@ class SchemaConformanceTest {
 
         assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
     }
+
+    @Test
+    void preparedResponseConformsToSchemaV2() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+        JsonSchema schema = factory.getSchema(Files.newInputStream(SCHEMA_PATH));
+
+        BridgeResponse response = BridgeResponse.prepared(
+                "prepare", dev.eugene.publicationexporter.bridge.PublicationIdentity.of("blog", "essay", "my-essay"));
+
+        JsonNode responseNode = mapper.valueToTree(response);
+        Set<ValidationMessage> errors = schema.validate(responseNode);
+
+        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+    }
+
+    @Test
+    void translationFailedResponseConformsToSchemaV2() throws Exception {
+        ObjectMapper mapper = new ObjectMapper();
+        JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
+        JsonSchema schema = factory.getSchema(Files.newInputStream(SCHEMA_PATH));
+
+        BridgeResponse response = BridgeResponse.translationFailed("prepare",
+                dev.eugene.publicationexporter.bridge.Diagnostic.blocking("candidate", "worker crashed"));
+
+        JsonNode responseNode = mapper.valueToTree(response);
+        Set<ValidationMessage> errors = schema.validate(responseNode);
+
+        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+    }
 }

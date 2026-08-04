@@ -340,3 +340,49 @@ test("plugin's real bridge client accepts a schema-conformant valid-essay respon
   const result = await client.run("inspect-publication", "blog/my-essay.md");
   assert.deepEqual(result, fixture);
 });
+
+function preparedFixture() {
+  return {
+    schemaVersion: 2,
+    command: "prepare",
+    ok: true,
+    status: "ready_for_review",
+    identity: { publicCollection: "blog", publicContentType: "essay", publicId: "my-essay" },
+    diagnostics: [],
+    workspaceHealth: [],
+  };
+}
+
+function translationFailedFixture() {
+  return {
+    schemaVersion: 2,
+    command: "prepare",
+    ok: false,
+    status: "translation_failed",
+    diagnostics: [{ field: "candidate", message: "worker crashed", blocking: true }],
+    workspaceHealth: [],
+  };
+}
+
+test("prepared fixture conforms to bridge-contract/schema-v2.json", () => {
+  const errors = validateAgainstSchema(loadSchema(), preparedFixture());
+  assert.deepEqual(errors, []);
+});
+
+test("translation-failed fixture conforms to bridge-contract/schema-v2.json", () => {
+  const errors = validateAgainstSchema(loadSchema(), translationFailedFixture());
+  assert.deepEqual(errors, []);
+});
+
+test("plugin's real bridge client accepts a schema-conformant prepared response", async () => {
+  const fixture = preparedFixture();
+  const client = createBridgeClient({
+    spawn: createFakeSpawn({ stdout: JSON.stringify(fixture), exitCode: 0 }),
+    exporterRoot: "/tmp/exporter-root",
+    vaultPath: "/tmp/vault",
+    exporterBinary: "/tmp/exporter-root/publication-exporter",
+  });
+
+  const result = await client.run("prepare", "blog/my-essay.md");
+  assert.deepEqual(result, fixture);
+});
