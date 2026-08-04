@@ -9,9 +9,12 @@ import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -21,6 +24,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class PrepareHandlerTest {
+
+    @TempDir
+    Path temporaryRoot;
 
     private static final String VALID_ESSAY = """
             ---
@@ -245,6 +251,61 @@ class PrepareHandlerTest {
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
         assertEquals("Note was not found in the vault.", response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void translationWorkerIoFailureReturnsTranslationFailed() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        TranslationWorker failingWorker = ruBody -> {
+            throw new UncheckedIOException(new IOException("scratch directory unavailable"));
+        };
+        PrepareHandler handler = new PrepareHandler(failingWorker, workspace);
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(response.diagnostics().get(0).message().contains("scratch directory unavailable"));
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void candidateInstallIoFailureReturnsTranslationFailed() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+        CandidateWorkspace failingWorkspace = (identity, ruBody, enBody, referenceMap) -> {
+            throw new UncheckedIOException(new IOException("candidate disk unavailable"));
+        };
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body"), failingWorkspace);
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(response.diagnostics().get(0).message().contains("candidate disk unavailable"));
+    }
+
+    @Test
+    void candidateConfinementFailureReturnsTranslationFailedWithoutExternalWrite() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("review");
+        Path outsideRoot = temporaryRoot.resolve("outside");
+        Files.createDirectories(reviewRoot);
+        Files.createDirectories(outsideRoot);
+        Files.createSymbolicLink(reviewRoot.resolve("blog"), outsideRoot);
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body"), CandidateWorkspace.create(reviewRoot));
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(response.diagnostics().get(0).message().contains("escapes review root"));
+        assertTrue(Files.notExists(outsideRoot.resolve("my-essay/candidate")));
     }
 
     private VaultReader failingReader(RuntimeException failure) {

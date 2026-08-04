@@ -4,6 +4,7 @@ import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.TranslationResult;
@@ -11,6 +12,7 @@ import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -38,7 +40,12 @@ public final class PrepareHandler {
     }
 
     private BridgeResponse prepareAdmittedEssay(PublicationIdentity identity, String ruBody) {
-        TranslationResult translation = translationWorker.translate(ruBody);
+        TranslationResult translation;
+        try {
+            translation = translationWorker.translate(ruBody);
+        } catch (UncheckedIOException failure) {
+            return candidateFailure(ioFailureMessage("Translation worker I/O failed", failure));
+        }
         if (!translation.succeeded()) {
             return BridgeResponse.translationFailed(COMMAND,
                     Diagnostic.blocking("candidate", translation.failureReason()));
@@ -49,8 +56,24 @@ public final class PrepareHandler {
                     Diagnostic.blocking("candidate", "Translation worker produced a blank candidate."));
         }
         ReferenceMap referenceMap = ReferenceMap.empty(identity, sha256Hex(ruBody), sha256Hex(enBody));
-        candidateWorkspace.install(identity, ruBody, enBody, referenceMap);
+        try {
+            candidateWorkspace.install(identity, ruBody, enBody, referenceMap);
+        } catch (UncheckedIOException failure) {
+            return candidateFailure(ioFailureMessage("Candidate installation failed", failure));
+        } catch (CandidateWorkspaceConfinementException failure) {
+            return candidateFailure("Candidate installation failed: " + failure.getMessage());
+        }
         return BridgeResponse.prepared(COMMAND, identity);
+    }
+
+    private static BridgeResponse candidateFailure(String message) {
+        return BridgeResponse.translationFailed(COMMAND,
+                Diagnostic.blocking("candidate", message));
+    }
+
+    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
+        String detail = failure.getCause().getMessage();
+        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
     private static String sha256Hex(String content) {
