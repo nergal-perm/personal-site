@@ -241,7 +241,7 @@ git commit -m "feat(publication-exporter): add Frontmatter pure parser"
 **Interfaces:**
 - Produces: `VaultReader#readSource(VaultRelativePath): String`, `VaultReader.createNull(Map<VaultRelativePath, String>): VaultReader` — consumed by Task 6.
 
-- [ ] **Step 1: Write the failing tests (append to existing test classes)**
+- [x] **Step 1: Write the failing tests (append to existing test classes)**
 
 Append to `NullVaultReaderTest`:
 
@@ -307,12 +307,12 @@ Append to `FilesystemVaultReaderTest`:
 
 Add imports `java.util.NoSuchElementException` and `static org.junit.jupiter.api.Assertions.assertEquals` / `assertThrows` to `FilesystemVaultReaderTest`.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullVaultReaderTest,FilesystemVaultReaderTest`
 Expected: FAIL — compile error, `readSource` is undefined and the `Map` overload of `createNull` is undefined
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.vault;
@@ -463,12 +463,12 @@ final class FilesystemVaultReader implements VaultReader {
 
 `exists` and `readSource` now share one Composed Method, `resolveWithinVault` — the symlink-safe resolution S01's final fix wave built is exercised identically by both messages, so there is exactly one place that decides "is this candidate really inside the vault," matching heuristic 4.6 (most methods use most data members most of the time) instead of duplicating the resolution logic. `readUtf8` isolates the one checked-to-unchecked exception translation at one call site.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullVaultReaderTest,FilesystemVaultReaderTest`
 Expected: PASS — 6 and 9 tests respectively, 0 failures; every pre-existing test in both classes still passes unchanged
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/VaultReader.java \
