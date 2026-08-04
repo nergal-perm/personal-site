@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.translation;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -8,6 +9,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class ProcessTranslationWorker implements TranslationWorker {
@@ -39,13 +41,16 @@ public final class ProcessTranslationWorker implements TranslationWorker {
                     .redirectInput(ProcessBuilder.Redirect.from(Path.of("/dev/null").toFile()))
                     .redirectErrorStream(true)
                     .start();
-            return awaitResult(process, workdir);
+            CompletableFuture<Void> outputDrainer = CompletableFuture.runAsync(
+                    () -> drainOutput(process));
+            return awaitResult(process, workdir, outputDrainer);
         } catch (IOException error) {
             return TranslationResult.failure("Translation worker failed to start: " + error.getMessage());
         }
     }
 
-    private TranslationResult awaitResult(Process process, Path workdir) {
+    private TranslationResult awaitResult(
+            Process process, Path workdir, CompletableFuture<Void> outputDrainer) {
         try {
             boolean completed = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!completed) {
@@ -60,8 +65,19 @@ public final class ProcessTranslationWorker implements TranslationWorker {
             }
             return collectResult(workdir);
         } catch (InterruptedException interrupted) {
+            process.destroyForcibly();
             Thread.currentThread().interrupt();
             return TranslationResult.failure("Translation worker was interrupted.");
+        } finally {
+            outputDrainer.join();
+        }
+    }
+
+    private static void drainOutput(Process process) {
+        try (InputStream output = process.getInputStream()) {
+            output.readAllBytes();
+        } catch (IOException ignored) {
+            // The process outcome determines the translation result.
         }
     }
 
@@ -121,6 +137,9 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         Objects.requireNonNull(timeout, "timeout");
         if (timeout.isZero() || timeout.isNegative()) {
             throw new IllegalArgumentException("timeout must be positive");
+        }
+        if (timeout.toMillis() == 0) {
+            throw new IllegalArgumentException("timeout must be at least 1ms");
         }
         return timeout;
     }
