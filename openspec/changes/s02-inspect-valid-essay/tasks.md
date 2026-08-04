@@ -947,7 +947,7 @@ git commit -m "feat(publication-exporter): add EssayAdmission identity and sourc
 - Consumes: `PublicationIdentity` (Task 3).
 - Produces: `BridgeResponse.essayInspected(String, String, PublicationIdentity, String, String, String, String): BridgeResponse`, `BridgeResponse.blocked(String, List<Diagnostic>): BridgeResponse`, accessors `identity()`, `candidateState()`, `approvedSnapshotState()`, `semanticReferenceState()`, `releaseState()` — consumed by Task 6.
 
-- [ ] **Step 1: Write the failing tests (append to `BridgeResponseJsonTest`)**
+- [x] **Step 1: Write the failing tests (append to `BridgeResponseJsonTest`)**
 
 ```java
     @Test
@@ -996,12 +996,12 @@ git commit -m "feat(publication-exporter): add EssayAdmission identity and sourc
 
 Add imports `java.util.List` and `static org.junit.jupiter.api.Assertions.assertFalse` to `BridgeResponseJsonTest`.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BridgeResponseJsonTest`
 Expected: FAIL — compile error, `essayInspected` and the `List<Diagnostic>` overload of `blocked` are undefined
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.bridge;
@@ -1172,12 +1172,12 @@ public final class BridgeResponse {
 
 `blocked(String, Diagnostic)` now delegates to the new `blocked(String, List<Diagnostic>)` (Reversing Method-style call-forwarding, SBPP-BEH-09's spirit: the single-diagnostic form is sugar over the general form, not a second implementation to keep in sync). The five new fields stay `null` on every `blocked(...)` response; the class-level `@JsonInclude(NON_NULL)` means Jackson omits them entirely rather than emitting `"identity": null`, keeping the blocked-response JSON shape byte-identical to what S01 already produces (verified by `blockedResponseOmitsIdentityAndStateFieldsFromJson` above).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BridgeResponseJsonTest`
 Expected: PASS — 7 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/BridgeResponse.java \
