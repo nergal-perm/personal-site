@@ -55,6 +55,21 @@ public final class BridgeResponse {
                 List.copyOf(diagnostics), List.of(), null, null, null, null, null);
     }
 
+    public static BridgeResponse prepared(String command, PublicationIdentity identity) {
+        return new BridgeResponse(2, command, true, "ready_for_review",
+                List.of(), List.of(), Objects.requireNonNull(identity, "identity"),
+                null, null, null, null);
+    }
+
+    public static BridgeResponse translationFailed(String command, Diagnostic diagnostic) {
+        return translationFailed(command, List.of(Objects.requireNonNull(diagnostic, "diagnostic")));
+    }
+
+    public static BridgeResponse translationFailed(String command, List<Diagnostic> diagnostics) {
+        return new BridgeResponse(2, command, false, "translation_failed",
+                List.copyOf(diagnostics), List.of(), null, null, null, null, null);
+    }
+
     public static BridgeResponse essayInspected(
             String command,
             String status,

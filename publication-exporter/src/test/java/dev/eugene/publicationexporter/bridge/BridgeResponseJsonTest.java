@@ -99,4 +99,37 @@ class BridgeResponseJsonTest {
 
         assertEquals(2, response.diagnostics().size());
     }
+
+    @Test
+    void preparedResponseSerializesToLeanShapeWithNoStateFields() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        BridgeResponse response = BridgeResponse.prepared("prepare", identity);
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertEquals(2, parsed.get("schemaVersion").asInt());
+        assertEquals(true, parsed.get("ok").asBoolean());
+        assertEquals("ready_for_review", parsed.get("status").asText());
+        assertEquals("my-essay", parsed.get("identity").get("publicId").asText());
+        assertEquals(0, parsed.get("diagnostics").size());
+        assertFalse(parsed.has("candidateState"));
+        assertFalse(parsed.has("approvedSnapshotState"));
+        assertFalse(parsed.has("semanticReferenceState"));
+        assertFalse(parsed.has("releaseState"));
+    }
+
+    @Test
+    void translationFailedResponseCarriesTheFailedStatusAndDiagnostics() throws Exception {
+        BridgeResponse response = BridgeResponse.translationFailed(
+                "prepare", Diagnostic.blocking("candidate", "Translation worker did not return a usable result."));
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertEquals(false, parsed.get("ok").asBoolean());
+        assertEquals("translation_failed", parsed.get("status").asText());
+        assertEquals(1, parsed.get("diagnostics").size());
+        assertFalse(parsed.has("identity"));
+    }
 }
