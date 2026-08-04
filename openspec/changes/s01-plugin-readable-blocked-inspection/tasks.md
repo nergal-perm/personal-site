@@ -30,7 +30,7 @@
 **Interfaces:**
 - Produces: a compiling Maven module `publication-exporter` (Java 17 release, JUnit Jupiter wired via Surefire) — every later task runs `mvn -f publication-exporter/pom.xml test` against it.
 
-- [ ] **Step 1: Create the POM**
+- [x] **Step 1: Create the POM**
 
 ```xml
 <project xmlns="http://maven.apache.org/POM/4.0.0"
@@ -96,12 +96,12 @@
 </project>
 ```
 
-- [ ] **Step 2: Verify the build**
+- [x] **Step 2: Verify the build**
 
 Run: `mvn -f publication-exporter/pom.xml compile`
 Expected: `BUILD SUCCESS`
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add publication-exporter/pom.xml
@@ -127,7 +127,7 @@ The published interface (`of`/`isWithinVault`/`value`) is unchanged, so this rev
 **Interfaces:**
 - Produces: `VaultRelativePath.of(String rawPath): VaultRelativePath`, `VaultRelativePath#isWithinVault(): boolean`, `VaultRelativePath#value(): String`, plus hand-written `equals`/`hashCode`/`toString` (NOT record-derived — the constructor stays `private`) — consumed by Tasks 4, 5, 7, 8.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.vault;
@@ -190,12 +190,12 @@ class VaultRelativePathTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=VaultRelativePathTest`
 Expected: FAIL — compile error, `VaultRelativePath` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.vault;
@@ -274,12 +274,12 @@ public final class VaultRelativePath {
 
 The constructor stays `private` — `of(String)` is the sole public construction path, restoring the plan's "Constructor Method, never bare `new`" requirement. `equals()`/`hashCode()`/`toString()` are hand-written (value-based, matching what the record would have derived) since a `record` would force a public canonical constructor. `Objects.requireNonNull(value, "value")` in the constructor rejects `null` before any query method sees it and gives the null-rejection test a stable message to assert on. `isWithinVault()` reads as a table of contents (empty → absolute/Windows-style → traversal segments) with each rule named instead of inlined; the guard predicate is named `isEmpty()` (not `isBlank()` — it only checks emptiness, not whitespace).
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=VaultRelativePathTest`
 Expected: PASS — 9 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/VaultRelativePath.java \
