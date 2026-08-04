@@ -74,7 +74,7 @@ class NoteIntakeTest {
         NoteIntake.Result result = intake.admit(path, VaultReader.createNull(Map.of(path, VALID_ESSAY)));
 
         assertTrue(result.accepted());
-        assertEquals("my-essay", result.admission().identity().publicId());
-        assertEquals("# Body", result.frontmatter().body());
+        assertEquals("my-essay", result.identity().publicId());
+        assertEquals("# Body", result.body());
     }
 }

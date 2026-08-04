@@ -17,7 +17,7 @@ public final class InspectPublicationHandler {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
         return BridgeResponse.essayInspected(
-                COMMAND, NOT_PREPARED, intake.admission().identity(),
+                COMMAND, NOT_PREPARED, intake.identity(),
                 ABSENT, ABSENT, ABSENT, ABSENT);
     }
 }

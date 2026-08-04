@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.intake;
 
 import dev.eugene.publicationexporter.admission.EssayAdmission;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
+import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.note.Frontmatter;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -74,13 +75,13 @@ public final class NoteIntake {
         }
 
         /** Only meaningful when {@link #accepted()} is {@code true}. */
-        public EssayAdmission.Result admission() {
-            return admission;
+        public PublicationIdentity identity() {
+            return admission.identity();
         }
 
         /** Only meaningful when {@link #accepted()} is {@code true}. */
-        public Frontmatter frontmatter() {
-            return frontmatter;
+        public String body() {
+            return frontmatter.body();
         }
 
         public List<Diagnostic> diagnostics() {

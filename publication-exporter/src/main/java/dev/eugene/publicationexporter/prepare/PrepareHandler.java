@@ -34,7 +34,7 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        return prepareAdmittedEssay(intake.admission().identity(), intake.frontmatter().body());
+        return prepareAdmittedEssay(intake.identity(), intake.body());
     }
 
     private BridgeResponse prepareAdmittedEssay(PublicationIdentity identity, String ruBody) {
