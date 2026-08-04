@@ -883,7 +883,7 @@ git commit -m "feat: single-source bridge-contract/schema-v2.json with Java conf
 - Implements: `VaultReader` (Task 4).
 - Produces: `VaultReader.create(Path vaultRoot): VaultReader` (Nullables' other channel, completing the pair started in Task 4) — consumed by Task 8's CLI wiring. `FilesystemVaultReader` itself stays package-private, same as `NullVaultReader`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.vault;
@@ -930,12 +930,12 @@ class FilesystemVaultReaderTest {
 
 Note: like `NullVaultReaderTest`, this test lives in the `vault` package, so it may construct `FilesystemVaultReader` directly for its own narrow integration coverage — this is the one place real filesystem I/O is deliberately exercised (Nullables: "only the lowest wrapper gets narrow integration tests against the real system"). The third test proves the public `VaultReader.create(...)` factory that Task 8 must use instead.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemVaultReaderTest`
 Expected: FAIL — compile error, `FilesystemVaultReader` does not exist and `VaultReader.create` is undefined
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.vault;
@@ -979,12 +979,12 @@ public interface VaultReader {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemVaultReaderTest`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/FilesystemVaultReader.java \
