@@ -1502,7 +1502,7 @@ git commit -m "test(publication-exporter): extend CLI acceptance test for valid-
 **Interfaces:**
 - Consumes: `bridge-contract/schema-v2.json` (unchanged file, still `additionalProperties: true`), `createBridgeClient` (existing).
 
-- [ ] **Step 1: Write the failing test (append to `schema-conformance.test.cjs`)**
+- [x] **Step 1: Write the failing test (append to `schema-conformance.test.cjs`)**
 
 ```javascript
 function essayInspectedFixture() {
@@ -1542,14 +1542,14 @@ test("plugin's real bridge client accepts a schema-conformant valid-essay respon
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they pass**
+- [x] **Step 2: Run tests to verify they pass**
 
 Run: `node --test obsidian-plugin/tests/schema-conformance.test.cjs`
 Expected: PASS — 2 new tests pass alongside all existing tests in the file, 0 failures
 
 Note: like S01 Task 9, this adds no new production code — `bridge-client.js` and `bridge-contract/schema-v2.json` both already support this shape (the schema's `additionalProperties: true` was already exercised by S01), so there is no RED phase.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add obsidian-plugin/tests/schema-conformance.test.cjs
