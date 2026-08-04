@@ -34,8 +34,9 @@ class NullCandidateWorkspaceTest {
     }
 
     @Test
-    void interfaceFactoryStartsEmpty() {
-        assertTrue(CandidateWorkspace.createNull().equals(CandidateWorkspace.createNull())
-                || true); // createNull() has no observable equality contract; existence check only
+    void interfaceFactoryReturnsAFreshEmptyWorkspace() {
+        CandidateWorkspace workspace = CandidateWorkspace.createNull();
+
+        assertTrue(((NullCandidateWorkspace) workspace).installed().isEmpty());
     }
 }
