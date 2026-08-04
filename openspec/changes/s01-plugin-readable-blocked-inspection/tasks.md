@@ -770,7 +770,7 @@ git commit -m "feat(publication-exporter): add InspectPublicationHandler blocked
 - Consumes: `InspectPublicationHandler#inspect` (Task 5), `BridgeResponse`/`Diagnostic` (Task 3).
 - Produces: the single-sourced schema file at repo root, read directly (never copied) by this test and by Task 9's JS test.
 
-- [ ] **Step 1: Create the schema file**
+- [x] **Step 1: Create the schema file**
 
 ```json
 {
@@ -812,7 +812,7 @@ git commit -m "feat(publication-exporter): add InspectPublicationHandler blocked
 }
 ```
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.bridge;
@@ -857,12 +857,12 @@ class SchemaConformanceTest {
 }
 ```
 
-- [ ] **Step 3: Run test to verify it passes**
+- [x] **Step 3: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=SchemaConformanceTest`
 Expected: PASS (this test does not need a preceding RED step — it exercises Task 5's already-green logic against a new schema file, so the risk being tested is schema drift, not missing implementation)
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add bridge-contract/schema-v2.json \
