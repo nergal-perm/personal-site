@@ -30,7 +30,7 @@
 **Interfaces:**
 - Produces: `Frontmatter#body(): String` — consumed by Task 7.
 
-- [ ] **Step 1: Write the failing tests (append to `FrontmatterTest`)**
+- [x] **Step 1: Write the failing tests (append to `FrontmatterTest`)**
 
 ```java
     @Test
@@ -80,12 +80,12 @@
     }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FrontmatterTest`
 Expected: FAIL — compile error, `body()` is undefined
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 Replace the whole file:
 
@@ -199,12 +199,12 @@ early-return-empty-on-malformed-line, same "delimiter never found" fallthrough) 
 now also capturing the index `bodyAfter` needs, per D5's "not a second responsibility" rationale. Every
 pre-existing `FrontmatterTest` case must keep passing unchanged after this step.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FrontmatterTest`
 Expected: PASS — 18 tests (14 existing + 4 new), 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/note/Frontmatter.java \
@@ -227,7 +227,7 @@ git commit -m "feat(publication-exporter): add Frontmatter#body()"
 - Produces: `ReferenceMap.empty(PublicationIdentity, String ruHash, String enHash): ReferenceMap`,
   `ReferenceMapCodec.write(ReferenceMap): String` — consumed by Task 7.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `ReferenceMapTest.java`:
 
@@ -312,12 +312,12 @@ class ReferenceMapCodecTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=ReferenceMapTest,ReferenceMapCodecTest`
 Expected: FAIL — compile error, `ReferenceMap`/`ReferenceMapCodec` do not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `ReferenceMap.java`:
 
@@ -428,12 +428,12 @@ public final class ReferenceMapCodec {
 type exists yet (SEM-02/S19). `schemaVersion()` follows the same pattern for the same reason it isn't a
 field — it never varies within this slice.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=ReferenceMapTest,ReferenceMapCodecTest`
 Expected: PASS — 4 and 1 tests respectively, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/reference/ \
@@ -454,7 +454,7 @@ git commit -m "feat(publication-exporter): add ReferenceMap and ReferenceMapCode
   `TranslationResult.failure(String reason): TranslationResult`, `#succeeded(): boolean`,
   `#enBody(): String`, `#failureReason(): String` — consumed by Tasks 4, 7, 9.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.translation;
@@ -496,12 +496,12 @@ class TranslationResultTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=TranslationResultTest`
 Expected: FAIL — compile error, `TranslationResult` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.translation;
@@ -547,12 +547,12 @@ public final class TranslationResult {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=TranslationResultTest`
 Expected: PASS — 4 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/translation/TranslationResult.java \
@@ -576,7 +576,7 @@ git commit -m "feat(publication-exporter): add TranslationResult value type"
   `TranslationWorker.createNullFailing(String reason): TranslationWorker`,
   `NullTranslationWorker#requestedBodies(): List<String>` — consumed by Task 7.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.translation;
@@ -627,12 +627,12 @@ class NullTranslationWorkerTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullTranslationWorkerTest`
 Expected: FAIL — compile error, `TranslationWorker`/`NullTranslationWorker` do not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `TranslationWorker.java`:
 
@@ -689,12 +689,12 @@ The public constructor is the test seam (per `/nullables`): `PrepareHandlerTest`
 configured outcome — same split S01/S02 established between `VaultReader.createNull(...)` and direct
 `NullVaultReader` construction.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullTranslationWorkerTest`
 Expected: PASS — 4 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/translation/TranslationWorker.java \
@@ -718,7 +718,7 @@ git commit -m "feat(publication-exporter): add TranslationWorker port and NullTr
   `CandidateWorkspace.createNull(): CandidateWorkspace`,
   `NullCandidateWorkspace#installed(): List<NullCandidateWorkspace.InstalledCandidate>` — consumed by Task 7.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.candidate;
@@ -764,12 +764,12 @@ class NullCandidateWorkspaceTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullCandidateWorkspaceTest`
 Expected: FAIL — compile error, `CandidateWorkspace`/`NullCandidateWorkspace` do not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `CandidateWorkspace.java`:
 
@@ -822,12 +822,12 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
 `installed()` is the write-channel tracker per `/nullables` ("observe what the code sent, as domain
 data") — `InstalledCandidate` carries the domain values `PrepareHandler` sent, not rendered file paths.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullCandidateWorkspaceTest`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/CandidateWorkspace.java \
@@ -850,7 +850,7 @@ git commit -m "feat(publication-exporter): add CandidateWorkspace port and NullC
   `BridgeResponse.translationFailed(String command, Diagnostic): BridgeResponse`,
   `BridgeResponse.translationFailed(String command, List<Diagnostic>): BridgeResponse` — consumed by Task 7.
 
-- [ ] **Step 1: Write the failing tests (append to `BridgeResponseJsonTest`)**
+- [x] **Step 1: Write the failing tests (append to `BridgeResponseJsonTest`)**
 
 ```java
     @Test
@@ -887,12 +887,12 @@ git commit -m "feat(publication-exporter): add CandidateWorkspace port and NullC
     }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BridgeResponseJsonTest`
 Expected: FAIL — compile error, `prepared`/`translationFailed` are undefined
 
-- [ ] **Step 3: Write minimal implementation (append two factories to `BridgeResponse`)**
+- [x] **Step 3: Write minimal implementation (append two factories to `BridgeResponse`)**
 
 ```java
     public static BridgeResponse prepared(String command, PublicationIdentity identity) {
@@ -915,12 +915,12 @@ No constructor change: the existing private constructor already accepts `null` f
 (`blocked(...)` already relies on this). `prepared(...)`/`translationFailed(...)` are two more named
 Constructor Methods (SBPP-BEH-02) alongside `blocked(...)`/`essayInspected(...)`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BridgeResponseJsonTest`
 Expected: PASS — 9 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/BridgeResponse.java \
@@ -948,7 +948,7 @@ exist and the duplication is real, per the plan's own "necessary refactoring hap
 red-green-refactor cycle" discipline. Every test written in this task keeps passing unchanged after
 Task 8's refactor — that is Task 8's own acceptance bar.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -1125,12 +1125,12 @@ class PrepareHandlerTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=PrepareHandlerTest`
 Expected: FAIL — compile error, `PrepareHandler` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -1232,12 +1232,12 @@ public final class PrepareHandler {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=PrepareHandlerTest`
 Expected: PASS — 8 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/PrepareHandler.java \
@@ -1265,7 +1265,7 @@ This is a pure refactor: `InspectPublicationHandlerTest` and `PrepareHandlerTest
 this task, and both must keep passing unchanged — that is this task's acceptance bar, proving the
 extraction preserved behavior exactly (heuristic 4.13: `NoteIntake` knows about neither caller).
 
-- [ ] **Step 1: Write the failing test for the new collaborator**
+- [x] **Step 1: Write the failing test for the new collaborator**
 
 ```java
 package dev.eugene.publicationexporter.intake;
@@ -1350,12 +1350,12 @@ class NoteIntakeTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NoteIntakeTest`
 Expected: FAIL — compile error, `NoteIntake` does not exist
 
-- [ ] **Step 3: Write minimal implementation, then wire both handlers to it**
+- [x] **Step 3: Write minimal implementation, then wire both handlers to it**
 
 `NoteIntake.java`:
 
@@ -1546,13 +1546,13 @@ public final class PrepareHandler {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify everything still passes**
+- [x] **Step 4: Run tests to verify everything still passes**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NoteIntakeTest,InspectPublicationHandlerTest,PrepareHandlerTest`
 Expected: PASS — 5, 8, and 8 tests respectively, 0 failures. Every `InspectPublicationHandlerTest` and
 `PrepareHandlerTest` case passes unchanged from Tasks 7/S02 — proof the refactor preserved behavior.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/intake/ \
@@ -1585,7 +1585,7 @@ from `exporter-java`'s `PrepareWorkflow`. Neither test in this task requires a l
 `sh -c`, proving the adapter's own process/timeout/result-file mechanics; `CodexTranslationCommandTest`
 proves the Codex-specific argv construction as a pure, dependency-free unit test.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `CodexTranslationCommandTest.java`:
 
@@ -1688,12 +1688,12 @@ class ProcessTranslationWorkerTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=CodexTranslationCommandTest,ProcessTranslationWorkerTest`
 Expected: FAIL — compile error, `TranslationCommand`/`CodexTranslationCommand`/`ProcessTranslationWorker` do not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `TranslationCommand.java`:
 
@@ -1865,14 +1865,14 @@ public final class ProcessTranslationWorker implements TranslationWorker {
 `TranslationCommand` is a single-method interface, so the test lambdas in `ProcessTranslationWorkerTest`
 implement it directly — no anonymous class boilerplate needed.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=CodexTranslationCommandTest,ProcessTranslationWorkerTest`
 Expected: PASS — 1 and 4 tests respectively, 0 failures. This suite is slow relative to the rest (spawns
 real processes, one test sleeps ~200ms) — same category as the real-adapter contract tests S01/S02 already
 have for `FilesystemVaultReader`, not part of the sub-1-second in-memory acceptance subset.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/translation/TranslationCommand.java \
@@ -1899,7 +1899,7 @@ git commit -m "feat(publication-exporter): add ProcessTranslationWorker real ada
 Create-only in this slice, matching TRP-01's scope: a second `install()` call for an identity that already
 has a candidate directory is undefined behavior here (S09's replacement/recovery concern, out of scope).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.candidate;
@@ -1961,12 +1961,12 @@ class FilesystemCandidateWorkspaceTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemCandidateWorkspaceTest`
 Expected: FAIL — compile error, `FilesystemCandidateWorkspace` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.candidate;
@@ -2051,12 +2051,12 @@ becomes the candidate directory in one filesystem operation, so a crash before t
 candidate directory at all, and after this line leaves a complete one; there is no partially-written
 in-place state.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemCandidateWorkspaceTest`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/FilesystemCandidateWorkspace.java \
@@ -2084,7 +2084,7 @@ S07's Astro smoke test), since `PrepareHandlerTest` (Task 7) and `ProcessTransla
 together already prove the orchestration logic and the real adapter's mechanics without needing `codex`
 installed.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.cli;
@@ -2223,12 +2223,12 @@ class PrepareCliAcceptanceTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=PrepareCliAcceptanceTest`
 Expected: FAIL — `Missing required subcommand` / compile error, `prepare` subcommand not registered
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 `PrepareCommand.java`:
 
@@ -2291,12 +2291,12 @@ public final class PrepareCommand implements Callable<Integer> {
 public final class Main implements Runnable {
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=PrepareCliAcceptanceTest`
 Expected: PASS — 4 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/cli/PrepareCommand.java \
@@ -2316,7 +2316,7 @@ git commit -m "feat(publication-exporter): add prepare CLI command"
 No `bridge-contract/schema-v2.json` change: `additionalProperties: true` and the free-form `status`
 string already permit `prepare`'s response shapes.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `SchemaConformanceTest.java`:
 
@@ -2402,7 +2402,7 @@ test("plugin's real bridge client accepts a schema-conformant prepared response"
 });
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=SchemaConformanceTest`
 Expected: FAIL — compile error, `BridgeResponse.prepared`/`translationFailed` referenced correctly but
@@ -2414,12 +2414,12 @@ Run: `cd obsidian-plugin && node --test tests/schema-conformance.test.cjs`
 Expected: the three new tests are present and initially may fail only if `bridge-client.js`'s `COMMANDS`
 map ever changes — confirm they pass as written since `prepare` is already a recognized command.
 
-- [ ] **Step 3: No production code changes required**
+- [x] **Step 3: No production code changes required**
 
 This task is fixture-only: `BridgeResponse.prepared`/`translationFailed` (Task 6) and `bridge-client.js`'s
 existing `prepare` command entry already exist; this task only proves the new response shapes conform.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=SchemaConformanceTest`
 Expected: PASS — 4 tests, 0 failures
@@ -2427,7 +2427,7 @@ Expected: PASS — 4 tests, 0 failures
 Run: `cd obsidian-plugin && node --test tests/schema-conformance.test.cjs`
 Expected: PASS — all tests including the 3 new ones
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/test/java/dev/eugene/publicationexporter/bridge/SchemaConformanceTest.java \
@@ -2441,27 +2441,27 @@ git commit -m "test(publication-exporter,obsidian-plugin): extend schema-v2 conf
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run the complete `publication-exporter` suite**
+- [x] **Step 1: Run the complete `publication-exporter` suite**
 
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: BUILD SUCCESS, all tests passing (baseline 84 + this slice's new tests across Tasks 1-12)
 
-- [ ] **Step 2: Run the obsidian-plugin conformance suite**
+- [x] **Step 2: Run the obsidian-plugin conformance suite**
 
 Run: `cd obsidian-plugin && node --test tests/`
 Expected: all tests passing, including the Task 12 additions
 
-- [ ] **Step 3: Validate the OpenSpec change**
+- [x] **Step 3: Validate the OpenSpec change**
 
 Run: `openspec validate s03-prepare-first-candidate --strict`
 Expected: `Change 's03-prepare-first-candidate' is valid`
 
-- [ ] **Step 4: Confirm the working tree is clean and every task's commit is present**
+- [x] **Step 4: Confirm the working tree is clean and every task's commit is present**
 
 Run: `git log --oneline -14` and `git status --porcelain=v1`
 Expected: 13 feature/refactor/test commits from this plan on top of the docs commit, clean tree
 
-- [ ] **Step 5: Report readiness for review**
+- [x] **Step 5: Report readiness for review**
 
 Do not close Haft problem `prob-20260804-97ecd928` or archive this OpenSpec change here — that happens
 after the full branch review (spec-compliance, code-quality, `/applying-sbpp`, `/oo-design-heuristics`,
