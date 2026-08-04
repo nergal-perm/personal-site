@@ -16,6 +16,7 @@ import java.nio.file.Path;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class SchemaConformanceTest {
 
@@ -58,6 +59,9 @@ class SchemaConformanceTest {
 
         InspectPublicationHandler handler = new InspectPublicationHandler();
         BridgeResponse response = handler.inspect(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("not_prepared", response.status());
 
         JsonNode responseNode = mapper.valueToTree(response);
         Set<ValidationMessage> errors = schema.validate(responseNode);

@@ -20,7 +20,7 @@ None.
 
 ### Modified Capabilities
 
-None. `openspec/specs/publication-admission/spec.md`, `openspec/specs/semantic-references/spec.md`, `openspec/specs/review-and-approval/spec.md`, and `openspec/specs/workflow-bridge/spec.md` already fully specify ADM-03, ADM-04, SEM-01, RVA-01, and BRG-04 ahead of any implementation (same precedent as S01). This change implements a subset of already-specified requirements — **ADM-02 (already satisfied by S01), ADM-03, ADM-04 (essay only), SEM-01 (current-source scenario only), RVA-01 (absent-state scenario only), and BRG-04** — without altering their requirement text or scenarios. No delta spec is produced; the `specs/` artifact for this change instead pins the exact existing scenarios this slice satisfies and confirms no new ones are needed.
+This change modifies `review-and-approval` (RVA-01) and `workflow-bridge` (BRG-04) with the permanent scenario for an admitted essay whose candidate, approved-snapshot, semantic-reference, and release states are all absent. `publication-admission` and `semantic-references` are pure scope pins: they add no scenario text, while documenting the already-baselined ADM-02/03/04 and SEM-01 behaviour this slice realizes. Archive the whole change normally so both real deltas reach the baseline.
 
 ## Impact
 

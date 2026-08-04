@@ -141,6 +141,24 @@ class EssayAdmissionTest {
     }
 
     @Test
+    void nullSourceIdIsBlocked() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                sourceId: null
+                ---
+                """);
+
+        EssayAdmission.Result result = admission.admit(frontmatter);
+
+        assertFalseAccepted(result);
+        assertEquals("sourceId", result.diagnostics().get(0).field());
+    }
+
+    @Test
     void multipleFailuresAreAllReported() {
         Frontmatter frontmatter = Frontmatter.parse("""
                 ---

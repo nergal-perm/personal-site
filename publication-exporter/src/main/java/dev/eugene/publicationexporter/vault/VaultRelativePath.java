@@ -28,6 +28,10 @@ public final class VaultRelativePath {
         return hasOnlyOrdinarySegments();
     }
 
+    public boolean hasMarkdownExtension() {
+        return value.endsWith(".md");
+    }
+
     public String value() {
         return value;
     }

@@ -20,7 +20,21 @@
     "workspaceHealth": {
       "type": "array",
       "items": { "$ref": "#/definitions/diagnostic" }
-    }
+    },
+    "identity": {
+      "type": "object",
+      "required": ["publicCollection", "publicContentType", "publicId"],
+      "additionalProperties": true,
+      "properties": {
+        "publicCollection": { "type": "string" },
+        "publicContentType": { "type": "string" },
+        "publicId": { "type": "string" }
+      }
+    },
+    "candidateState": { "type": "string" },
+    "approvedSnapshotState": { "type": "string" },
+    "semanticReferenceState": { "type": "string" },
+    "releaseState": { "type": "string" }
   },
   "definitions": {
     "diagnostic": {

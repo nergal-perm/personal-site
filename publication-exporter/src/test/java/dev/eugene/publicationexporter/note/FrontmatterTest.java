@@ -75,6 +75,64 @@ class FrontmatterTest {
     }
 
     @Test
+    void quotedTrueIsNotABooleanFlag() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publish: "true"
+                ---
+                """);
+
+        assertFalse(frontmatter.flag("publish"));
+    }
+
+    @Test
+    void bareNullIsNotAString() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                sourceId: null
+                ---
+                """);
+
+        assertEquals(Optional.empty(), frontmatter.string("sourceId"));
+    }
+
+    @Test
+    void bareBooleanIsNotAString() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                sourceId: true
+                ---
+                """);
+
+        assertEquals(Optional.empty(), frontmatter.string("sourceId"));
+    }
+
+    @Test
+    void quotedNullIsAString() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                sourceId: "null"
+                ---
+                """);
+
+        assertEquals(Optional.of("null"), frontmatter.string("sourceId"));
+    }
+
+    @Test
+    void duplicateKeyMakesTheWholeBlockUnparseable() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publicId: first
+                sourceId: source
+                publicId: second
+                ---
+                """);
+
+        assertEquals(Optional.empty(), frontmatter.string("publicId"));
+        assertEquals(Optional.empty(), frontmatter.string("sourceId"));
+    }
+
+    @Test
     void contentAfterClosingDelimiterIsNotParsedAsFrontmatter() {
         Frontmatter frontmatter = Frontmatter.parse("""
                 ---

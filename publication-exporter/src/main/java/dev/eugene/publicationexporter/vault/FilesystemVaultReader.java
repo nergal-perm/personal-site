@@ -38,7 +38,8 @@ final class FilesystemVaultReader implements VaultReader {
     private Optional<Path> resolveWithinVault(VaultRelativePath notePath) {
         return candidateFor(notePath)
                 .flatMap(FilesystemVaultReader::realPathOf)
-                .filter(this::isInsideVault);
+                .filter(this::isInsideVault)
+                .filter(Files::isRegularFile);
     }
 
     private static String readUtf8(Path file) {

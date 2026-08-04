@@ -148,6 +148,21 @@ class InspectPublicationCliAcceptanceTest {
     }
 
     @Test
+    void nonMarkdownNoteProducesBlockedSchemaV2Response() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.txt"), VALID_ESSAY);
+
+        int exitCode = inspect("blog/my-essay.txt");
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("Note path must name a Markdown file.",
+                response.get("diagnostics").get(0).get("message").asText());
+    }
+
+    @Test
     void essayMissingSourceIdProducesBlockedSchemaV2Response() throws Exception {
         Files.createDirectories(vaultRoot.resolve("blog"));
         Files.writeString(vaultRoot.resolve("blog/my-essay.md"), """
@@ -176,6 +191,16 @@ class InspectPublicationCliAcceptanceTest {
                 "--review", vaultRoot.resolve("review").toString(),
                 "--json");
     }
+
+    private static final String VALID_ESSAY = """
+            ---
+            publish: true
+            publicCollection: blog
+            publicContentType: essay
+            publicId: my-essay
+            sourceId: 8f2c-my-essay
+            ---
+            # My Essay""";
 
     /**
      * Reads stdout as exactly one JSON value and fails if anything but whitespace follows it, so

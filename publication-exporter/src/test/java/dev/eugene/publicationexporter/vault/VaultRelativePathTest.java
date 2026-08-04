@@ -70,4 +70,21 @@ class VaultRelativePathTest {
     void equalPathsBuiltSeparatelyAreEqual() {
         assertEquals(VaultRelativePath.of("blog/note.md"), VaultRelativePath.of("blog/note.md"));
     }
+
+    @Test
+    void markdownExtensionIsRecognizedCaseSensitively() {
+        assertTrue(VaultRelativePath.of("blog/note.md").hasMarkdownExtension());
+        assertFalse(VaultRelativePath.of("blog/note.MD").hasMarkdownExtension());
+    }
+
+    @Test
+    void nonMarkdownExtensionsAreNotRecognizedAsMarkdown() {
+        assertFalse(VaultRelativePath.of("blog/note.txt").hasMarkdownExtension());
+        assertFalse(VaultRelativePath.of("blog/note").hasMarkdownExtension());
+    }
+
+    @Test
+    void markdownDirectorySegmentDoesNotMakePathMarkdown() {
+        assertFalse(VaultRelativePath.of("blog/.md/note").hasMarkdownExtension());
+    }
 }

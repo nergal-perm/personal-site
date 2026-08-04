@@ -10,9 +10,9 @@ public final class Frontmatter {
 
     private static final String DELIMITER = "---";
 
-    private final Map<String, String> frontmatterValues;
+    private final Map<String, FrontmatterScalar> frontmatterValues;
 
-    private Frontmatter(Map<String, String> frontmatterValues) {
+    private Frontmatter(Map<String, FrontmatterScalar> frontmatterValues) {
         this.frontmatterValues = Map.copyOf(frontmatterValues);
     }
 
@@ -26,11 +26,14 @@ public final class Frontmatter {
     }
 
     public Optional<String> string(String key) {
-        return Optional.ofNullable(frontmatterValues.get(key));
+        return Optional.ofNullable(frontmatterValues.get(key))
+                .flatMap(FrontmatterScalar::stringValue);
     }
 
     public boolean flag(String key) {
-        return "true".equals(frontmatterValues.get(key));
+        return Optional.ofNullable(frontmatterValues.get(key))
+                .map(FrontmatterScalar::isBareTrue)
+                .orElse(false);
     }
 
     @Override
@@ -42,34 +45,35 @@ public final class Frontmatter {
         return !lines.isEmpty() && DELIMITER.equals(lines.get(0).strip());
     }
 
-    private static Map<String, String> parseKeyValueLines(List<String> lines) {
-        Map<String, String> values = new LinkedHashMap<>();
+    private static Map<String, FrontmatterScalar> parseKeyValueLines(List<String> lines) {
+        Map<String, FrontmatterScalar> values = new LinkedHashMap<>();
         boolean delimiterFound = false;
         for (String line : lines.subList(1, lines.size())) {
             if (DELIMITER.equals(line.strip())) {
                 delimiterFound = true;
                 break;
             }
-            addKeyValueIfPresent(values, line);
+            if (!addKeyValue(values, line)) {
+                return Map.of();
+            }
         }
         return delimiterFound ? values : Map.of();
     }
 
-    private static void addKeyValueIfPresent(Map<String, String> values, String line) {
+    private static boolean addKeyValue(Map<String, FrontmatterScalar> values, String line) {
         int colon = line.indexOf(':');
         if (colon < 0) {
-            return;
+            return false;
         }
         String key = line.substring(0, colon).strip();
         if (key.isEmpty()) {
-            return;
+            return false;
         }
-        values.put(key, unquote(line.substring(colon + 1).strip()));
-    }
-
-    private static String unquote(String value) {
-        boolean doubleQuoted = value.length() >= 2 && value.startsWith("\"") && value.endsWith("\"");
-        boolean singleQuoted = value.length() >= 2 && value.startsWith("'") && value.endsWith("'");
-        return (doubleQuoted || singleQuoted) ? value.substring(1, value.length() - 1) : value;
+        Optional<FrontmatterScalar> value = FrontmatterScalar.parse(line.substring(colon + 1).strip());
+        if (value.isEmpty() || values.containsKey(key)) {
+            return false;
+        }
+        values.put(key, value.get());
+        return true;
     }
 }

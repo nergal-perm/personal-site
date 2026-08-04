@@ -5,7 +5,10 @@ import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.util.Map;
+import java.util.NoSuchElementException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -38,6 +41,18 @@ class InspectPublicationHandlerTest {
         assertEquals("metadata_blocked", response.status());
         assertEquals(1, response.diagnostics().size());
         assertEquals("Note was not found in the vault.",
+                response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void nonMarkdownPathIsBlockedBeforeReading() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.txt");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+
+        BridgeResponse response = handler.inspect(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("Note path must name a Markdown file.",
                 response.diagnostics().get(0).message());
     }
 
@@ -108,5 +123,37 @@ class InspectPublicationHandlerTest {
 
         assertFalse(response.ok());
         assertEquals("publicContentType", response.diagnostics().get(0).field());
+    }
+
+    @Test
+    void vanishedNoteDuringReadIsReportedAsMissing() {
+        BridgeResponse response = handler.inspect(VaultRelativePath.of("blog/my-essay.md"),
+                failingReader(new NoSuchElementException("gone")));
+
+        assertFalse(response.ok());
+        assertEquals("Note was not found in the vault.", response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void unreadableNoteDuringReadIsReportedAsMissing() {
+        BridgeResponse response = handler.inspect(VaultRelativePath.of("blog/my-essay.md"),
+                failingReader(new UncheckedIOException(new IOException("unreadable"))));
+
+        assertFalse(response.ok());
+        assertEquals("Note was not found in the vault.", response.diagnostics().get(0).message());
+    }
+
+    private VaultReader failingReader(RuntimeException failure) {
+        return new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                throw failure;
+            }
+        };
     }
 }

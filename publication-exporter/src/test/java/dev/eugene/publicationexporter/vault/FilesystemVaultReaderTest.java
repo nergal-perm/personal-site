@@ -36,6 +36,14 @@ class FilesystemVaultReaderTest {
     }
 
     @Test
+    void reportsFalseForDirectoryAtSafePath() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog/directory.md"));
+
+        FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
+        assertFalse(reader.exists(VaultRelativePath.of("blog/directory.md")));
+    }
+
+    @Test
     void reportsFalseForSymlinkEscapingTheVaultRoot() throws Exception {
         Path secret = Files.writeString(
                 outsideVaultRoot.resolve("secret.md"), "# Outside the vault");

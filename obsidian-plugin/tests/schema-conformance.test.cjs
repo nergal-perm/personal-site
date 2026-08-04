@@ -313,6 +313,21 @@ test("valid-essay fixture conforms to bridge-contract/schema-v2.json", () => {
   assert.deepEqual(errors, []);
 });
 
+test("validator rejects a non-string candidate state", () => {
+  const fixture = { ...essayInspectedFixture(), candidateState: false };
+  const errors = validateAgainstSchema(loadSchema(), fixture);
+
+  assert.ok(errors.length > 0);
+});
+
+test("validator rejects an incomplete inspection identity", () => {
+  const fixture = essayInspectedFixture();
+  delete fixture.identity.publicId;
+  const errors = validateAgainstSchema(loadSchema(), fixture);
+
+  assert.ok(errors.length > 0);
+});
+
 test("plugin's real bridge client accepts a schema-conformant valid-essay response", async () => {
   const fixture = essayInspectedFixture();
   const client = createBridgeClient({

@@ -8,8 +8,9 @@ scenario by scenario, exactly which already-baselined behaviour S02 realizes —
 
 **Tooling note:** this file intentionally carries no `## ADDED/MODIFIED/REMOVED/RENAMED Requirements`
 section, so `openspec validate` will report "no delta sections found" for it — that is correct, not
-an omission. Archive this change with `openspec archive --skip-specs`; the baseline spec must not be
-rewritten from this file.
+an omission. This file itself carries no delta, but the change also contains real `review-and-approval`
+and `workflow-bridge` deltas. Archive the whole change with `openspec archive s02-inspect-valid-essay`,
+per Task 10; do not use `--skip-specs` for this change.
 
 ## Requirement: SEM-01 Require stable source-owned semantic identities
 

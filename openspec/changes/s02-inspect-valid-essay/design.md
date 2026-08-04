@@ -57,7 +57,7 @@ A new, I/O-free `Frontmatter` value type parses that raw text:
 public final class Frontmatter {
     public static Frontmatter parse(String noteSource) { ... }
     public Optional<String> string(String key) { ... }
-    public Optional<Boolean> flag(String key) { ... }
+    public boolean flag(String key) { ... }
 }
 ```
 
@@ -99,7 +99,7 @@ shape as essay) is the earliest point a real generalization has two data points 
 
 ```java
 public static BridgeResponse essayInspected(
-        PublicationIdentity identity, String sourceId,
+        String command, String status, PublicationIdentity identity,
         String candidateState, String approvedSnapshotState,
         String semanticReferenceState, String releaseState) { ... }
 ```
