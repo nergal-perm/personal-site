@@ -1,7 +1,7 @@
 package dev.eugene.publicationexporter.translation;
 
 import java.io.IOException;
-import java.io.InputStream;
+import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -74,8 +74,8 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     private static void drainOutput(Process process) {
-        try (InputStream output = process.getInputStream()) {
-            output.readAllBytes();
+        try (var output = process.getInputStream()) {
+            output.transferTo(OutputStream.nullOutputStream());
         } catch (IOException ignored) {
             // The process outcome determines the translation result.
         }
