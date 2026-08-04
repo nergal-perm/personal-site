@@ -1197,7 +1197,7 @@ git commit -m "feat(publication-exporter): add BridgeResponse#essayInspected and
 - Consumes: `VaultReader#readSource` (Task 2), `Frontmatter.parse` (Task 1), `EssayAdmission#admit` (Task 4), `BridgeResponse.essayInspected`/`blocked(String, List<Diagnostic>)` (Task 5).
 - Produces: `InspectPublicationHandler#inspect(VaultRelativePath, VaultReader): BridgeResponse` — unchanged signature, now reaches the essay-inspected path — consumed by Tasks 7, 8.
 
-- [ ] **Step 1: Write the failing tests (append to `InspectPublicationHandlerTest`)**
+- [x] **Step 1: Write the failing tests (append to `InspectPublicationHandlerTest`)**
 
 ```java
     private static final String VALID_ESSAY = """
@@ -1272,12 +1272,12 @@ git commit -m "feat(publication-exporter): add BridgeResponse#essayInspected and
 
 Add imports `java.util.Map` and `static org.junit.jupiter.api.Assertions.assertTrue` to `InspectPublicationHandlerTest`; change the existing `private final InspectPublicationHandler handler = ...` field declaration to stay shared across these new tests if not already.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationHandlerTest`
 Expected: FAIL — `UnsupportedOperationException: Valid-note inspection is not implemented until S02.`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.inspect;
@@ -1340,12 +1340,12 @@ public final class InspectPublicationHandler {
 
 `inspect` stays a three-line Composed Method table of contents, unchanged in shape from S01 — only the previously-`throw`ing third branch now delegates to `inspectExistingNote`, itself a four-line table of contents (parse → evaluate → branch → assemble). `InspectPublicationHandler` still touches no I/O directly (`VaultReader` owns that), and still owns orchestration only, matching the oo-design-guide note S01 Task 5 already recorded for this class.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=InspectPublicationHandlerTest`
 Expected: PASS — 5 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/inspect/InspectPublicationHandler.java \
