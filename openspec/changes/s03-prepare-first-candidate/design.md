@@ -208,18 +208,24 @@ public static BridgeResponse prepared(String command, PublicationIdentity identi
 }
 ```
 
-Failure paths reuse the existing `BridgeResponse.blocked(...)` family (already multi-diagnostic capable
-since S02) with `status: "translation_failed"` for a worker failure — a new *value* for the existing
-`status` field, not a new response shape, so no `BridgeResponse` factory change is needed for that path
-beyond what `blocked(...)` already supports.
+**Correction found during low-level planning:** `blocked(...)` hardcodes `status: "metadata_blocked"`
+inside its own factory body, so it cannot be reused as-is for a `translation_failed` outcome. The
+worker-failure path instead gets its own factory, `BridgeResponse.translationFailed(String command,
+List<Diagnostic> diagnostics)`, with the exact same shape as `blocked(...)` (`ok: false`, same
+`@JsonInclude(NON_NULL)`-omitted state fields) but the `"translation_failed"` status literal — one more
+named Constructor Method (SBPP-BEH-02) for the private constructor, not a constructor change.
 
 ## Risks / Trade-offs
 
 - **[Risk]** The Codex-specific prompt/result convention (D2/D2a) is unverified against a live `codex`
-  binary in this design pass. **Mitigation:** the real `ProcessTranslationWorker`+`CodexTranslationCommand`
-  contract test (fake vs. real, per the plan's own outside-in discipline step 5) is where this gets
-  verified; if `codex` isn't installed in the CI/dev environment, that one contract test is allowed to be
-  skipped/tagged, but the in-memory-fake-driven acceptance suite must not depend on it.
+  binary in this design pass. **Mitigation, refined during low-level planning:** `ProcessTranslationWorker`'s
+  own contract test does not need a live `codex` — it's injected with a small portable test
+  `TranslationCommand` (`sh -c ...`) to prove the adapter's own mechanics (workdir lifecycle, timeout
+  enforcement, result-file reading, non-zero-exit/missing-result-file failure) without any external
+  dependency; a separate, dependency-free unit test proves `CodexTranslationCommand.argsFor(...)` produces
+  the exact evidenced argv. No test in this slice requires `codex` to actually be installed. A full
+  CLI-wired "prepare succeeds against a live `codex`" run stays an unautomated manual smoke check, the
+  same category as S07's Astro smoke test.
 - **[Risk]** `ReferenceMap`'s hash function choice (D4) is provisional — SHA-256 is a reasonable default
   but REL-03 (S06) may have its own established hashing convention by the time it's built.
   **Mitigation:** flagged here as a concrete revisit trigger for S06, not silently assumed compatible.
