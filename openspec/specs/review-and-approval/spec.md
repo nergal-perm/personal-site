@@ -14,6 +14,13 @@ The exporter SHALL provide a read-only inspection result that distinguishes cand
 - **THEN** the result describes each state independently and supplies a review plan for the exact candidate
 - **AND** no source, candidate, approved, job, or site bytes change
 
+#### Scenario: First-publication candidate is reviewed
+- **GIVEN** a safe complete candidate and no approved baseline
+- **WHEN** the operator inspects the publication
+- **THEN** candidate state is reported as ready and approved-snapshot state is reported as absent
+- **AND** the result supplies a review plan for the exact candidate whose baseline is absent
+- **AND** no source, candidate, approved, job, or site bytes change
+
 #### Scenario: Approved baseline is partial or unsafe
 - **GIVEN** only one approved language exists or an approved path is unsafe
 - **WHEN** the operator inspects the publication
@@ -99,3 +106,4 @@ After approval, the exporter SHALL treat approved files as immutable inputs in e
 - **GIVEN** an approved file no longer matches its recorded coherent snapshot
 - **WHEN** inspection, approval, or release reads it
 - **THEN** the operation is blocked with integrity evidence
+
