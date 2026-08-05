@@ -5,6 +5,7 @@ import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.TranslationResult;
@@ -13,10 +14,6 @@ import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
 import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Objects;
 
 public final class PrepareHandler {
@@ -55,7 +52,8 @@ public final class PrepareHandler {
             return BridgeResponse.translationFailed(COMMAND,
                     Diagnostic.blocking("candidate", "Translation worker produced a blank candidate."));
         }
-        ReferenceMap referenceMap = ReferenceMap.empty(identity, sha256Hex(ruBody), sha256Hex(enBody));
+        ReferenceMap referenceMap = ReferenceMap.empty(
+                identity, ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody));
         try {
             candidateWorkspace.install(identity, ruBody, enBody, referenceMap);
         } catch (UncheckedIOException failure) {
@@ -76,13 +74,4 @@ public final class PrepareHandler {
         return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
-    private static String sha256Hex(String content) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(content.getBytes(StandardCharsets.UTF_8));
-            return HexFormat.of().formatHex(hash);
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException("SHA-256 must be available on every JVM", impossible);
-        }
-    }
 }
