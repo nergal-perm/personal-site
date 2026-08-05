@@ -25,12 +25,15 @@ public final class ReferenceMapCodec {
 
     public static ReferenceMap read(String json) {
         try {
-            JsonNode root = MAPPER.readTree(json);
-            PublicationIdentity identity = identityFrom(root.get("publicationIdentity"));
-            return ReferenceMap.empty(identity, root.get("ruHash").asText(), root.get("enHash").asText());
+            return referenceMapFrom(MAPPER.readTree(json));
         } catch (JsonProcessingException error) {
             throw new UncheckedIOException(new IOException(error));
         }
+    }
+
+    private static ReferenceMap referenceMapFrom(JsonNode root) {
+        PublicationIdentity identity = identityFrom(root.get("publicationIdentity"));
+        return ReferenceMap.empty(identity, root.get("ruHash").asText(), root.get("enHash").asText());
     }
 
     private static PublicationIdentity identityFrom(JsonNode identityNode) {
