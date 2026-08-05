@@ -2,7 +2,9 @@ package dev.eugene.publicationexporter.inspect;
 
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -11,8 +13,10 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -172,6 +176,73 @@ class InspectPublicationHandlerTest {
         assertEquals("ru", response.reviewPlan().targets().get(0).language());
         assertEquals("en", response.reviewPlan().targets().get(1).language());
         assertNull(response.reviewPlan().targets().get(0).publishedPath());
+    }
+
+    @Test
+    void candidateLookupConfinementFailureReturnsBlockedResponse() {
+        CandidateWorkspace candidateWorkspace = candidateWorkspaceThrowing(candidateConfinementFailure());
+        InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(candidateWorkspace);
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+
+        BridgeResponse response = handlerWithFailingLookup.inspect(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals(2, response.schemaVersion());
+        assertEquals("inspect-publication", response.command());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Candidate lookup failed"));
+        assertTrue(response.diagnostics().get(0).blocking());
+    }
+
+    @Test
+    void candidateLookupIoFailureReturnsBlockedResponse() {
+        CandidateWorkspace candidateWorkspace = candidateWorkspaceThrowing(
+                new UncheckedIOException(new IOException("candidate directory unavailable")));
+        InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(candidateWorkspace);
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+
+        BridgeResponse response = handlerWithFailingLookup.inspect(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals(2, response.schemaVersion());
+        assertEquals("inspect-publication", response.command());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertEquals("Candidate lookup failed: candidate directory unavailable",
+                response.diagnostics().get(0).message());
+        assertTrue(response.diagnostics().get(0).blocking());
+    }
+
+    private CandidateWorkspace candidateWorkspaceThrowing(RuntimeException failure) {
+        return new CandidateWorkspace() {
+            @Override
+            public void install(
+                    PublicationIdentity identity,
+                    String ruBody,
+                    String enBody,
+                    ReferenceMap referenceMap) {
+                // no-op: this test double exercises only the lookup side
+            }
+
+            @Override
+            public Optional<CandidatePaths> find(PublicationIdentity identity) {
+                throw failure;
+            }
+        };
+    }
+
+    private CandidateWorkspaceConfinementException candidateConfinementFailure() {
+        CandidateWorkspace realWorkspace = CandidateWorkspace.create(Path.of("/review"));
+        PublicationIdentity escapingIdentity = PublicationIdentity.of("../..", "essay", "outside");
+        try {
+            realWorkspace.find(escapingIdentity);
+        } catch (CandidateWorkspaceConfinementException failure) {
+            return failure;
+        }
+        throw new AssertionError("Expected an escaping identity to fail candidate-workspace confinement");
     }
 
     private VaultReader failingReader(RuntimeException failure) {

@@ -2,6 +2,8 @@ package dev.eugene.publicationexporter.bridge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
@@ -17,8 +19,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SchemaConformanceTest {
 
@@ -75,26 +78,83 @@ class SchemaConformanceTest {
 
     @Test
     void essayInspectedResponseWithReviewPlanConformsToSchemaV2() throws Exception {
+        assertConformsToSchemaV2(readyForReviewResponse());
+    }
+
+    @Test
+    void reversedReviewTargetsDoNotConformToSchemaV2() throws Exception {
+        ObjectNode response = responseNode(readyForReviewResponse());
+        ArrayNode targets = (ArrayNode) response.at("/reviewPlan/targets");
+        JsonNode ruTarget = targets.get(0).deepCopy();
+        JsonNode enTarget = targets.get(1).deepCopy();
+        targets.set(0, enTarget);
+        targets.set(1, ruTarget);
+
+        assertDoesNotConformToSchemaV2(response);
+    }
+
+    @Test
+    void relativeProposedPathDoesNotConformToSchemaV2() throws Exception {
+        ObjectNode response = responseNode(readyForReviewResponse());
+        ((ObjectNode) response.at("/reviewPlan/targets/0"))
+                .put("proposedPath", "review/blog/my-essay/candidate/ru.md");
+
+        assertDoesNotConformToSchemaV2(response);
+    }
+
+    @Test
+    void absentBaselineWithPublishedPathDoesNotConformToSchemaV2() throws Exception {
+        ObjectNode response = responseNode(readyForReviewResponse());
+        ((ObjectNode) response.at("/reviewPlan/targets/0"))
+                .put("publishedPath", "/review/blog/my-essay/published/ru.md");
+
+        assertDoesNotConformToSchemaV2(response);
+    }
+
+    @Test
+    void readyForReviewInspectionWithoutReviewPlanDoesNotConformToSchemaV2() throws Exception {
+        ObjectNode response = responseNode(readyForReviewResponse());
+        response.remove("reviewPlan");
+
+        assertDoesNotConformToSchemaV2(response);
+    }
+
+    private BridgeResponse readyForReviewResponse() {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         CandidatePaths candidatePaths = CandidatePaths.of(
                 Path.of("/review/blog/my-essay/candidate/ru.md"),
                 Path.of("/review/blog/my-essay/candidate/en.md"));
-        BridgeResponse response = BridgeResponse.essayInspected(
+        return BridgeResponse.essayInspected(
                 "inspect-publication", "ready_for_review", identity,
                 "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(candidatePaths));
-
-        assertConformsToSchemaV2(response);
     }
 
     private void assertConformsToSchemaV2(BridgeResponse response) throws Exception {
         ObjectMapper mapper = new ObjectMapper();
+        assertConformsToSchemaV2(mapper.valueToTree(response));
+    }
+
+    private ObjectNode responseNode(BridgeResponse response) {
+        return new ObjectMapper().valueToTree(response);
+    }
+
+    private void assertConformsToSchemaV2(JsonNode responseNode) throws Exception {
+        Set<ValidationMessage> errors = validate(responseNode);
+
+        assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+    }
+
+    private void assertDoesNotConformToSchemaV2(JsonNode responseNode) throws Exception {
+        Set<ValidationMessage> errors = validate(responseNode);
+
+        assertFalse(errors.isEmpty(), "Expected schema violations");
+    }
+
+    private Set<ValidationMessage> validate(JsonNode responseNode) throws Exception {
         JsonSchemaFactory factory = JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7);
         try (var schemaStream = Files.newInputStream(SCHEMA_PATH)) {
             JsonSchema schema = factory.getSchema(schemaStream);
-            JsonNode responseNode = mapper.valueToTree(response);
-            Set<ValidationMessage> errors = schema.validate(responseNode);
-
-            assertTrue(errors.isEmpty(), () -> "Schema violations: " + errors);
+            return schema.validate(responseNode);
         }
     }
 }

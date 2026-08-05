@@ -5,6 +5,15 @@
   "type": "object",
   "required": ["schemaVersion", "command", "ok", "status", "diagnostics", "workspaceHealth"],
   "additionalProperties": true,
+  "if": {
+    "type": "object",
+    "required": ["command", "status"],
+    "properties": {
+      "command": { "const": "inspect-publication" },
+      "status": { "const": "ready_for_review" }
+    }
+  },
+  "then": { "type": "object", "required": ["reviewPlan"] },
   "properties": {
     "schemaVersion": { "const": 2 },
     "command": {
@@ -52,13 +61,75 @@
       "type": "object",
       "required": ["baselineState", "targets"],
       "additionalProperties": true,
+      "if": {
+        "type": "object",
+        "required": ["baselineState"],
+        "properties": { "baselineState": { "const": "absent" } }
+      },
+      "then": {
+        "type": "object",
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": { "publishedPath": { "const": null } }
+              },
+              {
+                "type": "object",
+                "properties": { "publishedPath": { "const": null } }
+              }
+            ]
+          }
+        }
+      },
+      "else": {
+        "type": "object",
+        "properties": {
+          "targets": {
+            "type": "array",
+            "items": [
+              {
+                "type": "object",
+                "properties": { "publishedPath": { "type": "string" } }
+              },
+              {
+                "type": "object",
+                "properties": { "publishedPath": { "type": "string" } }
+              }
+            ]
+          }
+        }
+      },
       "properties": {
         "baselineState": { "type": "string", "enum": ["absent", "complete"] },
         "targets": {
           "type": "array",
           "minItems": 2,
           "maxItems": 2,
-          "items": { "$ref": "#/definitions/reviewTarget" }
+          "items": [
+            {
+              "allOf": [
+                { "$ref": "#/definitions/reviewTarget" },
+                {
+                  "type": "object",
+                  "required": ["language"],
+                  "properties": { "language": { "const": "ru" } }
+                }
+              ]
+            },
+            {
+              "allOf": [
+                { "$ref": "#/definitions/reviewTarget" },
+                {
+                  "type": "object",
+                  "required": ["language"],
+                  "properties": { "language": { "const": "en" } }
+                }
+              ]
+            }
+          ]
         }
       }
     },
@@ -68,7 +139,7 @@
       "additionalProperties": true,
       "properties": {
         "language": { "type": "string", "enum": ["ru", "en"] },
-        "proposedPath": { "type": "string" },
+        "proposedPath": { "type": "string", "pattern": "^/" },
         "publishedPath": { "type": ["string", "null"] }
       }
     }

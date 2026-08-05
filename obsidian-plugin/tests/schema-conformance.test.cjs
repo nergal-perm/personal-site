@@ -33,6 +33,12 @@ function validateEnum(schema, instance) {
   return [`expected one of [${schema.enum}], got ${instance}`];
 }
 
+function validatePattern(schema, instance) {
+  if (schema.pattern === undefined || typeof instance !== "string") return [];
+  if (new RegExp(schema.pattern).test(instance)) return [];
+  return [`expected string matching /${schema.pattern}/, got ${instance}`];
+}
+
 function validateObject(schema, instance, definitions) {
   if (schema.type !== "object") return [];
   if (!isPlainObject(instance)) {
@@ -70,7 +76,11 @@ function validateArray(schema, instance, definitions) {
   }
 
   const errors = validateArrayLength(schema, instance);
-  if (schema.items) {
+  if (Array.isArray(schema.items)) {
+    for (let index = 0; index < instance.length && index < schema.items.length; index += 1) {
+      errors.push(...validateAgainstSchema(schema.items[index], instance[index], definitions));
+    }
+  } else if (schema.items) {
     for (const item of instance) {
       errors.push(...validateAgainstSchema(schema.items, item, definitions));
     }
@@ -102,6 +112,18 @@ function validatePrimitiveType(schema, instance) {
   return [];
 }
 
+function validateAllOf(schema, instance, definitions) {
+  if (!schema.allOf) return [];
+  return schema.allOf.flatMap((subschema) => validateAgainstSchema(subschema, instance, definitions));
+}
+
+function validateConditional(schema, instance, definitions) {
+  if (!schema.if) return [];
+  const conditionMatches = validateAgainstSchema(schema.if, instance, definitions).length === 0;
+  const branch = conditionMatches ? schema.then : schema.else;
+  return branch ? validateAgainstSchema(branch, instance, definitions) : [];
+}
+
 // Keywords this hand-rolled validator actually interprets. Anything outside the
 // list is refused loudly rather than ignored, so a future tightening of
 // bridge-contract/schema-v2.json can never pass unchecked while this gate
@@ -116,12 +138,17 @@ const SUPPORTED_KEYWORDS = new Set([
   "type",
   "const",
   "enum",
+  "pattern",
   "required",
   "properties",
   "additionalProperties",
   "items",
   "minItems",
   "maxItems",
+  "allOf",
+  "if",
+  "then",
+  "else",
 ]);
 
 function assertOnlySupportedKeywords(schema) {
@@ -142,9 +169,12 @@ function validateAgainstSchema(schema, instance, definitions) {
   return [
     ...validateConst(schema, instance),
     ...validateEnum(schema, instance),
+    ...validatePattern(schema, instance),
     ...validateObject(schema, instance, definitions),
     ...validateArray(schema, instance, definitions),
     ...validatePrimitiveType(schema, instance),
+    ...validateAllOf(schema, instance, definitions),
+    ...validateConditional(schema, instance, definitions),
   ];
 }
 
@@ -284,9 +314,29 @@ for (const { name, instance } of STRICT_CASES) {
   });
 }
 
+test("validator enforces the pattern keyword", () => {
+  assert.deepEqual(validateAgainstSchema({ type: "string", pattern: "^/" }, "/absolute"), []);
+  assert.ok(validateAgainstSchema({ type: "string", pattern: "^/" }, "relative").length > 0);
+});
+
+test("validator applies then and else according to the if result", () => {
+  const schema = {
+    type: "object",
+    properties: { mode: { type: "string" }, value: {} },
+    if: { type: "object", required: ["mode"], properties: { mode: { const: "strict" } } },
+    then: { type: "object", properties: { value: { const: "required" } } },
+    else: { type: "object", properties: { value: { const: "optional" } } },
+  };
+
+  assert.deepEqual(validateAgainstSchema(schema, { mode: "strict", value: "required" }), []);
+  assert.ok(validateAgainstSchema(schema, { mode: "strict", value: "optional" }).length > 0);
+  assert.deepEqual(validateAgainstSchema(schema, { mode: "relaxed", value: "optional" }), []);
+  assert.ok(validateAgainstSchema(schema, { mode: "relaxed", value: "required" }).length > 0);
+});
+
 test("validator refuses to silently ignore an unsupported schema keyword", () => {
   assert.throws(
-    () => validateAgainstSchema({ type: "string", pattern: "^a" }, "b"),
+    () => validateAgainstSchema({ type: "string", format: "uri" }, "not a uri"),
     /unsupported schema keyword/i,
   );
 });
@@ -341,6 +391,38 @@ test("validator rejects a reviewPlan with an unrecognised baselineState", () => 
   const schema = loadSchema();
   const fixture = essayInspectedWithReviewPlanFixture();
   fixture.reviewPlan.baselineState = "not-a-real-state";
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.ok(errors.length > 0);
+});
+
+test("validator rejects reversed reviewPlan target order", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedWithReviewPlanFixture();
+  fixture.reviewPlan.targets.reverse();
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.ok(errors.length > 0);
+});
+
+test("validator rejects a relative reviewPlan proposedPath", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedWithReviewPlanFixture();
+  fixture.reviewPlan.targets[0].proposedPath = "review/blog/my-essay/candidate/ru.md";
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.ok(errors.length > 0);
+});
+
+test("validator rejects an absent baseline with a non-null publishedPath", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedWithReviewPlanFixture();
+  fixture.reviewPlan.targets[0].publishedPath = "/review/blog/my-essay/published/ru.md";
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.ok(errors.length > 0);
+});
+
+test("validator rejects a ready-for-review inspection without reviewPlan", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedWithReviewPlanFixture();
+  delete fixture.reviewPlan;
   const errors = validateAgainstSchema(schema, fixture);
   assert.ok(errors.length > 0);
 });

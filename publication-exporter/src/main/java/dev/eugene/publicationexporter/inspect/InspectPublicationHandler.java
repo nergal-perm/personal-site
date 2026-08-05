@@ -1,14 +1,17 @@
 package dev.eugene.publicationexporter.inspect;
 
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
+import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.bridge.ReviewPlan;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
+import java.io.UncheckedIOException;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -31,11 +34,27 @@ public final class InspectPublicationHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        Optional<CandidatePaths> candidate = candidateWorkspace.find(intake.identity());
+        Optional<CandidatePaths> candidate;
+        try {
+            candidate = candidateWorkspace.find(intake.identity());
+        } catch (UncheckedIOException failure) {
+            return candidateLookupFailure(ioFailureMessage("Candidate lookup failed", failure));
+        } catch (CandidateWorkspaceConfinementException failure) {
+            return candidateLookupFailure("Candidate lookup failed: " + failure.getMessage());
+        }
         if (candidate.isPresent()) {
             return readyForReviewResponse(intake.identity(), candidate.get());
         }
         return notPreparedResponse(intake.identity());
+    }
+
+    private static BridgeResponse candidateLookupFailure(String message) {
+        return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("candidate", message));
+    }
+
+    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
+        String detail = failure.getCause().getMessage();
+        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
     private BridgeResponse readyForReviewResponse(PublicationIdentity identity, CandidatePaths candidatePaths) {
