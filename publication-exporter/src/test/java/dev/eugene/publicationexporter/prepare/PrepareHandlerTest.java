@@ -1,8 +1,11 @@
 package dev.eugene.publicationexporter.prepare;
 
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
+import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
+import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationResult;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
@@ -17,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.NoSuchElementException;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -275,8 +279,16 @@ class PrepareHandlerTest {
     void candidateInstallIoFailureReturnsTranslationFailed() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
-        CandidateWorkspace failingWorkspace = (identity, ruBody, enBody, referenceMap) -> {
-            throw new UncheckedIOException(new IOException("candidate disk unavailable"));
+        CandidateWorkspace failingWorkspace = new CandidateWorkspace() {
+            @Override
+            public void install(PublicationIdentity identity, String ruBody, String enBody, ReferenceMap referenceMap) {
+                throw new UncheckedIOException(new IOException("candidate disk unavailable"));
+            }
+
+            @Override
+            public Optional<CandidatePaths> find(PublicationIdentity identity) {
+                return Optional.empty();
+            }
         };
         PrepareHandler handler = new PrepareHandler(
                 TranslationWorker.createNull("Translated body"), failingWorkspace);

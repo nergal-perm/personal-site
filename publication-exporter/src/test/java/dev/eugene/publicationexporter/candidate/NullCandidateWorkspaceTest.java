@@ -4,6 +4,8 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,5 +40,33 @@ class NullCandidateWorkspaceTest {
         CandidateWorkspace workspace = CandidateWorkspace.createNull();
 
         assertTrue(((NullCandidateWorkspace) workspace).installed().isEmpty());
+    }
+
+    @Test
+    void findIsAbsentBeforeAnyInstall() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+
+        assertEquals(Optional.empty(), workspace.find(IDENTITY));
+    }
+
+    @Test
+    void findReturnsPathsEndingInRuMdAndEnMdAfterInstall() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+
+        Optional<CandidatePaths> found = workspace.find(IDENTITY);
+
+        assertTrue(found.isPresent());
+        assertEquals("ru.md", found.get().ruPath().getFileName().toString());
+        assertEquals("en.md", found.get().enPath().getFileName().toString());
+    }
+
+    @Test
+    void findIsAbsentForADifferentIdentity() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
+
+        assertEquals(Optional.empty(), workspace.find(otherIdentity));
     }
 }

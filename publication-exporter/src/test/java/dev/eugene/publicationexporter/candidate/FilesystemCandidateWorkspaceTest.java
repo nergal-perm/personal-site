@@ -7,6 +7,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -113,5 +114,36 @@ class FilesystemCandidateWorkspaceTest {
         try (var entries = Files.list(reviewRoot)) {
             assertFalse(entries.anyMatch(path -> path.getFileName().toString().startsWith("candidate-staging-")));
         }
+    }
+
+    @Test
+    void findIsAbsentBeforeInstall() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+
+        assertEquals(Optional.empty(), workspace.find(IDENTITY));
+    }
+
+    @Test
+    void findReturnsAbsolutePathsToTheInstalledFiles() throws Exception {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+
+        Optional<CandidatePaths> found = workspace.find(IDENTITY);
+
+        assertTrue(found.isPresent());
+        Path candidateDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("candidate");
+        assertEquals(candidateDir.resolve("ru.md").toRealPath(), found.get().ruPath().toRealPath());
+        assertEquals(candidateDir.resolve("en.md").toRealPath(), found.get().enPath().toRealPath());
+        assertTrue(found.get().ruPath().isAbsolute());
+        assertTrue(found.get().enPath().isAbsolute());
+    }
+
+    @Test
+    void findIsAbsentForADifferentIdentityAfterInstall() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "RU", "EN", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
+
+        assertEquals(Optional.empty(), workspace.find(otherIdentity));
     }
 }

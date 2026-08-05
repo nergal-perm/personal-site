@@ -41,6 +41,18 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         }
     }
 
+    @Override
+    public Optional<CandidatePaths> find(PublicationIdentity identity) {
+        Objects.requireNonNull(identity, "identity");
+        Path candidateDirectory = candidateDirectory(identity);
+        Path ruPath = candidateDirectory.resolve("ru.md");
+        Path enPath = candidateDirectory.resolve("en.md");
+        if (Files.exists(ruPath) && Files.exists(enPath)) {
+            return Optional.of(CandidatePaths.of(ruPath, enPath));
+        }
+        return Optional.empty();
+    }
+
     private void publishStagingCandidate(Path staging, Path destination) throws IOException {
         requireWithinReviewRoot(destination);
         Files.createDirectories(destination.getParent());

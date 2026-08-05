@@ -3,9 +3,11 @@ package dev.eugene.publicationexporter.candidate;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class NullCandidateWorkspace implements CandidateWorkspace {
 
@@ -14,6 +16,28 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
     @Override
     public void install(PublicationIdentity identity, String ruBody, String enBody, ReferenceMap referenceMap) {
         installed.add(InstalledCandidate.of(identity, ruBody, enBody, referenceMap));
+    }
+
+    @Override
+    public Optional<CandidatePaths> find(PublicationIdentity identity) {
+        Objects.requireNonNull(identity, "identity");
+        return lastInstalledMatching(identity).map(NullCandidateWorkspace::syntheticPaths);
+    }
+
+    private Optional<InstalledCandidate> lastInstalledMatching(PublicationIdentity identity) {
+        InstalledCandidate match = null;
+        for (InstalledCandidate candidate : installed) {
+            if (candidate.identity().equals(identity)) {
+                match = candidate;
+            }
+        }
+        return Optional.ofNullable(match);
+    }
+
+    private static CandidatePaths syntheticPaths(InstalledCandidate candidate) {
+        Path candidateDirectory = Path.of("/candidate", candidate.identity().publicCollection(),
+                candidate.identity().publicId(), "candidate");
+        return CandidatePaths.of(candidateDirectory.resolve("ru.md"), candidateDirectory.resolve("en.md"));
     }
 
     public List<InstalledCandidate> installed() {
