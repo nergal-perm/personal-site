@@ -7,10 +7,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
-import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
-import dev.eugene.publicationexporter.reference.ReferenceMap;
-import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
-import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -84,7 +81,7 @@ class MarkReviewedCliAcceptanceTest {
         Files.createDirectories(vaultRoot.resolve("blog"));
         Files.writeString(vaultRoot.resolve("blog/my-essay.md"), VALID_ESSAY);
         Path reviewDirectory = vaultRoot.resolve("review");
-        installExactCandidate(reviewDirectory);
+        prepare();
 
         int exitCode = markReviewed("blog/my-essay.md");
 
@@ -97,14 +94,28 @@ class MarkReviewedCliAcceptanceTest {
         assertTrue(Files.exists(reviewDirectory.resolve("blog/my-essay/approved/ru.md")));
     }
 
-    private void installExactCandidate(Path reviewDirectory) {
-        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
-        String ruBody = "# My Essay";
-        String enBody = "# My Essay (EN)";
-        String ruHash = dev.eugene.publicationexporter.hash.ContentHash.sha256Hex(ruBody);
-        String enHash = dev.eugene.publicationexporter.hash.ContentHash.sha256Hex(enBody);
-        CandidateWorkspace.create(reviewDirectory)
-                .install(identity, ruBody, enBody, ReferenceMap.empty(identity, ruHash, enHash));
+    private void prepare() throws Exception {
+        PrepareCommand prepareCommand = new PrepareCommand(TranslationWorker.createNull("# My Essay in English"));
+        CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
+            @Override
+            public <K> K create(Class<K> cls) throws Exception {
+                if (cls == PrepareCommand.class) {
+                    return cls.cast(prepareCommand);
+                }
+                return CommandLine.defaultFactory().create(cls);
+            }
+        });
+
+        int exitCode = commandLine.execute(
+                "prepare",
+                "--vault", vaultRoot.toString(),
+                "--note", "blog/my-essay.md",
+                "--review", vaultRoot.resolve("review").toString(),
+                "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
+                "--json");
+
+        assertEquals(0, exitCode);
+        capturedOut.reset();
     }
 
     private int markReviewed(String notePath) {
