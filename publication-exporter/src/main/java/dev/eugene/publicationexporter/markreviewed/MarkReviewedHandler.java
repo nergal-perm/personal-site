@@ -14,10 +14,10 @@ import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
 import java.io.UncheckedIOException;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.stream.Stream;
 
 public final class MarkReviewedHandler {
 
@@ -56,20 +56,38 @@ public final class MarkReviewedHandler {
 
     private List<Diagnostic> stalenessDiagnostics(String sourceBody, CandidateSnapshot candidate) {
         ReferenceMap referenceMap = candidate.referenceMap();
-        List<Diagnostic> diagnostics = new ArrayList<>();
-        if (!ContentHash.sha256Hex(sourceBody).equals(referenceMap.ruHash())) {
-            diagnostics.add(Diagnostic.blocking("candidate",
-                    "Source note has changed since the candidate was prepared."));
+        return Stream.of(
+                        sourceChangedDiagnostic(sourceBody, referenceMap),
+                        candidateRuBodyChangedDiagnostic(candidate, referenceMap),
+                        candidateEnBodyChangedDiagnostic(candidate, referenceMap))
+                .flatMap(Optional::stream)
+                .toList();
+    }
+
+    private static Optional<Diagnostic> sourceChangedDiagnostic(String sourceBody, ReferenceMap referenceMap) {
+        if (ContentHash.sha256Hex(sourceBody).equals(referenceMap.ruHash())) {
+            return Optional.empty();
         }
-        if (!ContentHash.sha256Hex(candidate.ruBody()).equals(referenceMap.ruHash())) {
-            diagnostics.add(Diagnostic.blocking("candidate",
-                    "Candidate Russian body has changed since it was prepared."));
+        return Optional.of(Diagnostic.blocking("candidate",
+                "Source note has changed since the candidate was prepared."));
+    }
+
+    private static Optional<Diagnostic> candidateRuBodyChangedDiagnostic(
+            CandidateSnapshot candidate, ReferenceMap referenceMap) {
+        if (ContentHash.sha256Hex(candidate.ruBody()).equals(referenceMap.ruHash())) {
+            return Optional.empty();
         }
-        if (!ContentHash.sha256Hex(candidate.enBody()).equals(referenceMap.enHash())) {
-            diagnostics.add(Diagnostic.blocking("candidate",
-                    "Candidate English body has changed since it was prepared."));
+        return Optional.of(Diagnostic.blocking("candidate",
+                "Candidate Russian body has changed since it was prepared."));
+    }
+
+    private static Optional<Diagnostic> candidateEnBodyChangedDiagnostic(
+            CandidateSnapshot candidate, ReferenceMap referenceMap) {
+        if (ContentHash.sha256Hex(candidate.enBody()).equals(referenceMap.enHash())) {
+            return Optional.empty();
         }
-        return diagnostics;
+        return Optional.of(Diagnostic.blocking("candidate",
+                "Candidate English body has changed since it was prepared."));
     }
 
     private BridgeResponse installApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot candidate) {
