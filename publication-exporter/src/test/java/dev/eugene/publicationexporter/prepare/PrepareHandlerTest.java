@@ -3,6 +3,7 @@ package dev.eugene.publicationexporter.prepare;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -287,6 +288,11 @@ class PrepareHandlerTest {
 
             @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
+                return Optional.empty();
+            }
+
+            @Override
+            public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
                 return Optional.empty();
             }
         };

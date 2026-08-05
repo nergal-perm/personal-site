@@ -3,6 +3,7 @@ package dev.eugene.publicationexporter.inspect;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
@@ -229,6 +230,11 @@ class InspectPublicationHandlerTest {
 
             @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
+                throw failure;
+            }
+
+            @Override
+            public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
                 throw failure;
             }
         };

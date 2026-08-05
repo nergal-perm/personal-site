@@ -12,6 +12,8 @@ public interface CandidateWorkspace {
 
     Optional<CandidatePaths> find(PublicationIdentity identity);
 
+    Optional<CandidateSnapshot> read(PublicationIdentity identity);
+
     static CandidateWorkspace create(Path reviewRoot) {
         return new FilesystemCandidateWorkspace(reviewRoot);
     }

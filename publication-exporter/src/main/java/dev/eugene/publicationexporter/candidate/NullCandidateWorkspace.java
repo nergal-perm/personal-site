@@ -24,6 +24,13 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
         return lastInstalledMatching(identity).map(NullCandidateWorkspace::syntheticPaths);
     }
 
+    @Override
+    public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
+        Objects.requireNonNull(identity, "identity");
+        return lastInstalledMatching(identity)
+                .map(candidate -> CandidateSnapshot.of(candidate.ruBody(), candidate.enBody(), candidate.referenceMap()));
+    }
+
     private Optional<InstalledCandidate> lastInstalledMatching(PublicationIdentity identity) {
         InstalledCandidate match = null;
         for (InstalledCandidate candidate : installed) {

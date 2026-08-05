@@ -53,6 +53,26 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         return Optional.empty();
     }
 
+    @Override
+    public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
+        Objects.requireNonNull(identity, "identity");
+        Path candidateDirectory = candidateDirectory(identity);
+        Path ruPath = candidateDirectory.resolve("ru.md");
+        Path enPath = candidateDirectory.resolve("en.md");
+        Path referencesPath = candidateDirectory.resolve("references.json");
+        if (!Files.exists(ruPath) || !Files.exists(enPath) || !Files.exists(referencesPath)) {
+            return Optional.empty();
+        }
+        try {
+            String ruBody = Files.readString(ruPath, StandardCharsets.UTF_8);
+            String enBody = Files.readString(enPath, StandardCharsets.UTF_8);
+            ReferenceMap referenceMap = ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
+            return Optional.of(CandidateSnapshot.of(ruBody, enBody, referenceMap));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
     private void publishStagingCandidate(Path staging, Path destination) throws IOException {
         requireWithinReviewRoot(destination);
         Files.createDirectories(destination.getParent());

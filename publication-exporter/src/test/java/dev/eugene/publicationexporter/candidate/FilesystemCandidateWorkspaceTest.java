@@ -146,4 +146,34 @@ class FilesystemCandidateWorkspaceTest {
 
         assertEquals(Optional.empty(), workspace.find(otherIdentity));
     }
+
+    @Test
+    void readIsAbsentBeforeInstall() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+
+        assertEquals(Optional.empty(), workspace.read(IDENTITY));
+    }
+
+    @Test
+    void readReturnsTheInstalledBodiesAndReferenceMap() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+
+        Optional<CandidateSnapshot> read = workspace.read(IDENTITY);
+
+        assertTrue(read.isPresent());
+        assertEquals("RU body", read.get().ruBody());
+        assertEquals("EN body", read.get().enBody());
+        assertEquals(referenceMap, read.get().referenceMap());
+    }
+
+    @Test
+    void readIsAbsentForADifferentIdentityAfterInstall() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "RU", "EN", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
+
+        assertEquals(Optional.empty(), workspace.read(otherIdentity));
+    }
 }
