@@ -6,6 +6,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -24,7 +25,7 @@ class SchemaConformanceTest {
 
     @Test
     void blockedResponseConformsToSchemaV2() throws Exception {
-        InspectPublicationHandler handler = new InspectPublicationHandler();
+        InspectPublicationHandler handler = new InspectPublicationHandler(CandidateWorkspace.createNull());
         VaultReader vaultReader = VaultReader.createNull();
         BridgeResponse response = handler.inspect(
                 VaultRelativePath.of("../../etc/passwd.md"), vaultReader);
@@ -46,7 +47,7 @@ class SchemaConformanceTest {
                 """;
         VaultReader vaultReader = VaultReader.createNull(java.util.Map.of(path, validEssay));
 
-        InspectPublicationHandler handler = new InspectPublicationHandler();
+        InspectPublicationHandler handler = new InspectPublicationHandler(CandidateWorkspace.createNull());
         BridgeResponse response = handler.inspect(path, vaultReader);
 
         assertTrue(response.ok());

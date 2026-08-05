@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -29,7 +30,8 @@ public final class InspectPublicationCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
-        BridgeResponse response = new InspectPublicationHandler()
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
+        BridgeResponse response = new InspectPublicationHandler(candidateWorkspace)
                 .inspect(VaultRelativePath.of(notePath), vaultReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));

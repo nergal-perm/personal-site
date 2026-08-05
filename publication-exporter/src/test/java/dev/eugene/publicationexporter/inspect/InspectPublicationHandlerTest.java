@@ -1,6 +1,10 @@
 package dev.eugene.publicationexporter.inspect;
 
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
+import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
+import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
+import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
@@ -12,11 +16,13 @@ import java.util.NoSuchElementException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InspectPublicationHandlerTest {
 
-    private final InspectPublicationHandler handler = new InspectPublicationHandler();
+    private final InspectPublicationHandler handler =
+            new InspectPublicationHandler(CandidateWorkspace.createNull());
 
     @Test
     void unsafePathIsBlockedWithEscapeDiagnostic() {
@@ -141,6 +147,31 @@ class InspectPublicationHandlerTest {
 
         assertFalse(response.ok());
         assertEquals("Note was not found in the vault.", response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void essayWithACompleteCandidateReportsReadyWithAFirstPublicationReviewPlan() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
+        candidateWorkspace.install(identity, "RU body", "EN body",
+                ReferenceMap.empty(identity, "ru-hash", "en-hash"));
+        InspectPublicationHandler handlerWithCandidate = new InspectPublicationHandler(candidateWorkspace);
+
+        BridgeResponse response = handlerWithCandidate.inspect(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals("ready", response.candidateState());
+        assertEquals("absent", response.approvedSnapshotState());
+        assertEquals("absent", response.semanticReferenceState());
+        assertEquals("absent", response.releaseState());
+        assertEquals("absent", response.reviewPlan().baselineState());
+        assertEquals(2, response.reviewPlan().targets().size());
+        assertEquals("ru", response.reviewPlan().targets().get(0).language());
+        assertEquals("en", response.reviewPlan().targets().get(1).language());
+        assertNull(response.reviewPlan().targets().get(0).publishedPath());
     }
 
     private VaultReader failingReader(RuntimeException failure) {

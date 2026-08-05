@@ -7,6 +7,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -181,6 +182,58 @@ class InspectPublicationCliAcceptanceTest {
         assertConformsToSchemaV2(response);
         assertFalse(response.get("ok").asBoolean());
         assertEquals("id", response.get("diagnostics").get(0).get("field").asText());
+    }
+
+    @Test
+    void essayWithACompleteCandidateProducesReadyForReviewResponseWithReviewPlan() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.md"), VALID_ESSAY);
+        prepare();
+
+        int exitCode = inspect("blog/my-essay.md");
+
+        assertEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("ready_for_review", response.get("status").asText());
+        assertEquals("ready", response.get("candidateState").asText());
+        assertEquals("absent", response.get("approvedSnapshotState").asText());
+        JsonNode reviewPlan = response.get("reviewPlan");
+        assertEquals("absent", reviewPlan.get("baselineState").asText());
+        JsonNode targets = reviewPlan.get("targets");
+        assertEquals(2, targets.size());
+        assertEquals("ru", targets.get(0).get("language").asText());
+        assertTrue(targets.get(0).get("proposedPath").asText().endsWith("ru.md"));
+        assertTrue(Path.of(targets.get(0).get("proposedPath").asText()).isAbsolute());
+        assertTrue(targets.get(0).get("publishedPath").isNull());
+        assertEquals("en", targets.get(1).get("language").asText());
+        assertTrue(targets.get(1).get("proposedPath").asText().endsWith("en.md"));
+        assertTrue(targets.get(1).get("publishedPath").isNull());
+    }
+
+    private void prepare() throws Exception {
+        PrepareCommand prepareCommand = new PrepareCommand(TranslationWorker.createNull("# My Essay in English"));
+        CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
+            @Override
+            public <K> K create(Class<K> cls) throws Exception {
+                if (cls == PrepareCommand.class) {
+                    return cls.cast(prepareCommand);
+                }
+                return CommandLine.defaultFactory().create(cls);
+            }
+        });
+
+        int exitCode = commandLine.execute(
+                "prepare",
+                "--vault", vaultRoot.toString(),
+                "--note", "blog/my-essay.md",
+                "--review", vaultRoot.resolve("review").toString(),
+                "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
+                "--json");
+
+        assertEquals(0, exitCode);
+        capturedOut.reset();
     }
 
     private int inspect(String notePath) {
