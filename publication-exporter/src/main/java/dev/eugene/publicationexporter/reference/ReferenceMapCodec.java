@@ -26,14 +26,17 @@ public final class ReferenceMapCodec {
     public static ReferenceMap read(String json) {
         try {
             JsonNode root = MAPPER.readTree(json);
-            JsonNode identityNode = root.get("publicationIdentity");
-            PublicationIdentity identity = PublicationIdentity.of(
-                    identityNode.get("publicCollection").asText(),
-                    identityNode.get("publicContentType").asText(),
-                    identityNode.get("publicId").asText());
+            PublicationIdentity identity = identityFrom(root.get("publicationIdentity"));
             return ReferenceMap.empty(identity, root.get("ruHash").asText(), root.get("enHash").asText());
         } catch (JsonProcessingException error) {
             throw new UncheckedIOException(new IOException(error));
         }
+    }
+
+    private static PublicationIdentity identityFrom(JsonNode identityNode) {
+        return PublicationIdentity.of(
+                identityNode.get("publicCollection").asText(),
+                identityNode.get("publicContentType").asText(),
+                identityNode.get("publicId").asText());
     }
 }
