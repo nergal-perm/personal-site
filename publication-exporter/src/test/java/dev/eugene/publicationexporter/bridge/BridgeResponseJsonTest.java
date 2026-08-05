@@ -166,4 +166,35 @@ class BridgeResponseJsonTest {
         assertEquals(1, parsed.get("diagnostics").size());
         assertFalse(parsed.has("identity"));
     }
+
+    @Test
+    void approvedResponseSerializesToLeanShapeWithReadyToPublishStatus() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        BridgeResponse response = BridgeResponse.approved("mark-reviewed", identity);
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertEquals(2, parsed.get("schemaVersion").asInt());
+        assertEquals(true, parsed.get("ok").asBoolean());
+        assertEquals("ready_to_publish", parsed.get("status").asText());
+        assertEquals("my-essay", parsed.get("identity").get("publicId").asText());
+        assertEquals(0, parsed.get("diagnostics").size());
+        assertFalse(parsed.has("candidateState"));
+        assertFalse(parsed.has("reviewPlan"));
+    }
+
+    @Test
+    void staleResponseCarriesTheStaleStatusAndDiagnostics() throws Exception {
+        BridgeResponse response = BridgeResponse.stale(
+                "mark-reviewed", Diagnostic.blocking("candidate", "Source note has changed since preparation."));
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertEquals(false, parsed.get("ok").asBoolean());
+        assertEquals("stale", parsed.get("status").asText());
+        assertEquals(1, parsed.get("diagnostics").size());
+        assertFalse(parsed.has("identity"));
+    }
 }
