@@ -26,4 +26,27 @@ class ReferenceMapCodecTest {
         assertTrue(parsed.get("occurrences").isArray());
         assertEquals(0, parsed.get("occurrences").size());
     }
+
+    @Test
+    void readReturnsTheIdentityAndHashesTheJsonCarries() {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        String json = ReferenceMapCodec.write(ReferenceMap.empty(identity, "ru-hash", "en-hash"));
+
+        ReferenceMap parsed = ReferenceMapCodec.read(json);
+
+        assertEquals(identity, parsed.identity());
+        assertEquals("ru-hash", parsed.ruHash());
+        assertEquals("en-hash", parsed.enHash());
+        assertTrue(parsed.occurrences().isEmpty());
+    }
+
+    @Test
+    void writeThenReadRoundTripsToAnEqualMap() {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ReferenceMap original = ReferenceMap.empty(identity, "ru-hash", "en-hash");
+
+        ReferenceMap roundTripped = ReferenceMapCodec.read(ReferenceMapCodec.write(original));
+
+        assertEquals(original, roundTripped);
+    }
 }
