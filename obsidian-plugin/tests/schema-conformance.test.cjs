@@ -307,6 +307,57 @@ function essayInspectedFixture() {
   };
 }
 
+function essayInspectedWithReviewPlanFixture() {
+  return {
+    ...essayInspectedFixture(),
+    status: "ready_for_review",
+    candidateState: "ready",
+    reviewPlan: {
+      baselineState: "absent",
+      targets: [
+        { language: "ru", proposedPath: "/review/blog/my-essay/candidate/ru.md", publishedPath: null },
+        { language: "en", proposedPath: "/review/blog/my-essay/candidate/en.md", publishedPath: null },
+      ],
+    },
+  };
+}
+
+test("ready-for-review-with-plan fixture conforms to bridge-contract/schema-v2.json", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedWithReviewPlanFixture();
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.deepEqual(errors, []);
+});
+
+test("validator rejects a reviewPlan with only one target", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedWithReviewPlanFixture();
+  fixture.reviewPlan.targets = [fixture.reviewPlan.targets[0]];
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.ok(errors.length > 0);
+});
+
+test("validator rejects a reviewPlan with an unrecognised baselineState", () => {
+  const schema = loadSchema();
+  const fixture = essayInspectedWithReviewPlanFixture();
+  fixture.reviewPlan.baselineState = "not-a-real-state";
+  const errors = validateAgainstSchema(schema, fixture);
+  assert.ok(errors.length > 0);
+});
+
+test("plugin's real bridge client accepts a schema-conformant ready-for-review-with-plan response", async () => {
+  const fixture = essayInspectedWithReviewPlanFixture();
+  const client = createBridgeClient({
+    spawn: createFakeSpawn({ stdout: JSON.stringify(fixture), exitCode: 0 }),
+    exporterRoot: "/tmp/exporter-root",
+    vaultPath: "/tmp/vault",
+    exporterBinary: "/tmp/exporter-root/publication-exporter",
+  });
+
+  const result = await client.run("inspect-publication", "blog/my-essay.md");
+  assert.deepEqual(result.reviewPlan, fixture.reviewPlan);
+});
+
 test("valid-essay fixture conforms to bridge-contract/schema-v2.json", () => {
   const schema = loadSchema();
   const fixture = essayInspectedFixture();

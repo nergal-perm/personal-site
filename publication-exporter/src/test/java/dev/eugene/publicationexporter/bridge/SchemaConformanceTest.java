@@ -6,6 +6,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -68,6 +69,19 @@ class SchemaConformanceTest {
     void translationFailedResponseConformsToSchemaV2() throws Exception {
         BridgeResponse response = BridgeResponse.translationFailed("prepare",
                 dev.eugene.publicationexporter.bridge.Diagnostic.blocking("candidate", "worker crashed"));
+
+        assertConformsToSchemaV2(response);
+    }
+
+    @Test
+    void essayInspectedResponseWithReviewPlanConformsToSchemaV2() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        CandidatePaths candidatePaths = CandidatePaths.of(
+                Path.of("/review/blog/my-essay/candidate/ru.md"),
+                Path.of("/review/blog/my-essay/candidate/en.md"));
+        BridgeResponse response = BridgeResponse.essayInspected(
+                "inspect-publication", "ready_for_review", identity,
+                "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(candidatePaths));
 
         assertConformsToSchemaV2(response);
     }

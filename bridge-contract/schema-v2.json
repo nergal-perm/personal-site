@@ -34,7 +34,8 @@
     "candidateState": { "type": "string" },
     "approvedSnapshotState": { "type": "string" },
     "semanticReferenceState": { "type": "string" },
-    "releaseState": { "type": "string" }
+    "releaseState": { "type": "string" },
+    "reviewPlan": { "$ref": "#/definitions/reviewPlan" }
   },
   "definitions": {
     "diagnostic": {
@@ -45,6 +46,30 @@
         "field": { "type": "string" },
         "message": { "type": "string" },
         "blocking": { "type": "boolean" }
+      }
+    },
+    "reviewPlan": {
+      "type": "object",
+      "required": ["baselineState", "targets"],
+      "additionalProperties": true,
+      "properties": {
+        "baselineState": { "type": "string", "enum": ["absent", "complete"] },
+        "targets": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "$ref": "#/definitions/reviewTarget" }
+        }
+      }
+    },
+    "reviewTarget": {
+      "type": "object",
+      "required": ["language", "proposedPath", "publishedPath"],
+      "additionalProperties": true,
+      "properties": {
+        "language": { "type": "string", "enum": ["ru", "en"] },
+        "proposedPath": { "type": "string" },
+        "publishedPath": { "type": ["string", "null"] }
       }
     }
   }
