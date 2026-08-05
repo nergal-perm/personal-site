@@ -119,6 +119,22 @@ class SchemaConformanceTest {
         assertDoesNotConformToSchemaV2(response);
     }
 
+    @Test
+    void approvedResponseConformsToSchemaV2() throws Exception {
+        BridgeResponse response = BridgeResponse.approved(
+                "mark-reviewed", PublicationIdentity.of("blog", "essay", "my-essay"));
+
+        assertConformsToSchemaV2(response);
+    }
+
+    @Test
+    void staleResponseConformsToSchemaV2() throws Exception {
+        BridgeResponse response = BridgeResponse.stale("mark-reviewed",
+                Diagnostic.blocking("candidate", "Source note has changed since the candidate was prepared."));
+
+        assertConformsToSchemaV2(response);
+    }
+
     private BridgeResponse readyForReviewResponse() {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         CandidatePaths candidatePaths = CandidatePaths.of(

@@ -547,3 +547,51 @@ test("plugin prepare invocation includes the jobs directory in exporter argv", a
     "--json",
   ]);
 });
+
+function approvedFixture() {
+  return {
+    schemaVersion: 2,
+    command: "mark-reviewed",
+    ok: true,
+    status: "ready_to_publish",
+    identity: { publicCollection: "blog", publicContentType: "essay", publicId: "my-essay" },
+    diagnostics: [],
+    workspaceHealth: [],
+  };
+}
+
+function staleFixture() {
+  return {
+    schemaVersion: 2,
+    command: "mark-reviewed",
+    ok: false,
+    status: "stale",
+    diagnostics: [
+      { field: "candidate", message: "Source note has changed since the candidate was prepared.", blocking: true },
+    ],
+    workspaceHealth: [],
+  };
+}
+
+test("approved fixture conforms to bridge-contract/schema-v2.json", () => {
+  const errors = validateAgainstSchema(loadSchema(), approvedFixture());
+  assert.deepEqual(errors, []);
+});
+
+test("stale fixture conforms to bridge-contract/schema-v2.json", () => {
+  const errors = validateAgainstSchema(loadSchema(), staleFixture());
+  assert.deepEqual(errors, []);
+});
+
+test("plugin's real bridge client accepts a schema-conformant approved response", async () => {
+  const fixture = approvedFixture();
+  const client = createBridgeClient({
+    spawn: createFakeSpawn({ stdout: JSON.stringify(fixture), exitCode: 0 }),
+    exporterRoot: "/tmp/exporter-root",
+    vaultPath: "/tmp/vault",
+    exporterBinary: "/tmp/exporter-root/publication-exporter",
+  });
+
+  const result = await client.run("mark-reviewed", "blog/my-essay.md");
+  assert.deepEqual(result, fixture);
+});
