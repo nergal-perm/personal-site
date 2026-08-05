@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -18,6 +19,9 @@ class FilesystemApprovedSnapshotWorkspaceTest {
 
     @TempDir
     Path reviewRoot;
+
+    @TempDir
+    Path outsideRoot;
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
 
@@ -60,11 +64,15 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
         workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
 
+        Path approvedDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("approved");
+        String referencesBeforeRejection = Files.readString(approvedDir.resolve("references.json"));
+
         assertThrows(ApprovedSnapshotAlreadyExistsException.class,
                 () -> workspace.install(IDENTITY, "RU body 2", "EN body 2", referenceMap));
 
-        Path approvedDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("approved");
         assertEquals("RU body", Files.readString(approvedDir.resolve("ru.md")));
+        assertEquals("EN body", Files.readString(approvedDir.resolve("en.md")));
+        assertEquals(referencesBeforeRejection, Files.readString(approvedDir.resolve("references.json")));
     }
 
     @Test
@@ -92,5 +100,20 @@ class FilesystemApprovedSnapshotWorkspaceTest {
                         ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash")));
 
         assertTrue(Files.notExists(freshRoot));
+    }
+
+    @Test
+    void installRejectsSymlinkedChildEscapingReviewRoot() throws Exception {
+        Files.createSymbolicLink(reviewRoot.resolve("blog"), outsideRoot);
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        assertThrows(IllegalStateException.class,
+                () -> workspace.install(IDENTITY, "RU", "EN",
+                        ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
+
+        assertTrue(Files.notExists(outsideRoot.resolve("my-essay/approved")));
+        try (var entries = Files.list(reviewRoot)) {
+            assertFalse(entries.anyMatch(path -> path.getFileName().toString().startsWith("approved-staging-")));
+        }
     }
 }
