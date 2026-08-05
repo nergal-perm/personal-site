@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.approved;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 
@@ -13,6 +14,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NullApprovedSnapshotWorkspaceTest {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
+    private static final PublicationIdentity DIFFERENT_IDENTITY =
+            PublicationIdentity.of("blog", "essay", "different-essay");
 
     @Test
     void findIsAbsentBeforeAnyInstall() {
@@ -27,11 +30,23 @@ class NullApprovedSnapshotWorkspaceTest {
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
-        Optional<dev.eugene.publicationexporter.candidate.CandidatePaths> found = workspace.find(IDENTITY);
+        Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
         assertTrue(found.isPresent());
+        assertEquals("/approved/blog/my-essay/approved/ru.md", found.get().ruPath().toString());
+        assertEquals("/approved/blog/my-essay/approved/en.md", found.get().enPath().toString());
         assertEquals("ru.md", found.get().ruPath().getFileName().toString());
         assertEquals("en.md", found.get().enPath().getFileName().toString());
+    }
+
+    @Test
+    void findIsAbsentForDifferentIdentityAfterInstallingOne() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+
+        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+
+        assertEquals(Optional.empty(), workspace.find(DIFFERENT_IDENTITY));
     }
 
     @Test
