@@ -2,8 +2,10 @@ package dev.eugene.publicationexporter.bridge;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -62,7 +64,7 @@ class BridgeResponseJsonTest {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         BridgeResponse response = BridgeResponse.essayInspected(
                 "inspect-publication", "not_prepared", identity,
-                "absent", "absent", "absent", "absent");
+                "absent", "absent", "absent", "absent", null);
 
         ObjectMapper mapper = new ObjectMapper();
         JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
@@ -77,6 +79,38 @@ class BridgeResponseJsonTest {
         assertEquals("absent", parsed.get("releaseState").asText());
         assertTrue(parsed.get("diagnostics").isArray());
         assertEquals(0, parsed.get("diagnostics").size());
+    }
+
+    @Test
+    void essayInspectedResponseOmitsReviewPlanFromJsonWhenNull() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        BridgeResponse response = BridgeResponse.essayInspected(
+                "inspect-publication", "not_prepared", identity,
+                "absent", "absent", "absent", "absent", null);
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertFalse(parsed.has("reviewPlan"));
+    }
+
+    @Test
+    void essayInspectedResponseIncludesReviewPlanWhenPresent() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        CandidatePaths candidatePaths = CandidatePaths.of(
+                Path.of("/review/blog/my-essay/candidate/ru.md"),
+                Path.of("/review/blog/my-essay/candidate/en.md"));
+        BridgeResponse response = BridgeResponse.essayInspected(
+                "inspect-publication", "ready_for_review", identity,
+                "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(candidatePaths));
+
+        ObjectMapper mapper = new ObjectMapper();
+        JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
+
+        assertEquals("absent", parsed.get("reviewPlan").get("baselineState").asText());
+        assertEquals(2, parsed.get("reviewPlan").get("targets").size());
+        assertEquals("ru", parsed.get("reviewPlan").get("targets").get(0).get("language").asText());
+        assertTrue(parsed.get("reviewPlan").get("targets").get(0).get("publishedPath").isNull());
     }
 
     @Test

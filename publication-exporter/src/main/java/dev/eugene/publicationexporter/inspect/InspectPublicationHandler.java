@@ -18,6 +18,6 @@ public final class InspectPublicationHandler {
         }
         return BridgeResponse.essayInspected(
                 COMMAND, NOT_PREPARED, intake.identity(),
-                ABSENT, ABSENT, ABSENT, ABSENT);
+                ABSENT, ABSENT, ABSENT, ABSENT, null);
     }
 }
