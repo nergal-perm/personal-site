@@ -176,4 +176,13 @@ class FilesystemCandidateWorkspaceTest {
 
         assertEquals(Optional.empty(), workspace.read(otherIdentity));
     }
+
+    @Test
+    void readIsAbsentForADifferentContentTypeAtTheSameCandidatePath() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "RU", "EN", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "article", "my-essay");
+
+        assertEquals(Optional.empty(), workspace.read(otherIdentity));
+    }
 }
