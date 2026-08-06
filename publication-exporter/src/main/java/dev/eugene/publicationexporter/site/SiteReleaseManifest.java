@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -54,8 +55,9 @@ public final class SiteReleaseManifest {
                 .append(",\"managedFiles\":").append(managedFilesJson())
                 .append(",\"activationCount\":0")
                 .append(",\"deactivationCount\":0")
-                .append(",\"payloadDigest\":\"").append(payloadDigest).append("\"}");
-        return json.toString();
+                .append(",\"payloadDigest\":");
+        appendJsonString(json, payloadDigest);
+        return json.append("}").toString();
     }
 
     private String managedTreesJson() {
@@ -63,8 +65,11 @@ public final class SiteReleaseManifest {
         for (int i = 0; i < managedTrees.size(); i++) {
             if (i > 0) json.append(",");
             ManagedTreeHash tree = managedTrees.get(i);
-            json.append("{\"relative\":\"").append(tree.relative())
-                    .append("\",\"sha256\":\"").append(tree.sha256()).append("\"}");
+            json.append("{\"relative\":");
+            appendJsonString(json, tree.relative());
+            json.append(",\"sha256\":");
+            appendJsonString(json, tree.sha256());
+            json.append("}");
         }
         return json.append("]").toString();
     }
@@ -74,10 +79,39 @@ public final class SiteReleaseManifest {
         for (int i = 0; i < managedFiles.size(); i++) {
             if (i > 0) json.append(",");
             PayloadFileHash file = managedFiles.get(i);
-            json.append("{\"path\":\"").append(file.path())
-                    .append("\",\"sha256\":\"").append(file.sha256()).append("\"}");
+            json.append("{\"path\":");
+            appendJsonString(json, file.path());
+            json.append(",\"sha256\":");
+            appendJsonString(json, file.sha256());
+            json.append("}");
         }
         return json.append("]").toString();
+    }
+
+    private static void appendJsonString(StringBuilder json, String value) {
+        json.append('"');
+        for (int i = 0; i < value.length(); i++) {
+            char character = value.charAt(i);
+            switch (character) {
+                case '"' -> json.append("\\\"");
+                case '\\' -> json.append("\\\\");
+                case '\b' -> json.append("\\b");
+                case '\f' -> json.append("\\f");
+                case '\n' -> json.append("\\n");
+                case '\r' -> json.append("\\r");
+                case '\t' -> json.append("\\t");
+                default -> {
+                    if (character < 0x20) {
+                        json.append("\\u00")
+                                .append(Character.forDigit((character >> 4) & 0xF, 16))
+                                .append(Character.forDigit(character & 0xF, 16));
+                    } else {
+                        json.append(character);
+                    }
+                }
+            }
+        }
+        json.append('"');
     }
 
     private static String computePayloadDigest(List<ManagedTreeHash> managedTrees, List<PayloadFileHash> managedFiles) {
@@ -91,8 +125,9 @@ public final class SiteReleaseManifest {
         List<PayloadFileHash> records = new ArrayList<>();
         for (String relativeRoot : payloadRoots) {
             for (Path file : listTreeSortedByRelativePath(siteRoot.resolve(relativeRoot))) {
-                if (Files.isDirectory(file)) continue;
                 String relative = slash(siteRoot.relativize(file).toString());
+                EntryKind kind = entryKind(file, relative, "payload");
+                if (kind == EntryKind.DIRECTORY) continue;
                 records.add(PayloadFileHash.of(relative, sha256Hex(readAllBytes(file))));
             }
         }
@@ -106,9 +141,9 @@ public final class SiteReleaseManifest {
             for (Path file : listTreeSortedByRelativePath(root)) {
                 String relative = slash(root.relativize(file).toString());
                 byte[] relativeBytes = relative.getBytes(StandardCharsets.UTF_8);
-                boolean isDirectory = Files.isDirectory(file);
-                byte[] payload = isDirectory ? new byte[0] : readAllBytes(file);
-                digest.update((isDirectory ? "D" : "F").getBytes(StandardCharsets.UTF_8));
+                EntryKind kind = entryKind(file, relative, "tree");
+                byte[] payload = kind == EntryKind.DIRECTORY ? new byte[0] : readAllBytes(file);
+                digest.update((kind == EntryKind.DIRECTORY ? "D" : "F").getBytes(StandardCharsets.UTF_8));
                 digest.update(lengthBytes(relativeBytes.length));
                 digest.update(relativeBytes);
                 digest.update(lengthBytes(payload.length));
@@ -121,6 +156,9 @@ public final class SiteReleaseManifest {
     }
 
     private static List<Path> listTreeSortedByRelativePath(Path root) {
+        if (Files.isSymbolicLink(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IllegalStateException("managed tree is not a directory: " + root);
+        }
         try (Stream<Path> walk = Files.walk(root)) {
             List<Path> entries = walk.filter(path -> !path.equals(root)).toList();
             List<Path> sorted = new ArrayList<>(entries);
@@ -129,6 +167,19 @@ public final class SiteReleaseManifest {
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
+    }
+
+    private static EntryKind entryKind(Path entry, String relative, String context) {
+        if (Files.isSymbolicLink(entry)) {
+            throw new IllegalStateException("managed " + context + " contains a symlink: " + relative);
+        }
+        if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
+            return EntryKind.DIRECTORY;
+        }
+        if (Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
+            return EntryKind.FILE;
+        }
+        throw new IllegalStateException("managed " + context + " contains an unsupported entry: " + relative);
     }
 
     private static byte[] readAllBytes(Path file) {
@@ -168,5 +219,10 @@ public final class SiteReleaseManifest {
 
     private static String slash(String path) {
         return path.replace(java.io.File.separatorChar, '/');
+    }
+
+    private enum EntryKind {
+        DIRECTORY,
+        FILE
     }
 }
