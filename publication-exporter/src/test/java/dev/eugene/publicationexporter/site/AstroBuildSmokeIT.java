@@ -65,8 +65,13 @@ class AstroBuildSmokeIT {
             assertTrue(result.outputTail().contains(route),
                     () -> "astro build output should report installed route " + route
                             + ".\nOutput tail:\n" + result.outputTail());
-            assertTrue(Files.isRegularFile(astroProjectRoot.resolve("dist").resolve(route.substring(1))),
+            Path generatedFile = astroProjectRoot.resolve("dist").resolve(route.substring(1));
+            assertTrue(Files.isRegularFile(generatedFile),
                     () -> "astro build should write installed route " + route + " under the temporary project root");
+            String expectedTitle = "ru".equals(language) ? "My Essay" : "My Essay (EN)";
+            String generatedContent = Files.readString(generatedFile);
+            assertTrue(generatedContent.contains(expectedTitle),
+                    () -> "generated route " + route + " should contain installed title " + expectedTitle);
         }
     }
 
