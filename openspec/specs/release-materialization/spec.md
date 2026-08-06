@@ -3,9 +3,7 @@
 ## Purpose
 
 Materialize deterministic, provenance-bound Astro input from approved publication state without advancing approval. Evidence: E-REL, E-REF, E-CONTENT, `e2e/README.md`, and `site/scripts/check-content.mjs`.
-
 ## Requirements
-
 ### Requirement: REL-01 Read approved snapshots only
 
 Release materialization SHALL derive publishable RU and EN pages exclusively from complete approved snapshots and current approved-target projection state; candidate and job artefacts SHALL have no release authority.
@@ -34,6 +32,12 @@ Release SHALL resolve approved semantic occurrences through the current approved
 - **WHEN** release pages are projected
 - **THEN** each locale contains only its approved plain label
 - **AND** the output safety gate finds no semantic or vault-private marker
+
+#### Scenario: Approved snapshot has no semantic occurrences
+- **GIVEN** an approved snapshot whose reference map carries zero occurrences
+- **WHEN** bilingual release pages are projected
+- **THEN** each locale's release body is emitted exactly as recorded in the approved snapshot, with no occurrence resolution attempted
+- **AND** the output safety gate finds no semantic token, source ID, private vault path, or internal private route
 
 ### Requirement: REL-03 Bind output to deterministic release provenance
 
@@ -96,3 +100,4 @@ The generated site input SHALL pass checks for managed-root ownership, expected 
 - **GIVEN** a missing or extra page, invalid collection relation, marker leak, unsafe path, or provenance mismatch
 - **WHEN** the site build runs
 - **THEN** it fails before publication deployment can be considered successful
+
