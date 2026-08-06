@@ -3,6 +3,7 @@ package dev.eugene.publicationexporter.approved;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 
@@ -10,19 +11,16 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
 
 final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorkspace {
 
-    private final Path canonicalReviewRoot;
+    private final StagedDirectoryInstall stagedInstall;
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot) {
-        this.canonicalReviewRoot = canonicalize(Objects.requireNonNull(reviewRoot, "reviewRoot"));
+        this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(reviewRoot, "reviewRoot"));
     }
 
     @Override
@@ -39,9 +37,10 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         Path staging = createStagingDirectory();
         try {
             writeTriple(staging, ruBody, enBody, referenceMap);
-            publishStagingApproved(staging, destination);
+            requireWithinReviewRoot(destination);
+            stagedInstall.moveIntoPlace(staging, destination);
         } catch (IOException error) {
-            deleteRecursively(staging);
+            StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);
         }
     }
@@ -104,15 +103,8 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         return Optional.of(CandidateSnapshot.of(ruBody, enBody, referenceMap));
     }
 
-    private void publishStagingApproved(Path staging, Path destination) throws IOException {
-        requireWithinReviewRoot(destination);
-        Files.createDirectories(destination.getParent());
-        requireWithinReviewRoot(destination);
-        Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
-    }
-
     private Path approvedDirectory(PublicationIdentity identity) {
-        Path approved = canonicalReviewRoot.resolve(identity.publicCollection())
+        Path approved = stagedInstall.canonicalRoot().resolve(identity.publicCollection())
                 .resolve(identity.publicId())
                 .resolve("approved")
                 .normalize();
@@ -122,55 +114,16 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
 
     private Path createStagingDirectory() {
         try {
-            Files.createDirectories(canonicalReviewRoot);
-            return Files.createTempDirectory(canonicalReviewRoot, "approved-staging-");
+            return stagedInstall.createStagingDirectory("approved-staging-");
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
     }
 
     private void requireWithinReviewRoot(Path candidate) {
-        if (!candidate.startsWith(canonicalReviewRoot)) {
-            throw new ApprovedSnapshotWorkspaceConfinementException(
-                    candidate, candidate, canonicalReviewRoot);
-        }
-        if (Files.notExists(canonicalReviewRoot, LinkOption.NOFOLLOW_LINKS)) {
-            return;
-        }
-        Path resolvedCandidate = resolveThroughNearestExistingAncestor(candidate);
-        Path resolvedReviewRoot = realPathOf(canonicalReviewRoot).orElse(canonicalReviewRoot);
-        if (!resolvedCandidate.startsWith(resolvedReviewRoot)) {
-            throw new ApprovedSnapshotWorkspaceConfinementException(
-                    candidate, resolvedCandidate, resolvedReviewRoot);
-        }
-    }
-
-    private static Path resolveThroughNearestExistingAncestor(Path candidate) {
-        Path existingAncestor = candidate;
-        while (existingAncestor != null
-                && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
-            existingAncestor = existingAncestor.getParent();
-        }
-        if (existingAncestor == null) {
-            return candidate.toAbsolutePath().normalize();
-        }
-        try {
-            Path realAncestor = existingAncestor.toRealPath();
-            return realAncestor.resolve(existingAncestor.relativize(candidate)).normalize();
-        } catch (IOException error) {
-            throw new UncheckedIOException(error);
-        }
-    }
-
-    private static Path canonicalize(Path reviewRoot) {
-        return realPathOf(reviewRoot).orElseGet(() -> reviewRoot.toAbsolutePath().normalize());
-    }
-
-    private static Optional<Path> realPathOf(Path path) {
-        try {
-            return Optional.of(path.toRealPath());
-        } catch (IOException | SecurityException unresolvable) {
-            return Optional.empty();
+        Optional<Path> resolved = stagedInstall.resolveWithinRoot(candidate);
+        if (resolved.isEmpty()) {
+            throw new ApprovedSnapshotWorkspaceConfinementException(candidate, candidate, stagedInstall.canonicalRoot());
         }
     }
 
@@ -180,21 +133,5 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         Files.writeString(staging.resolve("en.md"), enBody, StandardCharsets.UTF_8);
         Files.writeString(staging.resolve("references.json"),
                 ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
-    }
-
-    private static void deleteRecursively(Path root) {
-        try (var paths = Files.walk(root)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(FilesystemApprovedSnapshotWorkspace::deleteQuietly);
-        } catch (IOException ignored) {
-            // best-effort staging cleanup after a failed install
-        }
-    }
-
-    private static void deleteQuietly(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // best-effort; see deleteRecursively
-        }
     }
 }

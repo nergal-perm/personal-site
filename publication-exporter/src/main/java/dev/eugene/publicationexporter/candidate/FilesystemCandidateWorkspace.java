@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.candidate;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 
@@ -8,19 +9,16 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.Comparator;
 import java.util.Objects;
 import java.util.Optional;
 
 final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
-    private final Path canonicalReviewRoot;
+    private final StagedDirectoryInstall stagedInstall;
 
     FilesystemCandidateWorkspace(Path reviewRoot) {
-        this.canonicalReviewRoot = canonicalize(Objects.requireNonNull(reviewRoot, "reviewRoot"));
+        this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(reviewRoot, "reviewRoot"));
     }
 
     @Override
@@ -34,9 +32,10 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         Path staging = createStagingDirectory();
         try {
             writeTriple(staging, ruBody, enBody, referenceMap);
-            publishStagingCandidate(staging, destination);
+            requireWithinReviewRoot(destination);
+            stagedInstall.moveIntoPlace(staging, destination);
         } catch (IOException error) {
-            deleteRecursively(staging);
+            StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);
         }
     }
@@ -99,15 +98,8 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         return Optional.of(CandidateSnapshot.of(ruBody, enBody, referenceMap));
     }
 
-    private void publishStagingCandidate(Path staging, Path destination) throws IOException {
-        requireWithinReviewRoot(destination);
-        Files.createDirectories(destination.getParent());
-        requireWithinReviewRoot(destination);
-        Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
-    }
-
     private Path candidateDirectory(PublicationIdentity identity) {
-        Path candidate = canonicalReviewRoot.resolve(identity.publicCollection())
+        Path candidate = stagedInstall.canonicalRoot().resolve(identity.publicCollection())
                 .resolve(identity.publicId())
                 .resolve("candidate")
                 .normalize();
@@ -117,55 +109,19 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
     private Path createStagingDirectory() {
         try {
-            Files.createDirectories(canonicalReviewRoot);
-            return Files.createTempDirectory(canonicalReviewRoot, "candidate-staging-");
+            return stagedInstall.createStagingDirectory("candidate-staging-");
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
     }
 
     private void requireWithinReviewRoot(Path candidate) {
-        if (!candidate.startsWith(canonicalReviewRoot)) {
-            throw new CandidateWorkspaceConfinementException(
-                    candidate, candidate, canonicalReviewRoot);
+        Optional<Path> resolved = stagedInstall.resolveWithinRoot(candidate);
+        if (resolved.isEmpty()) {
+            throw new CandidateWorkspaceConfinementException(candidate, candidate, stagedInstall.canonicalRoot());
         }
-        if (Files.notExists(canonicalReviewRoot, LinkOption.NOFOLLOW_LINKS)) {
-            return;
-        }
-        Path resolvedCandidate = resolveThroughNearestExistingAncestor(candidate);
-        Path resolvedReviewRoot = realPathOf(canonicalReviewRoot).orElse(canonicalReviewRoot);
-        if (!resolvedCandidate.startsWith(resolvedReviewRoot)) {
-            throw new CandidateWorkspaceConfinementException(
-                    candidate, resolvedCandidate, resolvedReviewRoot);
-        }
-    }
-
-    private static Path resolveThroughNearestExistingAncestor(Path candidate) {
-        Path existingAncestor = candidate;
-        while (existingAncestor != null
-                && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
-            existingAncestor = existingAncestor.getParent();
-        }
-        if (existingAncestor == null) {
-            return candidate.toAbsolutePath().normalize();
-        }
-        try {
-            Path realAncestor = existingAncestor.toRealPath();
-            return realAncestor.resolve(existingAncestor.relativize(candidate)).normalize();
-        } catch (IOException error) {
-            throw new UncheckedIOException(error);
-        }
-    }
-
-    private static Path canonicalize(Path reviewRoot) {
-        return realPathOf(reviewRoot).orElseGet(() -> reviewRoot.toAbsolutePath().normalize());
-    }
-
-    private static Optional<Path> realPathOf(Path path) {
-        try {
-            return Optional.of(path.toRealPath());
-        } catch (IOException | SecurityException unresolvable) {
-            return Optional.empty();
+        if (!resolved.get().equals(candidate) && !candidate.startsWith(stagedInstall.canonicalRoot())) {
+            throw new CandidateWorkspaceConfinementException(candidate, resolved.get(), stagedInstall.canonicalRoot());
         }
     }
 
@@ -175,21 +131,5 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         Files.writeString(staging.resolve("en.md"), enBody, StandardCharsets.UTF_8);
         Files.writeString(staging.resolve("references.json"),
                 ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
-    }
-
-    private static void deleteRecursively(Path root) {
-        try (var paths = Files.walk(root)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(FilesystemCandidateWorkspace::deleteQuietly);
-        } catch (IOException ignored) {
-            // best-effort staging cleanup after a failed install
-        }
-    }
-
-    private static void deleteQuietly(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // best-effort; see deleteRecursively
-        }
     }
 }
