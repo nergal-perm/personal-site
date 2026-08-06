@@ -85,7 +85,7 @@ The approved RU, EN, and semantic-reference map SHALL become visible as one cohe
 #### Scenario: Approval completes
 - **GIVEN** a valid candidate and safe review workspace
 - **WHEN** approved installation succeeds
-- **THEN** all approved files correspond to the candidate hashes and are durable before success is reported
+- **THEN** all approved files correspond to the candidate hashes and become visible as one atomic unit before success is reported
 
 #### Scenario: Approval is interrupted
 - **GIVEN** failure occurs during approved installation
