@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -56,6 +57,29 @@ class ProcessTranslationWorkerTest {
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("candidate.en.title.txt"));
+    }
+
+    @Test
+    void unreadableTitleFileIsReportedAsFailure() throws Exception {
+        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+                (workdir, prompt) -> {
+                    writeString(workdir.resolve("candidate.en.md"), "body");
+                    Path title = workdir.resolve("candidate.en.title.txt");
+                    writeString(title, "title");
+                    writeString(workdir.resolve("candidate.en.description.txt"), "description");
+                    try {
+                        Files.setPosixFilePermissions(title, Set.of());
+                    } catch (IOException error) {
+                        throw new UncheckedIOException(error);
+                    }
+                    return List.of("sh", "-c", "true");
+                },
+                Duration.ofSeconds(5));
+
+        TranslationResult result = worker.translate("ignored", "ignored", "ignored");
+
+        assertFalse(result.succeeded());
+        assertTrue(result.failureReason().contains("Could not read candidate.en.title.txt:"));
     }
 
     @Test
@@ -127,6 +151,60 @@ class ProcessTranslationWorkerTest {
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("without writing candidate.en.md"));
+    }
+
+    @Test
+    void symlinkedTitleFileIsReportedAsMissing() throws Exception {
+        Path externalTitle = externalRoot.resolve("external-candidate-title.txt");
+        Files.writeString(externalTitle, "Title outside the worker scratch directory");
+        TranslationCommand writesSymlinkedTitle = (workdir, prompt) -> {
+            writeString(workdir.resolve("candidate.en.md"), "body");
+            writeString(workdir.resolve("candidate.en.description.txt"), "description");
+            try {
+                Files.createSymbolicLink(workdir.resolve("candidate.en.title.txt"), externalTitle);
+            } catch (IOException error) {
+                throw new UncheckedIOException(error);
+            }
+            return List.of("sh", "-c", "true");
+        };
+        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+                writesSymlinkedTitle, Duration.ofSeconds(5));
+
+        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+
+        assertFalse(result.succeeded());
+        assertTrue(result.failureReason().contains("without writing candidate.en.title.txt"));
+    }
+
+    @Test
+    void symlinkedDescriptionFileIsReportedAsMissing() throws Exception {
+        Path externalDescription = externalRoot.resolve("external-candidate-description.txt");
+        Files.writeString(externalDescription, "Description outside the worker scratch directory");
+        TranslationCommand writesSymlinkedDescription = (workdir, prompt) -> {
+            writeString(workdir.resolve("candidate.en.md"), "body");
+            writeString(workdir.resolve("candidate.en.title.txt"), "title");
+            try {
+                Files.createSymbolicLink(workdir.resolve("candidate.en.description.txt"), externalDescription);
+            } catch (IOException error) {
+                throw new UncheckedIOException(error);
+            }
+            return List.of("sh", "-c", "true");
+        };
+        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+                writesSymlinkedDescription, Duration.ofSeconds(5));
+
+        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+
+        assertFalse(result.succeeded());
+        assertTrue(result.failureReason().contains("without writing candidate.en.description.txt"));
+    }
+
+    private static void writeString(Path path, String content) {
+        try {
+            Files.writeString(path, content);
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
     }
 
     private static TranslationCommand writesFixedResult(String body, String title, String description) {

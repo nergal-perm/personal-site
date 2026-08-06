@@ -3,14 +3,16 @@ package dev.eugene.publicationexporter.translation;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -86,35 +88,70 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     private TranslationResult collectResult(Path workdir) {
-        Optional<String> body = readIfPresent(workdir, BODY_FILE_NAME);
-        if (body.isEmpty()) {
+        FileRead body = readIfPresent(workdir, BODY_FILE_NAME);
+        if (body.isMissing()) {
             return missingFileFailure(BODY_FILE_NAME);
         }
-        Optional<String> title = readIfPresent(workdir, TITLE_FILE_NAME);
-        if (title.isEmpty()) {
+        if (body.error() != null) {
+            return readFailure(BODY_FILE_NAME, body.error());
+        }
+
+        FileRead title = readIfPresent(workdir, TITLE_FILE_NAME);
+        if (title.isMissing()) {
             return missingFileFailure(TITLE_FILE_NAME);
         }
-        Optional<String> description = readIfPresent(workdir, DESCRIPTION_FILE_NAME);
-        if (description.isEmpty()) {
+        if (title.error() != null) {
+            return readFailure(TITLE_FILE_NAME, title.error());
+        }
+
+        FileRead description = readIfPresent(workdir, DESCRIPTION_FILE_NAME);
+        if (description.isMissing()) {
             return missingFileFailure(DESCRIPTION_FILE_NAME);
         }
-        return TranslationResult.success(body.get(), title.get(), description.get());
+        if (description.error() != null) {
+            return readFailure(DESCRIPTION_FILE_NAME, description.error());
+        }
+
+        return TranslationResult.success(body.content(), title.content(), description.content());
     }
 
-    private Optional<String> readIfPresent(Path workdir, String fileName) {
+    private FileRead readIfPresent(Path workdir, String fileName) {
         Path file = workdir.resolve(fileName);
-        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
-            return Optional.empty();
-        }
-        try {
-            return Optional.of(Files.readString(file, StandardCharsets.UTF_8));
+        try (var channel = Files.newByteChannel(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
+                var input = Channels.newInputStream(channel)) {
+            return FileRead.present(new String(input.readAllBytes(), StandardCharsets.UTF_8));
+        } catch (NoSuchFileException error) {
+            return FileRead.missing();
         } catch (IOException error) {
-            throw new UncheckedIOException(error);
+            return Files.isSymbolicLink(file) ? FileRead.missing() : FileRead.unreadable(error);
         }
     }
 
     private static TranslationResult missingFileFailure(String fileName) {
         return TranslationResult.failure("Translation worker completed without writing " + fileName + ".");
+    }
+
+    private static TranslationResult readFailure(String fileName, IOException error) {
+        return TranslationResult.failure("Could not read " + fileName + ": " + error.getMessage());
+    }
+
+    private record FileRead(String content, IOException error) {
+
+        private static FileRead present(String content) {
+            return new FileRead(content, null);
+        }
+
+        private static FileRead missing() {
+            return new FileRead(null, null);
+        }
+
+        private static FileRead unreadable(IOException error) {
+            return new FileRead(null, error);
+        }
+
+        private boolean isMissing() {
+            return content == null && error == null;
+        }
     }
 
     private static String prompt(String ruBody, String ruTitle, String ruDescription) {
