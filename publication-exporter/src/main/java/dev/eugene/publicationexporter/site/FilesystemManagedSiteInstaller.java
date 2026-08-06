@@ -7,10 +7,12 @@ import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -28,112 +30,191 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
 
     @Override
     public void install(PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
-        Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(approvedSnapshot, "approvedSnapshot");
-
+        requireInstallationInputs(identity, approvedSnapshot);
         Path ruDestination = markdownFile(identity, "ru");
         Path enDestination = markdownFile(identity, "en");
-        if (exists(ruDestination) || exists(enDestination)) {
-            throw new SiteAlreadyInstalledException(identity);
-        }
+        rejectIfAlreadyInstalled(identity, ruDestination, enDestination);
+        installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
+    }
 
-        Path staging = null;
+    private void installFromStaging(PublicationIdentity identity, CandidateSnapshot approvedSnapshot,
+            Path ruDestination, Path enDestination) {
+        Path staging = createStagingDirectory();
         try {
-            confined(stagedInstall.canonicalRoot());
-            staging = confined(stagedInstall.createStagingDirectory("site-install-"));
-            writeStagedFile(staging, "ru.md", frontmatter(identity, approvedSnapshot, "ru")
-                    + approvedSnapshot.ruBody());
-            writeStagedFile(staging, "en.md", frontmatter(identity, approvedSnapshot, "en")
-                    + approvedSnapshot.enBody());
-
-            moveFile(stagedFile(staging, "ru.md"), ruDestination);
-            moveFile(stagedFile(staging, "en.md"), enDestination);
-
+            stageLocaleFiles(staging, identity, approvedSnapshot);
+            installLocaleFiles(staging, identity, ruDestination, enDestination);
             ensurePayloadRoots();
-            SiteReleaseManifest manifest = computeManifest();
-            writeStagedFile(staging, "release-provenance.json", manifest.toCanonicalJson());
-            moveFile(stagedFile(staging, "release-provenance.json"), manifestPath(),
-                    StandardCopyOption.REPLACE_EXISTING);
+            writeProvenance(staging);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         } finally {
-            if (staging != null) {
-                StagedDirectoryInstall.deleteRecursively(staging);
-            }
+            deleteStagingDirectory(staging);
         }
+    }
+
+    private static void requireInstallationInputs(
+            PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(approvedSnapshot, "approvedSnapshot");
+    }
+
+    private void rejectIfAlreadyInstalled(
+            PublicationIdentity identity, Path ruDestination, Path enDestination) {
+        if (exists(ruDestination) || exists(enDestination)) {
+            throw new SiteAlreadyInstalledException(identity);
+        }
+    }
+
+    private Path createStagingDirectory() {
+        try {
+            Path resolvedRoot = resolveWithinSiteRoot(stagedInstall.canonicalRoot());
+            Files.createDirectories(resolvedRoot);
+            Path verifiedRoot = resolveWithinSiteRoot(resolvedRoot);
+            return resolveWithinSiteRoot(Files.createTempDirectory(verifiedRoot, "site-install-"));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private void stageLocaleFiles(
+            Path staging, PublicationIdentity identity, CandidateSnapshot approvedSnapshot) throws IOException {
+        writeLocaleFile(staging, identity, approvedSnapshot, "ru", approvedSnapshot.ruBody());
+        writeLocaleFile(staging, identity, approvedSnapshot, "en", approvedSnapshot.enBody());
+    }
+
+    private void writeLocaleFile(Path staging, PublicationIdentity identity,
+            CandidateSnapshot approvedSnapshot, String locale, String body) throws IOException {
+        writeStagedFile(staging, locale + ".md", frontmatter(identity, approvedSnapshot, locale) + body);
+    }
+
+    private void installLocaleFiles(
+            Path staging, PublicationIdentity identity, Path ruDestination, Path enDestination) throws IOException {
+        Path installationLock = acquireInstallationLock(ruDestination, identity);
+        try {
+            rejectIfAlreadyInstalled(identity, ruDestination, enDestination);
+            moveNewLocaleFile(stagedFile(staging, "ru.md"), ruDestination, identity);
+            moveNewLocaleFile(stagedFile(staging, "en.md"), enDestination, identity);
+        } finally {
+            releaseInstallationLock(installationLock);
+        }
+    }
+
+    private Path acquireInstallationLock(Path ruDestination, PublicationIdentity identity) throws IOException {
+        Path resolvedLock = createAndResolveParentDirectories(installationLock(ruDestination));
+        try {
+            return Files.createFile(resolvedLock);
+        } catch (FileAlreadyExistsException collision) {
+            throw new SiteAlreadyInstalledException(identity);
+        }
+    }
+
+    private void releaseInstallationLock(Path installationLock) throws IOException {
+        Path resolvedParent = resolveWithinSiteRoot(installationLock.getParent());
+        Files.deleteIfExists(resolvedParent.resolve(installationLock.getFileName()));
+    }
+
+    private Path installationLock(Path ruDestination) {
+        return ruDestination.resolveSibling("." + ruDestination.getFileName() + ".installing").normalize();
+    }
+
+    private void moveNewLocaleFile(Path source, Path destination, PublicationIdentity identity)
+            throws IOException {
+        Path resolvedDestination = createAndResolveParentDirectories(destination);
+        Path resolvedSource = resolveWithinSiteRoot(source);
+        try {
+            Files.move(resolvedSource, resolvedDestination, StandardCopyOption.ATOMIC_MOVE);
+        } catch (FileAlreadyExistsException collision) {
+            throw new SiteAlreadyInstalledException(identity);
+        }
+    }
+
+    private void writeProvenance(Path staging) throws IOException {
+        SiteReleaseManifest manifest = computeManifest();
+        writeStagedFile(staging, "release-provenance.json", manifest.toCanonicalJson());
+        replaceFile(stagedFile(staging, "release-provenance.json"), manifestPath());
     }
 
     private void writeStagedFile(Path staging, String fileName, String content) throws IOException {
-        Files.writeString(stagedFile(staging, fileName), content, StandardCharsets.UTF_8);
+        Path resolvedFile = resolveWithinSiteRoot(stagedFile(staging, fileName));
+        Files.writeString(resolvedFile, content, StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
     }
 
-    private void moveFile(Path source, Path destination, StandardCopyOption... additionalOptions)
-            throws IOException {
-        Path confinedSource = confined(source);
-        Path confinedDestination = confined(destination);
-        Path parent = confinedDestination.getParent();
+    private void replaceFile(Path source, Path destination) throws IOException {
+        Path resolvedDestination = createAndResolveParentDirectories(destination);
+        Path resolvedSource = resolveWithinSiteRoot(source);
+        Files.move(resolvedSource, resolvedDestination,
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private Path createAndResolveParentDirectories(Path destination) throws IOException {
+        Path resolvedDestination = resolveWithinSiteRoot(destination);
+        Path parent = resolvedDestination.getParent();
         if (parent == null) {
             throw new ManagedSiteInstallerConfinementException(
-                    confinedDestination, confinedDestination, stagedInstall.canonicalRoot());
+                    resolvedDestination, resolvedDestination, stagedInstall.canonicalRoot());
         }
-        confined(parent);
-        stagedInstall.createParentDirectories(confinedDestination);
-        confined(parent);
-        confinedDestination = confined(confinedDestination);
+        stagedInstall.createParentDirectories(resolvedDestination);
+        return resolveWithinSiteRoot(resolvedDestination);
+    }
 
-        StandardCopyOption[] options = new StandardCopyOption[additionalOptions.length + 1];
-        options[0] = StandardCopyOption.ATOMIC_MOVE;
-        System.arraycopy(additionalOptions, 0, options, 1, additionalOptions.length);
-        Files.move(confinedSource, confinedDestination, options);
+    private void deleteStagingDirectory(Path staging) {
+        StagedDirectoryInstall.deleteRecursively(resolveWithinSiteRoot(staging));
     }
 
     private void ensurePayloadRoots() throws IOException {
         for (String relativeRoot : PAYLOAD_ROOTS) {
-            Path payloadRoot = confined(stagedInstall.canonicalRoot().resolve(relativeRoot));
-            Path marker = confined(payloadRoot.resolve(".keep"));
+            Path payloadRoot = resolveWithinSiteRoot(stagedInstall.canonicalRoot().resolve(relativeRoot));
+            Path marker = resolveWithinSiteRoot(payloadRoot.resolve(".keep"));
             stagedInstall.createParentDirectories(marker);
-            confined(payloadRoot);
+            resolveWithinSiteRoot(payloadRoot);
         }
     }
 
     private SiteReleaseManifest computeManifest() {
-        confined(stagedInstall.canonicalRoot());
+        resolveWithinSiteRoot(stagedInstall.canonicalRoot());
         for (String relativeRoot : PAYLOAD_ROOTS) {
-            confined(stagedInstall.canonicalRoot().resolve(relativeRoot));
+            resolveWithinSiteRoot(stagedInstall.canonicalRoot().resolve(relativeRoot));
         }
         return SiteReleaseManifest.computeOver(stagedInstall.canonicalRoot(), PAYLOAD_ROOTS);
     }
 
     private boolean exists(Path candidate) {
-        return Files.exists(confined(candidate), LinkOption.NOFOLLOW_LINKS);
+        return Files.exists(resolveWithinSiteRoot(candidate), LinkOption.NOFOLLOW_LINKS);
     }
 
     private Path markdownFile(PublicationIdentity identity, String locale) {
-        Path file = stagedInstall.canonicalRoot()
+        return stagedInstall.canonicalRoot()
                 .resolve("src/content")
                 .resolve(identity.publicCollection())
                 .resolve(locale)
                 .resolve(identity.publicId() + ".md")
                 .normalize();
-        return confined(file);
     }
 
     private Path manifestPath() {
-        return confined(stagedInstall.canonicalRoot().resolve(".astro-export/release-provenance.json"));
+        return stagedInstall.canonicalRoot().resolve(".astro-export/release-provenance.json").normalize();
     }
 
     private Path stagedFile(Path staging, String fileName) {
-        return confined(staging.resolve(fileName));
+        return staging.resolve(fileName).normalize();
     }
 
-    private Path confined(Path candidate) {
+    private Path resolveWithinSiteRoot(Path candidate) {
         Path normalized = candidate.toAbsolutePath().normalize();
         Optional<Path> resolved = stagedInstall.resolveWithinRoot(normalized);
-        if (resolved.isEmpty() || !resolved.get().equals(normalized)) {
+        if (resolved.isEmpty() || !resolved.get().startsWith(stagedInstall.canonicalRoot())) {
             throw new ManagedSiteInstallerConfinementException(
                     normalized, resolved.orElse(normalized), stagedInstall.canonicalRoot());
         }
-        return normalized;
+        /*
+         * Existing components are collapsed by one toRealPath() resolution in
+         * StagedDirectoryInstall; an absent tail is appended beneath that verified real ancestor.
+         * Callers re-resolve after directory creation and immediately use this returned real path.
+         * A small pathname race remains because portable java.nio.file has no directory-fd-relative
+         * create/rename API, but no known symlink alias is carried from validation into the write.
+         */
+        return resolved.get();
     }
 
     private static String frontmatter(PublicationIdentity identity, CandidateSnapshot approved, String locale) {

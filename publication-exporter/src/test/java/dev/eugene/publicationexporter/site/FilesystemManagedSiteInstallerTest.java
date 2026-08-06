@@ -9,6 +9,12 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -132,6 +138,51 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
+    void anExistingSymlinkedComponentWithinTheSiteUsesItsRealPath() throws Exception {
+        Path realProvenanceDirectory = siteRoot.resolve("real-provenance");
+        Files.createDirectories(realProvenanceDirectory);
+        Files.createSymbolicLink(siteRoot.resolve(".astro-export"), realProvenanceDirectory);
+
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+
+        Path manifest = realProvenanceDirectory.resolve("release-provenance.json");
+        assertTrue(Files.isRegularFile(manifest));
+        assertEquals(manifest.toRealPath(), siteRoot.resolve(".astro-export/release-provenance.json").toRealPath());
+    }
+
+    @Test
+    void concurrentInstallForTheSameIdentityHasOneWinnerAndOneCleanAlreadyInstalledLoser() throws Exception {
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        Callable<Throwable> install = () -> {
+            ready.countDown();
+            start.await();
+            try {
+                new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+                return null;
+            } catch (Throwable error) {
+                return error;
+            }
+        };
+
+        ExecutorService installers = Executors.newFixedThreadPool(2);
+        try {
+            List<Future<Throwable>> outcomes = List.of(installers.submit(install), installers.submit(install));
+            ready.await();
+            start.countDown();
+            List<Throwable> failures = outcomes.stream().map(FilesystemManagedSiteInstallerTest::resultOf)
+                    .filter(error -> error != null)
+                    .toList();
+
+            assertEquals(1, failures.size());
+            assertTrue(failures.get(0) instanceof SiteAlreadyInstalledException,
+                    () -> "expected SiteAlreadyInstalledException but got " + failures.get(0));
+        } finally {
+            installers.shutdownNow();
+        }
+    }
+
+    @Test
     void creatingAnInstallerForAnAbsentNestedRootDoesNotWriteOrThrow() {
         Path nestedRoot = siteRoot.resolve("nested");
 
@@ -139,5 +190,13 @@ class FilesystemManagedSiteInstallerTest {
 
         assertTrue(installer instanceof FilesystemManagedSiteInstaller);
         assertFalse(Files.exists(nestedRoot));
+    }
+
+    private static Throwable resultOf(Future<Throwable> outcome) {
+        try {
+            return outcome.get();
+        } catch (Exception error) {
+            throw new AssertionError(error);
+        }
     }
 }
