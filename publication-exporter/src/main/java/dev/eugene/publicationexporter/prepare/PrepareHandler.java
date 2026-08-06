@@ -55,7 +55,15 @@ public final class PrepareHandler {
                     Diagnostic.blocking("candidate", "Translation worker produced a blank candidate."));
         }
         String enTitle = translation.enTitle();
+        if (enTitle.isBlank()) {
+            return BridgeResponse.translationFailed(COMMAND,
+                    Diagnostic.blocking("candidate", "Translation worker produced a blank title."));
+        }
         String enDescription = translation.enDescription();
+        if (enDescription.isBlank()) {
+            return BridgeResponse.translationFailed(COMMAND,
+                    Diagnostic.blocking("candidate", "Translation worker produced a blank description."));
+        }
         ReferenceMap referenceMap = ReferenceMap.empty(
                 identity,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
