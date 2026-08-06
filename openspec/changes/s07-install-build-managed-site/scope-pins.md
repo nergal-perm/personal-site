@@ -14,9 +14,10 @@ target end state, derived directly from `openspec/requirements-baseline.md` ahea
 Partially in scope for S07; only the "nothing to guard against yet" half is reachable.
 
 - **In scope** — Scenario: Inputs remain stable. Trivially true for a first install: the only declared
-  release input is the S06 generation itself, and nothing else exists to have drifted between planning
-  and commit. The guard still runs (it is not special-cased away), it simply always finds a stable input
-  in this slice.
+  release input is the approved snapshot itself (read directly via `ApprovedSnapshotWorkspace`, not S06's
+  release-output artifact — see the architectural note in `proposal.md`), and nothing else exists to have
+  drifted between planning and commit. The guard still runs (it is not special-cased away), it simply always
+  finds a stable input in this slice.
 - **Not yet applicable** — Scenario: Input changes concurrently. This describes a *second* release attempt
   racing a change to a declared input while a *first* generation already exists to protect. S07 writes into
   empty roots exactly once per acceptance run; there is no concurrent second attempt to race. Reachable
@@ -120,8 +121,9 @@ the fix commit for the exact shape. This note is scoped by the review process it
 ## Public content model (site-install boundary)
 
 `openspec/specs/public-content-model/spec.md` already fully specifies PCM-01 through PCM-06. S07's site-install
-step performs no new normalization or projection of its own: it copies the S06 release output's
-already-normalized bytes (body, title, description) verbatim into `src/content`. PCM-01 and PCM-02 remain
+step performs no new normalization or projection of its own: it copies the approved snapshot's
+already-normalized bytes (body, title, description) verbatim into `src/content` — read directly via
+`ApprovedSnapshotWorkspace`, not S06's release-output artifact. PCM-01 and PCM-02 remain
 satisfied by construction exactly as S06 recorded them at the release boundary; no new scenario is needed at
 the site-install boundary specifically.
 
