@@ -76,7 +76,8 @@ class MarkReviewedHandlerTest {
         NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String enHash = ContentHash.sha256Hex("EN body");
-        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", ReferenceMap.empty(identity, ruHash, enHash));
+        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", ReferenceMap.empty(identity, ruHash, enHash));
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         MarkReviewedHandler handler = new MarkReviewedHandler(candidateWorkspace, approvedSnapshotWorkspace);
 
@@ -85,7 +86,11 @@ class MarkReviewedHandlerTest {
         assertTrue(response.ok());
         assertEquals("ready_to_publish", response.status());
         assertEquals("my-essay", response.identity().publicId());
-        assertTrue(approvedSnapshotWorkspace.find(identity).isPresent());
+        CandidateSnapshot approved = approvedSnapshotWorkspace.read(identity).orElseThrow();
+        assertEquals("RU title", approved.ruTitle());
+        assertEquals("EN title", approved.enTitle());
+        assertEquals("RU description.", approved.ruDescription());
+        assertEquals("EN description.", approved.enDescription());
     }
 
     @Test
@@ -97,9 +102,11 @@ class MarkReviewedHandlerTest {
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String enHash = ContentHash.sha256Hex("EN body");
         ReferenceMap referenceMap = ReferenceMap.empty(identity, ruHash, enHash);
-        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", referenceMap);
+        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
-        approvedSnapshotWorkspace.install(identity, ESSAY_BODY, "EN body", referenceMap);
+        approvedSnapshotWorkspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
         MarkReviewedHandler handler = new MarkReviewedHandler(candidateWorkspace, approvedSnapshotWorkspace);
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
@@ -119,8 +126,8 @@ class MarkReviewedHandlerTest {
         // Candidate was prepared from a DIFFERENT body than the source note now has.
         String staleRuHash = ContentHash.sha256Hex("# An old version of My Essay");
         String enHash = ContentHash.sha256Hex("EN body");
-        candidateWorkspace.install(identity, "# An old version of My Essay", "EN body",
-                ReferenceMap.empty(identity, staleRuHash, enHash));
+        candidateWorkspace.install(identity, "# An old version of My Essay", "EN body", "RU title", "EN title",
+                "RU description.", "EN description", ReferenceMap.empty(identity, staleRuHash, enHash));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
 
@@ -140,8 +147,8 @@ class MarkReviewedHandlerTest {
         // simulates en.md having been overwritten after prepare recorded its hash.
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String staleEnHash = ContentHash.sha256Hex("original EN body prepare recorded");
-        candidateWorkspace.install(identity, ESSAY_BODY, "tampered EN body",
-                ReferenceMap.empty(identity, ruHash, staleEnHash));
+        candidateWorkspace.install(identity, ESSAY_BODY, "tampered EN body", "RU title", "EN title",
+                "RU description.", "EN description", ReferenceMap.empty(identity, ruHash, staleEnHash));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
 
@@ -218,8 +225,9 @@ class MarkReviewedHandlerTest {
     private static CandidateWorkspace exactCandidateWorkspace() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
-        workspace.install(identity, ESSAY_BODY, "EN body", ReferenceMap.empty(
-                identity, ContentHash.sha256Hex(ESSAY_BODY), ContentHash.sha256Hex("EN body")));
+        workspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
+                "RU description.", "EN description", ReferenceMap.empty(
+                        identity, ContentHash.sha256Hex(ESSAY_BODY), ContentHash.sha256Hex("EN body")));
         return workspace;
     }
 
@@ -230,6 +238,10 @@ class MarkReviewedHandlerTest {
                     PublicationIdentity identity,
                     String ruBody,
                     String enBody,
+                    String ruTitle,
+                    String enTitle,
+                    String ruDescription,
+                    String enDescription,
                     ReferenceMap referenceMap) {
                 // no-op: this test double exercises only the read side
             }
@@ -253,6 +265,10 @@ class MarkReviewedHandlerTest {
                     PublicationIdentity identity,
                     String ruBody,
                     String enBody,
+                    String ruTitle,
+                    String enTitle,
+                    String ruDescription,
+                    String enDescription,
                     ReferenceMap referenceMap) {
                 // no-op: this test double exercises only the lookup side
             }

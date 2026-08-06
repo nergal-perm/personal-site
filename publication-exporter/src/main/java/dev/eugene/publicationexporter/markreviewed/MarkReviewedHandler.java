@@ -129,7 +129,10 @@ public final class MarkReviewedHandler {
     private BridgeResponse installApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot candidate) {
         try {
             approvedSnapshotWorkspace.install(
-                    identity, candidate.ruBody(), candidate.enBody(), candidate.referenceMap());
+                    identity, candidate.ruBody(), candidate.enBody(),
+                    candidate.ruTitle(), candidate.enTitle(),
+                    candidate.ruDescription(), candidate.enDescription(),
+                    candidate.referenceMap());
         } catch (ApprovedSnapshotAlreadyExistsException raceLoser) {
             return alreadyApprovedResponse();
         } catch (UncheckedIOException failure) {
