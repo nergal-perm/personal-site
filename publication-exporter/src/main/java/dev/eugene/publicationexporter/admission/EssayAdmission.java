@@ -25,11 +25,13 @@ public final class EssayAdmission {
         String collection = requireCollection(frontmatter, diagnostics);
         String contentType = requireContentType(frontmatter, collection, diagnostics);
         String sourceId = requireSourceId(frontmatter, diagnostics);
+        String title = requireNonBlank(frontmatter, "title", diagnostics);
+        String description = requireNonBlank(frontmatter, "description", diagnostics);
 
         if (!diagnostics.isEmpty()) {
             return Result.blocked(diagnostics);
         }
-        return Result.accepted(PublicationIdentity.of(collection, contentType, publicId), sourceId);
+        return Result.accepted(PublicationIdentity.of(collection, contentType, publicId), sourceId, title, description);
     }
 
     private boolean isPublished(Frontmatter frontmatter) {
@@ -81,22 +83,37 @@ public final class EssayAdmission {
         return sourceId;
     }
 
+    private String requireNonBlank(Frontmatter frontmatter, String key, List<Diagnostic> diagnostics) {
+        String value = frontmatter.string(key).filter(candidate -> !candidate.isBlank()).orElse(null);
+        if (value == null) {
+            diagnostics.add(Diagnostic.blocking(key, "Note has no " + key + "."));
+        }
+        return value;
+    }
+
     public static final class Result {
 
         private final PublicationIdentity identity;
         private final String sourceId;
+        private final String title;
+        private final String description;
         private final List<Diagnostic> diagnostics;
 
-        private Result(PublicationIdentity identity, String sourceId, List<Diagnostic> diagnostics) {
+        private Result(PublicationIdentity identity, String sourceId, String title, String description,
+                List<Diagnostic> diagnostics) {
             this.identity = identity;
             this.sourceId = sourceId;
+            this.title = title;
+            this.description = description;
             this.diagnostics = List.copyOf(diagnostics);
         }
 
-        static Result accepted(PublicationIdentity identity, String sourceId) {
+        static Result accepted(PublicationIdentity identity, String sourceId, String title, String description) {
             return new Result(
                     Objects.requireNonNull(identity, "identity"),
                     Objects.requireNonNull(sourceId, "sourceId"),
+                    Objects.requireNonNull(title, "title"),
+                    Objects.requireNonNull(description, "description"),
                     List.of());
         }
 
@@ -104,7 +121,7 @@ public final class EssayAdmission {
             if (diagnostics.isEmpty()) {
                 throw new IllegalArgumentException("blocked() requires at least one diagnostic");
             }
-            return new Result(null, null, diagnostics);
+            return new Result(null, null, null, null, diagnostics);
         }
 
         public boolean accepted() {
@@ -121,6 +138,16 @@ public final class EssayAdmission {
             return sourceId;
         }
 
+        /** Only meaningful when {@link #accepted()} is {@code true}. */
+        public String title() {
+            return title;
+        }
+
+        /** Only meaningful when {@link #accepted()} is {@code true}. */
+        public String description() {
+            return description;
+        }
+
         public List<Diagnostic> diagnostics() {
             return diagnostics;
         }
@@ -128,7 +155,7 @@ public final class EssayAdmission {
         @Override
         public String toString() {
             return "EssayAdmission.Result[identity=" + identity + ", sourceId=" + sourceId
-                    + ", diagnostics=" + diagnostics + "]";
+                    + ", title=" + title + ", description=" + description + ", diagnostics=" + diagnostics + "]";
         }
     }
 }

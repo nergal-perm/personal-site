@@ -74,6 +74,8 @@ class InspectPublicationHandlerTest {
             publicContentType: essay
             publicId: my-essay
             id: 8f2c-my-essay
+            title: My Essay
+            description: A valid description.
             ---
             """;
 
@@ -104,6 +106,8 @@ class InspectPublicationHandlerTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """;
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
@@ -125,6 +129,8 @@ class InspectPublicationHandlerTest {
                 publicContentType: claim
                 publicId: my-claim
                 id: 8f2c-my-claim
+                title: My Essay
+                description: A valid description.
                 ---
                 """;
         VaultRelativePath path = VaultRelativePath.of("blog/my-claim.md");

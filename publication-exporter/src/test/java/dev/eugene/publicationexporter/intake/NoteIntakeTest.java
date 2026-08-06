@@ -19,6 +19,8 @@ class NoteIntakeTest {
             publicContentType: essay
             publicId: my-essay
             id: 8f2c-my-essay
+            title: My Essay
+            description: A valid description.
             ---
             # Body""";
 
@@ -59,6 +61,8 @@ class NoteIntakeTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 # Body""";
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");

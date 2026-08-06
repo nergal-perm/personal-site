@@ -40,6 +40,8 @@ class PrepareHandlerTest {
             publicContentType: essay
             publicId: my-essay
             id: 8f2c-my-essay
+            title: My Essay
+            description: A valid description.
             ---
             # My Essay
 
@@ -137,6 +139,8 @@ class PrepareHandlerTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 # My Essay""";
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");

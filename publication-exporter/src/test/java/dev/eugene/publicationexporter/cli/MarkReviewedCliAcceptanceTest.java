@@ -135,6 +135,8 @@ class MarkReviewedCliAcceptanceTest {
             publicContentType: essay
             publicId: my-essay
             id: 8f2c-my-essay
+            title: My Essay
+            description: A valid description.
             ---
             # My Essay""";
 

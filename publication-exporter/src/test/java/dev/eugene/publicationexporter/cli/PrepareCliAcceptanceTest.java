@@ -93,6 +93,8 @@ class PrepareCliAcceptanceTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 # My Essay""");
 
@@ -114,6 +116,8 @@ class PrepareCliAcceptanceTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: source-my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 # My Essay""");
         PrepareCommand prepareCommand = new PrepareCommand(

@@ -20,6 +20,8 @@ class EssayAdmissionTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 
@@ -28,6 +30,47 @@ class EssayAdmissionTest {
         assertTrue(result.accepted());
         assertEquals(PublicationIdentity.of("blog", "essay", "my-essay"), result.identity());
         assertEquals("8f2c-my-essay", result.sourceId());
+        assertEquals("My Essay", result.title());
+        assertEquals("A valid description.", result.description());
+    }
+
+    @Test
+    void missingTitleIsBlocked() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                description: A valid description.
+                ---
+                """);
+
+        EssayAdmission.Result result = admission.admit(frontmatter);
+
+        assertFalseAccepted(result);
+        assertEquals("title", result.diagnostics().get(0).field());
+    }
+
+    @Test
+    void blankDescriptionIsBlocked() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: "   "
+                ---
+                """);
+
+        EssayAdmission.Result result = admission.admit(frontmatter);
+
+        assertFalseAccepted(result);
+        assertEquals("description", result.diagnostics().get(0).field());
     }
 
     @Test
@@ -57,6 +100,8 @@ class EssayAdmissionTest {
                 publicContentType: essay
                 publicId: My_Essay
                 id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 
@@ -75,6 +120,8 @@ class EssayAdmissionTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 
@@ -95,6 +142,8 @@ class EssayAdmissionTest {
                 publicContentType: claim
                 publicId: my-essay
                 id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 
@@ -113,6 +162,8 @@ class EssayAdmissionTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 
@@ -131,6 +182,8 @@ class EssayAdmissionTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: "   "
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 
@@ -149,6 +202,8 @@ class EssayAdmissionTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: null
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 
@@ -165,6 +220,8 @@ class EssayAdmissionTest {
                 publish: true
                 publicCollection: blog
                 publicContentType: essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """);
 

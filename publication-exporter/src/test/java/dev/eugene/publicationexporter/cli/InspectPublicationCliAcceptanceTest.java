@@ -131,6 +131,8 @@ class InspectPublicationCliAcceptanceTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 # My Essay""");
 
@@ -172,6 +174,8 @@ class InspectPublicationCliAcceptanceTest {
                 publicCollection: blog
                 publicContentType: essay
                 publicId: my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 # My Essay""");
 
@@ -252,6 +256,8 @@ class InspectPublicationCliAcceptanceTest {
             publicContentType: essay
             publicId: my-essay
             id: 8f2c-my-essay
+            title: My Essay
+            description: A valid description.
             ---
             # My Essay""";
 
