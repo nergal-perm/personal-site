@@ -14,7 +14,8 @@ class CandidateSnapshotTest {
 
     @Test
     void accessorsReturnConstructedValues() {
-        CandidateSnapshot snapshot = CandidateSnapshot.of("RU body", "EN body", REFERENCE_MAP);
+        CandidateSnapshot snapshot = CandidateSnapshot.of("RU body", "EN body",
+                "RU title", "EN title", "RU description", "EN description", REFERENCE_MAP);
 
         assertEquals("RU body", snapshot.ruBody());
         assertEquals("EN body", snapshot.enBody());
@@ -24,14 +25,17 @@ class CandidateSnapshotTest {
     @Test
     void equalSnapshotsBuiltSeparatelyAreEqual() {
         assertEquals(
-                CandidateSnapshot.of("RU", "EN", REFERENCE_MAP),
-                CandidateSnapshot.of("RU", "EN", REFERENCE_MAP));
+                CandidateSnapshot.of("RU", "EN", "RU title", "EN title",
+                        "RU description", "EN description", REFERENCE_MAP),
+                CandidateSnapshot.of("RU", "EN", "RU title", "EN title",
+                        "RU description", "EN description", REFERENCE_MAP));
     }
 
     @Test
     void ruBodyIsRejectedAtConstruction() {
         NullPointerException exception = assertThrows(NullPointerException.class,
-                () -> CandidateSnapshot.of(null, "EN", REFERENCE_MAP));
+                () -> CandidateSnapshot.of(null, "EN", "RU title", "EN title",
+                        "RU description", "EN description", REFERENCE_MAP));
         assertEquals("ruBody", exception.getMessage());
     }
 }

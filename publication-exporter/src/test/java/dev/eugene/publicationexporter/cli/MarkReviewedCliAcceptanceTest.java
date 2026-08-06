@@ -95,7 +95,8 @@ class MarkReviewedCliAcceptanceTest {
     }
 
     private void prepare() throws Exception {
-        PrepareCommand prepareCommand = new PrepareCommand(TranslationWorker.createNull("# My Essay in English"));
+        PrepareCommand prepareCommand = new PrepareCommand(
+                TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));
         CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
             @Override
             public <K> K create(Class<K> cls) throws Exception {

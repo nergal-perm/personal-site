@@ -38,6 +38,7 @@ class BuildFromReviewHandlerTest {
         String ruHash = ContentHash.sha256Hex("# My Essay");
         String enHash = ContentHash.sha256Hex("# My Essay (EN)");
         approvedSnapshotWorkspace.install(IDENTITY, "# My Essay", "# My Essay (EN)",
+                "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(IDENTITY, ruHash, enHash));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
         BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
@@ -65,6 +66,7 @@ class BuildFromReviewHandlerTest {
         // not by a runtime check. There is no candidate parameter to ignore.
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         approvedSnapshotWorkspace.install(IDENTITY, "approved RU", "approved EN",
+                "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(IDENTITY,
                         ContentHash.sha256Hex("approved RU"), ContentHash.sha256Hex("approved EN")));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
@@ -92,6 +94,7 @@ class BuildFromReviewHandlerTest {
     void approvedSnapshotReleaseIoFailureReturnsBlockedResult() {
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         approvedSnapshotWorkspace.install(IDENTITY, "RU", "EN",
+                "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN")));
         BuildFromReviewHandler handler = new BuildFromReviewHandler(
                 approvedSnapshotWorkspace,
@@ -108,6 +111,7 @@ class BuildFromReviewHandlerTest {
     void aSecondReleaseAttemptForTheSameIdentityIsBlocked() {
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         approvedSnapshotWorkspace.install(IDENTITY, "RU", "EN",
+                "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN")));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
         BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
@@ -126,6 +130,10 @@ class BuildFromReviewHandlerTest {
             public void install(PublicationIdentity identity,
                                 String ruBody,
                                 String enBody,
+                                String ruTitle,
+                                String enTitle,
+                                String ruDescription,
+                                String enDescription,
                                 dev.eugene.publicationexporter.reference.ReferenceMap referenceMap) {
                 // no-op: this test double exercises only the read side
             }

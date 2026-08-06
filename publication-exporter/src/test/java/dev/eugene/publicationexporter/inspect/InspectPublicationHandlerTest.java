@@ -167,6 +167,7 @@ class InspectPublicationHandlerTest {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
         candidateWorkspace.install(identity, "RU body", "EN body",
+                "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(identity, "ru-hash", "en-hash"));
         InspectPublicationHandler handlerWithCandidate = new InspectPublicationHandler(candidateWorkspace);
 
@@ -230,6 +231,10 @@ class InspectPublicationHandlerTest {
                     PublicationIdentity identity,
                     String ruBody,
                     String enBody,
+                    String ruTitle,
+                    String enTitle,
+                    String ruDescription,
+                    String enDescription,
                     ReferenceMap referenceMap) {
                 // no-op: this test double exercises only the lookup side
             }
