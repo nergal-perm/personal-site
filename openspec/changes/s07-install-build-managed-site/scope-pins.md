@@ -127,9 +127,35 @@ the site-install boundary specifically.
 
 ## Not touched by this change
 
-`workflow-bridge` (BRG-01 through BRG-07) is unaffected — `install-and-build`/`build-from-review`'s site
-step is not in `bridge-contract/schema-v2.json`'s command enum and produces no `BridgeResponse` the plugin
-consumes; confirmed, not merely assumed, by the technical collaborative-design pass (see `design.md`).
-`translation-preparation`, `review-and-approval`, and `semantic-references` are fully specified in the
-baseline and unaffected by this slice: S07 never touches candidates, jobs, approval, or reference-map
-validation. `legacy-transition` remains entirely unimplemented and out of scope until S21+.
+`install-to-site` itself is not in `bridge-contract/schema-v2.json`'s command enum and produces no
+`BridgeResponse` the plugin consumes; confirmed, not merely assumed, by the technical collaborative-design
+pass (see `design.md`).
+
+**Correction (found by the final whole-branch re-review):** the paragraph below originally claimed the whole
+of `workflow-bridge`, `translation-preparation`, `review-and-approval`, and `semantic-references` were
+untouched. That was true of the initial design but became false once the metadata-integrity fix (closing a
+real review-visibility and tamper-integrity gap the first final review found) landed: `ReferenceMap`
+(reference-map validation) now hashes title/description alongside body; `MarkReviewedHandler`
+(review-and-approval) now blocks approval on title/description staleness, not only body staleness; and
+`ReviewPlan` (part of `BridgeResponse`, returned by the already-existing `inspect-publication` command) grew
+four new flat fields — `ruTitle`, `enTitle`, `ruDescription`, `enDescription` — so a reviewer can in principle
+see the metadata alongside the two body-file targets. This is schema-safe (`reviewPlan`'s definition in
+schema-v2.json has `"additionalProperties": true` and the four fields are not required), so no plugin or
+schema change was strictly necessary for `inspect-publication` to keep working — but it does mean
+`workflow-bridge` and `review-and-approval` were touched, not unaffected as originally stated.
+
+**Known gap, deliberately deferred:** the Obsidian plugin (`obsidian-plugin/main.js`) never reads these four
+new `ReviewPlan` fields — `validateReviewPlan(...)` only checks `baselineState` and `targets`, and
+`launchReviewPlan(...)` only opens the two body files for review. A human reviewer therefore still never sees
+title/description before approving, even though the backend now blocks approval if either has changed since
+preparation. The operator's original instruction was specifically about the plugin gating "Prepare to
+publication" on title/description's existence in source frontmatter — already implemented via
+`EssayAdmission`'s admission-time check, which the plugin already surfaces generically through its existing
+diagnostics mechanism. Displaying title/description during *review* (a stronger UX guarantee this slice's own
+design added on top of that) is left to a follow-up slice: the safety-relevant property (a stale or tampered
+title/description blocks approval regardless of whether a human visually reviewed it) is already fully
+backend-enforced, so this gap is a UX completeness item, not a security hole.
+
+`translation-preparation` and `semantic-references` remain unaffected beyond the above: S07 never touches jobs
+or introduces new reference-map *concepts*, only widens the existing hash set. `legacy-transition` remains
+entirely unimplemented and out of scope until S21+.
