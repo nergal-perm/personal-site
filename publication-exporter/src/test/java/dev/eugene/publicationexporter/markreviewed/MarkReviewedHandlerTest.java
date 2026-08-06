@@ -198,6 +198,19 @@ class MarkReviewedHandlerTest {
     }
 
     @Test
+    void candidateRussianBodyTamperedWithSincePreparationIsStale() {
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.");
+
+        BridgeResponse response = markReviewedCandidate(
+                "Tampered Russian body", "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.", referenceMap);
+
+        assertStale(response, "Candidate Russian body has changed since it was prepared.");
+    }
+
+    @Test
     void candidateRussianTitleTamperedWithSincePreparationIsStale() {
         ReferenceMap referenceMap = matchingReferenceMap(
                 ESSAY_BODY, "EN body", "My Essay", "EN title",
