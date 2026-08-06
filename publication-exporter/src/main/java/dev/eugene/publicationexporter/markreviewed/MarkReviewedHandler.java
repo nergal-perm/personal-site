@@ -44,23 +44,15 @@ public final class MarkReviewedHandler {
 
     private BridgeResponse markReviewedAdmittedEssay(PublicationIdentity identity, String sourceBody) {
         Optional<CandidateSnapshot> candidate;
-        try {
-            candidate = candidateWorkspace.read(identity);
-        } catch (UncheckedIOException failure) {
-            return candidateLookupFailure(ioFailureMessage("Candidate lookup failed", failure));
-        } catch (CandidateWorkspaceConfinementException failure) {
-            return candidateLookupFailure("Candidate lookup failed: " + failure.getMessage());
-        }
-        if (candidate.isEmpty()) {
-            return noCandidateResponse();
-        }
         Optional<CandidatePaths> approvedSnapshot;
         try {
-            approvedSnapshot = approvedSnapshotWorkspace.find(identity);
-        } catch (UncheckedIOException failure) {
-            return candidateLookupFailure(ioFailureMessage("Approved snapshot lookup failed", failure));
-        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
-            return candidateLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+            candidate = readCandidate(identity);
+            if (candidate.isEmpty()) {
+                return noCandidateResponse();
+            }
+            approvedSnapshot = findApprovedSnapshot(identity);
+        } catch (LookupFailure failure) {
+            return candidateLookupFailure(failure.getMessage());
         }
         if (approvedSnapshot.isPresent()) {
             return alreadyApprovedResponse();
@@ -70,6 +62,32 @@ public final class MarkReviewedHandler {
             return BridgeResponse.stale(COMMAND, staleness);
         }
         return installApprovedSnapshot(identity, candidate.get());
+    }
+
+    private Optional<CandidateSnapshot> readCandidate(PublicationIdentity identity) {
+        try {
+            return candidateWorkspace.read(identity);
+        } catch (UncheckedIOException failure) {
+            throw new LookupFailure(ioFailureMessage("Candidate lookup failed", failure));
+        } catch (CandidateWorkspaceConfinementException failure) {
+            throw new LookupFailure("Candidate lookup failed: " + failure.getMessage());
+        }
+    }
+
+    private Optional<CandidatePaths> findApprovedSnapshot(PublicationIdentity identity) {
+        try {
+            return approvedSnapshotWorkspace.find(identity);
+        } catch (UncheckedIOException failure) {
+            throw new LookupFailure(ioFailureMessage("Approved snapshot lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            throw new LookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        }
+    }
+
+    private static final class LookupFailure extends RuntimeException {
+        LookupFailure(String message) {
+            super(message);
+        }
     }
 
     private List<Diagnostic> stalenessDiagnostics(String sourceBody, CandidateSnapshot candidate) {

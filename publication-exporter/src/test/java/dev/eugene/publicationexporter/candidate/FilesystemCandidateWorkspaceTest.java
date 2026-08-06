@@ -182,6 +182,19 @@ class FilesystemCandidateWorkspaceTest {
     }
 
     @Test
+    void readRejectsSymlinkedReferenceMapFileEscapingReviewRoot() throws Exception {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        Path referencesPath = reviewRoot.resolve("blog/my-essay/candidate/references.json");
+        Path outsideReferencesPath = outsideRoot.resolve("outside-references.json");
+        Files.writeString(outsideReferencesPath, "{}");
+        Files.delete(referencesPath);
+        Files.createSymbolicLink(referencesPath, outsideReferencesPath);
+
+        assertThrows(CandidateWorkspaceConfinementException.class, () -> workspace.read(IDENTITY));
+    }
+
+    @Test
     void readIsAbsentForADifferentIdentityAfterInstall() {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU", "EN", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
