@@ -259,6 +259,11 @@ class MarkReviewedHandlerTest {
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
                 throw failure;
             }
+
+            @Override
+            public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
+                throw failure;
+            }
         };
     }
 

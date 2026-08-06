@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.approved;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 
@@ -55,6 +56,26 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             return Optional.of(CandidatePaths.of(ruPath, enPath));
         }
         return Optional.empty();
+    }
+
+    @Override
+    public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
+        Objects.requireNonNull(identity, "identity");
+        Path approvedDirectory = approvedDirectory(identity);
+        Path ruPath = approvedDirectory.resolve("ru.md");
+        Path enPath = approvedDirectory.resolve("en.md");
+        Path referencesPath = approvedDirectory.resolve("references.json");
+        if (!Files.exists(ruPath) || !Files.exists(enPath) || !Files.exists(referencesPath)) {
+            return Optional.empty();
+        }
+        try {
+            String ruBody = Files.readString(ruPath, StandardCharsets.UTF_8);
+            String enBody = Files.readString(enPath, StandardCharsets.UTF_8);
+            ReferenceMap referenceMap = ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
+            return Optional.of(CandidateSnapshot.of(ruBody, enBody, referenceMap));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
     }
 
     private void publishStagingApproved(Path staging, Path destination) throws IOException {

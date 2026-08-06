@@ -59,6 +59,27 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void readIsAbsentBeforeInstall() {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        assertEquals(Optional.empty(), workspace.read(IDENTITY));
+    }
+
+    @Test
+    void readReturnsTheInstalledBodiesAndReferenceMap() {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+
+        Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read = workspace.read(IDENTITY);
+
+        assertTrue(read.isPresent());
+        assertEquals("RU body", read.get().ruBody());
+        assertEquals("EN body", read.get().enBody());
+        assertEquals(referenceMap, read.get().referenceMap());
+    }
+
+    @Test
     void aSecondInstallForTheSameIdentityThrowsAndLeavesTheFirstSnapshotIntact() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");

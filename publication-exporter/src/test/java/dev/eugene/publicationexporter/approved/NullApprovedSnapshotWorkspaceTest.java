@@ -65,4 +65,33 @@ class NullApprovedSnapshotWorkspaceTest {
 
         assertEquals(Optional.empty(), workspace.find(IDENTITY));
     }
+
+    @Test
+    void readIsAbsentBeforeAnyInstall() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+
+        assertEquals(Optional.empty(), workspace.read(IDENTITY));
+    }
+
+    @Test
+    void readReturnsTheInstalledBodiesAndReferenceMap() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+
+        Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read = workspace.read(IDENTITY);
+
+        assertTrue(read.isPresent());
+        assertEquals("RU body", read.get().ruBody());
+        assertEquals("EN body", read.get().enBody());
+        assertEquals(referenceMap, read.get().referenceMap());
+    }
+
+    @Test
+    void readIsAbsentForADifferentIdentity() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+
+        assertEquals(Optional.empty(), workspace.read(DIFFERENT_IDENTITY));
+    }
 }
