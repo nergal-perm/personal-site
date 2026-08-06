@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -35,8 +36,12 @@ class CheckContentGateContractTest {
 
         ProcessResult result = runGate(siteRoot);
 
-        assertEquals(0, result.exitCode(), () -> "gate rejected valid output: " + result.output());
-        assertTrue(result.output().contains("Content validation passed successfully"));
+        assertEquals(0, result.exitCode(),
+                () -> "check-content.mjs should accept valid output but exited with " + result.exitCode()
+                        + ".\nOutput (truncated):\n" + truncated(result.output()));
+        assertTrue(result.output().contains("Content validation passed successfully"),
+                () -> "gate output should include successful validation marker.\nOutput (truncated):\n"
+                        + truncated(result.output()));
     }
 
     @Test
@@ -48,8 +53,12 @@ class CheckContentGateContractTest {
 
         ProcessResult result = runGate(siteRoot);
 
-        assertEquals(1, result.exitCode());
-        assertTrue(result.output().toLowerCase().contains("release-provenance-mismatch"));
+        assertEquals(1, result.exitCode(),
+                () -> "check-content.mjs should reject modified output but exited with " + result.exitCode()
+                        + ".\nOutput (truncated):\n" + truncated(result.output()));
+        assertTrue(result.output().toLowerCase().contains("release-provenance-mismatch"),
+                () -> "gate output should include release-provenance-mismatch.\nOutput (truncated):\n"
+                        + truncated(result.output()));
     }
 
     private static CandidateSnapshot essaySnapshot() {
@@ -101,12 +110,38 @@ class CheckContentGateContractTest {
         builder.environment().put("ASTRO_PAGES_DIR", siteRoot.resolve("src/data/pages").toString());
         builder.environment().put("ASTRO_RELEASE_MANIFEST", siteRoot.resolve(".astro-export/release-provenance.json").toString());
         Process process = builder.start();
-        String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-        if (!process.waitFor(30, TimeUnit.SECONDS)) {
-            process.destroyForcibly();
-            fail("check-content.mjs did not complete within 30s");
+        StringBuilder output = new StringBuilder();
+        CompletableFuture<Void> outputDrainer = CompletableFuture.runAsync(() -> drainOutput(process, output));
+        try {
+            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+                process.destroyForcibly();
+                assertTrue(process.waitFor(2, TimeUnit.SECONDS),
+                        () -> "check-content.mjs did not complete within 30s and did not terminate after destroy\nOutput (truncated):\n"
+                                + truncated(output.toString()));
+            }
+            return new ProcessResult(process.exitValue(), output.toString());
+        } finally {
+            outputDrainer.join();
         }
-        return new ProcessResult(process.exitValue(), output);
+    }
+
+    private static void drainOutput(Process process, StringBuilder output) {
+        try (var reader = process.getInputStream()) {
+            byte[] buffer = new byte[1024];
+            int read;
+            while ((read = reader.read(buffer)) != -1) {
+                output.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
+            }
+        } catch (IOException ignored) {
+            // Intentionally ignore: process output is diagnostic only for this helper.
+        }
+    }
+
+    private static String truncated(String output) {
+        int maxLength = 4_096;
+        return output.length() <= maxLength
+                ? output
+                : output.substring(0, maxLength) + "... (truncated)";
     }
 
     private record ProcessResult(int exitCode, String output) {}
