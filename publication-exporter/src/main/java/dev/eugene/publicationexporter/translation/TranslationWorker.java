@@ -2,10 +2,10 @@ package dev.eugene.publicationexporter.translation;
 
 public interface TranslationWorker {
 
-    TranslationResult translate(String ruBody);
+    TranslationResult translate(String ruBody, String ruTitle, String ruDescription);
 
-    static TranslationWorker createNull(String enBody) {
-        return new NullTranslationWorker(TranslationResult.success(enBody));
+    static TranslationWorker createNull(String enBody, String enTitle, String enDescription) {
+        return new NullTranslationWorker(TranslationResult.success(enBody, enTitle, enDescription));
     }
 
     static TranslationWorker createNullFailing(String reason) {

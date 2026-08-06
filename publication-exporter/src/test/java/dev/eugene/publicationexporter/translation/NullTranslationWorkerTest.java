@@ -9,38 +9,47 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class NullTranslationWorkerTest {
 
     @Test
-    void configuredSuccessIsReturnedForAnyRequestedBody() {
-        NullTranslationWorker worker = new NullTranslationWorker(TranslationResult.success("EN body"));
+    void configuredSuccessIsReturnedForAnyRequestedTranslation() {
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationResult.success("EN body", "EN title", "EN description."));
 
-        TranslationResult result = worker.translate("RU body");
+        TranslationResult result = worker.translate("RU body", "RU title", "RU description.");
 
         assertTrue(result.succeeded());
         assertEquals("EN body", result.enBody());
+        assertEquals("EN title", result.enTitle());
+        assertEquals("EN description.", result.enDescription());
     }
 
     @Test
-    void configuredFailureIsReturnedForAnyRequestedBody() {
+    void configuredFailureIsReturnedForAnyRequestedTranslation() {
         NullTranslationWorker worker = new NullTranslationWorker(TranslationResult.failure("boom"));
 
-        TranslationResult result = worker.translate("RU body");
+        TranslationResult result = worker.translate("RU body", "RU title", "RU description.");
 
         assertFalse(result.succeeded());
         assertEquals("boom", result.failureReason());
     }
 
     @Test
-    void everyRequestedBodyIsTracked() {
-        NullTranslationWorker worker = new NullTranslationWorker(TranslationResult.success("EN"));
+    void everyRequestedTranslationIsTracked() {
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationResult.success("EN", "EN title", "EN description."));
 
-        worker.translate("first");
-        worker.translate("second");
+        worker.translate("first body", "first title", "first description");
+        worker.translate("second body", "second title", "second description");
 
-        assertEquals(java.util.List.of("first", "second"), worker.requestedBodies());
+        assertEquals(java.util.List.of(
+                new NullTranslationWorker.RequestedTranslation("first body", "first title", "first description"),
+                new NullTranslationWorker.RequestedTranslation("second body", "second title", "second description")),
+                worker.requested());
     }
 
     @Test
     void interfaceFactoriesProduceTheSameBehaviour() {
-        assertTrue(TranslationWorker.createNull("EN").translate("RU").succeeded());
-        assertFalse(TranslationWorker.createNullFailing("boom").translate("RU").succeeded());
+        assertTrue(TranslationWorker.createNull("EN", "EN title", "EN description")
+                .translate("RU", "RU title", "RU description").succeeded());
+        assertFalse(TranslationWorker.createNullFailing("boom")
+                .translate("RU", "RU title", "RU description").succeeded());
     }
 }

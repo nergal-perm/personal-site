@@ -10,11 +10,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class TranslationResultTest {
 
     @Test
-    void successExposesEnBody() {
-        TranslationResult result = TranslationResult.success("Hello");
+    void successExposesEnBodyTitleAndDescription() {
+        TranslationResult result = TranslationResult.success("Hello", "Hi there", "A description.");
 
         assertTrue(result.succeeded());
         assertEquals("Hello", result.enBody());
+        assertEquals("Hi there", result.enTitle());
+        assertEquals("A description.", result.enDescription());
     }
 
     @Test
@@ -26,8 +28,13 @@ class TranslationResultTest {
     }
 
     @Test
-    void successRejectsNullBody() {
-        assertThrows(NullPointerException.class, () -> TranslationResult.success(null));
+    void successRejectsNullTitle() {
+        assertThrows(NullPointerException.class, () -> TranslationResult.success("Hello", null, "d"));
+    }
+
+    @Test
+    void successRejectsNullDescription() {
+        assertThrows(NullPointerException.class, () -> TranslationResult.success("Hello", "t", null));
     }
 
     @Test
