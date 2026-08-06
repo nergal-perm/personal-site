@@ -53,5 +53,28 @@ public final class NullReleaseOutputStore implements ReleaseOutputStore {
         public ReleaseProvenance provenance() {
             return provenance;
         }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof InstalledRelease that)) {
+                return false;
+            }
+            return ruBody.equals(that.ruBody)
+                    && enBody.equals(that.enBody)
+                    && provenance.equals(that.provenance);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(ruBody, enBody, provenance);
+        }
+
+        @Override
+        public String toString() {
+            return "InstalledRelease[ruBody=" + ruBody + ", enBody=" + enBody + ", provenance=" + provenance + "]";
+        }
     }
 }

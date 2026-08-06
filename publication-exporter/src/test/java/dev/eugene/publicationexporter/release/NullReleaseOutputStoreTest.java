@@ -4,6 +4,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,7 +21,11 @@ class NullReleaseOutputStoreTest {
         store.install(IDENTITY, "RU body", "EN body", PROVENANCE);
 
         assertTrue(store.installed().containsKey(IDENTITY));
-        assertEquals("RU body", store.installed().get(IDENTITY).ruBody());
+        assertEquals(1, store.installed().size());
+        NullReleaseOutputStore.InstalledRelease installed = store.installed().get(IDENTITY);
+        assertEquals("RU body", installed.ruBody());
+        assertEquals("EN body", installed.enBody());
+        assertSame(PROVENANCE, installed.provenance());
     }
 
     @Test
@@ -35,6 +40,7 @@ class NullReleaseOutputStoreTest {
     @Test
     void interfaceFactoryReturnsAFreshEmptyStore() {
         ReleaseOutputStore store = ReleaseOutputStore.createNull();
+        assertTrue(((NullReleaseOutputStore) store).installed().isEmpty());
 
         store.install(IDENTITY, "RU body", "EN body", PROVENANCE);
         // no exception: a fresh nulled store starts empty, mirroring ApprovedSnapshotWorkspace.createNull()
