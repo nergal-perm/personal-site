@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReleaseResultTest {
@@ -49,5 +50,21 @@ class ReleaseResultTest {
         assertTrue(json.get("identity").isNull());
         assertTrue(json.get("provenance").isNull());
         assertEquals("No approved snapshot exists to release.", json.get("message").asText());
+    }
+
+    @Test
+    void releasedRequiresIdentity() {
+        NullPointerException e = assertThrows(NullPointerException.class,
+                () -> ReleaseResult.released(null, PROVENANCE));
+
+        assertEquals("identity", e.getMessage());
+    }
+
+    @Test
+    void blockedRequiresMessage() {
+        NullPointerException e = assertThrows(NullPointerException.class,
+                () -> ReleaseResult.blocked(null));
+
+        assertEquals("message", e.getMessage());
     }
 }
