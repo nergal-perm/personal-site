@@ -175,7 +175,7 @@ public final class SiteReleaseManifest {
 
     private static List<Path> listTreeSortedByRelativePath(Path root) {
         if (Files.isSymbolicLink(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
-            throw new IllegalStateException("managed tree is not a directory: " + root);
+            throw UnsafeManagedSiteEntryException.treeIsNotDirectory(root);
         }
         try (Stream<Path> walk = Files.walk(root)) {
             List<Path> entries = walk.filter(path -> !path.equals(root)).toList();
@@ -189,7 +189,7 @@ public final class SiteReleaseManifest {
 
     private static EntryKind entryKind(Path entry, String relative, String context) {
         if (Files.isSymbolicLink(entry)) {
-            throw new IllegalStateException("managed " + context + " contains a symlink: " + relative);
+            throw UnsafeManagedSiteEntryException.symbolicLink(context, relative);
         }
         if (Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)) {
             return EntryKind.DIRECTORY;
@@ -197,7 +197,7 @@ public final class SiteReleaseManifest {
         if (Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS)) {
             return EntryKind.FILE;
         }
-        throw new IllegalStateException("managed " + context + " contains an unsupported entry: " + relative);
+        throw UnsafeManagedSiteEntryException.unsupportedEntry(context, relative);
     }
 
     static byte[] readAllBytes(Path file, String relative, String context) {
@@ -206,7 +206,7 @@ public final class SiteReleaseManifest {
             return input.readAllBytes();
         } catch (IOException error) {
             if (Files.isSymbolicLink(file)) {
-                throw new IllegalStateException("managed " + context + " contains a symlink: " + relative);
+                throw UnsafeManagedSiteEntryException.symbolicLink(context, relative);
             }
             throw new UncheckedIOException(error);
         }

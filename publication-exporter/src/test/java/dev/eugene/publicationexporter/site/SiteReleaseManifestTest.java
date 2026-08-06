@@ -121,7 +121,7 @@ class SiteReleaseManifestTest {
         Files.writeString(target, "target", StandardCharsets.UTF_8);
         Files.createSymbolicLink(payloadRoot.resolve("link-to-file"), target);
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        UnsafeManagedSiteEntryException error = assertThrows(UnsafeManagedSiteEntryException.class,
                 () -> SiteReleaseManifest.computeOver(root, List.of("payload")));
 
         assertTrue(error.getMessage().contains("managed tree contains a symlink: link-to-file"));
@@ -134,7 +134,7 @@ class SiteReleaseManifestTest {
         Path link = root.resolve("link-to-file");
         Files.createSymbolicLink(link, target);
 
-        IllegalStateException error = assertThrows(IllegalStateException.class,
+        UnsafeManagedSiteEntryException error = assertThrows(UnsafeManagedSiteEntryException.class,
                 () -> SiteReleaseManifest.readAllBytes(link, "link-to-file", "tree"));
 
         assertEquals("managed tree contains a symlink: link-to-file", error.getMessage());

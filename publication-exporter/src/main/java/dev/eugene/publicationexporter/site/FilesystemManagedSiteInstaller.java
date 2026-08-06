@@ -88,7 +88,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
 
     private void installManagedGeneration(
             Path staging, PublicationIdentity identity, Path ruDestination, Path enDestination) throws IOException {
-        Path installationLock = acquireInstallationLock(ruDestination, identity);
+        Path installationLock = acquireInstallationLock(identity);
         Path installedRuDestination = null;
         Path installedEnDestination = null;
         Throwable installationFailure = null;
@@ -108,8 +108,8 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
     }
 
-    private Path acquireInstallationLock(Path ruDestination, PublicationIdentity identity) throws IOException {
-        Path resolvedLock = createAndResolveParentDirectories(installationLock(ruDestination));
+    private Path acquireInstallationLock(PublicationIdentity identity) throws IOException {
+        Path resolvedLock = createAndResolveParentDirectories(installationLock());
         try {
             return Files.createFile(resolvedLock);
         } catch (FileAlreadyExistsException collision) {
@@ -123,19 +123,22 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
             Files.deleteIfExists(resolvedParent.resolve(installationLock.getFileName()));
         } catch (IOException | RuntimeException cleanupFailure) {
             if (installationFailure == null) {
-                throw cleanupFailure;
+                warnAboutCommittedInstallationLock(installationLock, cleanupFailure);
+                return;
             }
             installationFailure.addSuppressed(cleanupFailure);
         }
     }
 
-    private Path installationLock(Path ruDestination) {
-        Path contentRoot = stagedInstall.canonicalRoot().resolve("src/content");
-        Path relativeRuDestination = contentRoot.relativize(ruDestination);
-        Path lockDestination = stagedInstall.canonicalRoot()
-                .resolve(".astro-export/install-locks")
-                .resolve(relativeRuDestination);
-        return lockDestination.resolveSibling("." + lockDestination.getFileName() + ".installing").normalize();
+    private static void warnAboutCommittedInstallationLock(Path installationLock, Throwable cleanupFailure) {
+        System.err.println("WARNING: site installation committed, but the site-wide lock could not be removed at "
+                + installationLock + ". Remove this stale lock before the next install. Cause: " + cleanupFailure);
+    }
+
+    private Path installationLock() {
+        return stagedInstall.canonicalRoot()
+                .resolve(".astro-export/install-locks/.site.installing")
+                .normalize();
     }
 
     private Path moveNewLocaleFile(Path source, Path destination, PublicationIdentity identity)
@@ -277,18 +280,28 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     private static String frontmatter(PublicationIdentity identity, CandidateSnapshot approved, String locale) {
         boolean isRu = "ru".equals(locale);
         StringBuilder yaml = new StringBuilder("---\n");
-        yaml.append("id: ").append(identity.publicId()).append('\n');
-        yaml.append("title: ").append(isRu ? approved.ruTitle() : approved.enTitle()).append('\n');
-        yaml.append("description: ").append(isRu ? approved.ruDescription() : approved.enDescription()).append('\n');
+        appendYamlString(yaml, "id", identity.publicId());
+        appendYamlString(yaml, "title", isRu ? approved.ruTitle() : approved.enTitle());
+        appendYamlString(yaml, "description", isRu ? approved.ruDescription() : approved.enDescription());
         yaml.append("publish: true\n");
-        yaml.append("contentType: ").append(identity.publicContentType()).append('\n');
-        yaml.append("language: ").append(locale).append('\n');
-        yaml.append("sourceLanguage: ru\n");
-        yaml.append("sourceHash: ").append(approved.referenceMap().ruHash()).append('\n');
-        yaml.append("translationStatus: ").append(isRu ? "source" : "generated").append('\n');
+        appendYamlString(yaml, "contentType", identity.publicContentType());
+        appendYamlString(yaml, "language", locale);
+        appendYamlString(yaml, "sourceLanguage", "ru");
+        appendYamlString(yaml, "sourceHash", approved.referenceMap().ruHash());
+        appendYamlString(yaml, "translationStatus", isRu ? "source" : "generated");
         if (!isRu) {
-            yaml.append("translationOf: ").append(identity.publicId()).append('\n');
+            appendYamlString(yaml, "translationOf", identity.publicId());
         }
         return yaml.append("---\n").toString();
+    }
+
+    private static void appendYamlString(StringBuilder yaml, String key, String value) {
+        yaml.append(key).append(": ").append(doubleQuotedYamlScalar(value)).append('\n');
+    }
+
+    private static String doubleQuotedYamlScalar(String value) {
+        StringBuilder scalar = new StringBuilder();
+        SiteReleaseManifest.appendJsonString(scalar, value);
+        return scalar.toString();
     }
 }

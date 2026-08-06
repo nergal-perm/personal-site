@@ -27,6 +27,7 @@ class CheckContentGateContractTest {
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
     private static final Path SITE_PROJECT_ROOT = Path.of("").toAbsolutePath()
             .resolveSibling("site"); // publication-exporter/ -> ../site
+    private static final int OUTPUT_TAIL_CAPACITY_BYTES = 64 * 1024;
     private static final long GATE_TIMEOUT_SECONDS = 30;
     private static final long TERMINATION_TIMEOUT_SECONDS = 2;
     private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 2;
@@ -115,7 +116,7 @@ class CheckContentGateContractTest {
         builder.environment().put("ASTRO_PAGES_DIR", siteRoot.resolve("src/data/pages").toString());
         builder.environment().put("ASTRO_RELEASE_MANIFEST", siteRoot.resolve(".astro-export/release-provenance.json").toString());
         Process process = builder.start();
-        StringBuilder output = new StringBuilder();
+        BoundedOutputTail output = new BoundedOutputTail(OUTPUT_TAIL_CAPACITY_BYTES);
         CompletableFuture<Void> outputDrainer = CompletableFuture.runAsync(() -> drainOutput(process, output));
 
         boolean completedInTime;
@@ -135,15 +136,16 @@ class CheckContentGateContractTest {
         }
 
         String drainFailure = awaitOutputDrainer(process, outputDrainer);
+        String outputTail = output.snapshot();
         if (!completedInTime) {
             fail("check-content.mjs did not complete within " + GATE_TIMEOUT_SECONDS + "s"
                     + (terminatedAfterDestroy ? "" : " and did not terminate after destroy")
-                    + ".\nOutput (truncated):\n" + truncated(output.toString()));
+                    + ".\nOutput (truncated):\n" + truncated(outputTail));
         }
         if (drainFailure != null) {
-            fail(drainFailure + "\nOutput (truncated):\n" + truncated(output.toString()));
+            fail(drainFailure + "\nOutput (truncated):\n" + truncated(outputTail));
         }
-        return new ProcessResult(process.exitValue(), output.toString());
+        return new ProcessResult(process.exitValue(), outputTail);
     }
 
     private static String awaitOutputDrainer(Process process, CompletableFuture<Void> outputDrainer)
@@ -173,12 +175,12 @@ class CheckContentGateContractTest {
         }
     }
 
-    private static void drainOutput(Process process, StringBuilder output) {
+    private static void drainOutput(Process process, BoundedOutputTail output) {
         try (var reader = process.getInputStream()) {
             byte[] buffer = new byte[1024];
             int read;
             while ((read = reader.read(buffer)) != -1) {
-                output.append(new String(buffer, 0, read, StandardCharsets.UTF_8));
+                output.append(buffer, read);
             }
         } catch (IOException ignored) {
             // Intentionally ignore: process output is diagnostic only for this helper.
@@ -193,4 +195,32 @@ class CheckContentGateContractTest {
     }
 
     private record ProcessResult(int exitCode, String output) {}
+
+    private static final class BoundedOutputTail {
+        private final byte[] bytes;
+        private int size;
+
+        private BoundedOutputTail(int capacity) {
+            this.bytes = new byte[capacity];
+        }
+
+        private synchronized void append(byte[] source, int length) {
+            if (length >= bytes.length) {
+                System.arraycopy(source, length - bytes.length, bytes, 0, bytes.length);
+                size = bytes.length;
+                return;
+            }
+            int overflow = Math.max(0, size + length - bytes.length);
+            if (overflow > 0) {
+                System.arraycopy(bytes, overflow, bytes, 0, size - overflow);
+                size -= overflow;
+            }
+            System.arraycopy(source, 0, bytes, size, length);
+            size += length;
+        }
+
+        private synchronized String snapshot() {
+            return new String(bytes, 0, size, StandardCharsets.UTF_8);
+        }
+    }
 }

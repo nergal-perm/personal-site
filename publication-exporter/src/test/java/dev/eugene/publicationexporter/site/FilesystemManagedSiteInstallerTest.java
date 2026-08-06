@@ -24,15 +24,24 @@ import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FilesystemManagedSiteInstallerTest {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
+    private static final PublicationIdentity OTHER_IDENTITY =
+            PublicationIdentity.of("blog", "essay", "another-essay");
     private static final CandidateSnapshot SNAPSHOT = CandidateSnapshot.of(
             "# RU body", "# EN body", "RU title", "EN title", "RU description.", "EN description.",
             ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+    private static final CandidateSnapshot OTHER_SNAPSHOT = CandidateSnapshot.of(
+            "# Other RU body", "# Other EN body", "Other RU title", "Other EN title",
+            "Other RU description.", "Other EN description.",
+            ReferenceMap.empty(OTHER_IDENTITY, "other-ru-hash", "other-en-hash",
+                    "other-ru-title-hash", "other-en-title-hash",
+                    "other-ru-description-hash", "other-en-description-hash"));
 
     @TempDir
     Path siteRoot;
@@ -48,28 +57,28 @@ class FilesystemManagedSiteInstallerTest {
         assertTrue(Files.exists(ruFile));
         assertTrue(Files.exists(enFile));
         assertEquals("---\n"
-                + "id: my-essay\n"
-                + "title: RU title\n"
-                + "description: RU description.\n"
+                + "id: \"my-essay\"\n"
+                + "title: \"RU title\"\n"
+                + "description: \"RU description.\"\n"
                 + "publish: true\n"
-                + "contentType: essay\n"
-                + "language: ru\n"
-                + "sourceLanguage: ru\n"
-                + "sourceHash: ru-hash\n"
-                + "translationStatus: source\n"
+                + "contentType: \"essay\"\n"
+                + "language: \"ru\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"ru-hash\"\n"
+                + "translationStatus: \"source\"\n"
                 + "---\n"
                 + "# RU body", Files.readString(ruFile, StandardCharsets.UTF_8));
         assertEquals("---\n"
-                + "id: my-essay\n"
-                + "title: EN title\n"
-                + "description: EN description.\n"
+                + "id: \"my-essay\"\n"
+                + "title: \"EN title\"\n"
+                + "description: \"EN description.\"\n"
                 + "publish: true\n"
-                + "contentType: essay\n"
-                + "language: en\n"
-                + "sourceLanguage: ru\n"
-                + "sourceHash: ru-hash\n"
-                + "translationStatus: generated\n"
-                + "translationOf: my-essay\n"
+                + "contentType: \"essay\"\n"
+                + "language: \"en\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"ru-hash\"\n"
+                + "translationStatus: \"generated\"\n"
+                + "translationOf: \"my-essay\"\n"
                 + "---\n"
                 + "# EN body", Files.readString(enFile, StandardCharsets.UTF_8));
         assertTrue(Files.exists(siteRoot.resolve(".astro-export/release-provenance.json")));
@@ -273,12 +282,10 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void failingCommitKeepsTheIdentityLockThroughManifestWorkAndRejectsARacingInstaller() throws Exception {
+    void failingCommitKeepsTheSiteLockThroughManifestWorkAndRejectsADifferentIdentity() throws Exception {
         Path ruDirectory = siteRoot.resolve("src/content/blog/ru");
         Path ruFile = ruDirectory.resolve("my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
-        Path installationLock = siteRoot.resolve(
-                ".astro-export/install-locks/blog/ru/.my-essay.md.installing");
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
         Files.createDirectories(ruDirectory);
         Files.createDirectories(manifest);
@@ -296,16 +303,57 @@ class FilesystemManagedSiteInstallerTest {
             });
 
             awaitPathExists(ruFile);
-            assertTrue(Files.exists(installationLock));
             assertThrows(SiteAlreadyInstalledException.class,
-                    () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT));
+                    () -> new FilesystemManagedSiteInstaller(siteRoot).install(OTHER_IDENTITY, OTHER_SNAPSHOT));
 
             Throwable firstFailure = resultOf(firstInstall);
             assertTrue(firstFailure instanceof UncheckedIOException,
                     () -> "expected manifest IOException but got " + firstFailure);
             assertFalse(Files.exists(ruFile));
             assertFalse(Files.exists(enFile));
-            assertFalse(Files.exists(installationLock));
+            assertFalse(Files.exists(siteRoot.resolve("src/content/blog/ru/another-essay.md")));
+            assertFalse(Files.exists(siteRoot.resolve("src/content/blog/en/another-essay.md")));
+        } finally {
+            installers.shutdownNow();
+        }
+    }
+
+    @Test
+    void lockReleaseFailureAfterManifestCommitDoesNotReportTheInstallAsFailed() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        createSparsePayload(siteRoot.resolve("public/assets/vault/slow-payload.bin"), 64 * 1024 * 1024);
+
+        ExecutorService installers = Executors.newSingleThreadExecutor();
+        try {
+            Future<Throwable> install = installers.submit(() -> {
+                try {
+                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+                    return null;
+                } catch (Throwable error) {
+                    return error;
+                }
+            });
+
+            awaitPathExists(ruFile);
+            Path installationLock = awaitInstallationLock(siteRoot);
+            Path lockDirectory = installationLock.getParent();
+            Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(lockDirectory);
+            Throwable reportedFailure;
+            try {
+                Files.setPosixFilePermissions(lockDirectory, Set.of(
+                        PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
+                reportedFailure = resultOf(install);
+            } finally {
+                Files.setPosixFilePermissions(lockDirectory, originalPermissions);
+            }
+
+            assertNull(reportedFailure,
+                    () -> "a committed install must not fail because lock cleanup failed: " + reportedFailure);
+            assertTrue(Files.isRegularFile(ruFile));
+            assertTrue(Files.isRegularFile(enFile));
+            assertTrue(Files.isRegularFile(manifest));
         } finally {
             installers.shutdownNow();
         }
@@ -345,5 +393,25 @@ class FilesystemManagedSiteInstallerTest {
         if (!Files.exists(path)) {
             throw new AssertionError("timed out waiting for " + path);
         }
+    }
+
+    private static Path awaitInstallationLock(Path siteRoot) throws Exception {
+        Path lockRoot = siteRoot.resolve(".astro-export/install-locks");
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (System.nanoTime() < deadline) {
+            if (Files.isDirectory(lockRoot)) {
+                try (var candidates = Files.walk(lockRoot)) {
+                    Path lock = candidates
+                            .filter(path -> path.getFileName().toString().endsWith(".installing"))
+                            .findFirst()
+                            .orElse(null);
+                    if (lock != null) {
+                        return lock;
+                    }
+                }
+            }
+            Thread.sleep(1);
+        }
+        throw new AssertionError("timed out waiting for an installation lock under " + lockRoot);
     }
 }

@@ -29,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.fail;
 class AstroBuildSmokeIT {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
+    private static final String RU_TITLE = "Why: TDD # \"quoted\"";
+    private static final String EN_TITLE = "true";
+    private static final String RU_DESCRIPTION = "false";
+    private static final String EN_DESCRIPTION = "Line one\nLine two: # \"quoted\"";
     private static final Path SITE_PROJECT_ROOT = Path.of("").toAbsolutePath().resolveSibling("site");
     private static final int OUTPUT_TAIL_CAPACITY_BYTES = 64 * 1024;
     private static final long BUILD_TIMEOUT_SECONDS = 180;
@@ -39,10 +43,10 @@ class AstroBuildSmokeIT {
     Path siteRoot;
 
     @Test
-    void astroBuildSucceedsAgainstTheInstalledOutput() throws Exception {
+    void astroBuildParsesEscapedMetadataWithoutChangingIt() throws Exception {
         seedCuratedPageFixtures(siteRoot);
         CandidateSnapshot snapshot = CandidateSnapshot.of("# My Essay\n\nBody.", "# My Essay (EN)\n\nBody.",
-                "My Essay", "My Essay (EN)", "A valid description.", "A valid description (EN).",
+                RU_TITLE, EN_TITLE, RU_DESCRIPTION, EN_DESCRIPTION,
                 ReferenceMap.empty(IDENTITY, "ru-source-hash", "en-source-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         ManagedSiteInstaller.create(siteRoot).install(IDENTITY, snapshot);
         Path astroProjectRoot = siteRoot.toRealPath();
@@ -68,11 +72,26 @@ class AstroBuildSmokeIT {
             Path generatedFile = astroProjectRoot.resolve("dist").resolve(route.substring(1));
             assertTrue(Files.isRegularFile(generatedFile),
                     () -> "astro build should write installed route " + route + " under the temporary project root");
-            String expectedTitle = "ru".equals(language) ? "My Essay" : "My Essay (EN)";
+            String expectedTitle = "ru".equals(language) ? RU_TITLE : EN_TITLE;
+            String expectedDescription = "ru".equals(language) ? RU_DESCRIPTION : EN_DESCRIPTION;
             String generatedContent = Files.readString(generatedFile);
-            assertTrue(generatedContent.contains(expectedTitle),
-                    () -> "generated route " + route + " should contain installed title " + expectedTitle);
+            assertTrue(generatedContent.contains(
+                            "<h1 id=\"page-title\" tabindex=\"-1\">" + htmlText(expectedTitle) + "</h1>"),
+                    () -> "generated route " + route + " should contain the exact installed title "
+                            + expectedTitle);
+            assertTrue(generatedContent.contains(
+                            "<p class=\"post-abstract\">" + htmlText(expectedDescription) + "</p>"),
+                    () -> "generated route " + route + " should contain the exact installed description "
+                            + expectedDescription);
         }
+    }
+
+    private static String htmlText(String value) {
+        return value.replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("'", "&#39;")
+                .replace("\"", "&quot;");
     }
 
     /*

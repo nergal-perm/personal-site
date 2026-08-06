@@ -7,6 +7,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.site.ManagedSiteInstaller;
 import dev.eugene.publicationexporter.site.SiteAlreadyInstalledException;
+import dev.eugene.publicationexporter.site.UnsafeManagedSiteEntryException;
 
 import java.io.UncheckedIOException;
 import java.util.Objects;
@@ -46,6 +47,9 @@ public final class InstallToSiteHandler {
                     "A site installation already exists; replacing it is not yet supported.");
         } catch (UncheckedIOException failure) {
             return InstallToSiteResult.blocked(IoFailureMessages.describe("Site installation failed", failure));
+        } catch (UnsafeManagedSiteEntryException failure) {
+            return InstallToSiteResult.blocked(
+                    "Site installation refused unsafe managed content: " + failure.getMessage());
         }
         return InstallToSiteResult.installed(identity);
     }
