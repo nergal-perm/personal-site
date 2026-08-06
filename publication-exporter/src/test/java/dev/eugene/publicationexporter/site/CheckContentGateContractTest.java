@@ -14,7 +14,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +27,9 @@ class CheckContentGateContractTest {
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
     private static final Path SITE_PROJECT_ROOT = Path.of("").toAbsolutePath()
             .resolveSibling("site"); // publication-exporter/ -> ../site
+    private static final long GATE_TIMEOUT_SECONDS = 30;
+    private static final long TERMINATION_TIMEOUT_SECONDS = 2;
+    private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 2;
 
     @TempDir
     Path siteRoot;
@@ -112,16 +117,59 @@ class CheckContentGateContractTest {
         Process process = builder.start();
         StringBuilder output = new StringBuilder();
         CompletableFuture<Void> outputDrainer = CompletableFuture.runAsync(() -> drainOutput(process, output));
+
+        boolean completedInTime;
+        boolean terminatedAfterDestroy = true;
         try {
-            if (!process.waitFor(30, TimeUnit.SECONDS)) {
+            completedInTime = process.waitFor(GATE_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            if (!completedInTime) {
                 process.destroyForcibly();
-                assertTrue(process.waitFor(2, TimeUnit.SECONDS),
-                        () -> "check-content.mjs did not complete within 30s and did not terminate after destroy\nOutput (truncated):\n"
-                                + truncated(output.toString()));
+                terminatedAfterDestroy = process.waitFor(TERMINATION_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             }
-            return new ProcessResult(process.exitValue(), output.toString());
-        } finally {
-            outputDrainer.join();
+        } catch (InterruptedException interrupted) {
+            process.destroyForcibly();
+            closeProcessOutput(process);
+            outputDrainer.cancel(true);
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        }
+
+        String drainFailure = awaitOutputDrainer(process, outputDrainer);
+        if (!completedInTime) {
+            fail("check-content.mjs did not complete within " + GATE_TIMEOUT_SECONDS + "s"
+                    + (terminatedAfterDestroy ? "" : " and did not terminate after destroy")
+                    + ".\nOutput (truncated):\n" + truncated(output.toString()));
+        }
+        if (drainFailure != null) {
+            fail(drainFailure + "\nOutput (truncated):\n" + truncated(output.toString()));
+        }
+        return new ProcessResult(process.exitValue(), output.toString());
+    }
+
+    private static String awaitOutputDrainer(Process process, CompletableFuture<Void> outputDrainer)
+            throws InterruptedException {
+        try {
+            outputDrainer.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return null;
+        } catch (TimeoutException timeout) {
+            closeProcessOutput(process);
+            outputDrainer.cancel(true);
+            return "check-content.mjs output drainer did not complete within " + OUTPUT_DRAIN_TIMEOUT_SECONDS + "s";
+        } catch (ExecutionException failure) {
+            return "check-content.mjs output drainer failed: " + failure.getCause();
+        } catch (InterruptedException interrupted) {
+            closeProcessOutput(process);
+            outputDrainer.cancel(true);
+            Thread.currentThread().interrupt();
+            throw interrupted;
+        }
+    }
+
+    private static void closeProcessOutput(Process process) {
+        try {
+            process.getInputStream().close();
+        } catch (IOException ignored) {
+            // Best-effort unblock for a drainer whose pipe is still held by a descendant process.
         }
     }
 
