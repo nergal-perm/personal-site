@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.inspect;
 
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
+import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.bridge.ReviewPlan;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
@@ -43,7 +44,7 @@ public final class InspectPublicationHandler {
                     ? candidateWorkspace.read(intake.identity())
                     : Optional.empty();
         } catch (UncheckedIOException failure) {
-            return candidateLookupFailure(ioFailureMessage("Candidate lookup failed", failure));
+            return candidateLookupFailure(IoFailureMessages.describe("Candidate lookup failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
             return candidateLookupFailure("Candidate lookup failed: " + failure.getMessage());
         }
@@ -55,11 +56,6 @@ public final class InspectPublicationHandler {
 
     private static BridgeResponse candidateLookupFailure(String message) {
         return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("candidate", message));
-    }
-
-    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
-        String detail = failure.getCause().getMessage();
-        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
     private BridgeResponse readyForReviewResponse(

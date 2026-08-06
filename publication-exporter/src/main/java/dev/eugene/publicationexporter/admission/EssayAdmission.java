@@ -86,7 +86,7 @@ public final class EssayAdmission {
     private String requireNonBlank(Frontmatter frontmatter, String key, List<Diagnostic> diagnostics) {
         String value = frontmatter.string(key).filter(candidate -> !candidate.isBlank()).orElse(null);
         if (value == null) {
-            diagnostics.add(Diagnostic.blocking(key, "Note has no " + key + "."));
+            diagnostics.add(Diagnostic.blocking(key, "Essay note has no " + key + "."));
         }
         return value;
     }

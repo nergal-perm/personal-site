@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.installtosite;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.site.ManagedSiteInstaller;
@@ -27,7 +28,7 @@ public final class InstallToSiteHandler {
         try {
             approved = approvedSnapshotWorkspace.read(identity);
         } catch (UncheckedIOException failure) {
-            return InstallToSiteResult.blocked(ioFailureMessage("Approved snapshot lookup failed", failure));
+            return InstallToSiteResult.blocked(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
             return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
         }
@@ -44,13 +45,9 @@ public final class InstallToSiteHandler {
             return InstallToSiteResult.blocked(
                     "A site installation already exists; replacing it is not yet supported.");
         } catch (UncheckedIOException failure) {
-            return InstallToSiteResult.blocked(ioFailureMessage("Site installation failed", failure));
+            return InstallToSiteResult.blocked(IoFailureMessages.describe("Site installation failed", failure));
         }
         return InstallToSiteResult.installed(identity);
     }
 
-    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
-        String detail = failure.getCause().getMessage();
-        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
-    }
 }

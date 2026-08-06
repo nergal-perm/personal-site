@@ -178,7 +178,7 @@ class PrepareHandlerTest {
     }
 
     @Test
-    void workerReceivesOnlyTheFrontmatterStrippedBody() {
+    void workerReceivesTheFrontmatterStrippedBodyPlusTitleAndDescription() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         NullTranslationWorker worker = new NullTranslationWorker(

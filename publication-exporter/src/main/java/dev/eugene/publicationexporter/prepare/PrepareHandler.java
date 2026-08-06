@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.prepare;
 
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
+import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
@@ -42,7 +43,7 @@ public final class PrepareHandler {
         try {
             translation = translationWorker.translate(ruBody, ruTitle, ruDescription);
         } catch (UncheckedIOException failure) {
-            return candidateFailure(ioFailureMessage("Translation worker I/O failed", failure));
+            return candidateFailure(IoFailureMessages.describe("Translation worker I/O failed", failure));
         }
         if (!translation.succeeded()) {
             return BridgeResponse.translationFailed(COMMAND,
@@ -64,7 +65,7 @@ public final class PrepareHandler {
             candidateWorkspace.install(identity, ruBody, enBody,
                     ruTitle, enTitle, ruDescription, enDescription, referenceMap);
         } catch (UncheckedIOException failure) {
-            return candidateFailure(ioFailureMessage("Candidate installation failed", failure));
+            return candidateFailure(IoFailureMessages.describe("Candidate installation failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
             return candidateFailure("Candidate installation failed: " + failure.getMessage());
         }
@@ -74,11 +75,6 @@ public final class PrepareHandler {
     private static BridgeResponse candidateFailure(String message) {
         return BridgeResponse.translationFailed(COMMAND,
                 Diagnostic.blocking("candidate", message));
-    }
-
-    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
-        String detail = failure.getCause().getMessage();
-        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
 }

@@ -5,6 +5,7 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
+import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
@@ -71,7 +72,7 @@ public final class MarkReviewedHandler {
         try {
             return candidateWorkspace.read(identity);
         } catch (UncheckedIOException failure) {
-            throw new LookupFailure(ioFailureMessage("Candidate lookup failed", failure));
+            throw new LookupFailure(IoFailureMessages.describe("Candidate lookup failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
             throw new LookupFailure("Candidate lookup failed: " + failure.getMessage());
         }
@@ -81,7 +82,7 @@ public final class MarkReviewedHandler {
         try {
             return approvedSnapshotWorkspace.find(identity);
         } catch (UncheckedIOException failure) {
-            throw new LookupFailure(ioFailureMessage("Approved snapshot lookup failed", failure));
+            throw new LookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
             throw new LookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
         }
@@ -208,11 +209,6 @@ public final class MarkReviewedHandler {
 
     private static BridgeResponse candidateLookupFailure(String message) {
         return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("candidate", message));
-    }
-
-    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
-        String detail = failure.getCause().getMessage();
-        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
     private static BridgeResponse noCandidateResponse() {

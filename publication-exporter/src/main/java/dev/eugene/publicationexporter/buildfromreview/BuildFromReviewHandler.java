@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.buildfromreview;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
@@ -29,7 +30,7 @@ public final class BuildFromReviewHandler {
         try {
             approved = approvedSnapshotWorkspace.read(identity);
         } catch (UncheckedIOException failure) {
-            return ReleaseResult.blocked(ioFailureMessage("Approved snapshot lookup failed", failure));
+            return ReleaseResult.blocked(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
             return ReleaseResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
         }
@@ -48,7 +49,7 @@ public final class BuildFromReviewHandler {
         } catch (ReleaseOutputStoreConfinementException failure) {
             return ReleaseResult.blocked("Release installation failed: " + failure.getMessage());
         } catch (UncheckedIOException failure) {
-            return ReleaseResult.blocked(ioFailureMessage("Release installation failed", failure));
+            return ReleaseResult.blocked(IoFailureMessages.describe("Release installation failed", failure));
         }
         return ReleaseResult.released(identity, provenance);
     }
@@ -69,8 +70,4 @@ public final class BuildFromReviewHandler {
         return ReleaseResult.blocked("A release already exists at this output root; replacing it is not yet supported.");
     }
 
-    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
-        String detail = failure.getCause().getMessage();
-        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
-    }
 }
