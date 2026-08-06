@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class NullManagedSiteInstallerTest {
@@ -33,10 +34,24 @@ class NullManagedSiteInstallerTest {
     }
 
     @Test
+    void installRejectsNullIdentity() {
+        NullManagedSiteInstaller installer = new NullManagedSiteInstaller();
+
+        assertThrows(NullPointerException.class, () -> installer.install(null, SNAPSHOT));
+    }
+
+    @Test
+    void installRejectsNullSnapshot() {
+        NullManagedSiteInstaller installer = new NullManagedSiteInstaller();
+
+        assertThrows(NullPointerException.class, () -> installer.install(IDENTITY, null));
+    }
+
+    @Test
     void interfaceFactoryReturnsAFreshEmptyInstaller() {
         ManagedSiteInstaller installer = ManagedSiteInstaller.createNull();
+        assertTrue(((NullManagedSiteInstaller) installer).installed().isEmpty());
 
         installer.install(IDENTITY, SNAPSHOT);
-        // no exception: a fresh nulled installer starts empty
     }
 }
