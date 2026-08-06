@@ -10,12 +10,15 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Comparator;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class ProcessTranslationWorker implements TranslationWorker {
 
-    private static final String RESULT_FILE_NAME = "candidate.en.md";
+    private static final String BODY_FILE_NAME = "candidate.en.md";
+    private static final String TITLE_FILE_NAME = "candidate.en.title.txt";
+    private static final String DESCRIPTION_FILE_NAME = "candidate.en.description.txt";
 
     private final TranslationCommand command;
     private final Duration timeout;
@@ -26,10 +29,10 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     @Override
-    public TranslationResult translate(String ruBody) {
+    public TranslationResult translate(String ruBody, String ruTitle, String ruDescription) {
         Path workdir = createScratchWorkdir();
         try {
-            return runAndCollect(workdir, prompt(ruBody));
+            return runAndCollect(workdir, prompt(ruBody, ruTitle, ruDescription));
         } finally {
             deleteRecursively(workdir);
         }
@@ -83,31 +86,58 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     private TranslationResult collectResult(Path workdir) {
-        Path resultFile = workdir.resolve(RESULT_FILE_NAME);
-        if (!Files.isRegularFile(resultFile, LinkOption.NOFOLLOW_LINKS)) {
-            return TranslationResult.failure(
-                    "Translation worker completed without writing " + RESULT_FILE_NAME + ".");
+        Optional<String> body = readIfPresent(workdir, BODY_FILE_NAME);
+        if (body.isEmpty()) {
+            return missingFileFailure(BODY_FILE_NAME);
+        }
+        Optional<String> title = readIfPresent(workdir, TITLE_FILE_NAME);
+        if (title.isEmpty()) {
+            return missingFileFailure(TITLE_FILE_NAME);
+        }
+        Optional<String> description = readIfPresent(workdir, DESCRIPTION_FILE_NAME);
+        if (description.isEmpty()) {
+            return missingFileFailure(DESCRIPTION_FILE_NAME);
+        }
+        return TranslationResult.success(body.get(), title.get(), description.get());
+    }
+
+    private Optional<String> readIfPresent(Path workdir, String fileName) {
+        Path file = workdir.resolve(fileName);
+        if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS)) {
+            return Optional.empty();
         }
         try {
-            return TranslationResult.success(Files.readString(resultFile, StandardCharsets.UTF_8));
+            return Optional.of(Files.readString(file, StandardCharsets.UTF_8));
         } catch (IOException error) {
-            return TranslationResult.failure("Could not read " + RESULT_FILE_NAME + ": " + error.getMessage());
+            throw new UncheckedIOException(error);
         }
     }
 
-    private static String prompt(String ruBody) {
+    private static TranslationResult missingFileFailure(String fileName) {
+        return TranslationResult.failure("Translation worker completed without writing " + fileName + ".");
+    }
+
+    private static String prompt(String ruBody, String ruTitle, String ruDescription) {
         return """
                 # Bounded Russian-to-English publication translation
 
-                Work only inside the current directory. Translate the Russian text below to
-                English prose of equivalent meaning and structure. Write the complete
-                translation, and only the translation, to a file named candidate.en.md in the
-                current directory. Do not return commentary or a patch in place of that file.
+                Work only inside the current directory. Translate the Russian title, description,
+                and body below to English prose of equivalent meaning and structure. Write:
+                - the translated title, and only the title, to candidate.en.title.txt
+                - the translated description, and only the description, to candidate.en.description.txt
+                - the translated body, and only the body, to candidate.en.md
+                Do not return commentary or a patch in place of those files.
 
-                <source>
+                <title>
                 %s
-                </source>
-                """.formatted(ruBody);
+                </title>
+                <description>
+                %s
+                </description>
+                <body>
+                %s
+                </body>
+                """.formatted(ruTitle, ruDescription, ruBody);
     }
 
     private static Path createScratchWorkdir() {
