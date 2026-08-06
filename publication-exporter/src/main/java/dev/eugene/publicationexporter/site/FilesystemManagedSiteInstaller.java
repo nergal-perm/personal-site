@@ -43,9 +43,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         Path staging = createStagingDirectory();
         try {
             stageLocaleFiles(staging, identity, approvedSnapshot);
-            installLocaleFiles(staging, identity, ruDestination, enDestination);
-            ensurePayloadRoots();
-            writeProvenance(staging);
+            installManagedGeneration(staging, identity, ruDestination, enDestination);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         } finally {
@@ -88,15 +86,25 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         writeStagedFile(staging, locale + ".md", frontmatter(identity, approvedSnapshot, locale) + body);
     }
 
-    private void installLocaleFiles(
+    private void installManagedGeneration(
             Path staging, PublicationIdentity identity, Path ruDestination, Path enDestination) throws IOException {
         Path installationLock = acquireInstallationLock(ruDestination, identity);
+        Path installedRuDestination = null;
+        Path installedEnDestination = null;
+        Throwable installationFailure = null;
         try {
             rejectIfAlreadyInstalled(identity, ruDestination, enDestination);
-            moveNewLocaleFile(stagedFile(staging, "ru.md"), ruDestination, identity);
-            moveNewLocaleFile(stagedFile(staging, "en.md"), enDestination, identity);
+            installedRuDestination = moveNewLocaleFile(stagedFile(staging, "ru.md"), ruDestination, identity);
+            installedEnDestination = moveNewLocaleFile(stagedFile(staging, "en.md"), enDestination, identity);
+            ensurePayloadRoots();
+            writeProvenance(staging);
+        } catch (IOException | RuntimeException failure) {
+            installationFailure = failure;
+            rollbackInstalledLocaleFile(installedEnDestination, failure);
+            rollbackInstalledLocaleFile(installedRuDestination, failure);
+            throw failure;
         } finally {
-            releaseInstallationLock(installationLock);
+            releaseInstallationLock(installationLock, installationFailure);
         }
     }
 
@@ -109,23 +117,49 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
     }
 
-    private void releaseInstallationLock(Path installationLock) throws IOException {
-        Path resolvedParent = resolveWithinSiteRoot(installationLock.getParent());
-        Files.deleteIfExists(resolvedParent.resolve(installationLock.getFileName()));
+    private void releaseInstallationLock(Path installationLock, Throwable installationFailure) throws IOException {
+        try {
+            Path resolvedParent = resolveWithinSiteRoot(installationLock.getParent());
+            Files.deleteIfExists(resolvedParent.resolve(installationLock.getFileName()));
+        } catch (IOException | RuntimeException cleanupFailure) {
+            if (installationFailure == null) {
+                throw cleanupFailure;
+            }
+            installationFailure.addSuppressed(cleanupFailure);
+        }
     }
 
     private Path installationLock(Path ruDestination) {
-        return ruDestination.resolveSibling("." + ruDestination.getFileName() + ".installing").normalize();
+        Path contentRoot = stagedInstall.canonicalRoot().resolve("src/content");
+        Path relativeRuDestination = contentRoot.relativize(ruDestination);
+        Path lockDestination = stagedInstall.canonicalRoot()
+                .resolve(".astro-export/install-locks")
+                .resolve(relativeRuDestination);
+        return lockDestination.resolveSibling("." + lockDestination.getFileName() + ".installing").normalize();
     }
 
-    private void moveNewLocaleFile(Path source, Path destination, PublicationIdentity identity)
+    private Path moveNewLocaleFile(Path source, Path destination, PublicationIdentity identity)
             throws IOException {
         Path resolvedDestination = createAndResolveParentDirectories(destination);
         Path resolvedSource = resolveWithinSiteRoot(source);
         try {
             Files.move(resolvedSource, resolvedDestination, StandardCopyOption.ATOMIC_MOVE);
+            return resolvedDestination;
         } catch (FileAlreadyExistsException collision) {
             throw new SiteAlreadyInstalledException(identity);
+        }
+    }
+
+    private static void rollbackInstalledLocaleFile(Path installedDestination, Throwable installationFailure) {
+        if (installedDestination == null) {
+            return;
+        }
+        try {
+            // moveNewLocaleFile returned this already-confined path; reuse it directly so rollback
+            // cannot follow a freshly re-derived symlink alias between validation and deletion.
+            Files.deleteIfExists(installedDestination);
+        } catch (IOException | RuntimeException rollbackFailure) {
+            installationFailure.addSuppressed(rollbackFailure);
         }
     }
 

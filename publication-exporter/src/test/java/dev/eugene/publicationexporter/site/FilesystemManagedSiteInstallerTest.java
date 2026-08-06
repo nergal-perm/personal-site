@@ -7,10 +7,15 @@ import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -109,6 +114,56 @@ class FilesystemManagedSiteInstallerTest {
 
         assertFalse(Files.exists(siteRoot.resolve("src/content/blog/en/my-essay.md")));
         assertEquals("pre-existing", Files.readString(ruFile, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void anEnMoveFailureRollsBackRuAndAllowsTheSameIdentityToRetry() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path enDirectory = enFile.getParent();
+        Files.createDirectories(enDirectory);
+        Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(enDirectory);
+        try {
+            Files.setPosixFilePermissions(enDirectory, Set.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
+
+            assertThrows(UncheckedIOException.class,
+                    () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT));
+        } finally {
+            Files.setPosixFilePermissions(enDirectory, originalPermissions);
+        }
+
+        assertFalse(Files.exists(ruFile));
+
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+
+        assertTrue(Files.isRegularFile(ruFile));
+        assertTrue(Files.isRegularFile(enFile));
+        assertTrue(Files.readString(ruFile).endsWith(SNAPSHOT.ruBody()));
+        assertTrue(Files.readString(enFile).endsWith(SNAPSHOT.enBody()));
+    }
+
+    @Test
+    void aManifestReplaceFailureRollsBackBothLocalesAndAllowsTheSameIdentityToRetry() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        Files.createDirectories(manifest);
+        assertTrue(Files.isDirectory(manifest));
+
+        assertThrows(UncheckedIOException.class,
+                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT));
+
+        assertFalse(Files.exists(ruFile));
+        assertFalse(Files.exists(enFile));
+        assertTrue(Files.isDirectory(manifest));
+
+        Files.delete(manifest);
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+
+        assertTrue(Files.isRegularFile(ruFile));
+        assertTrue(Files.isRegularFile(enFile));
+        assertTrue(Files.isRegularFile(manifest));
     }
 
     @Test
@@ -218,6 +273,45 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
+    void failingCommitKeepsTheIdentityLockThroughManifestWorkAndRejectsARacingInstaller() throws Exception {
+        Path ruDirectory = siteRoot.resolve("src/content/blog/ru");
+        Path ruFile = ruDirectory.resolve("my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path installationLock = siteRoot.resolve(
+                ".astro-export/install-locks/blog/ru/.my-essay.md.installing");
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        Files.createDirectories(ruDirectory);
+        Files.createDirectories(manifest);
+        createSparsePayload(siteRoot.resolve("public/assets/vault/slow-payload.bin"), 16 * 1024 * 1024);
+
+        ExecutorService installers = Executors.newSingleThreadExecutor();
+        try {
+            Future<Throwable> firstInstall = installers.submit(() -> {
+                try {
+                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+                    return null;
+                } catch (Throwable error) {
+                    return error;
+                }
+            });
+
+            awaitPathExists(ruFile);
+            assertTrue(Files.exists(installationLock));
+            assertThrows(SiteAlreadyInstalledException.class,
+                    () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT));
+
+            Throwable firstFailure = resultOf(firstInstall);
+            assertTrue(firstFailure instanceof UncheckedIOException,
+                    () -> "expected manifest IOException but got " + firstFailure);
+            assertFalse(Files.exists(ruFile));
+            assertFalse(Files.exists(enFile));
+            assertFalse(Files.exists(installationLock));
+        } finally {
+            installers.shutdownNow();
+        }
+    }
+
+    @Test
     void creatingAnInstallerForAnAbsentNestedRootDoesNotWriteOrThrow() {
         Path nestedRoot = siteRoot.resolve("nested");
 
@@ -232,6 +326,24 @@ class FilesystemManagedSiteInstallerTest {
             return outcome.get();
         } catch (Exception error) {
             throw new AssertionError(error);
+        }
+    }
+
+    private static void createSparsePayload(Path file, int size) throws Exception {
+        Files.createDirectories(file.getParent());
+        try (var channel = Files.newByteChannel(file, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+            channel.position(size - 1L);
+            channel.write(ByteBuffer.wrap(new byte[] { 0 }));
+        }
+    }
+
+    private static void awaitPathExists(Path path) throws Exception {
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while (!Files.exists(path) && System.nanoTime() < deadline) {
+            Thread.sleep(1);
+        }
+        if (!Files.exists(path)) {
+            throw new AssertionError("timed out waiting for " + path);
         }
     }
 }
