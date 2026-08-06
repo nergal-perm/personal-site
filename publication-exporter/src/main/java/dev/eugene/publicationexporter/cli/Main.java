@@ -5,7 +5,7 @@ import picocli.CommandLine.Command;
 
 @Command(name = "publication-exporter", subcommands = {
         InspectPublicationCommand.class, PrepareCommand.class, MarkReviewedCommand.class,
-        BuildFromReviewCommand.class })
+        BuildFromReviewCommand.class, InstallToSiteCommand.class })
 public final class Main implements Runnable {
 
     public static void main(String[] args) {
