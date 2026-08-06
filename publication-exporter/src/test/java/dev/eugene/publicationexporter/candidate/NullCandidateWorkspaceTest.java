@@ -25,13 +25,18 @@ class NullCandidateWorkspaceTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
 
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         assertEquals(1, workspace.installed().size());
         NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
         assertEquals(IDENTITY, installed.identity());
         assertEquals("RU body", installed.ruBody());
         assertEquals("EN body", installed.enBody());
+        assertEquals("RU title", installed.ruTitle());
+        assertEquals("EN title", installed.enTitle());
+        assertEquals("RU description.", installed.ruDescription());
+        assertEquals("EN description.", installed.enDescription());
         assertEquals(referenceMap, installed.referenceMap());
     }
 
@@ -52,7 +57,8 @@ class NullCandidateWorkspaceTest {
     @Test
     void findReturnsPathsEndingInRuMdAndEnMdAfterInstall() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
+                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
 
         Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
@@ -64,7 +70,8 @@ class NullCandidateWorkspaceTest {
     @Test
     void findIsAbsentForADifferentIdentity() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
+                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
 
         assertEquals(Optional.empty(), workspace.find(otherIdentity));
@@ -81,20 +88,26 @@ class NullCandidateWorkspaceTest {
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         Optional<CandidateSnapshot> read = workspace.read(IDENTITY);
 
         assertTrue(read.isPresent());
         assertEquals("RU body", read.get().ruBody());
         assertEquals("EN body", read.get().enBody());
+        assertEquals("RU title", read.get().ruTitle());
+        assertEquals("EN title", read.get().enTitle());
+        assertEquals("RU description.", read.get().ruDescription());
+        assertEquals("EN description.", read.get().enDescription());
         assertEquals(referenceMap, read.get().referenceMap());
     }
 
     @Test
     void readIsAbsentForADifferentIdentity() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
+                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
 
         assertEquals(Optional.empty(), workspace.read(otherIdentity));
@@ -104,9 +117,25 @@ class NullCandidateWorkspaceTest {
     void readIsAbsentWhenTheReferenceMapCarriesADifferentIdentity() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
-        workspace.install(IDENTITY, "RU body", "EN body",
-                ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
+                "Description.", "EN Description.", ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash"));
 
         assertEquals(Optional.empty(), workspace.read(IDENTITY));
+    }
+
+    @Test
+    void readReturnsTheInstalledTitleAndDescription() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
+
+        Optional<CandidateSnapshot> read = workspace.read(IDENTITY);
+
+        assertTrue(read.isPresent());
+        assertEquals("RU title", read.get().ruTitle());
+        assertEquals("EN title", read.get().enTitle());
+        assertEquals("RU description.", read.get().ruDescription());
+        assertEquals("EN description.", read.get().enDescription());
     }
 }
