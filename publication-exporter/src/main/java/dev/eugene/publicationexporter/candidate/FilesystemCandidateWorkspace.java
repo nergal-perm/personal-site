@@ -33,7 +33,9 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         try {
             writeTriple(staging, ruBody, enBody, referenceMap);
             requireWithinReviewRoot(destination);
-            stagedInstall.moveIntoPlace(staging, destination);
+            stagedInstall.createParentDirectories(destination);
+            requireWithinReviewRoot(destination);
+            stagedInstall.move(staging, destination);
         } catch (IOException error) {
             StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);
@@ -116,12 +118,8 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
     }
 
     private void requireWithinReviewRoot(Path candidate) {
-        Optional<Path> resolved = stagedInstall.resolveWithinRoot(candidate);
-        if (resolved.isEmpty()) {
+        if (stagedInstall.resolveWithinRoot(candidate).isEmpty()) {
             throw new CandidateWorkspaceConfinementException(candidate, candidate, stagedInstall.canonicalRoot());
-        }
-        if (!resolved.get().equals(candidate) && !candidate.startsWith(stagedInstall.canonicalRoot())) {
-            throw new CandidateWorkspaceConfinementException(candidate, resolved.get(), stagedInstall.canonicalRoot());
         }
     }
 

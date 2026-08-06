@@ -38,7 +38,9 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         try {
             writeTriple(staging, ruBody, enBody, referenceMap);
             requireWithinReviewRoot(destination);
-            stagedInstall.moveIntoPlace(staging, destination);
+            stagedInstall.createParentDirectories(destination);
+            requireWithinReviewRoot(destination);
+            stagedInstall.move(staging, destination);
         } catch (IOException error) {
             StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);

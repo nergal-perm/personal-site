@@ -31,8 +31,11 @@ public final class StagedDirectoryInstall {
         return Files.createTempDirectory(canonicalRoot, prefix);
     }
 
-    public void moveIntoPlace(Path staging, Path destination) throws IOException {
+    public void createParentDirectories(Path destination) throws IOException {
         Files.createDirectories(destination.getParent());
+    }
+
+    public void move(Path staging, Path destination) throws IOException {
         Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
     }
 
