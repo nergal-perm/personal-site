@@ -56,7 +56,7 @@ Only a successful explicit `mark-reviewed` request from the operator SHALL insta
 - **GIVEN** a complete candidate that still matches the validated source and English result
 - **WHEN** the operator explicitly invokes `mark-reviewed`
 - **THEN** that exact candidate becomes the approved snapshot
-- **AND** the response is successful only after the approved snapshot is durable
+- **AND** the response is successful only after the approved snapshot is visible as one atomic unit
 
 #### Scenario: Non-approval command runs
 - **GIVEN** any candidate and approved state
@@ -92,6 +92,12 @@ The approved RU, EN, and semantic-reference map SHALL become visible as one cohe
 - **WHEN** the workspace is next inspected or approval is retried
 - **THEN** recovery deterministically restores or completes one coherent snapshot
 - **AND** the outcome is reported rather than silently guessed
+
+#### Scenario: A second approval is attempted
+- **GIVEN** an approved snapshot already exists for the publication
+- **WHEN** `mark-reviewed` is invoked again
+- **THEN** the request is blocked rather than silently replacing or silently ignoring the existing snapshot
+- **AND** the existing approved snapshot remains exactly as it was
 
 ### Requirement: RVA-06 Keep approved snapshots immutable outside approval
 
