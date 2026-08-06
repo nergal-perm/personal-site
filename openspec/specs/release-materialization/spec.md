@@ -77,6 +77,12 @@ The exporter SHALL stage and validate complete managed trees before replacing th
 - **THEN** only declared managed roots are replaced as one release generation
 - **AND** code-owned templates and other site files remain byte-identical
 
+#### Scenario: Empty-destination install
+- **GIVEN** no managed trees and no provenance manifest exist yet for any publication
+- **WHEN** site installation commits complete staged managed trees passing path, content, and provenance gates
+- **THEN** the declared managed roots are created and populated as the first release generation
+- **AND** code-owned templates and other site files remain byte-identical
+
 #### Scenario: Staged content or filesystem is unsafe
 - **GIVEN** validation fails or a managed path contains a symlink, device, unexpected entry, or race-induced substitution
 - **WHEN** installation is attempted

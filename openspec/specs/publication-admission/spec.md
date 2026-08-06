@@ -3,9 +3,7 @@
 ## Purpose
 
 Define which vault notes enter publication work and prove that a requested note is safe and complete enough to process. Evidence: E-ADM and E-GOV in `openspec/requirements-baseline.md`.
-
 ## Requirements
-
 ### Requirement: ADM-01 Discover explicitly selected notes
 
 The exporter SHALL discover Markdown source notes whose parsed frontmatter value `publish` is Boolean `true`, including notes in normally ignored vault paths, and SHALL exclude absent, false, string-valued, or malformed publication flags.
@@ -54,7 +52,7 @@ An admitted source note SHALL have `publicCollection`, a lowercase-slug `publicI
 The exporter SHALL validate the required metadata and structured body sections for the selected publication kind before content preparation or release.
 
 #### Scenario: Kind-specific contract is complete
-- **GIVEN** a selected book with author metadata, an album with artist/work metadata and required body sections, a concept with description and definition, or an editorial page with an allowed page key and valid structured body
+- **GIVEN** a selected book with author metadata, an album with artist/work metadata and required body sections, a concept with description and definition, an editorial page with an allowed page key and valid structured body, or an essay with title and description
 - **WHEN** the note is validated
 - **THEN** the kind-specific contract passes
 
@@ -92,3 +90,4 @@ The exporter SHALL expose a deterministic, machine-readable publication contract
 - **GIVEN** a fixture accepted by the published contract but rejected by runtime validation, or the reverse
 - **WHEN** the contract conformance harness runs
 - **THEN** the exporter edition fails acceptance
+
