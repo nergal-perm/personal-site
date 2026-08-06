@@ -47,6 +47,8 @@ class SchemaConformanceTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
                 ---
                 """;
         VaultReader vaultReader = VaultReader.createNull(java.util.Map.of(path, validEssay));
