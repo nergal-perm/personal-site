@@ -25,7 +25,8 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     private final StagedDirectoryInstall stagedInstall;
 
     public FilesystemManagedSiteInstaller(Path siteRoot) {
-        this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(siteRoot, "siteRoot"));
+        this.stagedInstall = StagedDirectoryInstall.rootedAt(
+                canonicalizeThroughNearestExistingAncestor(Objects.requireNonNull(siteRoot, "siteRoot")));
     }
 
     @Override
@@ -203,29 +204,39 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     private Path resolveWithinSiteRoot(Path candidate) {
         Path normalized = candidate.toAbsolutePath().normalize();
         Optional<Path> resolved = stagedInstall.resolveWithinRoot(normalized);
-        if (resolved.isEmpty()) {
-            Optional<Path> resolvedRoot = stagedInstall.resolveWithinRoot(stagedInstall.canonicalRoot());
-            if (resolvedRoot.isPresent() && normalized.startsWith(resolvedRoot.get())) {
-                Path lexicalCandidate = stagedInstall.canonicalRoot()
-                        .resolve(resolvedRoot.get().relativize(normalized))
-                        .normalize();
-                resolved = stagedInstall.resolveWithinRoot(lexicalCandidate);
-            }
-        }
-        if (resolved.isEmpty()) {
+        if (resolved.isEmpty() || !resolved.get().startsWith(stagedInstall.canonicalRoot())) {
             throw new ManagedSiteInstallerConfinementException(
                     normalized, resolved.orElse(normalized), stagedInstall.canonicalRoot());
         }
         /*
-         * StagedDirectoryInstall re-resolves both candidate and root on every call. When an absent
-         * root later resolves through a filesystem alias, paths returned by that helper are rebased
-         * to its lexical root only so they can pass its initial lexical gate on the next call; the
-         * helper still performs the authoritative fresh real-path containment check.
+         * The constructor resolves the nearest existing ancestor, so the canonical root stays a
+         * stable trust boundary even when the root itself is initially absent. StagedDirectoryInstall
+         * re-resolves candidate and root on every call; this stable comparison additionally rejects
+         * replacing the root itself with an outside symlink.
          * Callers re-resolve after directory creation and immediately use this returned real path.
          * A small pathname race remains because portable java.nio.file has no directory-fd-relative
          * create/rename API, but no known symlink alias is carried from validation into the write.
          */
         return resolved.get();
+    }
+
+    private static Path canonicalizeThroughNearestExistingAncestor(Path root) {
+        Path normalized = root.toAbsolutePath().normalize();
+        Path existingAncestor = normalized;
+        while (existingAncestor != null
+                && !Files.exists(existingAncestor, LinkOption.NOFOLLOW_LINKS)) {
+            existingAncestor = existingAncestor.getParent();
+        }
+        if (existingAncestor == null) {
+            return normalized;
+        }
+        try {
+            return existingAncestor.toRealPath()
+                    .resolve(existingAncestor.relativize(normalized))
+                    .normalize();
+        } catch (IOException | SecurityException unresolvable) {
+            return normalized;
+        }
     }
 
     private static String frontmatter(PublicationIdentity identity, CandidateSnapshot approved, String locale) {

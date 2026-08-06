@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.site;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -134,6 +135,23 @@ class FilesystemManagedSiteInstallerTest {
         } finally {
             Files.deleteIfExists(siteRoot.resolve("src"));
             Files.deleteIfExists(outside);
+        }
+    }
+
+    @Test
+    void aSiteRootReplacedWithOutsideSymlinkAfterInstallerCreationIsRejected() throws Exception {
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        Path outside = siteRoot.resolveSibling(siteRoot.getFileName() + "-outside");
+        Files.createDirectories(outside);
+        Files.delete(siteRoot);
+        Files.createSymbolicLink(siteRoot, outside);
+        try {
+            assertThrows(ManagedSiteInstallerConfinementException.class,
+                    () -> installer.install(IDENTITY, SNAPSHOT));
+            assertFalse(Files.exists(outside.resolve("src/content/blog/ru/my-essay.md")));
+        } finally {
+            Files.deleteIfExists(siteRoot);
+            StagedDirectoryInstall.deleteRecursively(outside);
         }
     }
 
