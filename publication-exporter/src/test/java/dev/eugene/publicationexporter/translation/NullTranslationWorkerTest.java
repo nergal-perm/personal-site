@@ -47,8 +47,12 @@ class NullTranslationWorkerTest {
 
     @Test
     void interfaceFactoriesProduceTheSameBehaviour() {
-        assertTrue(TranslationWorker.createNull("EN", "EN title", "EN description")
-                .translate("RU", "RU title", "RU description").succeeded());
+        TranslationResult result = TranslationWorker.createNull("EN", "EN title", "EN description")
+                .translate("RU", "RU title", "RU description");
+
+        assertTrue(result.succeeded());
+        assertEquals("EN title", result.enTitle());
+        assertEquals("EN description", result.enDescription());
         assertFalse(TranslationWorker.createNullFailing("boom")
                 .translate("RU", "RU title", "RU description").succeeded());
     }

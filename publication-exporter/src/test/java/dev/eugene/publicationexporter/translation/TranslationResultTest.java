@@ -33,6 +33,11 @@ class TranslationResultTest {
     }
 
     @Test
+    void successRejectsNullBody() {
+        assertThrows(NullPointerException.class, () -> TranslationResult.success(null, "t", "d"));
+    }
+
+    @Test
     void successRejectsNullDescription() {
         assertThrows(NullPointerException.class, () -> TranslationResult.success("Hello", "t", null));
     }
