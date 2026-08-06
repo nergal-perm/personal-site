@@ -3,11 +3,13 @@ package dev.eugene.publicationexporter.approved;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
+import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -77,6 +79,32 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         assertEquals("RU body", read.get().ruBody());
         assertEquals("EN body", read.get().enBody());
         assertEquals(referenceMap, read.get().referenceMap());
+    }
+
+    @Test
+    void readRejectsSymlinkedMemberFileEscapingReviewRoot() throws Exception {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        Path enPath = reviewRoot.resolve("blog/my-essay/approved/en.md");
+        Path outsideEnPath = outsideRoot.resolve("outside-en.md");
+        Files.writeString(outsideEnPath, "outside EN body");
+        Files.delete(enPath);
+        Files.createSymbolicLink(enPath, outsideEnPath);
+
+        assertThrows(ApprovedSnapshotWorkspaceConfinementException.class, () -> workspace.read(IDENTITY));
+    }
+
+    @Test
+    void readIsAbsentForAMismatchingReferenceMapIdentity() throws Exception {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+
+        Path referencesPath = reviewRoot.resolve("blog/my-essay/approved/references.json");
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
+        ReferenceMap mismatching = ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash");
+        Files.writeString(referencesPath, ReferenceMapCodec.write(mismatching), StandardCharsets.UTF_8);
+
+        assertEquals(Optional.empty(), workspace.read(IDENTITY));
     }
 
     @Test
