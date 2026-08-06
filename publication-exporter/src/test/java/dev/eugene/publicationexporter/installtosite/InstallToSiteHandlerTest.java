@@ -31,7 +31,7 @@ class InstallToSiteHandlerTest {
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.createNull();
         approvedSnapshotWorkspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullManagedSiteInstaller siteInstaller = new NullManagedSiteInstaller();
         InstallToSiteHandler handler = new InstallToSiteHandler(approvedSnapshotWorkspace, siteInstaller);
 
@@ -47,7 +47,7 @@ class InstallToSiteHandlerTest {
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.createNull();
         approvedSnapshotWorkspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullManagedSiteInstaller siteInstaller = new NullManagedSiteInstaller();
         InstallToSiteHandler handler = new InstallToSiteHandler(approvedSnapshotWorkspace, siteInstaller);
         handler.installToSite(IDENTITY);

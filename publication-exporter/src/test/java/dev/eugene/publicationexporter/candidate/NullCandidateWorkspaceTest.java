@@ -23,7 +23,7 @@ class NullCandidateWorkspaceTest {
     @Test
     void installedRecordsExactlyWhatWasPassed() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -58,7 +58,7 @@ class NullCandidateWorkspaceTest {
     void findReturnsPathsEndingInRuMdAndEnMdAfterInstall() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
-                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
@@ -71,7 +71,7 @@ class NullCandidateWorkspaceTest {
     void findIsAbsentForADifferentIdentity() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
-                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
 
         assertEquals(Optional.empty(), workspace.find(otherIdentity));
@@ -87,7 +87,7 @@ class NullCandidateWorkspaceTest {
     @Test
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -107,7 +107,7 @@ class NullCandidateWorkspaceTest {
     void readIsAbsentForADifferentIdentity() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
-                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "Description.", "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
 
         assertEquals(Optional.empty(), workspace.read(otherIdentity));
@@ -118,7 +118,7 @@ class NullCandidateWorkspaceTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
         workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title",
-                "Description.", "EN Description.", ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash"));
+                "Description.", "EN Description.", ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         assertEquals(Optional.empty(), workspace.read(IDENTITY));
     }
@@ -126,7 +126,7 @@ class NullCandidateWorkspaceTest {
     @Test
     void readReturnsTheInstalledTitleAndDescription() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 

@@ -4,6 +4,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -13,17 +14,21 @@ class ReferenceMapTest {
 
     @Test
     void accessorsReturnConstructedValues() {
-        ReferenceMap map = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap map = referenceMap();
 
         assertEquals(1, map.schemaVersion());
         assertEquals(IDENTITY, map.identity());
         assertEquals("ru-hash", map.ruHash());
         assertEquals("en-hash", map.enHash());
+        assertEquals("ru-title-hash", map.ruTitleHash());
+        assertEquals("en-title-hash", map.enTitleHash());
+        assertEquals("ru-description-hash", map.ruDescriptionHash());
+        assertEquals("en-description-hash", map.enDescriptionHash());
     }
 
     @Test
     void occurrencesIsAlwaysEmpty() {
-        ReferenceMap map = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap map = referenceMap();
 
         assertTrue(map.occurrences().isEmpty());
     }
@@ -31,14 +36,49 @@ class ReferenceMapTest {
     @Test
     void equalMapsBuiltSeparatelyAreEqual() {
         assertEquals(
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"),
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                referenceMap(),
+                referenceMap());
+        assertEquals(referenceMap().hashCode(), referenceMap().hashCode());
+    }
+
+    @Test
+    void metadataHashesParticipateInValueSemantics() {
+        ReferenceMap changedEnglishDescription = ReferenceMap.empty(
+                IDENTITY, "ru-hash", "en-hash",
+                "ru-title-hash", "en-title-hash",
+                "ru-description-hash", "changed-en-description-hash");
+
+        assertNotEquals(referenceMap(), changedEnglishDescription);
+        assertNotEquals(referenceMap().hashCode(), changedEnglishDescription.hashCode());
+        assertTrue(referenceMap().toString().contains("ruTitleHash=ru-title-hash"));
+        assertTrue(referenceMap().toString().contains("enDescriptionHash=en-description-hash"));
     }
 
     @Test
     void ruHashIsRejectedAtConstruction() {
         NullPointerException exception = assertThrows(NullPointerException.class,
-                () -> ReferenceMap.empty(IDENTITY, null, "en-hash"));
+                () -> ReferenceMap.empty(
+                        IDENTITY, null, "en-hash",
+                        "ru-title-hash", "en-title-hash",
+                        "ru-description-hash", "en-description-hash"));
         assertEquals("ruHash", exception.getMessage());
+    }
+
+    @Test
+    void metadataHashIsRejectedAtConstruction() {
+        NullPointerException exception = assertThrows(NullPointerException.class,
+                () -> ReferenceMap.empty(
+                        IDENTITY, "ru-hash", "en-hash",
+                        "ru-title-hash", "en-title-hash",
+                        "ru-description-hash", null));
+
+        assertEquals("enDescriptionHash", exception.getMessage());
+    }
+
+    private static ReferenceMap referenceMap() {
+        return ReferenceMap.empty(
+                IDENTITY, "ru-hash", "en-hash",
+                "ru-title-hash", "en-title-hash",
+                "ru-description-hash", "en-description-hash");
     }
 }

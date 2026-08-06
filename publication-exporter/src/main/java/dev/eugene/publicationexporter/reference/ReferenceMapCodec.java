@@ -33,7 +33,14 @@ public final class ReferenceMapCodec {
 
     private static ReferenceMap referenceMapFrom(JsonNode root) {
         PublicationIdentity identity = identityFrom(root.get("publicationIdentity"));
-        return ReferenceMap.empty(identity, root.get("ruHash").asText(), root.get("enHash").asText());
+        return ReferenceMap.empty(
+                identity,
+                root.get("ruHash").asText(),
+                root.get("enHash").asText(),
+                root.get("ruTitleHash").asText(),
+                root.get("enTitleHash").asText(),
+                root.get("ruDescriptionHash").asText(),
+                root.get("enDescriptionHash").asText());
     }
 
     private static PublicationIdentity identityFrom(JsonNode identityNode) {

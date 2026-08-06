@@ -27,7 +27,7 @@ class FilesystemManagedSiteInstallerTest {
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
     private static final CandidateSnapshot SNAPSHOT = CandidateSnapshot.of(
             "# RU body", "# EN body", "RU title", "EN title", "RU description.", "EN description.",
-            ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+            ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
     @TempDir
     Path siteRoot;
@@ -116,7 +116,7 @@ class FilesystemManagedSiteInstallerTest {
         PublicationIdentity escaping = PublicationIdentity.of("../../../outside", "essay", "my-essay");
         CandidateSnapshot snapshot = CandidateSnapshot.of(
                 "ru", "en", "ru title", "en title", "ru description", "en description",
-                ReferenceMap.empty(escaping, "ru-hash", "en-hash"));
+                ReferenceMap.empty(escaping, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         assertThrows(ManagedSiteInstallerConfinementException.class,
                 () -> new FilesystemManagedSiteInstaller(siteRoot).install(escaping, snapshot));

@@ -144,7 +144,8 @@ class SchemaConformanceTest {
                 Path.of("/review/blog/my-essay/candidate/en.md"));
         return BridgeResponse.essayInspected(
                 "inspect-publication", "ready_for_review", identity,
-                "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(candidatePaths));
+                "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(
+                        candidatePaths, "RU title", "EN title", "RU description.", "EN description."));
     }
 
     private void assertConformsToSchemaV2(BridgeResponse response) throws Exception {

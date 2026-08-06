@@ -5,6 +5,7 @@ import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.bridge.ReviewPlan;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.intake.NoteIntake;
@@ -34,16 +35,20 @@ public final class InspectPublicationHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        Optional<CandidatePaths> candidate;
+        Optional<CandidatePaths> candidatePaths;
+        Optional<CandidateSnapshot> candidateSnapshot;
         try {
-            candidate = candidateWorkspace.find(intake.identity());
+            candidatePaths = candidateWorkspace.find(intake.identity());
+            candidateSnapshot = candidatePaths.isPresent()
+                    ? candidateWorkspace.read(intake.identity())
+                    : Optional.empty();
         } catch (UncheckedIOException failure) {
             return candidateLookupFailure(ioFailureMessage("Candidate lookup failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
             return candidateLookupFailure("Candidate lookup failed: " + failure.getMessage());
         }
-        if (candidate.isPresent()) {
-            return readyForReviewResponse(intake.identity(), candidate.get());
+        if (candidatePaths.isPresent() && candidateSnapshot.isPresent()) {
+            return readyForReviewResponse(intake.identity(), candidatePaths.get(), candidateSnapshot.get());
         }
         return notPreparedResponse(intake.identity());
     }
@@ -57,10 +62,14 @@ public final class InspectPublicationHandler {
         return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
-    private BridgeResponse readyForReviewResponse(PublicationIdentity identity, CandidatePaths candidatePaths) {
+    private BridgeResponse readyForReviewResponse(
+            PublicationIdentity identity, CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot) {
         return BridgeResponse.essayInspected(
                 COMMAND, READY_FOR_REVIEW, identity,
-                READY, ABSENT, ABSENT, ABSENT, ReviewPlan.firstPublication(candidatePaths));
+                READY, ABSENT, ABSENT, ABSENT, ReviewPlan.firstPublication(
+                        candidatePaths,
+                        candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
+                        candidateSnapshot.ruDescription(), candidateSnapshot.enDescription()));
     }
 
     private BridgeResponse notPreparedResponse(PublicationIdentity identity) {

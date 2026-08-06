@@ -76,8 +76,12 @@ class MarkReviewedHandlerTest {
         NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String enHash = ContentHash.sha256Hex("EN body");
-        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(identity, ruHash, enHash));
+        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.", ReferenceMap.empty(
+                        identity, ruHash, enHash,
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("A valid description."),
+                        ContentHash.sha256Hex("EN description.")));
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         MarkReviewedHandler handler = new MarkReviewedHandler(candidateWorkspace, approvedSnapshotWorkspace);
 
@@ -87,9 +91,9 @@ class MarkReviewedHandlerTest {
         assertEquals("ready_to_publish", response.status());
         assertEquals("my-essay", response.identity().publicId());
         CandidateSnapshot approved = approvedSnapshotWorkspace.read(identity).orElseThrow();
-        assertEquals("RU title", approved.ruTitle());
+        assertEquals("My Essay", approved.ruTitle());
         assertEquals("EN title", approved.enTitle());
-        assertEquals("RU description.", approved.ruDescription());
+        assertEquals("A valid description.", approved.ruDescription());
         assertEquals("EN description.", approved.enDescription());
     }
 
@@ -101,12 +105,15 @@ class MarkReviewedHandlerTest {
         NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String enHash = ContentHash.sha256Hex("EN body");
-        ReferenceMap referenceMap = ReferenceMap.empty(identity, ruHash, enHash);
-        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", referenceMap);
+        ReferenceMap referenceMap = ReferenceMap.empty(
+                identity, ruHash, enHash,
+                ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description."));
+        candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.", referenceMap);
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
-        approvedSnapshotWorkspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", referenceMap);
+        approvedSnapshotWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.", referenceMap);
         MarkReviewedHandler handler = new MarkReviewedHandler(candidateWorkspace, approvedSnapshotWorkspace);
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
@@ -126,8 +133,11 @@ class MarkReviewedHandlerTest {
         // Candidate was prepared from a DIFFERENT body than the source note now has.
         String staleRuHash = ContentHash.sha256Hex("# An old version of My Essay");
         String enHash = ContentHash.sha256Hex("EN body");
-        candidateWorkspace.install(identity, "# An old version of My Essay", "EN body", "RU title", "EN title",
-                "RU description.", "EN description", ReferenceMap.empty(identity, staleRuHash, enHash));
+        candidateWorkspace.install(identity, "# An old version of My Essay", "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description", ReferenceMap.empty(
+                        identity, staleRuHash, enHash,
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description")));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
 
@@ -147,8 +157,11 @@ class MarkReviewedHandlerTest {
         // simulates en.md having been overwritten after prepare recorded its hash.
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String staleEnHash = ContentHash.sha256Hex("original EN body prepare recorded");
-        candidateWorkspace.install(identity, ESSAY_BODY, "tampered EN body", "RU title", "EN title",
-                "RU description.", "EN description", ReferenceMap.empty(identity, ruHash, staleEnHash));
+        candidateWorkspace.install(identity, ESSAY_BODY, "tampered EN body", "My Essay", "EN title",
+                "A valid description.", "EN description", ReferenceMap.empty(
+                        identity, ruHash, staleEnHash,
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description")));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
 
@@ -156,6 +169,84 @@ class MarkReviewedHandlerTest {
 
         assertFalse(response.ok());
         assertEquals("stale", response.status());
+    }
+
+    @Test
+    void sourceTitleChangedSinceCandidateWasPreparedIsStale() {
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "An old title", "EN title",
+                "A valid description.", "EN description.");
+
+        BridgeResponse response = markReviewedCandidate(
+                ESSAY_BODY, "EN body", "An old title", "EN title",
+                "A valid description.", "EN description.", referenceMap);
+
+        assertStale(response, "Source note title has changed since the candidate was prepared.");
+    }
+
+    @Test
+    void sourceDescriptionChangedSinceCandidateWasPreparedIsStale() {
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "An old description.", "EN description.");
+
+        BridgeResponse response = markReviewedCandidate(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "An old description.", "EN description.", referenceMap);
+
+        assertStale(response, "Source note description has changed since the candidate was prepared.");
+    }
+
+    @Test
+    void candidateRussianTitleTamperedWithSincePreparationIsStale() {
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.");
+
+        BridgeResponse response = markReviewedCandidate(
+                ESSAY_BODY, "EN body", "Tampered Russian title", "EN title",
+                "A valid description.", "EN description.", referenceMap);
+
+        assertStale(response, "Candidate Russian title has changed since it was prepared.");
+    }
+
+    @Test
+    void candidateEnglishTitleTamperedWithSincePreparationIsStale() {
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.");
+
+        BridgeResponse response = markReviewedCandidate(
+                ESSAY_BODY, "EN body", "My Essay", "Tampered English title",
+                "A valid description.", "EN description.", referenceMap);
+
+        assertStale(response, "Candidate English title has changed since it was prepared.");
+    }
+
+    @Test
+    void candidateRussianDescriptionTamperedWithSincePreparationIsStale() {
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.");
+
+        BridgeResponse response = markReviewedCandidate(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "Tampered Russian description.", "EN description.", referenceMap);
+
+        assertStale(response, "Candidate Russian description has changed since it was prepared.");
+    }
+
+    @Test
+    void candidateEnglishDescriptionTamperedWithSincePreparationIsStale() {
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.");
+
+        BridgeResponse response = markReviewedCandidate(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "Tampered English description.", referenceMap);
+
+        assertStale(response, "Candidate English description has changed since it was prepared.");
     }
 
     @Test
@@ -225,10 +316,49 @@ class MarkReviewedHandlerTest {
     private static CandidateWorkspace exactCandidateWorkspace() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
-        workspace.install(identity, ESSAY_BODY, "EN body", "RU title", "EN title",
-                "RU description.", "EN description", ReferenceMap.empty(
-                        identity, ContentHash.sha256Hex(ESSAY_BODY), ContentHash.sha256Hex("EN body")));
+        workspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description", ReferenceMap.empty(
+                        identity, ContentHash.sha256Hex(ESSAY_BODY), ContentHash.sha256Hex("EN body"),
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description")));
         return workspace;
+    }
+
+    private static ReferenceMap matchingReferenceMap(
+            String ruBody,
+            String enBody,
+            String ruTitle,
+            String enTitle,
+            String ruDescription,
+            String enDescription) {
+        return ReferenceMap.empty(
+                PublicationIdentity.of("blog", "essay", "my-essay"),
+                ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(ruTitle), ContentHash.sha256Hex(enTitle),
+                ContentHash.sha256Hex(ruDescription), ContentHash.sha256Hex(enDescription));
+    }
+
+    private static BridgeResponse markReviewedCandidate(
+            String ruBody,
+            String enBody,
+            String ruTitle,
+            String enTitle,
+            String ruDescription,
+            String enDescription,
+            ReferenceMap referenceMap) {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
+        candidateWorkspace.install(identity, ruBody, enBody, ruTitle, enTitle,
+                ruDescription, enDescription, referenceMap);
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
+        return handler.markReviewed(validEssayPath(), validEssayReader());
+    }
+
+    private static void assertStale(BridgeResponse response, String expectedMessage) {
+        assertFalse(response.ok());
+        assertEquals("stale", response.status());
+        assertEquals(expectedMessage, response.diagnostics().get(0).message());
     }
 
     private static CandidateWorkspace candidateWorkspaceThrowing(RuntimeException failure) {

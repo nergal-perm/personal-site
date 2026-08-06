@@ -27,7 +27,7 @@ class FilesystemCandidateWorkspaceTest {
     @Test
     void installWritesAllThreeFilesAtTheirFinalPath() throws Exception {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -48,7 +48,7 @@ class FilesystemCandidateWorkspaceTest {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(freshRoot);
 
         workspace.install(IDENTITY, "RU", "EN", "Title", "EN Title", "Description.", "EN Description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         assertTrue(Files.exists(freshRoot.resolve("blog/my-essay/candidate/ru.md")));
     }
@@ -58,7 +58,7 @@ class FilesystemCandidateWorkspaceTest {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
 
         workspace.install(IDENTITY, "RU", "EN", "Title", "EN Title", "Description.", "EN Description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         try (var entries = Files.list(reviewRoot)) {
             long stagingLeftovers = entries
@@ -75,7 +75,7 @@ class FilesystemCandidateWorkspaceTest {
 
         assertThrows(NullPointerException.class,
                 () -> workspace.install(IDENTITY, null, "EN", "Title", "EN Title", "Description.",
-                        "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
+                        "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
 
         assertTrue(Files.notExists(freshRoot));
     }
@@ -88,7 +88,7 @@ class FilesystemCandidateWorkspaceTest {
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> workspace.install(escapingIdentity, "RU", "EN", "Title", "EN Title", "Description.",
-                        "EN Description.", ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash")));
+                        "EN Description.", ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
 
         assertTrue(failure.getMessage().contains("escapes review root"));
         assertTrue(Files.notExists(freshRoot));
@@ -103,7 +103,7 @@ class FilesystemCandidateWorkspaceTest {
 
         assertThrows(IllegalStateException.class,
                 () -> workspace.install(escapingIdentity, "RU", "EN", "Title", "EN Title", "Description.",
-                        "EN Description.", ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash")));
+                        "EN Description.", ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
 
         assertTrue(Files.notExists(freshRoot));
         assertTrue(Files.notExists(reviewRoot.resolve("escaped-id")));
@@ -116,7 +116,7 @@ class FilesystemCandidateWorkspaceTest {
 
         assertThrows(IllegalStateException.class,
                 () -> workspace.install(IDENTITY, "RU", "EN", "Title", "EN Title", "Description.",
-                        "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
+                        "EN Description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
 
         assertTrue(Files.notExists(outsideRoot.resolve("my-essay/candidate")));
         try (var entries = Files.list(reviewRoot)) {
@@ -135,7 +135,7 @@ class FilesystemCandidateWorkspaceTest {
     void findReturnsAbsolutePathsToTheInstalledFiles() throws Exception {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
@@ -151,7 +151,7 @@ class FilesystemCandidateWorkspaceTest {
     void findIsAbsentForADifferentIdentityAfterInstall() {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU", "EN", "Title", "EN Title", "Description.", "EN Description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
 
         assertEquals(Optional.empty(), workspace.find(otherIdentity));
@@ -167,7 +167,7 @@ class FilesystemCandidateWorkspaceTest {
     @Test
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -187,7 +187,7 @@ class FilesystemCandidateWorkspaceTest {
     void readRejectsSymlinkedMemberFileEscapingReviewRoot() throws Exception {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title", "Description.", "EN Description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         Path enPath = reviewRoot.resolve("blog/my-essay/candidate/en.md");
         Path outsideEnPath = outsideRoot.resolve("outside-en.md");
         Files.writeString(outsideEnPath, "outside EN body");
@@ -201,7 +201,7 @@ class FilesystemCandidateWorkspaceTest {
     void readRejectsSymlinkedReferenceMapFileEscapingReviewRoot() throws Exception {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "Title", "EN Title", "Description.", "EN Description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         Path referencesPath = reviewRoot.resolve("blog/my-essay/candidate/references.json");
         Path outsideReferencesPath = outsideRoot.resolve("outside-references.json");
         Files.writeString(outsideReferencesPath, "{}");
@@ -215,7 +215,7 @@ class FilesystemCandidateWorkspaceTest {
     void readIsAbsentForADifferentIdentityAfterInstall() {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU", "EN", "Title", "EN Title", "Description.", "EN Description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
 
         assertEquals(Optional.empty(), workspace.read(otherIdentity));
@@ -225,7 +225,7 @@ class FilesystemCandidateWorkspaceTest {
     void readIsAbsentForADifferentContentTypeAtTheSameCandidatePath() {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU", "EN", "Title", "EN Title", "Description.", "EN Description.",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "article", "my-essay");
 
         assertEquals(Optional.empty(), workspace.read(otherIdentity));
@@ -234,7 +234,7 @@ class FilesystemCandidateWorkspaceTest {
     @Test
     void readReturnsTheInstalledTitleAndDescription() throws Exception {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 

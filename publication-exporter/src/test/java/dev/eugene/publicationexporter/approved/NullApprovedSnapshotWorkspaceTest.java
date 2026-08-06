@@ -27,7 +27,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void installThenFindReturnsPathsEndingInRuMdAndEnMd() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -43,7 +43,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void findIsAbsentForDifferentIdentityAfterInstallingOne() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -54,7 +54,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void aSecondInstallForTheSameIdentityThrows() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -80,7 +80,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -100,7 +100,7 @@ class NullApprovedSnapshotWorkspaceTest {
     void readIsAbsentForADifferentIdentity() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         assertEquals(Optional.empty(), workspace.read(DIFFERENT_IDENTITY));
     }
@@ -108,7 +108,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void readReturnsTheInstalledTitleAndDescription() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 

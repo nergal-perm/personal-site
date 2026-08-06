@@ -168,7 +168,7 @@ class InspectPublicationHandlerTest {
         NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
         candidateWorkspace.install(identity, "RU body", "EN body",
                 "RU title", "EN title", "RU description", "EN description",
-                ReferenceMap.empty(identity, "ru-hash", "en-hash"));
+                ReferenceMap.empty(identity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         InspectPublicationHandler handlerWithCandidate = new InspectPublicationHandler(candidateWorkspace);
 
         BridgeResponse response = handlerWithCandidate.inspect(path, vaultReader);
@@ -184,6 +184,10 @@ class InspectPublicationHandlerTest {
         assertEquals("ru", response.reviewPlan().targets().get(0).language());
         assertEquals("en", response.reviewPlan().targets().get(1).language());
         assertNull(response.reviewPlan().targets().get(0).publishedPath());
+        assertEquals("RU title", response.reviewPlan().ruTitle());
+        assertEquals("EN title", response.reviewPlan().enTitle());
+        assertEquals("RU description", response.reviewPlan().ruDescription());
+        assertEquals("EN description", response.reviewPlan().enDescription());
     }
 
     @Test

@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationResult;
@@ -70,6 +71,15 @@ class PrepareHandlerTest {
         assertEquals("Translated description.", installed.enDescription());
         assertEquals("My Essay", installed.ruTitle());
         assertEquals("A valid description.", installed.ruDescription());
+        assertEquals(ContentHash.sha256Hex("# My Essay\n\nPlain prose body."),
+                installed.referenceMap().ruHash());
+        assertEquals(ContentHash.sha256Hex("Translated body"), installed.referenceMap().enHash());
+        assertEquals(ContentHash.sha256Hex("My Essay"), installed.referenceMap().ruTitleHash());
+        assertEquals(ContentHash.sha256Hex("Translated title"), installed.referenceMap().enTitleHash());
+        assertEquals(ContentHash.sha256Hex("A valid description."),
+                installed.referenceMap().ruDescriptionHash());
+        assertEquals(ContentHash.sha256Hex("Translated description."),
+                installed.referenceMap().enDescriptionHash());
         assertTrue(installed.referenceMap().occurrences().isEmpty());
     }
 

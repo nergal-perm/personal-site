@@ -53,11 +53,16 @@ public final class PrepareHandler {
             return BridgeResponse.translationFailed(COMMAND,
                     Diagnostic.blocking("candidate", "Translation worker produced a blank candidate."));
         }
+        String enTitle = translation.enTitle();
+        String enDescription = translation.enDescription();
         ReferenceMap referenceMap = ReferenceMap.empty(
-                identity, ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody));
+                identity,
+                ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(ruTitle), ContentHash.sha256Hex(enTitle),
+                ContentHash.sha256Hex(ruDescription), ContentHash.sha256Hex(enDescription));
         try {
             candidateWorkspace.install(identity, ruBody, enBody,
-                    ruTitle, translation.enTitle(), ruDescription, translation.enDescription(), referenceMap);
+                    ruTitle, enTitle, ruDescription, enDescription, referenceMap);
         } catch (UncheckedIOException failure) {
             return candidateFailure(ioFailureMessage("Candidate installation failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {

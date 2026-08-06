@@ -43,7 +43,7 @@ class AstroBuildSmokeIT {
         seedCuratedPageFixtures(siteRoot);
         CandidateSnapshot snapshot = CandidateSnapshot.of("# My Essay\n\nBody.", "# My Essay (EN)\n\nBody.",
                 "My Essay", "My Essay (EN)", "A valid description.", "A valid description (EN).",
-                ReferenceMap.empty(IDENTITY, "ru-source-hash", "en-source-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-source-hash", "en-source-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         ManagedSiteInstaller.create(siteRoot).install(IDENTITY, snapshot);
         Path astroProjectRoot = siteRoot.toRealPath();
         copyCodeOwnedAstroScaffold(astroProjectRoot);

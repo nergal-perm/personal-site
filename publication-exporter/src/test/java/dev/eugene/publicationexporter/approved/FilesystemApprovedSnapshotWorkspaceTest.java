@@ -30,7 +30,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     @Test
     void installWritesAllSnapshotFilesAtTheirFinalPath() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -56,7 +56,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     void findReturnsAbsolutePathsToTheInstalledFiles() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
@@ -76,7 +76,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     @Test
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -96,7 +96,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     void readRejectsSymlinkedMemberFileEscapingReviewRoot() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         Path enPath = reviewRoot.resolve("blog/my-essay/approved/en.md");
         Path outsideEnPath = outsideRoot.resolve("outside-en.md");
         Files.writeString(outsideEnPath, "outside EN body");
@@ -110,11 +110,11 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     void readIsAbsentForAMismatchingReferenceMapIdentity() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         Path referencesPath = reviewRoot.resolve("blog/my-essay/approved/references.json");
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
-        ReferenceMap mismatching = ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash");
+        ReferenceMap mismatching = ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         Files.writeString(referencesPath, ReferenceMapCodec.write(mismatching), StandardCharsets.UTF_8);
 
         assertEquals(Optional.empty(), workspace.read(IDENTITY));
@@ -123,7 +123,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     @Test
     void aSecondInstallForTheSameIdentityThrowsAndLeavesTheFirstSnapshotIntact() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -144,7 +144,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
         workspace.install(IDENTITY, "RU", "EN", "RU title", "EN title", "RU description.",
-                "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         try (var entries = Files.list(reviewRoot)) {
             long stagingLeftovers = entries
@@ -163,7 +163,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         assertThrows(IllegalStateException.class,
                 () -> workspace.install(escapingIdentity, "RU", "EN", "RU title", "EN title",
                         "RU description.", "EN description.",
-                        ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash")));
+                        ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
 
         assertTrue(Files.notExists(freshRoot));
     }
@@ -176,7 +176,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         assertThrows(IllegalStateException.class,
                 () -> workspace.install(IDENTITY, "RU", "EN", "RU title", "EN title",
                         "RU description.", "EN description.",
-                        ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
+                        ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
 
         assertTrue(Files.notExists(outsideRoot.resolve("my-essay/approved")));
         try (var entries = Files.list(reviewRoot)) {

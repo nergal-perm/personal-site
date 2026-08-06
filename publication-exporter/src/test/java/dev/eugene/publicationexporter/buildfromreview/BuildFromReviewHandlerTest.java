@@ -39,7 +39,7 @@ class BuildFromReviewHandlerTest {
         String enHash = ContentHash.sha256Hex("# My Essay (EN)");
         approvedSnapshotWorkspace.install(IDENTITY, "# My Essay", "# My Essay (EN)",
                 "RU title", "EN title", "RU description", "EN description",
-                ReferenceMap.empty(IDENTITY, ruHash, enHash));
+                ReferenceMap.empty(IDENTITY, ruHash, enHash, "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
         BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
 
@@ -68,7 +68,7 @@ class BuildFromReviewHandlerTest {
         approvedSnapshotWorkspace.install(IDENTITY, "approved RU", "approved EN",
                 "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(IDENTITY,
-                        ContentHash.sha256Hex("approved RU"), ContentHash.sha256Hex("approved EN")));
+                        ContentHash.sha256Hex("approved RU"), ContentHash.sha256Hex("approved EN"), "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
         BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
 
@@ -95,7 +95,7 @@ class BuildFromReviewHandlerTest {
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         approvedSnapshotWorkspace.install(IDENTITY, "RU", "EN",
                 "RU title", "EN title", "RU description", "EN description",
-                ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN")));
+                ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN"), "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         BuildFromReviewHandler handler = new BuildFromReviewHandler(
                 approvedSnapshotWorkspace,
                 releaseOutputStoreThrowing(new UncheckedIOException(
@@ -112,7 +112,7 @@ class BuildFromReviewHandlerTest {
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         approvedSnapshotWorkspace.install(IDENTITY, "RU", "EN",
                 "RU title", "EN title", "RU description", "EN description",
-                ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN")));
+                ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN"), "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
         BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
         handler.buildFromReview(IDENTITY);

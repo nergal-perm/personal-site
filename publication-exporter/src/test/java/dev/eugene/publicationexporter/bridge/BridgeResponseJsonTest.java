@@ -102,7 +102,8 @@ class BridgeResponseJsonTest {
                 Path.of("/review/blog/my-essay/candidate/en.md"));
         BridgeResponse response = BridgeResponse.essayInspected(
                 "inspect-publication", "ready_for_review", identity,
-                "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(candidatePaths));
+                "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(
+                        candidatePaths, "RU title", "EN title", "RU description.", "EN description."));
 
         ObjectMapper mapper = new ObjectMapper();
         JsonNode parsed = mapper.readTree(mapper.writeValueAsString(response));
@@ -111,6 +112,10 @@ class BridgeResponseJsonTest {
         assertEquals(2, parsed.get("reviewPlan").get("targets").size());
         assertEquals("ru", parsed.get("reviewPlan").get("targets").get(0).get("language").asText());
         assertTrue(parsed.get("reviewPlan").get("targets").get(0).get("publishedPath").isNull());
+        assertEquals("RU title", parsed.get("reviewPlan").get("ruTitle").asText());
+        assertEquals("EN title", parsed.get("reviewPlan").get("enTitle").asText());
+        assertEquals("RU description.", parsed.get("reviewPlan").get("ruDescription").asText());
+        assertEquals("EN description.", parsed.get("reviewPlan").get("enDescription").asText());
     }
 
     @Test

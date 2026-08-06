@@ -14,7 +14,7 @@ class NullManagedSiteInstallerTest {
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
     private static final CandidateSnapshot SNAPSHOT = CandidateSnapshot.of(
             "RU body", "EN body", "RU title", "EN title", "RU description.", "EN description.",
-            ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+            ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
     @Test
     void installRecordsTheInstalledSnapshot() {

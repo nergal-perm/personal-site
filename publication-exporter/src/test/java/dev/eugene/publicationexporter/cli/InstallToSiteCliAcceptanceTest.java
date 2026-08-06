@@ -66,7 +66,7 @@ class InstallToSiteCliAcceptanceTest {
         ApprovedSnapshotWorkspace.create(reviewDirectory).install(IDENTITY,
                 "# My Essay", "# My Essay (EN)", "My Essay", "My Essay (EN)",
                 "A valid description.", "A valid description (EN).",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
         int exitCode = installToSite(reviewDirectory, siteRoot);
 

@@ -87,7 +87,7 @@ class BuildFromReviewCliAcceptanceTest {
         String enHash = dev.eugene.publicationexporter.hash.ContentHash.sha256Hex(enBody);
         ApprovedSnapshotWorkspace.create(reviewDirectory)
                 .install(IDENTITY, ruBody, enBody, "RU title", "EN title",
-                        "RU description", "EN description", ReferenceMap.empty(IDENTITY, ruHash, enHash));
+                        "RU description", "EN description", ReferenceMap.empty(IDENTITY, ruHash, enHash, "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         return ruHash;
     }
 

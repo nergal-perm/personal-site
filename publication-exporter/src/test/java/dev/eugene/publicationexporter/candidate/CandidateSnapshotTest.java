@@ -10,7 +10,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class CandidateSnapshotTest {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
-    private static final ReferenceMap REFERENCE_MAP = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+    private static final ReferenceMap REFERENCE_MAP = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
 
     @Test
     void accessorsReturnConstructedValues() {
