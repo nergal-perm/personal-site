@@ -84,6 +84,16 @@ public final class NoteIntake {
             return frontmatter.body();
         }
 
+        /** Only meaningful when {@link #accepted()} is {@code true}. */
+        public String title() {
+            return admission.title();
+        }
+
+        /** Only meaningful when {@link #accepted()} is {@code true}. */
+        public String description() {
+            return admission.description();
+        }
+
         public List<Diagnostic> diagnostics() {
             return diagnostics;
         }

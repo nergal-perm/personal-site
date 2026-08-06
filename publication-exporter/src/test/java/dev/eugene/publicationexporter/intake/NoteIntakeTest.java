@@ -81,4 +81,14 @@ class NoteIntakeTest {
         assertEquals("my-essay", result.identity().publicId());
         assertEquals("# Body", result.body());
     }
+
+    @Test
+    void acceptedIntakeExposesTitleAndDescription() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        NoteIntake.Result result = intake.admit(path, VaultReader.createNull(Map.of(path, VALID_ESSAY)));
+
+        assertTrue(result.accepted());
+        assertEquals("My Essay", result.title());
+        assertEquals("A valid description.", result.description());
+    }
 }
