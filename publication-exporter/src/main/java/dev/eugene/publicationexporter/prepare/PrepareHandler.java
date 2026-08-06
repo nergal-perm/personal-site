@@ -33,13 +33,14 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        return prepareAdmittedEssay(intake.identity(), intake.body());
+        return prepareAdmittedEssay(intake.identity(), intake.body(), intake.title(), intake.description());
     }
 
-    private BridgeResponse prepareAdmittedEssay(PublicationIdentity identity, String ruBody) {
+    private BridgeResponse prepareAdmittedEssay(
+            PublicationIdentity identity, String ruBody, String ruTitle, String ruDescription) {
         TranslationResult translation;
         try {
-            translation = translationWorker.translate(ruBody);
+            translation = translationWorker.translate(ruBody, ruTitle, ruDescription);
         } catch (UncheckedIOException failure) {
             return candidateFailure(ioFailureMessage("Translation worker I/O failed", failure));
         }
@@ -55,7 +56,8 @@ public final class PrepareHandler {
         ReferenceMap referenceMap = ReferenceMap.empty(
                 identity, ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody));
         try {
-            candidateWorkspace.install(identity, ruBody, enBody, referenceMap);
+            candidateWorkspace.install(identity, ruBody, enBody,
+                    ruTitle, translation.enTitle(), ruDescription, translation.enDescription(), referenceMap);
         } catch (UncheckedIOException failure) {
             return candidateFailure(ioFailureMessage("Candidate installation failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
