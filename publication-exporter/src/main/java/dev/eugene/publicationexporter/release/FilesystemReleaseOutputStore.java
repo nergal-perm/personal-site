@@ -34,25 +34,37 @@ final class FilesystemReleaseOutputStore implements ReleaseOutputStore {
             throw new ReleaseAlreadyExistsException(identity);
         }
         Path staging = createStagingDirectory();
+        boolean installed = false;
         try {
             writeTriple(staging, ruBody, enBody, provenance);
             requireWithinOutputRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinOutputRoot(destination);
             stagedInstall.move(staging, destination);
+            installed = true;
         } catch (IOException error) {
-            StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);
+        } finally {
+            if (!installed) {
+                StagedDirectoryInstall.deleteRecursively(staging);
+            }
         }
     }
 
     private Path releaseDirectory(PublicationIdentity identity) {
-        Path release = stagedInstall.canonicalRoot().resolve(identity.publicCollection())
-                .resolve(identity.publicId())
-                .resolve("release")
-                .normalize();
+        Path publicationDirectory = stagedInstall.canonicalRoot().resolve(identity.publicCollection())
+                .resolve(identity.publicId());
+        rejectForeignSiblingDirectories(publicationDirectory);
+        Path release = publicationDirectory.resolve("release").normalize();
         requireWithinOutputRoot(release);
         return release;
+    }
+
+    private void rejectForeignSiblingDirectories(Path publicationDirectory) {
+        if (Files.isDirectory(publicationDirectory.resolve("approved"))
+                || Files.isDirectory(publicationDirectory.resolve("candidate"))) {
+            throw new ReleaseOutputRootNotEmptyException(stagedInstall.canonicalRoot());
+        }
     }
 
     private Path createStagingDirectory() {
