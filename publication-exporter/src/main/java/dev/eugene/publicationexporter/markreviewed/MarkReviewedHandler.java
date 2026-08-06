@@ -2,11 +2,14 @@ package dev.eugene.publicationexporter.markreviewed;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotAlreadyExistsException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -40,11 +43,26 @@ public final class MarkReviewedHandler {
     }
 
     private BridgeResponse markReviewedAdmittedEssay(PublicationIdentity identity, String sourceBody) {
-        Optional<CandidateSnapshot> candidate = candidateWorkspace.read(identity);
+        Optional<CandidateSnapshot> candidate;
+        try {
+            candidate = candidateWorkspace.read(identity);
+        } catch (UncheckedIOException failure) {
+            return candidateLookupFailure(ioFailureMessage("Candidate lookup failed", failure));
+        } catch (CandidateWorkspaceConfinementException failure) {
+            return candidateLookupFailure("Candidate lookup failed: " + failure.getMessage());
+        }
         if (candidate.isEmpty()) {
             return noCandidateResponse();
         }
-        if (approvedSnapshotWorkspace.find(identity).isPresent()) {
+        Optional<CandidatePaths> approvedSnapshot;
+        try {
+            approvedSnapshot = approvedSnapshotWorkspace.find(identity);
+        } catch (UncheckedIOException failure) {
+            return candidateLookupFailure(ioFailureMessage("Approved snapshot lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return candidateLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        }
+        if (approvedSnapshot.isPresent()) {
             return alreadyApprovedResponse();
         }
         List<Diagnostic> staleness = stalenessDiagnostics(sourceBody, candidate.get());
@@ -101,6 +119,15 @@ public final class MarkReviewedHandler {
                     Diagnostic.blocking("candidate", "Approved installation failed."));
         }
         return BridgeResponse.approved(COMMAND, identity);
+    }
+
+    private static BridgeResponse candidateLookupFailure(String message) {
+        return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("candidate", message));
+    }
+
+    private static String ioFailureMessage(String operation, UncheckedIOException failure) {
+        String detail = failure.getCause().getMessage();
+        return detail == null || detail.isBlank() ? operation + "." : operation + ": " + detail;
     }
 
     private static BridgeResponse noCandidateResponse() {

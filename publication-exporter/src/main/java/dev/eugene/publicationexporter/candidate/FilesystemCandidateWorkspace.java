@@ -69,7 +69,7 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
                 && Files.exists(candidateDirectory.resolve("references.json"));
     }
 
-    private static Optional<CandidateSnapshot> snapshotFrom(
+    private Optional<CandidateSnapshot> snapshotFrom(
             Path candidateDirectory, PublicationIdentity expectedIdentity) {
         try {
             String ruBody = readCandidateBody(candidateDirectory.resolve("ru.md"));
@@ -81,11 +81,13 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         }
     }
 
-    private static String readCandidateBody(Path bodyPath) throws IOException {
+    private String readCandidateBody(Path bodyPath) throws IOException {
+        requireWithinReviewRoot(bodyPath);
         return Files.readString(bodyPath, StandardCharsets.UTF_8);
     }
 
-    private static ReferenceMap readReferenceMap(Path referencesPath) throws IOException {
+    private ReferenceMap readReferenceMap(Path referencesPath) throws IOException {
+        requireWithinReviewRoot(referencesPath);
         return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
     }
 

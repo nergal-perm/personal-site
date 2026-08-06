@@ -99,4 +99,14 @@ class NullCandidateWorkspaceTest {
 
         assertEquals(Optional.empty(), workspace.read(otherIdentity));
     }
+
+    @Test
+    void readIsAbsentWhenTheReferenceMapCarriesADifferentIdentity() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
+        workspace.install(IDENTITY, "RU body", "EN body",
+                ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash"));
+
+        assertEquals(Optional.empty(), workspace.read(IDENTITY));
+    }
 }

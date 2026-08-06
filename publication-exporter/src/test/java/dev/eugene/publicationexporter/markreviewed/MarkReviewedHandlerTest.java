@@ -1,10 +1,14 @@
 package dev.eugene.publicationexporter.markreviewed;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.approved.NullApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -12,7 +16,11 @@ import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -139,5 +147,148 @@ class MarkReviewedHandlerTest {
 
         assertFalse(response.ok());
         assertEquals("stale", response.status());
+    }
+
+    @Test
+    void candidateReadConfinementFailureReturnsBlockedResponse() {
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                candidateWorkspaceThrowing(candidateConfinementFailure()),
+                ApprovedSnapshotWorkspace.createNull());
+
+        BridgeResponse response = handler.markReviewed(validEssayPath(), validEssayReader());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals(2, response.schemaVersion());
+        assertEquals("mark-reviewed", response.command());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Candidate lookup failed"));
+        assertTrue(response.diagnostics().get(0).blocking());
+    }
+
+    @Test
+    void candidateReadIoFailureReturnsBlockedResponse() {
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                candidateWorkspaceThrowing(
+                        new UncheckedIOException(new IOException("candidate directory unavailable"))),
+                ApprovedSnapshotWorkspace.createNull());
+
+        BridgeResponse response = handler.markReviewed(validEssayPath(), validEssayReader());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("Candidate lookup failed: candidate directory unavailable",
+                response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void approvedSnapshotLookupConfinementFailureReturnsBlockedResponse() {
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                exactCandidateWorkspace(),
+                approvedSnapshotWorkspaceThrowing(approvedSnapshotConfinementFailure()));
+
+        BridgeResponse response = handler.markReviewed(validEssayPath(), validEssayReader());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals(2, response.schemaVersion());
+        assertEquals("mark-reviewed", response.command());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Approved snapshot lookup failed"));
+        assertTrue(response.diagnostics().get(0).blocking());
+    }
+
+    @Test
+    void approvedSnapshotLookupIoFailureReturnsBlockedResponse() {
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                exactCandidateWorkspace(),
+                approvedSnapshotWorkspaceThrowing(
+                        new UncheckedIOException(new IOException("approved directory unavailable"))));
+
+        BridgeResponse response = handler.markReviewed(validEssayPath(), validEssayReader());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("Approved snapshot lookup failed: approved directory unavailable",
+                response.diagnostics().get(0).message());
+    }
+
+    private static CandidateWorkspace exactCandidateWorkspace() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        workspace.install(identity, ESSAY_BODY, "EN body", ReferenceMap.empty(
+                identity, ContentHash.sha256Hex(ESSAY_BODY), ContentHash.sha256Hex("EN body")));
+        return workspace;
+    }
+
+    private static CandidateWorkspace candidateWorkspaceThrowing(RuntimeException failure) {
+        return new CandidateWorkspace() {
+            @Override
+            public void install(
+                    PublicationIdentity identity,
+                    String ruBody,
+                    String enBody,
+                    ReferenceMap referenceMap) {
+                // no-op: this test double exercises only the read side
+            }
+
+            @Override
+            public Optional<CandidatePaths> find(PublicationIdentity identity) {
+                throw failure;
+            }
+
+            @Override
+            public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
+                throw failure;
+            }
+        };
+    }
+
+    private static ApprovedSnapshotWorkspace approvedSnapshotWorkspaceThrowing(RuntimeException failure) {
+        return new ApprovedSnapshotWorkspace() {
+            @Override
+            public void install(
+                    PublicationIdentity identity,
+                    String ruBody,
+                    String enBody,
+                    ReferenceMap referenceMap) {
+                // no-op: this test double exercises only the lookup side
+            }
+
+            @Override
+            public Optional<CandidatePaths> find(PublicationIdentity identity) {
+                throw failure;
+            }
+        };
+    }
+
+    private static CandidateWorkspaceConfinementException candidateConfinementFailure() {
+        CandidateWorkspace realWorkspace = CandidateWorkspace.create(Path.of("/review"));
+        PublicationIdentity escapingIdentity = PublicationIdentity.of("../..", "essay", "outside");
+        try {
+            realWorkspace.read(escapingIdentity);
+        } catch (CandidateWorkspaceConfinementException failure) {
+            return failure;
+        }
+        throw new AssertionError("Expected an escaping identity to fail candidate-workspace confinement");
+    }
+
+    private static ApprovedSnapshotWorkspaceConfinementException approvedSnapshotConfinementFailure() {
+        ApprovedSnapshotWorkspace realWorkspace = ApprovedSnapshotWorkspace.create(Path.of("/review"));
+        PublicationIdentity escapingIdentity = PublicationIdentity.of("../..", "essay", "outside");
+        try {
+            realWorkspace.find(escapingIdentity);
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return failure;
+        }
+        throw new AssertionError("Expected an escaping identity to fail approved-workspace confinement");
+    }
+
+    private static VaultRelativePath validEssayPath() {
+        return VaultRelativePath.of("blog/my-essay.md");
+    }
+
+    private static VaultReader validEssayReader() {
+        return VaultReader.createNull(Map.of(validEssayPath(), VALID_ESSAY));
     }
 }

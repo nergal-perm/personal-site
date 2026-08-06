@@ -28,6 +28,7 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
     public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
         return lastInstalledMatching(identity)
+                .filter(candidate -> candidate.referenceMap().identity().equals(identity))
                 .map(candidate -> CandidateSnapshot.of(candidate.ruBody(), candidate.enBody(), candidate.referenceMap()));
     }
 
