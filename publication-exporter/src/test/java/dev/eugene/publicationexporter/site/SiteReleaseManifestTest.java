@@ -77,25 +77,40 @@ class SiteReleaseManifestTest {
     }
 
     @Test
-    void canonicalJsonEscapesQuoteInManagedTreePath() throws Exception {
-        String payloadRoot = "tree\"quote";
-        Files.createDirectories(root.resolve(payloadRoot));
+    void jsonStringEscapesQuote() {
+        StringBuilder json = new StringBuilder();
 
-        String json = SiteReleaseManifest.computeOver(root, List.of(payloadRoot)).toCanonicalJson();
+        SiteReleaseManifest.appendJsonString(json, "tree\"quote");
 
-        assertTrue(json.contains("\"relative\":\"tree\\\"quote\""));
+        assertEquals("\"tree\\\"quote\"", json.toString());
     }
 
     @Test
-    void canonicalJsonEscapesBackslashInManagedFilePath() throws Exception {
-        String payloadRoot = "tree\\slash";
-        Files.createDirectories(root.resolve(payloadRoot));
-        Files.writeString(root.resolve(payloadRoot).resolve("item.txt"), "content", StandardCharsets.UTF_8);
+    void jsonStringEscapesBackslash() {
+        StringBuilder json = new StringBuilder();
 
-        String json = SiteReleaseManifest.computeOver(root, List.of(payloadRoot)).toCanonicalJson();
+        SiteReleaseManifest.appendJsonString(json, "tree\\slash");
 
-        assertTrue(json.contains("\"relative\":\"tree\\\\slash\""));
-        assertTrue(json.contains("\"path\":\"tree\\\\slash/item.txt\""));
+        assertEquals("\"tree\\\\slash\"", json.toString());
+    }
+
+    @Test
+    void jsonStringEscapesLoneHighSurrogate() {
+        StringBuilder json = new StringBuilder();
+
+        SiteReleaseManifest.appendJsonString(json, String.valueOf((char) 0xD800));
+
+        assertEquals("\"\\ud800\"", json.toString());
+    }
+
+    @Test
+    void jsonStringPreservesValidSurrogatePair() {
+        StringBuilder json = new StringBuilder();
+        String supplementaryCharacter = new String(Character.toChars(0x1F600));
+
+        SiteReleaseManifest.appendJsonString(json, supplementaryCharacter);
+
+        assertEquals("\"" + supplementaryCharacter + "\"", json.toString());
     }
 
     @Test
@@ -110,6 +125,19 @@ class SiteReleaseManifestTest {
                 () -> SiteReleaseManifest.computeOver(root, List.of("payload")));
 
         assertTrue(error.getMessage().contains("managed tree contains a symlink: link-to-file"));
+    }
+
+    @Test
+    void atomicReadRejectsTerminalSymbolicLinkWithSameTreeMessage() throws Exception {
+        Path target = root.resolve("target.txt");
+        Files.writeString(target, "target", StandardCharsets.UTF_8);
+        Path link = root.resolve("link-to-file");
+        Files.createSymbolicLink(link, target);
+
+        IllegalStateException error = assertThrows(IllegalStateException.class,
+                () -> SiteReleaseManifest.readAllBytes(link, "link-to-file", "tree"));
+
+        assertEquals("managed tree contains a symlink: link-to-file", error.getMessage());
     }
 
     @Test

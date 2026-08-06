@@ -2,10 +2,12 @@ package dev.eugene.publicationexporter.site;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
@@ -88,7 +90,7 @@ public final class SiteReleaseManifest {
         return json.append("]").toString();
     }
 
-    private static void appendJsonString(StringBuilder json, String value) {
+    static void appendJsonString(StringBuilder json, String value) {
         json.append('"');
         for (int i = 0; i < value.length(); i++) {
             char character = value.charAt(i);
@@ -105,6 +107,12 @@ public final class SiteReleaseManifest {
                         json.append("\\u00")
                                 .append(Character.forDigit((character >> 4) & 0xF, 16))
                                 .append(Character.forDigit(character & 0xF, 16));
+                    } else if (Character.isSurrogate(character) && !isPairedSurrogate(value, i)) {
+                        json.append("\\u")
+                                .append(Character.forDigit((character >> 12) & 0xF, 16))
+                                .append(Character.forDigit((character >> 8) & 0xF, 16))
+                                .append(Character.forDigit((character >> 4) & 0xF, 16))
+                                .append(Character.forDigit(character & 0xF, 16));
                     } else {
                         json.append(character);
                     }
@@ -112,6 +120,16 @@ public final class SiteReleaseManifest {
             }
         }
         json.append('"');
+    }
+
+    private static boolean isPairedSurrogate(String value, int index) {
+        char character = value.charAt(index);
+        return Character.isHighSurrogate(character)
+                && index + 1 < value.length()
+                && Character.isLowSurrogate(value.charAt(index + 1))
+                || Character.isLowSurrogate(character)
+                && index > 0
+                && Character.isHighSurrogate(value.charAt(index - 1));
     }
 
     private static String computePayloadDigest(List<ManagedTreeHash> managedTrees, List<PayloadFileHash> managedFiles) {
@@ -128,7 +146,7 @@ public final class SiteReleaseManifest {
                 String relative = slash(siteRoot.relativize(file).toString());
                 EntryKind kind = entryKind(file, relative, "payload");
                 if (kind == EntryKind.DIRECTORY) continue;
-                records.add(PayloadFileHash.of(relative, sha256Hex(readAllBytes(file))));
+                records.add(PayloadFileHash.of(relative, sha256Hex(readAllBytes(file, relative, "payload"))));
             }
         }
         records.sort(Comparator.comparing(PayloadFileHash::path));
@@ -142,7 +160,7 @@ public final class SiteReleaseManifest {
                 String relative = slash(root.relativize(file).toString());
                 byte[] relativeBytes = relative.getBytes(StandardCharsets.UTF_8);
                 EntryKind kind = entryKind(file, relative, "tree");
-                byte[] payload = kind == EntryKind.DIRECTORY ? new byte[0] : readAllBytes(file);
+                byte[] payload = kind == EntryKind.DIRECTORY ? new byte[0] : readAllBytes(file, relative, "tree");
                 digest.update((kind == EntryKind.DIRECTORY ? "D" : "F").getBytes(StandardCharsets.UTF_8));
                 digest.update(lengthBytes(relativeBytes.length));
                 digest.update(relativeBytes);
@@ -182,10 +200,14 @@ public final class SiteReleaseManifest {
         throw new IllegalStateException("managed " + context + " contains an unsupported entry: " + relative);
     }
 
-    private static byte[] readAllBytes(Path file) {
-        try {
-            return Files.readAllBytes(file);
+    static byte[] readAllBytes(Path file, String relative, String context) {
+        try (var channel = Files.newByteChannel(file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
+                var input = Channels.newInputStream(channel)) {
+            return input.readAllBytes();
         } catch (IOException error) {
+            if (Files.isSymbolicLink(file)) {
+                throw new IllegalStateException("managed " + context + " contains a symlink: " + relative);
+            }
             throw new UncheckedIOException(error);
         }
     }
