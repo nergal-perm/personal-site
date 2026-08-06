@@ -39,7 +39,7 @@
 
 **This is the interface-change task.** All three known implementors/test-doubles are updated here in one commit — see this plan's Global Constraints. Do not commit a partial subset.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 Append to `NullApprovedSnapshotWorkspaceTest`:
 
@@ -112,12 +112,12 @@ In `MarkReviewedHandlerTest.java`, add a `read` override to `approvedSnapshotWor
 
 Add `import dev.eugene.publicationexporter.candidate.CandidateSnapshot;` to `MarkReviewedHandlerTest.java` if not already present (it is — `CandidateSnapshot` is already imported there from S05's own `candidateWorkspaceThrowing` double).
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullApprovedSnapshotWorkspaceTest,FilesystemApprovedSnapshotWorkspaceTest,MarkReviewedHandlerTest`
 Expected: FAIL — compile error, `read` is undefined on `ApprovedSnapshotWorkspace`
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 In `ApprovedSnapshotWorkspace.java`, add the method to the interface, directly after `find(...)`:
 
@@ -256,7 +256,7 @@ In `FilesystemApprovedSnapshotWorkspace.java`, add after `find(...)`:
 
 Add `import dev.eugene.publicationexporter.candidate.CandidateSnapshot;`. `ReferenceMap`, `ReferenceMapCodec`, `StandardCharsets`, and `IOException` are already imported in this file.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullApprovedSnapshotWorkspaceTest,FilesystemApprovedSnapshotWorkspaceTest,MarkReviewedHandlerTest`
 Expected: PASS, 0 failures across all three classes
@@ -264,7 +264,7 @@ Expected: PASS, 0 failures across all three classes
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: BUILD SUCCESS — every pre-existing test across the whole module still passes unchanged
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/approved/ApprovedSnapshotWorkspace.java \
@@ -287,7 +287,7 @@ git commit -m "feat(publication-exporter): add ApprovedSnapshotWorkspace#read wi
 **Interfaces:**
 - Produces: `ReleaseProvenance.of(PublicationIdentity, String approvedRuHash, String approvedEnHash, String outputRuHash, String outputEnHash): ReleaseProvenance`, `#contractEdition()`, `#identity()`, `#approvedRuHash()`, `#approvedEnHash()`, `#outputRuHash()`, `#outputEnHash()`, `#activationCount()`, `#deactivationCount()` — consumed by Task 3 (`ReleaseOutputStore#install`) and Task 7 (`BuildFromReviewHandler`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.release;
@@ -351,12 +351,12 @@ class ReleaseProvenanceTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=ReleaseProvenanceTest`
 Expected: FAIL — compile error, `ReleaseProvenance` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.release;
@@ -461,12 +461,12 @@ public final class ReleaseProvenance {
 
 `activationCount()`/`deactivationCount()` are hard-coded `0`, not stored fields — there is no semantic-occurrence machinery to produce a non-zero value until S19/S20 (design.md D4).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=ReleaseProvenanceTest`
 Expected: PASS — 4 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/release/ReleaseProvenance.java \
@@ -490,7 +490,7 @@ git commit -m "feat(publication-exporter): add ReleaseProvenance value type"
 
 **Correction learned from S05's Task 5:** the interface must NOT declare `static ReleaseOutputStore create(Path outputRoot)` in this task — that factory's body would reference `FilesystemReleaseOutputStore`, which does not exist until Task 5, so the module would not compile. `create(Path)` is added in Task 5, in the same commit as the class it instantiates. This task's interface declares `install(...)` and `createNull()` only.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.release;
@@ -537,12 +537,12 @@ class NullReleaseOutputStoreTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullReleaseOutputStoreTest`
 Expected: FAIL — compile error, none of these classes exist yet
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.release;
@@ -632,12 +632,12 @@ public final class NullReleaseOutputStore implements ReleaseOutputStore {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=NullReleaseOutputStoreTest`
 Expected: PASS — 3 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/release/ReleaseOutputStore.java \
@@ -665,12 +665,12 @@ git commit -m "feat(publication-exporter): add ReleaseOutputStore port with in-m
 
 **Visibility widening:** `CandidateWorkspaceConfinementException` and `ApprovedSnapshotWorkspaceConfinementException`'s constructors change from package-private to `public`, so `StagedDirectoryInstall` (a different package, `fs`) can be handed a constructor reference. Nothing else about either exception type changes — same message format, same `IllegalStateException` supertype, same call sites within their own packages.
 
-- [ ] **Step 1: Run the existing tests to confirm the pre-refactor baseline is green**
+- [x] **Step 1: Run the existing tests to confirm the pre-refactor baseline is green**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemCandidateWorkspaceTest,FilesystemApprovedSnapshotWorkspaceTest`
 Expected: PASS — this is the safety net the refactor must not break. No new test is written for this task; `StagedDirectoryInstall`'s behavior is exercised entirely through its two existing callers.
 
-- [ ] **Step 2: Write `StagedDirectoryInstall`**
+- [x] **Step 2: Write `StagedDirectoryInstall`**
 
 ```java
 package dev.eugene.publicationexporter.fs;
@@ -773,7 +773,7 @@ public final class StagedDirectoryInstall {
 
 `resolveWithinRoot` deliberately returns `Optional<Path>` instead of throwing — exception construction stays inside each owning package (`candidate`/`approved`), which alone knows which confinement-exception type to raise and with what message. This keeps `StagedDirectoryInstall` ignorant of any adapter-specific type, per `/oo-design-guide` heuristic 2.10 (don't let a shared helper absorb knowledge it doesn't need).
 
-- [ ] **Step 3: Widen the two existing confinement exceptions' constructor visibility**
+- [x] **Step 3: Widen the two existing confinement exceptions' constructor visibility**
 
 In `CandidateWorkspaceConfinementException.java`, change:
 
@@ -789,7 +789,7 @@ to:
 
 In `ApprovedSnapshotWorkspaceConfinementException.java`, apply the identical change (package-private to `public`, same three parameters, same body).
 
-- [ ] **Step 4: Rewrite `FilesystemCandidateWorkspace` to use `StagedDirectoryInstall`**
+- [x] **Step 4: Rewrite `FilesystemCandidateWorkspace` to use `StagedDirectoryInstall`**
 
 Replace the whole file:
 
@@ -932,12 +932,12 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
 **Correction anticipated during implementation:** `resolveWithinRoot` returning `Optional<Path>` collapses the original two distinct failure branches ("escapes root entirely" vs. "resolves outside via symlink") into one `Optional.empty()`, but the original `CandidateWorkspaceConfinementException` messages distinguished them (`candidate, candidate, reviewRoot` for the first, `candidate, resolvedCandidate, resolvedReviewRoot` for the second) purely for message wording — no test asserts on the exception's message text, only its type (`assertThrows(CandidateWorkspaceConfinementException.class, ...)` / `assertThrows(IllegalStateException.class, ...)`). The `requireWithinReviewRoot` shown above preserves a best-effort version of the richer message (using the resolved path when one was computable) without needing `resolveWithinRoot` to distinguish the two cases — simplify further to `throw new CandidateWorkspaceConfinementException(candidate, candidate, stagedInstall.canonicalRoot())` unconditionally on `resolved.isEmpty()` if the two-branch version proves awkward; both are behavior-equivalent for every existing test, which checks type and side effects, never message text.
 
-- [ ] **Step 5: Run tests to verify `FilesystemCandidateWorkspaceTest` still passes unchanged**
+- [x] **Step 5: Run tests to verify `FilesystemCandidateWorkspaceTest` still passes unchanged**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemCandidateWorkspaceTest`
 Expected: PASS — same test count as before this task, 0 failures, no test file changed
 
-- [ ] **Step 6: Rewrite `FilesystemApprovedSnapshotWorkspace` the same way**
+- [x] **Step 6: Rewrite `FilesystemApprovedSnapshotWorkspace` the same way**
 
 Replace the whole file, applying the identical transformation as Step 4 (`"candidate"` to `"approved"`, `CandidateWorkspaceConfinementException` to `ApprovedSnapshotWorkspaceConfinementException`, `"candidate-staging-"` to `"approved-staging-"`, plus this file's own `read(...)` from Task 1 and `install(...)`'s create-only `Files.exists(destination)` guard):
 
@@ -1055,7 +1055,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
 }
 ```
 
-- [ ] **Step 7: Run tests to verify `FilesystemApprovedSnapshotWorkspaceTest` still passes unchanged**
+- [x] **Step 7: Run tests to verify `FilesystemApprovedSnapshotWorkspaceTest` still passes unchanged**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemApprovedSnapshotWorkspaceTest`
 Expected: PASS — same test count as before this task (Task 1 already added `read` tests earlier in this plan), 0 failures
@@ -1063,7 +1063,7 @@ Expected: PASS — same test count as before this task (Task 1 already added `re
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: BUILD SUCCESS, all tests passing across the whole module
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/fs/StagedDirectoryInstall.java \
@@ -1098,7 +1098,7 @@ git commit -m "refactor(publication-exporter): extract StagedDirectoryInstall fr
 
 placed directly after `install(...)` and before `createNull()`; add `import java.nio.file.Path;` to `ReleaseOutputStore.java`.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.release;
@@ -1196,12 +1196,12 @@ class FilesystemReleaseOutputStoreTest {
 
 Note: `buildingTheSameApprovedStateTwiceIntoTwoFreshRootsProducesIdenticalOutput` is REL-03's determinism scenario ("Same approved state is built twice") — it builds into two DIFFERENT fresh roots because `install(...)` is create-only, matching design.md D2's rationale exactly.
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemReleaseOutputStoreTest`
 Expected: FAIL — compile error, `FilesystemReleaseOutputStore` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.release;
@@ -1302,7 +1302,7 @@ final class FilesystemReleaseOutputStore implements ReleaseOutputStore {
 
 This is `FilesystemApprovedSnapshotWorkspace`'s exact post-Task-4 shape, with `"release"`/`"release-staging-"`/`"release-provenance.json"` in place of `"approved"`/`"approved-staging-"`/`"references.json"`, and `ReleaseOutputStoreConfinementException` as its own distinct type (cannot reuse `approved`'s package-scoped type across packages).
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemReleaseOutputStoreTest`
 Expected: PASS — 5 tests, 0 failures
@@ -1310,7 +1310,7 @@ Expected: PASS — 5 tests, 0 failures
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: BUILD SUCCESS, all tests passing. This test class is this slice's in-memory-then-real adapter contract pair, together with Task 3's `NullReleaseOutputStoreTest` — both remain comfortably under the plan's one-second in-memory-acceptance-subset budget.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/release/FilesystemReleaseOutputStore.java \
@@ -1332,7 +1332,7 @@ git commit -m "feat(publication-exporter): add FilesystemReleaseOutputStore real
 - Consumes: `ReleaseProvenance` (Task 2), `PublicationIdentity`.
 - Produces: `ReleaseResult.released(PublicationIdentity, ReleaseProvenance): ReleaseResult`, `ReleaseResult.blocked(String message): ReleaseResult`, `#ok()`, `#identity()`, `#provenance()`, `#message()` — consumed by Task 7 (`BuildFromReviewHandler`) and Task 8 (`BuildFromReviewCommand`).
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.buildfromreview;
@@ -1390,12 +1390,12 @@ class ReleaseResultTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=ReleaseResultTest`
 Expected: FAIL — compile error, `ReleaseResult` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.buildfromreview;
@@ -1450,12 +1450,12 @@ public final class ReleaseResult {
 
 No `equals`/`hashCode` — `ReleaseResult` is a one-shot CLI output value, never stored in a collection or compared, unlike `ReleaseProvenance`/`CandidateSnapshot`.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=ReleaseResultTest`
 Expected: PASS — 2 tests, 0 failures
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/buildfromreview/ReleaseResult.java \
@@ -1477,7 +1477,7 @@ git commit -m "feat(publication-exporter): add ReleaseResult value type"
 
 This is where REL-01's "Candidate differs from approved snapshot" / "Selected publication lacks a safe approved snapshot" and REL-02's "Approved snapshot has no semantic occurrences" and REL-03's determinism obligation all become observable.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```java
 package dev.eugene.publicationexporter.buildfromreview;
@@ -1571,12 +1571,12 @@ class BuildFromReviewHandlerTest {
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [x] **Step 2: Run tests to verify they fail**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BuildFromReviewHandlerTest`
 Expected: FAIL — compile error, `BuildFromReviewHandler` does not exist
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.buildfromreview;
@@ -1643,7 +1643,7 @@ public final class BuildFromReviewHandler {
 
 `buildFromReview(...)` stays a Composed Method table of contents (read approved snapshot → compute provenance → install) per `/applying-sbpp`, matching `PrepareHandler#prepare`'s, `InspectPublicationHandler#inspect`'s, and `MarkReviewedHandler#markReviewed`'s existing shape — the same one-dominant-public-method departure from heuristic 3.9 already accepted for those three classes. `outputRuHash`/`outputEnHash` are computed from `approved.ruBody()`/`approved.enBody()` directly — the exact bytes handed to `releaseOutputStore.install(...)` — not copied from `approved.referenceMap()`, per design.md D4.
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BuildFromReviewHandlerTest`
 Expected: PASS — 4 tests, 0 failures
@@ -1651,7 +1651,7 @@ Expected: PASS — 4 tests, 0 failures
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: BUILD SUCCESS, all tests passing
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/buildfromreview/BuildFromReviewHandler.java \
@@ -1673,7 +1673,7 @@ git commit -m "feat(publication-exporter): add BuildFromReviewHandler"
 
 This is the slice's system-boundary acceptance test — the real CLI, a real approved-store filesystem root, and a real fresh output root, with no fakes anywhere in the test.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 ```java
 package dev.eugene.publicationexporter.cli;
@@ -1790,12 +1790,12 @@ class BuildFromReviewCliAcceptanceTest {
 }
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BuildFromReviewCliAcceptanceTest`
 Expected: FAIL — `build-from-review` is not a recognized subcommand (`BuildFromReviewCommand` and its `Main` registration do not exist yet)
 
-- [ ] **Step 3: Write minimal implementation**
+- [x] **Step 3: Write minimal implementation**
 
 ```java
 package dev.eugene.publicationexporter.cli;
@@ -1855,7 +1855,7 @@ Update `Main.java`'s subcommand list:
 public final class Main implements Runnable {
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `mvn -f publication-exporter/pom.xml test -Dtest=BuildFromReviewCliAcceptanceTest`
 Expected: PASS — 2 tests, 0 failures
@@ -1863,7 +1863,7 @@ Expected: PASS — 2 tests, 0 failures
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: BUILD SUCCESS, all tests passing
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/cli/BuildFromReviewCommand.java \
@@ -1878,27 +1878,27 @@ git commit -m "feat(publication-exporter): wire build-from-review CLI command"
 
 **Files:** none (verification only)
 
-- [ ] **Step 1: Run the complete `publication-exporter` suite**
+- [x] **Step 1: Run the complete `publication-exporter` suite**
 
 Run: `mvn -f publication-exporter/pom.xml test`
 Expected: BUILD SUCCESS, all tests passing (baseline 228 + this slice's new tests across Tasks 1-8)
 
-- [ ] **Step 2: Run the obsidian-plugin conformance suite**
+- [x] **Step 2: Run the obsidian-plugin conformance suite**
 
 Run: `cd obsidian-plugin && node --test tests/*.test.cjs`
 Expected: all tests passing except the one pre-existing, unrelated `community-plugins.json` environment-dependent skip that predates this slice — `build-from-review` is not a bridge command (design.md Context, evidence 2) and adds no new plugin-consumed surface, so this suite is unaffected by this slice's own changes.
 
-- [ ] **Step 3: Validate the OpenSpec change**
+- [x] **Step 3: Validate the OpenSpec change**
 
 Run: `openspec validate --changes "s06-materialize-approved-essay" --strict`
 Expected: `✓ change/s06-materialize-approved-essay`
 
-- [ ] **Step 4: Confirm the working tree is clean and every task's commit is present**
+- [x] **Step 4: Confirm the working tree is clean and every task's commit is present**
 
 Run: `git log --oneline -8` and `git status --porcelain=v1`
 Expected: 8 feature/refactor commits from this plan on top of the previous slice's final commit (Tasks 1-8; Task 9 has no code changes to commit), clean tree
 
-- [ ] **Step 5: Report readiness for review**
+- [x] **Step 5: Report readiness for review**
 
 Do not close Haft problem `prob-20260806-e107746a` or archive this OpenSpec change here — that happens after
 the full branch review (spec-compliance, code-quality, `/applying-sbpp`, `/oo-design-heuristics`, and the
