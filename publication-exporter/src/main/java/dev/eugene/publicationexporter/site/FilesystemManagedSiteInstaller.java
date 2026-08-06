@@ -25,7 +25,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     private final StagedDirectoryInstall stagedInstall;
 
     public FilesystemManagedSiteInstaller(Path siteRoot) {
-        this.stagedInstall = StagedDirectoryInstall.rootedAt(
+        this.stagedInstall = StagedDirectoryInstall.rootedAtCanonical(
                 canonicalizeThroughNearestExistingAncestor(Objects.requireNonNull(siteRoot, "siteRoot")));
     }
 
@@ -210,9 +210,10 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
         /*
          * The constructor resolves the nearest existing ancestor, so the canonical root stays a
-         * stable trust boundary even when the root itself is initially absent. StagedDirectoryInstall
-         * re-resolves candidate and root on every call; this stable comparison additionally rejects
-         * replacing the root itself with an outside symlink.
+         * stable trust boundary even when the root itself is initially absent, and passes that
+         * already-canonical path to StagedDirectoryInstall without a second filesystem resolution.
+         * StagedDirectoryInstall re-resolves candidate and root on every confinement check; this
+         * stable comparison additionally rejects replacing the root itself with an outside symlink.
          * Callers re-resolve after directory creation and immediately use this returned real path.
          * A small pathname race remains because portable java.nio.file has no directory-fd-relative
          * create/rename API, but no known symlink alias is carried from validation into the write.

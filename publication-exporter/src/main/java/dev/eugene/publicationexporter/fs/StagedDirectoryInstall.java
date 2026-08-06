@@ -14,12 +14,20 @@ public final class StagedDirectoryInstall {
 
     private final Path canonicalRoot;
 
-    private StagedDirectoryInstall(Path root) {
-        this.canonicalRoot = canonicalize(Objects.requireNonNull(root, "root"));
+    private StagedDirectoryInstall(Path canonicalRoot) {
+        this.canonicalRoot = canonicalRoot;
     }
 
     public static StagedDirectoryInstall rootedAt(Path root) {
-        return new StagedDirectoryInstall(root);
+        return new StagedDirectoryInstall(canonicalize(Objects.requireNonNull(root, "root")));
+    }
+
+    /**
+     * Creates an install rooted at a path the caller has already canonicalized, without resolving it again.
+     */
+    public static StagedDirectoryInstall rootedAtCanonical(Path canonicalRoot) {
+        return new StagedDirectoryInstall(
+                Objects.requireNonNull(canonicalRoot, "canonicalRoot").toAbsolutePath().normalize());
     }
 
     public Path canonicalRoot() {

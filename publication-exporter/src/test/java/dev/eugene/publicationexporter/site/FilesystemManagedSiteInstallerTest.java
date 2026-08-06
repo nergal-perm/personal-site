@@ -156,6 +156,23 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
+    void stagedInstallDoesNotReresolveTheManagedSitesAlreadyCanonicalRoot() throws Exception {
+        Path canonicalAbsentRoot = siteRoot.toRealPath().resolve("absent-site-root");
+        Path outside = siteRoot.resolveSibling(siteRoot.getFileName() + "-outside");
+        Files.createDirectories(outside);
+        Files.createSymbolicLink(canonicalAbsentRoot, outside);
+        try {
+            StagedDirectoryInstall stagedInstall =
+                    StagedDirectoryInstall.rootedAtCanonical(canonicalAbsentRoot);
+
+            assertEquals(canonicalAbsentRoot, stagedInstall.canonicalRoot());
+        } finally {
+            Files.deleteIfExists(canonicalAbsentRoot);
+            StagedDirectoryInstall.deleteRecursively(outside);
+        }
+    }
+
+    @Test
     void anExistingSymlinkedComponentWithinTheSiteUsesItsRealPath() throws Exception {
         Path realProvenanceDirectory = siteRoot.resolve("real-provenance");
         Files.createDirectories(realProvenanceDirectory);
