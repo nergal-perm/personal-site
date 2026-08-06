@@ -28,15 +28,20 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
 
     @Test
-    void installWritesAllThreeFilesAtTheirFinalPath() throws Exception {
+    void installWritesAllSnapshotFilesAtTheirFinalPath() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
 
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         Path approvedDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("approved");
         assertEquals("RU body", Files.readString(approvedDir.resolve("ru.md")));
         assertEquals("EN body", Files.readString(approvedDir.resolve("en.md")));
+        assertEquals("RU title", Files.readString(approvedDir.resolve("ru.title")));
+        assertEquals("EN title", Files.readString(approvedDir.resolve("en.title")));
+        assertEquals("RU description.", Files.readString(approvedDir.resolve("ru.description")));
+        assertEquals("EN description.", Files.readString(approvedDir.resolve("en.description")));
         assertTrue(Files.readString(approvedDir.resolve("references.json")).contains("\"ruHash\":\"ru-hash\""));
     }
 
@@ -50,7 +55,8 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     @Test
     void findReturnsAbsolutePathsToTheInstalledFiles() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
 
         Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
@@ -71,20 +77,26 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read = workspace.read(IDENTITY);
 
         assertTrue(read.isPresent());
         assertEquals("RU body", read.get().ruBody());
         assertEquals("EN body", read.get().enBody());
+        assertEquals("RU title", read.get().ruTitle());
+        assertEquals("EN title", read.get().enTitle());
+        assertEquals("RU description.", read.get().ruDescription());
+        assertEquals("EN description.", read.get().enDescription());
         assertEquals(referenceMap, read.get().referenceMap());
     }
 
     @Test
     void readRejectsSymlinkedMemberFileEscapingReviewRoot() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
         Path enPath = reviewRoot.resolve("blog/my-essay/approved/en.md");
         Path outsideEnPath = outsideRoot.resolve("outside-en.md");
         Files.writeString(outsideEnPath, "outside EN body");
@@ -97,7 +109,8 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     @Test
     void readIsAbsentForAMismatchingReferenceMapIdentity() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
 
         Path referencesPath = reviewRoot.resolve("blog/my-essay/approved/references.json");
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
@@ -111,13 +124,15 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     void aSecondInstallForTheSameIdentityThrowsAndLeavesTheFirstSnapshotIntact() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         Path approvedDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("approved");
         String referencesBeforeRejection = Files.readString(approvedDir.resolve("references.json"));
 
         assertThrows(ApprovedSnapshotAlreadyExistsException.class,
-                () -> workspace.install(IDENTITY, "RU body 2", "EN body 2", referenceMap));
+                () -> workspace.install(IDENTITY, "RU body 2", "EN body 2", "RU title 2", "EN title 2",
+                        "RU description 2.", "EN description 2.", referenceMap));
 
         assertEquals("RU body", Files.readString(approvedDir.resolve("ru.md")));
         assertEquals("EN body", Files.readString(approvedDir.resolve("en.md")));
@@ -128,7 +143,8 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     void noStagingDirectoryIsLeftBehindAfterASuccessfulInstall() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
-        workspace.install(IDENTITY, "RU", "EN", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU", "EN", "RU title", "EN title", "RU description.",
+                "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
 
         try (var entries = Files.list(reviewRoot)) {
             long stagingLeftovers = entries
@@ -145,7 +161,8 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         PublicationIdentity escapingIdentity = PublicationIdentity.of("..", "essay", "escaped-collection");
 
         assertThrows(IllegalStateException.class,
-                () -> workspace.install(escapingIdentity, "RU", "EN",
+                () -> workspace.install(escapingIdentity, "RU", "EN", "RU title", "EN title",
+                        "RU description.", "EN description.",
                         ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash")));
 
         assertTrue(Files.notExists(freshRoot));
@@ -157,7 +174,8 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
         assertThrows(IllegalStateException.class,
-                () -> workspace.install(IDENTITY, "RU", "EN",
+                () -> workspace.install(IDENTITY, "RU", "EN", "RU title", "EN title",
+                        "RU description.", "EN description.",
                         ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash")));
 
         assertTrue(Files.notExists(outsideRoot.resolve("my-essay/approved")));

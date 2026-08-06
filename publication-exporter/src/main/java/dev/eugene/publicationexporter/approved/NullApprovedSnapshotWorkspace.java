@@ -16,17 +16,25 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
     private final Map<PublicationIdentity, CandidateSnapshot> installed = new HashMap<>();
 
     @Override
-    public void install(PublicationIdentity identity, String ruBody, String enBody, ReferenceMap referenceMap) {
-        validateInstallArguments(identity, ruBody, enBody, referenceMap);
+    public void install(PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
+        validateInstallArguments(identity, ruBody, enBody, ruTitle, enTitle,
+                ruDescription, enDescription, referenceMap);
         ensureNotAlreadyInstalled(identity);
-        installed.put(identity, CandidateSnapshot.of(ruBody, enBody, referenceMap));
+        installed.put(identity, CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
+                ruDescription, enDescription, referenceMap));
     }
 
     private void validateInstallArguments(
-            PublicationIdentity identity, String ruBody, String enBody, ReferenceMap referenceMap) {
+            PublicationIdentity identity, String ruBody, String enBody, String ruTitle, String enTitle,
+            String ruDescription, String enDescription, ReferenceMap referenceMap) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(ruBody, "ruBody");
         Objects.requireNonNull(enBody, "enBody");
+        Objects.requireNonNull(ruTitle, "ruTitle");
+        Objects.requireNonNull(enTitle, "enTitle");
+        Objects.requireNonNull(ruDescription, "ruDescription");
+        Objects.requireNonNull(enDescription, "enDescription");
         Objects.requireNonNull(referenceMap, "referenceMap");
     }
 

@@ -29,7 +29,8 @@ class NullApprovedSnapshotWorkspaceTest {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
 
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
         Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
         assertTrue(found.isPresent());
@@ -44,7 +45,8 @@ class NullApprovedSnapshotWorkspaceTest {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
 
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         assertEquals(Optional.empty(), workspace.find(DIFFERENT_IDENTITY));
     }
@@ -53,10 +55,12 @@ class NullApprovedSnapshotWorkspaceTest {
     void aSecondInstallForTheSameIdentityThrows() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         assertThrows(ApprovedSnapshotAlreadyExistsException.class,
-                () -> workspace.install(IDENTITY, "RU body 2", "EN body 2", referenceMap));
+                () -> workspace.install(IDENTITY, "RU body 2", "EN body 2", "RU title 2", "EN title 2",
+                        "RU description 2.", "EN description 2.", referenceMap));
     }
 
     @Test
@@ -77,21 +81,41 @@ class NullApprovedSnapshotWorkspaceTest {
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
-        workspace.install(IDENTITY, "RU body", "EN body", referenceMap);
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
 
         Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read = workspace.read(IDENTITY);
 
         assertTrue(read.isPresent());
         assertEquals("RU body", read.get().ruBody());
         assertEquals("EN body", read.get().enBody());
+        assertEquals("RU title", read.get().ruTitle());
+        assertEquals("EN title", read.get().enTitle());
+        assertEquals("RU description.", read.get().ruDescription());
+        assertEquals("EN description.", read.get().enDescription());
         assertEquals(referenceMap, read.get().referenceMap());
     }
 
     @Test
     void readIsAbsentForADifferentIdentity() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        workspace.install(IDENTITY, "RU body", "EN body", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash"));
 
         assertEquals(Optional.empty(), workspace.read(DIFFERENT_IDENTITY));
+    }
+
+    @Test
+    void readReturnsTheInstalledTitleAndDescription() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash");
+        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", referenceMap);
+
+        Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read = workspace.read(IDENTITY);
+
+        assertTrue(read.isPresent());
+        assertEquals("RU title", read.get().ruTitle());
+        assertEquals("EN title", read.get().enTitle());
     }
 }

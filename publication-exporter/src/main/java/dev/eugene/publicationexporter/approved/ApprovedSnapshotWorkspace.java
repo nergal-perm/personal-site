@@ -10,7 +10,8 @@ import java.util.Optional;
 
 public interface ApprovedSnapshotWorkspace {
 
-    void install(PublicationIdentity identity, String ruBody, String enBody, ReferenceMap referenceMap);
+    void install(PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap);
 
     Optional<CandidatePaths> find(PublicationIdentity identity);
 

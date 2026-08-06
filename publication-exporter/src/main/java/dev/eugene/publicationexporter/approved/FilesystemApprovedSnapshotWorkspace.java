@@ -24,10 +24,15 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     }
 
     @Override
-    public void install(PublicationIdentity identity, String ruBody, String enBody, ReferenceMap referenceMap) {
+    public void install(PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(ruBody, "ruBody");
         Objects.requireNonNull(enBody, "enBody");
+        Objects.requireNonNull(ruTitle, "ruTitle");
+        Objects.requireNonNull(enTitle, "enTitle");
+        Objects.requireNonNull(ruDescription, "ruDescription");
+        Objects.requireNonNull(enDescription, "enDescription");
         Objects.requireNonNull(referenceMap, "referenceMap");
 
         Path destination = approvedDirectory(identity);
@@ -36,7 +41,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         }
         Path staging = createStagingDirectory();
         try {
-            writeTriple(staging, ruBody, enBody, referenceMap);
+            writeSnapshot(staging, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap);
             requireWithinReviewRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinReviewRoot(destination);
@@ -63,31 +68,40 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
         Path approvedDirectory = approvedDirectory(identity);
-        if (!containsApprovedTriple(approvedDirectory)) {
+        if (!containsApprovedSnapshot(approvedDirectory)) {
             return Optional.empty();
         }
         return snapshotFrom(approvedDirectory, identity);
     }
 
-    private static boolean containsApprovedTriple(Path approvedDirectory) {
-        return Files.exists(approvedDirectory.resolve("ru.md"))
-                && Files.exists(approvedDirectory.resolve("en.md"))
-                && Files.exists(approvedDirectory.resolve("references.json"));
+    private boolean containsApprovedSnapshot(Path approvedDirectory) {
+        return Files.exists(approvedFile(approvedDirectory, "ru.md"))
+                && Files.exists(approvedFile(approvedDirectory, "en.md"))
+                && Files.exists(approvedFile(approvedDirectory, "ru.title"))
+                && Files.exists(approvedFile(approvedDirectory, "en.title"))
+                && Files.exists(approvedFile(approvedDirectory, "ru.description"))
+                && Files.exists(approvedFile(approvedDirectory, "en.description"))
+                && Files.exists(approvedFile(approvedDirectory, "references.json"));
     }
 
     private Optional<CandidateSnapshot> snapshotFrom(
             Path approvedDirectory, PublicationIdentity expectedIdentity) {
         try {
-            String ruBody = readApprovedBody(approvedDirectory.resolve("ru.md"));
-            String enBody = readApprovedBody(approvedDirectory.resolve("en.md"));
-            ReferenceMap referenceMap = readReferenceMap(approvedDirectory.resolve("references.json"));
-            return snapshotMatching(expectedIdentity, ruBody, enBody, referenceMap);
+            String ruBody = readApprovedText(approvedFile(approvedDirectory, "ru.md"));
+            String enBody = readApprovedText(approvedFile(approvedDirectory, "en.md"));
+            String ruTitle = readApprovedText(approvedFile(approvedDirectory, "ru.title"));
+            String enTitle = readApprovedText(approvedFile(approvedDirectory, "en.title"));
+            String ruDescription = readApprovedText(approvedFile(approvedDirectory, "ru.description"));
+            String enDescription = readApprovedText(approvedFile(approvedDirectory, "en.description"));
+            ReferenceMap referenceMap = readReferenceMap(approvedFile(approvedDirectory, "references.json"));
+            return snapshotMatching(expectedIdentity, ruBody, enBody, ruTitle, enTitle,
+                    ruDescription, enDescription, referenceMap);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
     }
 
-    private String readApprovedBody(Path bodyPath) throws IOException {
+    private String readApprovedText(Path bodyPath) throws IOException {
         requireWithinReviewRoot(bodyPath);
         return Files.readString(bodyPath, StandardCharsets.UTF_8);
     }
@@ -98,11 +112,13 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     }
 
     private static Optional<CandidateSnapshot> snapshotMatching(
-            PublicationIdentity expectedIdentity, String ruBody, String enBody, ReferenceMap referenceMap) {
+            PublicationIdentity expectedIdentity, String ruBody, String enBody, String ruTitle, String enTitle,
+            String ruDescription, String enDescription, ReferenceMap referenceMap) {
         if (!referenceMap.identity().equals(expectedIdentity)) {
             return Optional.empty();
         }
-        return Optional.of(CandidateSnapshot.of(ruBody, enBody, referenceMap));
+        return Optional.of(CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
+                ruDescription, enDescription, referenceMap));
     }
 
     private Path approvedDirectory(PublicationIdentity identity) {
@@ -129,11 +145,22 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         }
     }
 
-    private void writeTriple(Path staging, String ruBody, String enBody, ReferenceMap referenceMap)
+    private Path approvedFile(Path approvedDirectory, String fileName) {
+        Path file = approvedDirectory.resolve(fileName).normalize();
+        requireWithinReviewRoot(file);
+        return file;
+    }
+
+    private void writeSnapshot(Path staging, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap)
             throws IOException {
-        Files.writeString(staging.resolve("ru.md"), ruBody, StandardCharsets.UTF_8);
-        Files.writeString(staging.resolve("en.md"), enBody, StandardCharsets.UTF_8);
-        Files.writeString(staging.resolve("references.json"),
+        Files.writeString(approvedFile(staging, "ru.md"), ruBody, StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "en.md"), enBody, StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "ru.title"), ruTitle, StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "en.title"), enTitle, StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "ru.description"), ruDescription, StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "en.description"), enDescription, StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "references.json"),
                 ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
     }
 }
