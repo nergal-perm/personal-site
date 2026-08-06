@@ -92,6 +92,8 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         Path installedRuDestination = null;
         Path installedEnDestination = null;
         Throwable installationFailure = null;
+        boolean enRollbackCompleted = true;
+        boolean ruRollbackCompleted = true;
         try {
             rejectIfAlreadyInstalled(identity, ruDestination, enDestination);
             installedRuDestination = moveNewLocaleFile(stagedFile(staging, "ru.md"), ruDestination, identity);
@@ -100,11 +102,15 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
             writeProvenance(staging);
         } catch (IOException | RuntimeException failure) {
             installationFailure = failure;
-            rollbackInstalledLocaleFile(installedEnDestination, failure);
-            rollbackInstalledLocaleFile(installedRuDestination, failure);
+            enRollbackCompleted = rollbackInstalledLocaleFile(installedEnDestination, failure);
+            ruRollbackCompleted = rollbackInstalledLocaleFile(installedRuDestination, failure);
             throw failure;
         } finally {
-            releaseInstallationLock(installationLock, installationFailure);
+            if (installationFailure != null && (!enRollbackCompleted || !ruRollbackCompleted)) {
+                warnAboutIncompleteInstallationRollback(installationLock, installationFailure);
+            } else {
+                releaseInstallationLock(installationLock, installationFailure);
+            }
         }
     }
 
@@ -135,6 +141,14 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
                 + installationLock + ". Remove this stale lock before the next install. Cause: " + cleanupFailure);
     }
 
+    private static void warnAboutIncompleteInstallationRollback(
+            Path installationLock, Throwable installationFailure) {
+        System.err.println("WARNING: site installation failed and locale-file rollback was incomplete; "
+                + "the site is in a torn/orphaned-content state. The site-wide lock remains at "
+                + installationLock + ". An operator must inspect the site and manually clean up orphaned content "
+                + "before removing this lock. Cause: " + installationFailure);
+    }
+
     private Path installationLock() {
         return stagedInstall.canonicalRoot()
                 .resolve(".astro-export/install-locks/.site.installing")
@@ -153,16 +167,19 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
     }
 
-    private static void rollbackInstalledLocaleFile(Path installedDestination, Throwable installationFailure) {
+    private static boolean rollbackInstalledLocaleFile(
+            Path installedDestination, Throwable installationFailure) {
         if (installedDestination == null) {
-            return;
+            return true;
         }
         try {
             // moveNewLocaleFile returned this already-confined path; reuse it directly so rollback
             // cannot follow a freshly re-derived symlink alias between validation and deletion.
             Files.deleteIfExists(installedDestination);
+            return true;
         } catch (IOException | RuntimeException rollbackFailure) {
             installationFailure.addSuppressed(rollbackFailure);
+            return false;
         }
     }
 

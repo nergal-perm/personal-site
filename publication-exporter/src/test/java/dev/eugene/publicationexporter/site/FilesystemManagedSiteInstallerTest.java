@@ -176,6 +176,58 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
+    void rollbackFailureLeavesSiteWideLockUntilManualRecovery() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path ruDirectory = ruFile.getParent();
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        Files.createDirectories(ruDirectory);
+        Files.createDirectories(manifest);
+        createSparsePayload(siteRoot.resolve("public/assets/vault/slow-payload.bin"), 64 * 1024 * 1024);
+
+        Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(ruDirectory);
+        ExecutorService installers = Executors.newSingleThreadExecutor();
+        Path installationLock;
+        try {
+            Future<Throwable> firstInstall = installers.submit(() -> {
+                try {
+                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+                    return null;
+                } catch (Throwable error) {
+                    return error;
+                }
+            });
+
+            awaitPathExists(ruFile);
+            Files.setPosixFilePermissions(ruDirectory, Set.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
+
+            Throwable firstFailure = resultOf(firstInstall);
+            assertTrue(firstFailure instanceof UncheckedIOException,
+                    () -> "expected manifest IOException but got " + firstFailure);
+            assertTrue(Files.isRegularFile(ruFile), "failed RU rollback must leave the orphan visible");
+            assertFalse(Files.exists(enFile), "EN rollback should still complete independently");
+            installationLock = awaitInstallationLock(siteRoot);
+            assertTrue(Files.isRegularFile(installationLock));
+
+            assertThrows(SiteAlreadyInstalledException.class,
+                    () -> new FilesystemManagedSiteInstaller(siteRoot).install(OTHER_IDENTITY, OTHER_SNAPSHOT));
+        } finally {
+            Files.setPosixFilePermissions(ruDirectory, originalPermissions);
+            installers.shutdownNow();
+        }
+
+        Files.delete(ruFile);
+        Files.delete(manifest);
+        Files.delete(installationLock);
+
+        new FilesystemManagedSiteInstaller(siteRoot).install(OTHER_IDENTITY, OTHER_SNAPSHOT);
+
+        assertTrue(Files.isRegularFile(siteRoot.resolve("src/content/blog/ru/another-essay.md")));
+        assertTrue(Files.isRegularFile(siteRoot.resolve("src/content/blog/en/another-essay.md")));
+    }
+
+    @Test
     void aPathEscapingSiteRootIsRejected() {
         PublicationIdentity escaping = PublicationIdentity.of("../../../outside", "essay", "my-essay");
         CandidateSnapshot snapshot = CandidateSnapshot.of(
