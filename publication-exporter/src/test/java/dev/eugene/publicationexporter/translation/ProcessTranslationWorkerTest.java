@@ -117,6 +117,24 @@ class ProcessTranslationWorkerTest {
     }
 
     @Test
+    void descendantHoldingStdoutCannotKeepTranslationHungAfterParentExit() {
+        ProcessTranslationWorker worker = processWorker(
+                (workdir, prompt) -> List.of("sh", "-c", "(sleep 3) & exit 0"),
+                Duration.ofMillis(200));
+
+        long startedAt = System.nanoTime();
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("body", "title", "description"),
+                "body", "title", "description");
+        Duration elapsed = Duration.ofNanos(System.nanoTime() - startedAt);
+
+        assertFalse(result.succeeded());
+        assertTrue(result.failureReason().contains("output stream"), result::failureReason);
+        assertTrue(elapsed.compareTo(Duration.ofSeconds(2)) < 0,
+                () -> "Translation remained blocked for " + elapsed);
+    }
+
+    @Test
     void largeCombinedOutputDoesNotPreventProcessCompletion() {
         ProcessTranslationWorker worker = processWorker(
                 (workdir, prompt) -> List.of("sh", "-c",

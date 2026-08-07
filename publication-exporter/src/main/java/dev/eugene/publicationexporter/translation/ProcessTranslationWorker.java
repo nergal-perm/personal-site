@@ -6,13 +6,16 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public final class ProcessTranslationWorker implements TranslationWorker {
 
     private static final String BODY_FILE_NAME = "candidate.en.md";
     private static final String TITLE_FILE_NAME = "candidate.en.title.txt";
     private static final String DESCRIPTION_FILE_NAME = "candidate.en.description.txt";
+    private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 1;
     private final TranslationCommand command;
     private final Duration timeout;
     private final Path jobRoot;
@@ -53,25 +56,55 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     private TranslationResult awaitResult(
             Process process, JobWorkspace workspace, TranslationJob job,
             CompletableFuture<Void> outputDrainer) {
+        TranslationResult processResult;
         try {
             boolean completed = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!completed) {
                 process.destroyForcibly();
                 process.waitFor();
-                return TranslationResult.failure(
+                processResult = TranslationResult.failure(
                         "Translation worker timed out after " + timeout.getSeconds() + "s.");
-            }
-            if (process.exitValue() != 0) {
-                return TranslationResult.failure(
+            } else if (process.exitValue() != 0) {
+                processResult = TranslationResult.failure(
                         "Translation worker exited with code " + process.exitValue() + ".");
+            } else {
+                processResult = collectResult(workspace, job);
             }
-            return collectResult(workspace, job);
         } catch (InterruptedException interrupted) {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
-            return TranslationResult.failure("Translation worker was interrupted.");
-        } finally {
-            outputDrainer.join();
+            processResult = TranslationResult.failure("Translation worker was interrupted.");
+        }
+        return afterBoundedOutputDrain(process, outputDrainer, processResult);
+    }
+
+    private static TranslationResult afterBoundedOutputDrain(
+            Process process, CompletableFuture<Void> outputDrainer, TranslationResult processResult) {
+        try {
+            outputDrainer.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
+            return processResult;
+        } catch (TimeoutException timeout) {
+            closeProcessOutput(process);
+            outputDrainer.cancel(true);
+            return TranslationResult.failure(
+                    "Translation worker output stream did not close within "
+                            + OUTPUT_DRAIN_TIMEOUT_SECONDS + "s after process completion.");
+        } catch (InterruptedException interrupted) {
+            closeProcessOutput(process);
+            outputDrainer.cancel(true);
+            Thread.currentThread().interrupt();
+            return TranslationResult.failure("Translation worker output drain was interrupted.");
+        } catch (ExecutionException failure) {
+            return TranslationResult.failure(
+                    "Translation worker output could not be drained: " + failure.getCause().getMessage());
+        }
+    }
+
+    private static void closeProcessOutput(Process process) {
+        try {
+            process.getInputStream().close();
+        } catch (IOException ignored) {
+            // The bounded-drain failure already describes the worker outcome.
         }
     }
 
