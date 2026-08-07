@@ -42,12 +42,26 @@ public final class InstallToSiteHandler {
         return installApprovedSnapshot(identity, approved.get());
     }
 
-    private InstallToSiteResult installApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot approved) {
+    private InstallToSiteResult installApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot planned) {
+        Optional<CandidateSnapshot> current;
         try {
-            managedSiteInstaller.install(identity, approved);
+            current = approvedSnapshotWorkspace.read(identity);
+        } catch (UncheckedIOException failure) {
+            return InstallToSiteResult.blocked(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
+            return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
+        }
+        if (current.isEmpty() || !sameApprovedContent(planned, current.get())) {
+            return InstallToSiteResult.blocked(
+                    "Approved snapshot changed since release was planned; site installation was not attempted.");
+        }
+        try {
+            managedSiteInstaller.install(identity, planned);
         } catch (SiteAlreadyInstalledException raceLoser) {
             return InstallToSiteResult.blocked(
-                    "A site installation already exists; replacing it is not yet supported.");
+                    "Another site installation is already in progress for this publication.");
         } catch (UncheckedIOException failure) {
             return InstallToSiteResult.blocked(IoFailureMessages.describe("Site installation failed", failure));
         } catch (UnsafeManagedSiteEntryException failure) {
@@ -55,6 +69,15 @@ public final class InstallToSiteHandler {
                     "Site installation refused unsafe managed content: " + failure.getMessage());
         }
         return InstallToSiteResult.installed(identity);
+    }
+
+    private static boolean sameApprovedContent(CandidateSnapshot planned, CandidateSnapshot current) {
+        return planned.referenceMap().ruHash().equals(current.referenceMap().ruHash())
+                && planned.referenceMap().enHash().equals(current.referenceMap().enHash())
+                && planned.referenceMap().ruTitleHash().equals(current.referenceMap().ruTitleHash())
+                && planned.referenceMap().enTitleHash().equals(current.referenceMap().enTitleHash())
+                && planned.referenceMap().ruDescriptionHash().equals(current.referenceMap().ruDescriptionHash())
+                && planned.referenceMap().enDescriptionHash().equals(current.referenceMap().enDescriptionHash());
     }
 
 }
