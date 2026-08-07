@@ -10,6 +10,7 @@ import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
+import dev.eugene.publicationexporter.translation.TranslationJob;
 import dev.eugene.publicationexporter.translation.TranslationResult;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -24,6 +25,13 @@ import java.nio.file.Path;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -360,6 +368,65 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void competingPreparationsInstallOnlyTheFreshSource() throws Exception {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        AtomicReference<String> source = new AtomicReference<>(essayWithBody("First source body."));
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return source.get();
+            }
+        };
+        CountDownLatch firstTranslationStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstTranslation = new CountDownLatch(1);
+        CountDownLatch releaseSecondTranslation = new CountDownLatch(1);
+        AtomicInteger invocation = new AtomicInteger();
+        java.util.List<TranslationJob> jobs = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        TranslationWorker controlledWorker = (job, ruBody, ruTitle, ruDescription) -> {
+            jobs.add(job);
+            int currentInvocation = invocation.incrementAndGet();
+            if (currentInvocation == 1) {
+                firstTranslationStarted.countDown();
+                await(releaseFirstTranslation);
+                return TranslationResult.success("Stale English", "Stale title", "Stale description");
+            }
+            await(releaseSecondTranslation);
+            return TranslationResult.success("Fresh English", "Fresh title", "Fresh description");
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler firstHandler = new PrepareHandler(
+                controlledWorker, workspace, ApprovedSnapshotWorkspace.createNull());
+        PrepareHandler secondHandler = new PrepareHandler(
+                controlledWorker, workspace, ApprovedSnapshotWorkspace.createNull());
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<BridgeResponse> stalePreparation = executor.submit(() -> firstHandler.prepare(path, vaultReader));
+            assertTrue(firstTranslationStarted.await(5, TimeUnit.SECONDS));
+            source.set(essayWithBody("Second source body."));
+            Future<BridgeResponse> freshPreparation = executor.submit(() -> secondHandler.prepare(path, vaultReader));
+
+            releaseFirstTranslation.countDown();
+            releaseSecondTranslation.countDown();
+
+            assertEquals("stale", stalePreparation.get(5, TimeUnit.SECONDS).status());
+            assertEquals("ready_for_review", freshPreparation.get(5, TimeUnit.SECONDS).status());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(2, jobs.size());
+        assertFalse(jobs.get(0).sourceFingerprint().equals(jobs.get(1).sourceFingerprint()));
+        assertEquals(1, workspace.installed().size());
+        assertEquals("Second source body.", workspace.installed().get(0).ruBody());
+        assertEquals("Fresh English", workspace.installed().get(0).enBody());
+    }
+
+    @Test
     void candidateInstallIoFailureReturnsTranslationFailed() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
@@ -415,6 +482,47 @@ class PrepareHandlerTest {
         assertTrue(Files.notExists(outsideRoot.resolve("my-essay/candidate")));
     }
 
+    @Test
+    void corruptApprovedSnapshotReturnsStructuredBlockedResponse() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("corrupt-review");
+        installApproved(reviewRoot);
+        Files.writeString(reviewRoot.resolve("blog/my-essay/approved/references.json"), "not-json");
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("EN", "EN title", "EN description"),
+                CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.create(reviewRoot));
+
+        BridgeResponse response = handler.prepare(
+                VaultRelativePath.of("blog/my-essay.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("approved-snapshot", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Approved snapshot lookup failed"));
+    }
+
+    @Test
+    void escapingApprovedMemberReturnsStructuredBlockedResponse() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("escaping-review");
+        installApproved(reviewRoot);
+        Path outside = Files.writeString(temporaryRoot.resolve("outside-ru.md"), "outside");
+        Path ruPath = reviewRoot.resolve("blog/my-essay/approved/ru.md");
+        Files.delete(ruPath);
+        Files.createSymbolicLink(ruPath, outside);
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("EN", "EN title", "EN description"),
+                CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.create(reviewRoot));
+
+        BridgeResponse response = handler.prepare(
+                VaultRelativePath.of("blog/my-essay.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("approved-snapshot", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("escapes review root"));
+    }
+
     private VaultReader failingReader(RuntimeException failure) {
         return new VaultReader() {
             @Override
@@ -427,5 +535,38 @@ class PrepareHandlerTest {
                 throw failure;
             }
         };
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for controlled translation completion");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Controlled translation was interrupted", interrupted);
+        }
+    }
+
+    private static String essayWithBody(String body) {
+        return """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                """ + body;
+    }
+
+    private void installApproved(Path reviewRoot) {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ApprovedSnapshotWorkspace.create(reviewRoot).install(
+                identity, "# My Essay\n\nPlain prose body.", "EN body",
+                "My Essay", "EN title", "A valid description.", "EN description",
+                ReferenceMap.empty(identity, "ru", "en", "ru-title", "en-title", "ru-desc", "en-desc"));
     }
 }

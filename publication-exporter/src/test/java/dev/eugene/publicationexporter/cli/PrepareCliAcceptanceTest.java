@@ -13,6 +13,8 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
+import dev.eugene.publicationexporter.translation.TranslationJob;
+import dev.eugene.publicationexporter.translation.TranslationResult;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -26,6 +28,12 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -233,6 +241,84 @@ class PrepareCliAcceptanceTest {
                 CandidateWorkspace.create(reviewRoot).read(IDENTITY).orElseThrow().enBody());
     }
 
+    @Test
+    void preparingTitleOnlyChangeInstallsNewCandidate() throws Exception {
+        writeEssay("Approved body.", "Changed title", "A valid description.");
+        Path reviewRoot = vaultRoot.resolve("review");
+        installApproved(reviewRoot, "Approved body.", "Prior English candidate");
+        installCandidate(reviewRoot, "Approved body.", "Prior English candidate");
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationResult.success("Fresh English", "Fresh English title", "Fresh English description"));
+
+        int exitCode = prepare("blog/my-essay.md", worker);
+
+        assertEquals(0, exitCode);
+        assertEquals(1, worker.requested().size());
+        assertEquals("Changed title", CandidateWorkspace.create(reviewRoot)
+                .read(IDENTITY).orElseThrow().ruTitle());
+    }
+
+    @Test
+    void preparingDescriptionOnlyChangeInstallsNewCandidate() throws Exception {
+        writeEssay("Approved body.", "My Essay", "Changed description.");
+        Path reviewRoot = vaultRoot.resolve("review");
+        installApproved(reviewRoot, "Approved body.", "Prior English candidate");
+        installCandidate(reviewRoot, "Approved body.", "Prior English candidate");
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationResult.success("Fresh English", "Fresh English title", "Fresh English description"));
+
+        int exitCode = prepare("blog/my-essay.md", worker);
+
+        assertEquals(0, exitCode);
+        assertEquals(1, worker.requested().size());
+        assertEquals("Changed description.", CandidateWorkspace.create(reviewRoot)
+                .read(IDENTITY).orElseThrow().ruDescription());
+    }
+
+    @Test
+    void competingPrepareCommandsInstallOnlyTheFreshCompletion() throws Exception {
+        writeEssay("First source body.");
+        CountDownLatch firstTranslationStarted = new CountDownLatch(1);
+        CountDownLatch releaseFirstTranslation = new CountDownLatch(1);
+        CountDownLatch releaseSecondTranslation = new CountDownLatch(1);
+        AtomicInteger invocation = new AtomicInteger();
+        java.util.List<TranslationJob> jobs = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
+        TranslationWorker controlledWorker = (job, ruBody, ruTitle, ruDescription) -> {
+            jobs.add(job);
+            if (invocation.incrementAndGet() == 1) {
+                firstTranslationStarted.countDown();
+                await(releaseFirstTranslation);
+                return TranslationResult.success("Stale English", "Stale title", "Stale description");
+            }
+            await(releaseSecondTranslation);
+            return TranslationResult.success("Fresh English", "Fresh title", "Fresh description");
+        };
+        PrepareCommand first = configuredCommand(controlledWorker);
+        PrepareCommand second = configuredCommand(controlledWorker);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Integer> stalePreparation = executor.submit(first::call);
+            assertTrue(firstTranslationStarted.await(5, TimeUnit.SECONDS));
+            writeEssay("Second source body.");
+            Future<Integer> freshPreparation = executor.submit(second::call);
+
+            releaseFirstTranslation.countDown();
+            releaseSecondTranslation.countDown();
+
+            assertEquals(1, stalePreparation.get(5, TimeUnit.SECONDS));
+            assertEquals(0, freshPreparation.get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertEquals(2, jobs.size());
+        assertNotEquals(jobs.get(0).sourceFingerprint(), jobs.get(1).sourceFingerprint());
+        assertEquals("Second source body.", CandidateWorkspace.create(vaultRoot.resolve("review"))
+                .read(IDENTITY).orElseThrow().ruBody());
+        assertEquals("Fresh English", CandidateWorkspace.create(vaultRoot.resolve("review"))
+                .read(IDENTITY).orElseThrow().enBody());
+    }
+
     private int prepare(String notePath) {
         return new CommandLine(new Main()).execute(
                 "prepare",
@@ -263,7 +349,21 @@ class PrepareCliAcceptanceTest {
                 "--json");
     }
 
+    private PrepareCommand configuredCommand(TranslationWorker translationWorker) {
+        PrepareCommand command = new PrepareCommand(translationWorker);
+        command.vaultRoot = vaultRoot;
+        command.notePath = "blog/my-essay.md";
+        command.reviewDirectory = vaultRoot.resolve("review");
+        command.jobsDirectory = vaultRoot.resolve(".publication-jobs");
+        command.json = true;
+        return command;
+    }
+
     private void writeEssay(String body) throws Exception {
+        writeEssay(body, "My Essay", "A valid description.");
+    }
+
+    private void writeEssay(String body, String title, String description) throws Exception {
         Files.createDirectories(vaultRoot.resolve("blog"));
         Files.writeString(vaultRoot.resolve("blog/my-essay.md"), """
                 ---
@@ -272,10 +372,10 @@ class PrepareCliAcceptanceTest {
                 publicContentType: essay
                 publicId: my-essay
                 id: source-my-essay
-                title: My Essay
-                description: A valid description.
+                title: %s
+                description: %s
                 ---
-                """ + body);
+                """.formatted(title, description) + body);
     }
 
     private void installApproved(Path reviewRoot, String ruBody, String enBody) {
@@ -315,5 +415,16 @@ class PrepareCliAcceptanceTest {
     private JsonSchema schemaV2() throws Exception {
         return JsonSchemaFactory.getInstance(SpecVersion.VersionFlag.V7)
                 .getSchema(Files.newInputStream(SCHEMA_PATH));
+    }
+
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new AssertionError("Timed out waiting for controlled translation completion");
+            }
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new AssertionError("Controlled translation was interrupted", interrupted);
+        }
     }
 }

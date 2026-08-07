@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.prepare;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
@@ -21,10 +22,15 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class PrepareHandler {
 
     private static final String COMMAND = "prepare";
+    private static final ConcurrentMap<PublicationIdentity, ReentrantLock> INSTALL_LOCKS =
+            new ConcurrentHashMap<>();
 
     private final TranslationWorker translationWorker;
     private final CandidateWorkspace candidateWorkspace;
@@ -43,23 +49,43 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        if (approvedRussianBodyIsUnchanged(intake.identity(), intake.body())) {
-            return BridgeResponse.prepared(COMMAND, intake.identity());
+        try {
+            if (approvedRussianSourceIsUnchanged(
+                    intake.identity(), intake.body(), intake.title(), intake.description())) {
+                return BridgeResponse.prepared(COMMAND, intake.identity());
+            }
+        } catch (UncheckedIOException failure) {
+            return approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
         }
-        return prepareAdmittedEssay(intake.identity(), intake.body(), intake.title(), intake.description());
+        ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());
+        installLock.lock();
+        try {
+            return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
+                    intake.body(), intake.title(), intake.description());
+        } finally {
+            installLock.unlock();
+        }
     }
 
-    private boolean approvedRussianBodyIsUnchanged(PublicationIdentity identity, String currentBody) {
+    private boolean approvedRussianSourceIsUnchanged(
+            PublicationIdentity identity, String currentBody, String currentTitle, String currentDescription) {
         Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
         if (approved.isEmpty()) {
             return false;
         }
-        return RussianDiff.betweenBodies(approved.get().ruBody(), currentBody).isEmpty();
+        CandidateSnapshot baseline = approved.get();
+        return RussianDiff.between(
+                baseline.ruBody(), baseline.ruTitle(), baseline.ruDescription(),
+                currentBody, currentTitle, currentDescription).isEmpty();
     }
 
     private BridgeResponse prepareAdmittedEssay(
+            VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String ruBody, String ruTitle, String ruDescription) {
-        TranslationResult translation = translateCandidate(ruBody, ruTitle, ruDescription);
+        TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
+        TranslationResult translation = translateCandidate(job, ruBody, ruTitle, ruDescription);
         if (!translation.succeeded()) {
             return translationFailure(translation);
         }
@@ -72,19 +98,35 @@ public final class PrepareHandler {
         if (!validation.valid()) {
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
+        if (!sourceStillMatches(notePath, vaultReader, identity, job)) {
+            return BridgeResponse.stale(COMMAND,
+                    Diagnostic.blocking("candidate", "Source note changed while translation was in progress."));
+        }
         ReferenceMap referenceMap = buildReferenceMap(
                 identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
         return installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
                 ruDescription, enDescription, referenceMap);
     }
 
-    private TranslationResult translateCandidate(String ruBody, String ruTitle, String ruDescription) {
-        TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
+    private TranslationResult translateCandidate(
+            TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
         try {
             return translationWorker.translate(job, ruBody, ruTitle, ruDescription);
         } catch (UncheckedIOException failure) {
             return TranslationResult.failure(IoFailureMessages.describe("Translation worker I/O failed", failure));
         }
+    }
+
+    private static boolean sourceStillMatches(
+            VaultRelativePath notePath, VaultReader vaultReader,
+            PublicationIdentity expectedIdentity, TranslationJob job) {
+        NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
+        if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
+            return false;
+        }
+        TranslationJob currentSource = TranslationJob.forSource(
+                current.body(), current.title(), current.description());
+        return job.sourceFingerprint().equals(currentSource.sourceFingerprint());
     }
 
     private static EnglishCandidateValidator.Result validateEnglishCandidate(
@@ -129,6 +171,11 @@ public final class PrepareHandler {
     private static BridgeResponse candidateFailure(String message) {
         return BridgeResponse.translationFailed(COMMAND,
                 Diagnostic.blocking("candidate", message));
+    }
+
+    private static BridgeResponse approvedLookupFailure(String message) {
+        return BridgeResponse.blocked(COMMAND,
+                Diagnostic.blocking("approved-snapshot", message));
     }
 
 }
