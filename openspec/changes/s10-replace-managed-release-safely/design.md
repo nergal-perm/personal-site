@@ -18,9 +18,9 @@ problem (stale lock after process death permanently blocking recovery).
 - Replacing an existing managed generation for one publication is atomic at the "one coherent generation"
   granularity RVA/REL language uses: a concurrent reader (the site-content gate, Astro's build, or another
   `install-to-site` call) never observes ru from one generation paired with en or provenance from another.
-- An interruption during replacement recovers deterministically — this design chooses **always roll back to
-  the old generation** on any interruption (see D2), a valid reading of REL-05's "old or new" and the
-  simpler, already-established behavior of this exact adapter's create-case rollback.
+- An interruption during replacement recovers deterministically to exactly one complete, coherent generation
+  — the one currently agreed by both the managed tree bytes and their recorded provenance (see D2) — rolling
+  back whichever locale files were mid-swap when interrupted.
 - A declared input (the approved snapshot's hashes) that changes between planning and commit blocks the
   release, leaving live trees untouched (REL-04).
 - Concurrent replacement attempts for the same identity are serialized (real cross-process lock).
@@ -155,5 +155,7 @@ and rolled back the next time `install-to-site` runs for that publication.
 ## Open Questions
 
 None outstanding — the functional collaborative-design pass confirmed zero requirement-text gaps
-(`scope-pins.md`); the per-file backup/restore, always-rollback recovery policy, real cross-process lock, and
-input-drift recheck directly reuse or extend S08/S09's already-proven patterns.
+(`scope-pins.md`); the per-file backup/restore, provenance-vs-tree joint recovery policy, real cross-process
+lock, and input-drift recheck directly reuse or extend S08/S09's already-proven patterns (D2's recovery
+policy went through two corrections during Task 4's own review before landing on the current joint marker —
+see D2's Correction 1/2 for the history).
