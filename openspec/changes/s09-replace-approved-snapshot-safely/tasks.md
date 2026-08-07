@@ -56,7 +56,7 @@ inside the existing `approved`/`markreviewed` packages.
 `grep -rn "ApprovedSnapshotAlreadyExistsException\|ensureNotAlreadyInstalled" publication-exporter/src` first
 — confirms every place that currently relies on create-only semantics, so nothing is missed.
 
-- [ ] 1.1 **Write the failing unit test proving replace-not-block in `NullApprovedSnapshotWorkspaceTest`**
+- [x] 1.1 **Write the failing unit test proving replace-not-block in `NullApprovedSnapshotWorkspaceTest`**
 
 ```java
 @Test
@@ -77,12 +77,12 @@ void secondInstallReplacesThePriorSnapshot() {
 Read the existing test file first to reuse its exact `IDENTITY`/`referenceMap(...)` helper names — do not
 invent new ones if equivalents already exist.
 
-- [ ] 1.2 **Run it to confirm it fails** (throws `ApprovedSnapshotAlreadyExistsException` today)
+- [x] 1.2 **Run it to confirm it fails** (throws `ApprovedSnapshotAlreadyExistsException` today)
 
 Run: `cd publication-exporter && mvn -q -Dtest=NullApprovedSnapshotWorkspaceTest test`
 Expected: FAILURE — `ApprovedSnapshotAlreadyExistsException` thrown instead of replacing.
 
-- [ ] 1.3 **Remove `ensureNotAlreadyInstalled(...)`'s guard from `install(...)` in `NullApprovedSnapshotWorkspace`**
+- [x] 1.3 **Remove `ensureNotAlreadyInstalled(...)`'s guard from `install(...)` in `NullApprovedSnapshotWorkspace`**
 
 ```java
 @Override
@@ -97,19 +97,19 @@ public void install(PublicationIdentity identity, String ruBody, String enBody,
 
 Delete the now-unused `ensureNotAlreadyInstalled(...)` private method entirely (do not leave dead code).
 
-- [ ] 1.4 **Run the test to confirm it passes**
+- [x] 1.4 **Run the test to confirm it passes**
 
 Run: `cd publication-exporter && mvn -q -Dtest=NullApprovedSnapshotWorkspaceTest test`
 Expected: PASS.
 
-- [ ] 1.5 **Run the full suite to confirm nothing else depended on the old create-only behavior**
+- [x] 1.5 **Run the full suite to confirm nothing else depended on the old create-only behavior**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS. If `MarkReviewedHandlerTest` has an existing test asserting a second `install(...)`
 call blocks, it will need updating in Task 3 (not this task) — note it as a concern in your report if you
 find one, do not fix it here.
 
-- [ ] 1.6 **Commit**
+- [x] 1.6 **Commit**
 
 ```bash
 cd publication-exporter
@@ -131,24 +131,24 @@ git commit -m "feat(approved): NullApprovedSnapshotWorkspace.install replaces in
   do not guess method/field names).
 - Produces: none (this task only adds a failing test; Task 3 makes it pass).
 
-- [ ] 2.1 **Read `MarkReviewedCliAcceptanceTest` and `MarkReviewedCommand` fully first** to learn the exact
+- [x] 2.1 **Read `MarkReviewedCliAcceptanceTest` and `MarkReviewedCommand` fully first** to learn the exact
   harness shape (how a candidate and an existing approved snapshot are seeded, how the CLI response is
   asserted) before writing a new case.
 
-- [ ] 2.2 **Write one failing acceptance test**: `secondMarkReviewedReplacesTheApprovedSnapshot()` — GIVEN an
+- [x] 2.2 **Write one failing acceptance test**: `secondMarkReviewedReplacesTheApprovedSnapshot()` — GIVEN an
   approved snapshot already installed for a publication, and a new candidate prepared against it that exactly
   matches its own reference-map evidence (i.e. passes RVA-04 revalidation — not stale), WHEN `mark-reviewed`
   runs again for the same note, THEN the response is `approved` (not blocked) and the approved snapshot now
   readable via `ApprovedSnapshotWorkspace` (or through whatever the test harness already exposes for
   inspection) matches the new candidate's RU/EN bytes, not the old ones.
 
-- [ ] 2.3 **Run it to confirm it fails for the right reason**
+- [x] 2.3 **Run it to confirm it fails for the right reason**
 
 Run: `cd publication-exporter && mvn -q -Dtest=MarkReviewedCliAcceptanceTest test`
 Expected: FAILURE — response is `blocked` with "replacing it is not yet supported," not `approved`. If it
 fails to compile instead, fix the test code (not production code) until it compiles and fails on behavior.
 
-- [ ] 2.4 **Commit the failing test on its own**
+- [x] 2.4 **Commit the failing test on its own**
 
 ```bash
 cd publication-exporter
@@ -169,11 +169,11 @@ git commit -m "test(mark-reviewed): add failing acceptance test for approved-sna
 - Produces (changed): `MarkReviewedHandler`'s public API is unchanged (same constructor, same
   `markReviewed(...)` signature) — only its internal branching changes.
 
-- [ ] 3.1 **Read the current `alreadyApprovedResponse()` call site in `markReviewedAdmittedEssay(...)`** —
+- [x] 3.1 **Read the current `alreadyApprovedResponse()` call site in `markReviewedAdmittedEssay(...)`** —
   confirm exactly where `approvedSnapshot.isPresent()` currently short-circuits to blocked, per the file
   excerpt already quoted in `design.md`'s Context section.
 
-- [ ] 3.2 **Add the per-identity lock registry and wrap the revalidate-then-install sequence**
+- [x] 3.2 **Add the per-identity lock registry and wrap the revalidate-then-install sequence**
 
 ```java
 private static final ConcurrentMap<PublicationIdentity, ReentrantLock> APPROVAL_LOCKS =
@@ -224,20 +224,20 @@ judgment call — prefer keeping `BridgeResponse.approved(...)` for both per `pr
 requirement asks for a distinct "replaced" status, unless removing the field breaks an existing passing test,
 in which case keep it and explain why in your report.)
 
-- [ ] 3.3 **Remove `alreadyApprovedResponse()` and its call sites if no longer reachable; keep it only if the
+- [x] 3.3 **Remove `alreadyApprovedResponse()` and its call sites if no longer reachable; keep it only if the
   genuine-race exception path (Task 4) still needs a response for that case** — read `installApprovedSnapshot(...)`'s
   existing `catch (ApprovedSnapshotAlreadyExistsException raceLoser)` branch: this is the correct place for a
   "someone else's concurrent install won the race" response, which is a real and different scenario from
   "an approved snapshot already exists" (that's now normal, expected, and handled by replacing). Keep the
   exception-driven response for the race case; delete the presence-driven one.
 
-- [ ] 3.4 **Add/update `MarkReviewedHandlerTest` cases**: a replace-succeeds case (revalidated second
+- [x] 3.4 **Add/update `MarkReviewedHandlerTest` cases**: a replace-succeeds case (revalidated second
   approval installs the new snapshot), and confirm the existing stale-second-approval-style test (if one
   exists asserting the old "already approved" block) is either removed (if it tested the now-wrong behavior)
   or retargeted to assert staleness-blocking instead (if it happened to also have stale evidence) — read the
   existing test class fully before deciding which.
 
-- [ ] 3.5 **Run the acceptance test and full suite**
+- [x] 3.5 **Run the acceptance test and full suite**
 
 Run: `cd publication-exporter && mvn -q -Dtest=MarkReviewedHandlerTest,MarkReviewedCliAcceptanceTest test`
 Expected: PASS, including Task 2's previously-failing case.
@@ -245,7 +245,7 @@ Expected: PASS, including Task 2's previously-failing case.
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 3.6 **Commit**
+- [x] 3.6 **Commit**
 
 ```bash
 cd publication-exporter
@@ -274,7 +274,7 @@ mirroring PrepareHandler's S08 pattern."
 - Consumes: `StagedDirectoryInstall` (existing), `Files`/`UUID` (existing patterns already used in the
   sibling class).
 
-- [ ] 4.1 **Write a failing synchronous-failure test mirroring `FilesystemCandidateWorkspaceTest.failedNewMoveRestoresFullyReadableOldCandidate`**
+- [x] 4.1 **Write a failing synchronous-failure test mirroring `FilesystemCandidateWorkspaceTest.failedNewMoveRestoresFullyReadableOldCandidate`**
 
 ```java
 @Test
@@ -305,13 +305,13 @@ void failedNewMoveRestoresFullyReadableOldApprovedSnapshot() throws Exception {
 Adapt import names/constants to whatever `FilesystemApprovedSnapshotWorkspaceTest` already declares (its own
 `IDENTITY`, `referenceMap(...)` helper, `reviewRoot` field) — read the file first.
 
-- [ ] 4.2 **Run it to confirm it fails to compile** (no `MoveOperation`-accepting constructor yet, `install(...)`
+- [x] 4.2 **Run it to confirm it fails to compile** (no `MoveOperation`-accepting constructor yet, `install(...)`
   still throws `ApprovedSnapshotAlreadyExistsException` on a second call rather than attempting a move)
 
 Run: `cd publication-exporter && mvn -q -Dtest=FilesystemApprovedSnapshotWorkspaceTest test`
 Expected: compilation FAILURE.
 
-- [ ] 4.3 **Implement the backup/restore replace protocol**, mirroring
+- [x] 4.3 **Implement the backup/restore replace protocol**, mirroring
   `FilesystemCandidateWorkspace.replaceCandidate(...)`/`restoreBackup(...)`/`moveWithinReviewRoot(...)`
   exactly (same method shapes, same `MoveOperation` interface, same `LinkOption.NOFOLLOW_LINKS`-guarded
   existence check, same `candidate-backup-<uuid>` naming convention but for `approved-backup-<uuid>`):
@@ -401,14 +401,14 @@ both "nothing there yet" (no backup taken) and "something there" (backup then re
 `recoverIfNeeded(identity)` is implemented in step 4.5 below — stub it as a no-op private method first if you
 want a smaller intermediate compile step, then fill it in.
 
-- [ ] 4.4 **Run the synchronous-failure test to confirm it passes**
+- [x] 4.4 **Run the synchronous-failure test to confirm it passes**
 
 Run: `cd publication-exporter && mvn -q -Dtest=FilesystemApprovedSnapshotWorkspaceTest test`
 Expected: PASS (the new test from 4.1, plus all pre-existing tests in this class — some existing tests may
 assert the old create-only-throws behavior; update or remove those the same way Task 3.4 handled
 `MarkReviewedHandlerTest`, reading each one first to decide).
 
-- [ ] 4.5 **Write a failing test for durable cross-instance recovery — restore case**, simulating a crash
+- [x] 4.5 **Write a failing test for durable cross-instance recovery — restore case**, simulating a crash
   between the backup rename and the new-content move by directly constructing that on-disk state with one
   workspace instance, then using a **fresh** workspace instance (simulating a new process) to prove recovery:
 
@@ -441,13 +441,13 @@ Adjust the directory-path construction to match whatever private path-building l
 `FilesystemApprovedSnapshotWorkspace` actually uses (read `approvedDirectory(identity)` first) — the test
 must reconstruct the exact same path the production code would use, not assume it.
 
-- [ ] 4.6 **Run it to confirm it fails** (no `recoverIfNeeded` logic yet — `read(...)` finds no approved
+- [x] 4.6 **Run it to confirm it fails** (no `recoverIfNeeded` logic yet — `read(...)` finds no approved
   directory and returns empty instead of recovering)
 
 Run: `cd publication-exporter && mvn -q -Dtest=FilesystemApprovedSnapshotWorkspaceTest test`
 Expected: FAILURE — `orElseThrow()` throws, or the assertion on `ruBody()` fails.
 
-- [ ] 4.7 **Implement `recoverIfNeeded(identity)` and call it from `read(...)`, `find(...)`, and `install(...)`**
+- [x] 4.7 **Implement `recoverIfNeeded(identity)` and call it from `read(...)`, `find(...)`, and `install(...)`**
 
 ```java
 private void recoverIfNeeded(PublicationIdentity identity) {
@@ -495,24 +495,24 @@ Call `recoverIfNeeded(identity)` as the first line of `read(...)`, `find(...)`, 
 added in step 4.3's `install(...)` body above). Guard each call with `Objects.requireNonNull(identity,
 "identity")` already present in those methods — `recoverIfNeeded` runs after the null check, not before.
 
-- [ ] 4.8 **Run the recovery test to confirm it passes**
+- [x] 4.8 **Run the recovery test to confirm it passes**
 
 Run: `cd publication-exporter && mvn -q -Dtest=FilesystemApprovedSnapshotWorkspaceTest test`
 Expected: PASS.
 
-- [ ] 4.9 **Write and pass a second recovery case — cleanup case** (crash after the new-content move
+- [x] 4.9 **Write and pass a second recovery case — cleanup case** (crash after the new-content move
   succeeded but before backup cleanup): construct on-disk state with both a complete canonical approved
   directory (the "new" content) and a complete backup directory (the "old" content) present simultaneously,
   then prove a fresh instance's `read(...)` returns the *new* content and deletes the stale backup. Follow the
   same construction style as 4.5 (direct filesystem setup, no injected failure needed — just pre-existing
   on-disk state).
 
-- [ ] 4.10 **Run the full suite**
+- [x] 4.10 **Run the full suite**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS, all tests green, elapsed time still low.
 
-- [ ] 4.11 **Commit**
+- [x] 4.11 **Commit**
 
 ```bash
 cd publication-exporter
@@ -531,12 +531,12 @@ by a later process, not only within the failed call."
 
 **Files:** none created/modified — verification only.
 
-- [ ] 5.1 **Run the complete Maven test suite**
+- [x] 5.1 **Run the complete Maven test suite**
 
 Run: `cd publication-exporter && mvn -B test`
 Expected: `Tests run: 3XX+, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`.
 
-- [ ] 5.2 **Manually trace each requirement scenario to its covering test(s)**: RVA-05 "Approval completes"
+- [x] 5.2 **Manually trace each requirement scenario to its covering test(s)**: RVA-05 "Approval completes"
   (already covered by S05's existing tests, confirm still passing) → unaffected; "Approval is interrupted" →
   Task 4's synchronous-failure and cross-instance recovery tests; "A second approval replaces the prior
   snapshot" → Task 2/3's acceptance and handler tests; RVA-04's staleness-blocks-a-second-approval case →
@@ -544,7 +544,7 @@ Expected: `Tests run: 3XX+, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`
   candidate on top of an existing approved snapshot specifically (not just a stale *first* approval) — add one
   if missing, do not silently mark this task done if it's absent.
 
-- [ ] 5.3 **Confirm `git status` is clean except for this slice's new/modified files.**
+- [x] 5.3 **Confirm `git status` is clean except for this slice's new/modified files.**
 
-- [ ] 5.4 **This task has no commit of its own** — it is the checkpoint before subagent-driven-development
+- [x] 5.4 **This task has no commit of its own** — it is the checkpoint before subagent-driven-development
   hands off to the four parallel review passes and the final whole-branch review.
