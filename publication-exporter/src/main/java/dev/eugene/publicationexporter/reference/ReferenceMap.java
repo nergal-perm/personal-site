@@ -87,6 +87,16 @@ public final class ReferenceMap {
         return enDescriptionHash;
     }
 
+    public boolean sameContentAs(ReferenceMap other) {
+        Objects.requireNonNull(other, "other");
+        return ruHash.equals(other.ruHash)
+                && enHash.equals(other.enHash)
+                && ruTitleHash.equals(other.ruTitleHash)
+                && enTitleHash.equals(other.enTitleHash)
+                && ruDescriptionHash.equals(other.ruDescriptionHash)
+                && enDescriptionHash.equals(other.enDescriptionHash);
+    }
+
     @JsonProperty("occurrences")
     public List<Object> occurrences() {
         return List.of();

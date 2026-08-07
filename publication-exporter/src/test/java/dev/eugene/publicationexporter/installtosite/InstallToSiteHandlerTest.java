@@ -61,7 +61,11 @@ class InstallToSiteHandlerTest {
                 ReferenceMap.empty(IDENTITY, "old-ru-hash", "old-en-hash", "old-ru-title-hash", "old-en-title-hash", "old-ru-description-hash", "old-en-description-hash"));
         NullManagedSiteInstaller siteInstaller = new NullManagedSiteInstaller();
         InstallToSiteHandler handler = new InstallToSiteHandler(approvedSnapshotWorkspace, siteInstaller);
-        handler.installToSite(IDENTITY);
+
+        InstallToSiteResult firstResult = handler.installToSite(IDENTITY);
+
+        assertTrue(firstResult.ok());
+        assertEquals("Old EN title", siteInstaller.installed().get(IDENTITY).enTitle());
 
         approvedSnapshotWorkspace.install(IDENTITY, "New RU body", "New EN body", "New RU title", "New EN title",
                 "New RU description.", "New EN description.",

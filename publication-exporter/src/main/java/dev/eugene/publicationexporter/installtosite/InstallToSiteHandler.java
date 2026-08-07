@@ -45,15 +45,11 @@ public final class InstallToSiteHandler {
     private InstallToSiteResult installApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot planned) {
         Optional<CandidateSnapshot> current;
         try {
-            current = approvedSnapshotWorkspace.read(identity);
-        } catch (UncheckedIOException failure) {
-            return InstallToSiteResult.blocked(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
-        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
-            return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
-        } catch (ApprovedSnapshotWorkspaceStateException failure) {
-            return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
+            current = readCurrentApprovedSnapshot(identity);
+        } catch (LookupFailure failure) {
+            return InstallToSiteResult.blocked(failure.getMessage());
         }
-        if (current.isEmpty() || !sameApprovedContent(planned, current.get())) {
+        if (current.isEmpty() || !planned.referenceMap().sameContentAs(current.get().referenceMap())) {
             return InstallToSiteResult.blocked(
                     "Approved snapshot changed since release was planned; site installation was not attempted.");
         }
@@ -71,13 +67,22 @@ public final class InstallToSiteHandler {
         return InstallToSiteResult.installed(identity);
     }
 
-    private static boolean sameApprovedContent(CandidateSnapshot planned, CandidateSnapshot current) {
-        return planned.referenceMap().ruHash().equals(current.referenceMap().ruHash())
-                && planned.referenceMap().enHash().equals(current.referenceMap().enHash())
-                && planned.referenceMap().ruTitleHash().equals(current.referenceMap().ruTitleHash())
-                && planned.referenceMap().enTitleHash().equals(current.referenceMap().enTitleHash())
-                && planned.referenceMap().ruDescriptionHash().equals(current.referenceMap().ruDescriptionHash())
-                && planned.referenceMap().enDescriptionHash().equals(current.referenceMap().enDescriptionHash());
+    private Optional<CandidateSnapshot> readCurrentApprovedSnapshot(PublicationIdentity identity) {
+        try {
+            return approvedSnapshotWorkspace.read(identity);
+        } catch (UncheckedIOException failure) {
+            throw new LookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            throw new LookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
+            throw new LookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        }
+    }
+
+    private static final class LookupFailure extends RuntimeException {
+        LookupFailure(String message) {
+            super(message);
+        }
     }
 
 }

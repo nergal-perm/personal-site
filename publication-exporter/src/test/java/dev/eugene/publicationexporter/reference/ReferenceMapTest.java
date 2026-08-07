@@ -4,6 +4,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -52,6 +53,30 @@ class ReferenceMapTest {
         assertNotEquals(referenceMap().hashCode(), changedEnglishDescription.hashCode());
         assertTrue(referenceMap().toString().contains("ruTitleHash=ru-title-hash"));
         assertTrue(referenceMap().toString().contains("enDescriptionHash=en-description-hash"));
+    }
+
+    @Test
+    void sameContentAsComparesContentHashesWithoutConsideringIdentity() {
+        ReferenceMap sameContent = ReferenceMap.empty(
+                PublicationIdentity.of("other", "essay", "other-essay"),
+                "ru-hash", "en-hash",
+                "ru-title-hash", "en-title-hash",
+                "ru-description-hash", "en-description-hash");
+        ReferenceMap changedContent = ReferenceMap.empty(
+                IDENTITY, "ru-hash", "en-hash",
+                "ru-title-hash", "en-title-hash",
+                "ru-description-hash", "changed-en-description-hash");
+
+        assertTrue(referenceMap().sameContentAs(sameContent));
+        assertFalse(referenceMap().sameContentAs(changedContent));
+    }
+
+    @Test
+    void sameContentAsRejectsNull() {
+        NullPointerException exception = assertThrows(NullPointerException.class,
+                () -> referenceMap().sameContentAs(null));
+
+        assertEquals("other", exception.getMessage());
     }
 
     @Test
