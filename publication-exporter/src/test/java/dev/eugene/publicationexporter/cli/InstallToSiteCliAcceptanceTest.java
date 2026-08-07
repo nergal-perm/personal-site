@@ -87,6 +87,47 @@ class InstallToSiteCliAcceptanceTest {
     }
 
     @Test
+    void secondInstallToSiteReplacesTheManagedGeneration() throws Exception {
+        Path reviewDirectory = workRoot.resolve("review");
+        Path siteRoot = workRoot.resolve("site");
+        ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
+        approvedSnapshotWorkspace.install(IDENTITY,
+                "# Old RU body", "# Old EN body", "Old RU title", "Old EN title",
+                "Old RU description.", "Old EN description.",
+                ReferenceMap.empty(IDENTITY,
+                        ContentHash.sha256Hex("# Old RU body"), ContentHash.sha256Hex("# Old EN body"),
+                        ContentHash.sha256Hex("Old RU title"), ContentHash.sha256Hex("Old EN title"),
+                        ContentHash.sha256Hex("Old RU description."),
+                        ContentHash.sha256Hex("Old EN description.")));
+
+        int firstExitCode = installToSite(reviewDirectory, siteRoot);
+
+        assertEquals(0, firstExitCode);
+        String oldRuFile = Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md"));
+        String oldEnFile = Files.readString(siteRoot.resolve("src/content/blog/en/my-essay.md"));
+        capturedOut.reset();
+        approvedSnapshotWorkspace.install(IDENTITY,
+                "# New RU body", "# New EN body", "New RU title", "New EN title",
+                "New RU description.", "New EN description.",
+                ReferenceMap.empty(IDENTITY,
+                        ContentHash.sha256Hex("# New RU body"), ContentHash.sha256Hex("# New EN body"),
+                        ContentHash.sha256Hex("New RU title"), ContentHash.sha256Hex("New EN title"),
+                        ContentHash.sha256Hex("New RU description."),
+                        ContentHash.sha256Hex("New EN description.")));
+
+        int secondExitCode = installToSite(reviewDirectory, siteRoot);
+
+        JsonNode result = soleJsonValueOnStdout();
+        assertEquals(true, result.get("ok").asBoolean(),
+                () -> "expected installed response, got: " + result);
+        assertEquals(0, secondExitCode);
+        assertTrue(Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md")).contains("# New RU body"));
+        assertTrue(Files.readString(siteRoot.resolve("src/content/blog/en/my-essay.md")).contains("# New EN body"));
+        assertNotEquals(oldRuFile, Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md")));
+        assertNotEquals(oldEnFile, Files.readString(siteRoot.resolve("src/content/blog/en/my-essay.md")));
+    }
+
+    @Test
     void corruptedApprovedSnapshotProducesBlockedJsonInsteadOfEscaping() throws Exception {
         Path reviewDirectory = workRoot.resolve("review");
         Path siteRoot = workRoot.resolve("site");
