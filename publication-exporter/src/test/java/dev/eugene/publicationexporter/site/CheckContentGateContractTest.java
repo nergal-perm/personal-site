@@ -67,10 +67,90 @@ class CheckContentGateContractTest {
                         + truncated(result.output()));
     }
 
+    @Test
+    void leftoverManagedBackupOutsidePayloadRootsDoesNotFailTheRealGate() throws Exception {
+        seedCuratedPageFixtures(siteRoot);
+        ManagedSiteInstaller.create(siteRoot).install(IDENTITY, essaySnapshot());
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path backup = siteRoot.resolve(".astro-export/managed-backups/src/content/blog/ru")
+                .resolve("my-essay.md.backup-00000000-0000-0000-0000-000000000001");
+        Files.createDirectories(backup.getParent());
+        Files.copy(ruFile, backup);
+
+        ProcessResult result = runGate(siteRoot);
+
+        assertEquals(0, result.exitCode(),
+                () -> "check-content.mjs must ignore transaction backups outside payload roots but exited with "
+                        + result.exitCode() + ".\nOutput (truncated):\n" + truncated(result.output()));
+    }
+
+    @Test
+    void installingTheSameReplacementTwiceProducesIdenticalNormalizedProvenance() throws Exception {
+        seedCuratedPageFixtures(siteRoot);
+        ManagedSiteInstaller installer = ManagedSiteInstaller.create(siteRoot);
+        installer.install(IDENTITY, essaySnapshot());
+        installer.install(IDENTITY, replacementEssaySnapshot());
+        String firstReplacementProvenance = Files.readString(
+                siteRoot.resolve(".astro-export/release-provenance.json"), StandardCharsets.UTF_8);
+
+        installer.install(IDENTITY, replacementEssaySnapshot());
+
+        String secondReplacementProvenance = Files.readString(
+                siteRoot.resolve(".astro-export/release-provenance.json"), StandardCharsets.UTF_8);
+        assertEquals(firstReplacementProvenance, secondReplacementProvenance);
+    }
+
+    @Test
+    void replacedOutputPassesTheRealGate() throws Exception {
+        seedCuratedPageFixtures(siteRoot);
+        ManagedSiteInstaller installer = ManagedSiteInstaller.create(siteRoot);
+        installer.install(IDENTITY, essaySnapshot());
+        installer.install(IDENTITY, replacementEssaySnapshot());
+
+        ProcessResult result = runGate(siteRoot);
+
+        assertEquals(0, result.exitCode(),
+                () -> "check-content.mjs should accept the replaced generation but exited with "
+                        + result.exitCode() + ".\nOutput (truncated):\n" + truncated(result.output()));
+        assertTrue(result.output().contains("Content validation passed successfully"),
+                () -> "gate output should include successful validation marker.\nOutput (truncated):\n"
+                        + truncated(result.output()));
+    }
+
+    @Test
+    void tamperingWithAReplacedGenerationIsRejectedByTheRealGate() throws Exception {
+        seedCuratedPageFixtures(siteRoot);
+        ManagedSiteInstaller installer = ManagedSiteInstaller.create(siteRoot);
+        installer.install(IDENTITY, essaySnapshot());
+        installer.install(IDENTITY, replacementEssaySnapshot());
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Files.writeString(enFile, "\ntampered replacement\n", StandardCharsets.UTF_8, StandardOpenOption.APPEND);
+
+        ProcessResult result = runGate(siteRoot);
+
+        assertEquals(1, result.exitCode(),
+                () -> "check-content.mjs should reject a tampered replacement but exited with "
+                        + result.exitCode() + ".\nOutput (truncated):\n" + truncated(result.output()));
+        assertTrue(result.output().toLowerCase().contains("release-provenance-mismatch"),
+                () -> "gate output should include release-provenance-mismatch.\nOutput (truncated):\n"
+                        + truncated(result.output()));
+    }
+
     private static CandidateSnapshot essaySnapshot() {
         return CandidateSnapshot.of("# My Essay\n\nBody.", "# My Essay (EN)\n\nBody.",
                 "My Essay", "My Essay (EN)", "A valid description.", "A valid description (EN).",
                 ReferenceMap.empty(IDENTITY, "ru-source-hash", "en-source-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+    }
+
+    private static CandidateSnapshot replacementEssaySnapshot() {
+        return CandidateSnapshot.of("# Replacement Essay\n\nNew body.",
+                "# Replacement Essay (EN)\n\nNew body.",
+                "Replacement Essay", "Replacement Essay (EN)",
+                "A replacement description.", "A replacement description (EN).",
+                ReferenceMap.empty(IDENTITY,
+                        "replacement-ru-source-hash", "replacement-en-source-hash",
+                        "replacement-ru-title-hash", "replacement-en-title-hash",
+                        "replacement-ru-description-hash", "replacement-en-description-hash"));
     }
 
     private static void seedCuratedPageFixtures(Path siteRoot) throws IOException {

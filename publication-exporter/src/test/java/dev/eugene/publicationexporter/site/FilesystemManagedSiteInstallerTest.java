@@ -114,9 +114,9 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void nextInstallRecoversAnInterruptedSingleLocaleReplacement() throws Exception {
+    void nextInstallRecoversAnInterruptedReplacementFromBackupStorageOutsideManagedRoots() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
-        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path ruBackup = newManagedBackupPath(ruFile);
         new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
         Files.move(ruFile, ruBackup);
         assertFalse(Files.exists(ruFile));
@@ -132,7 +132,7 @@ class FilesystemManagedSiteInstallerTest {
     void recoveryRollsBackRuWhenItsSwapCompletedBeforeEnStarted() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
-        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path ruBackup = newManagedBackupPath(ruFile);
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
         FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
         installer.install(IDENTITY, SNAPSHOT);
@@ -162,7 +162,7 @@ class FilesystemManagedSiteInstallerTest {
     void provenanceWriteFailureDuringRecoveryLeavesBackupForNextRecoveryAttempt() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
-        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path ruBackup = newManagedBackupPath(ruFile);
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
         FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
         installer.install(IDENTITY, SNAPSHOT);
@@ -203,7 +203,7 @@ class FilesystemManagedSiteInstallerTest {
     void recoveryKeepsCanonicalGenerationWhenProvenanceMatchesAndDeletesCleanupDebris() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
-        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path ruBackup = newManagedBackupPath(ruFile);
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
         FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
         installer.install(IDENTITY, SNAPSHOT);
@@ -242,8 +242,8 @@ class FilesystemManagedSiteInstallerTest {
     @Test
     void recoveryRejectsMultipleBackupsForOneLocale() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
-        Path firstBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
-        Path secondBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path firstBackup = newManagedBackupPath(ruFile);
+        Path secondBackup = newManagedBackupPath(ruFile);
         new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
         String canonicalBefore = Files.readString(ruFile);
         Files.copy(ruFile, firstBackup);
@@ -569,6 +569,13 @@ class FilesystemManagedSiteInstallerTest {
         } catch (Exception error) {
             throw new AssertionError(error);
         }
+    }
+
+    private Path newManagedBackupPath(Path localeFile) throws Exception {
+        Path mirroredLocale = siteRoot.resolve(".astro-export/managed-backups")
+                .resolve(siteRoot.relativize(localeFile));
+        Files.createDirectories(mirroredLocale.getParent());
+        return mirroredLocale.resolveSibling(mirroredLocale.getFileName() + ".backup-" + UUID.randomUUID());
     }
 
     private static void createSparsePayload(Path file, int size) throws Exception {

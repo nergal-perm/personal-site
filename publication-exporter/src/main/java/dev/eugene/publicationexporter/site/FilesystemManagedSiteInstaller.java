@@ -19,11 +19,13 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 public final class FilesystemManagedSiteInstaller implements ManagedSiteInstaller {
 
     private static final List<String> PAYLOAD_ROOTS =
             List.of("public/assets/vault", "src/content", "src/data/pages");
+    private static final Path MANAGED_BACKUP_ROOT = Path.of(".astro-export/managed-backups");
 
     private final StagedDirectoryInstall stagedInstall;
 
@@ -34,12 +36,21 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
 
     @Override
     public void install(PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
+        installWithOutcome(identity, approvedSnapshot);
+    }
+
+    @Override
+    public ManagedSiteInstallOutcome installWithOutcome(
+            PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
         requireInstallationInputs(identity, approvedSnapshot);
         Path ruDestination = markdownFile(identity, "ru");
         Path enDestination = markdownFile(identity, "en");
-        withInstallationLock(identity, () -> {
-            recoverIfNeeded(ruDestination, enDestination);
+        return withInstallationLock(identity, () -> {
+            boolean recovered = recoverIfNeeded(ruDestination, enDestination);
             installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
+            return recovered
+                    ? ManagedSiteInstallOutcome.RECOVERED_AND_INSTALLED
+                    : ManagedSiteInstallOutcome.INSTALLED;
         });
     }
 
@@ -102,14 +113,14 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         deleteLocaleBackupIfPresent(ruBackup);
     }
 
-    private void withInstallationLock(PublicationIdentity identity, Runnable operation) {
+    private <T> T withInstallationLock(PublicationIdentity identity, Supplier<T> operation) {
         Path lockFile = installationLock();
         try {
             Path resolvedLock = createAndResolveParentDirectories(lockFile);
             try (FileChannel channel = FileChannel.open(resolvedLock,
                     StandardOpenOption.CREATE, StandardOpenOption.WRITE);
                  FileLock ignored = tryAcquire(channel, identity)) {
-                operation.run();
+                return operation.get();
             }
         } catch (IOException error) {
             throw new UncheckedIOException(error);
@@ -139,8 +150,10 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         Path resolvedSource = resolveWithinSiteRoot(source);
         Path backup = null;
         if (Files.exists(resolvedDestination, LinkOption.NOFOLLOW_LINKS)) {
-            backup = resolveWithinSiteRoot(resolvedDestination.resolveSibling(
-                    resolvedDestination.getFileName() + ".backup-" + UUID.randomUUID()).normalize());
+            Path mirroredDestination = managedBackupMirror(resolvedDestination);
+            backup = resolveWithinSiteRoot(mirroredDestination.resolveSibling(
+                    mirroredDestination.getFileName() + ".backup-" + UUID.randomUUID()).normalize());
+            createAndResolveParentDirectories(backup);
             moveLocaleFile(resolvedDestination, backup);
         }
         try {
@@ -178,12 +191,12 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
     }
 
-    private void recoverIfNeeded(Path ruDestination, Path enDestination) {
+    private boolean recoverIfNeeded(Path ruDestination, Path enDestination) {
         Optional<Path> ruBackup = findLocaleBackup(ruDestination);
         Optional<Path> enBackup = findLocaleBackup(enDestination);
         boolean backupExists = ruBackup.isPresent() || enBackup.isPresent();
         if (!backupExists && freshInstallationState(ruDestination, enDestination)) {
-            return;
+            return false;
         }
 
         SiteReleaseManifest currentManifest;
@@ -196,7 +209,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         if (provenanceMatches(currentManifest)) {
             ruBackup.ifPresent(this::deleteLocaleBackupIfPresent);
             enBackup.ifPresent(this::deleteLocaleBackupIfPresent);
-            return;
+            return backupExists;
         }
         if (!backupExists) {
             throw ManagedSiteRecoveryException.provenanceMismatchWithoutBackups(manifestPath());
@@ -211,6 +224,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
         ruBackup.ifPresent(this::deleteLocaleBackupIfPresent);
         enBackup.ifPresent(this::deleteLocaleBackupIfPresent);
+        return true;
     }
 
     private boolean freshInstallationState(Path ruDestination, Path enDestination) {
@@ -241,7 +255,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
 
     private Optional<Path> findLocaleBackup(Path destination) {
         Path resolvedDestination = resolveWithinSiteRoot(destination);
-        Path parent = resolvedDestination.getParent();
+        Path parent = managedBackupMirror(resolvedDestination).getParent();
         if (parent == null) {
             throw new ManagedSiteInstallerConfinementException(
                     resolvedDestination, resolvedDestination, stagedInstall.canonicalRoot());
@@ -265,6 +279,15 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
+    }
+
+    private Path managedBackupMirror(Path destination) {
+        Path resolvedDestination = resolveWithinSiteRoot(destination);
+        Path relativeDestination = stagedInstall.canonicalRoot().relativize(resolvedDestination);
+        return resolveWithinSiteRoot(stagedInstall.canonicalRoot()
+                .resolve(MANAGED_BACKUP_ROOT)
+                .resolve(relativeDestination)
+                .normalize());
     }
 
     private static boolean validBackupMarker(String fileName, String prefix) {
