@@ -65,6 +65,27 @@ class RussianDiffTest {
     }
 
     @Test
+    void crlfLineEndingsNormalizeLikeLineFeed() {
+        RussianDiff diff = RussianDiff.betweenBodies("line one\r\nline two", "line one\r\nline two changed");
+
+        assertFalse(diff.isEmpty());
+        assertEquals(
+                List.of(new RussianDiff.Line(RussianDiff.LineKind.UNCHANGED, "line one"),
+                        new RussianDiff.Line(RussianDiff.LineKind.REMOVED, "line two"),
+                        new RussianDiff.Line(RussianDiff.LineKind.ADDED, "line two changed")),
+                diff.lines());
+    }
+
+    @Test
+    void identicalInputsProduceEqualRussianDiffs() {
+        RussianDiff first = RussianDiff.betweenBodies("line one\nline two", "line one\nline two");
+        RussianDiff second = RussianDiff.betweenBodies("line one\nline two", "line one\nline two");
+
+        assertEquals(first, second);
+        assertEquals(first.hashCode(), second.hashCode());
+    }
+
+    @Test
     void emptyToNonEmptyIsAllAdded() {
         RussianDiff diff = RussianDiff.betweenBodies("", "new line");
 

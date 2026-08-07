@@ -37,11 +37,33 @@ public final class RussianDiff {
         return lines;
     }
 
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof RussianDiff that)) {
+            return false;
+        }
+        return lines.equals(that.lines);
+    }
+
+    @Override
+    public int hashCode() {
+        return lines.hashCode();
+    }
+
+    @Override
+    public String toString() {
+        return "RussianDiff[lines=" + lines + "]";
+    }
+
     private static String[] normalize(String body) {
         if (body.isEmpty()) {
             return new String[0];
         }
-        String[] rawLines = body.split("\n", -1);
+        String withUnifiedLineEndings = body.replace("\r\n", "\n").replace("\r", "\n");
+        String[] rawLines = withUnifiedLineEndings.split("\n", -1);
         String[] trimmed = new String[rawLines.length];
         for (int i = 0; i < rawLines.length; i++) {
             trimmed[i] = rawLines[i].stripTrailing();
@@ -52,14 +74,7 @@ public final class RussianDiff {
     private static List<Line> lcsDiff(String[] oldLines, String[] newLines) {
         int oldLen = oldLines.length;
         int newLen = newLines.length;
-        int[][] lengths = new int[oldLen + 1][newLen + 1];
-        for (int i = oldLen - 1; i >= 0; i--) {
-            for (int j = newLen - 1; j >= 0; j--) {
-                lengths[i][j] = oldLines[i].equals(newLines[j])
-                        ? lengths[i + 1][j + 1] + 1
-                        : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
-            }
-        }
+        int[][] lengths = computeLcsLengths(oldLines, newLines);
         List<Line> result = new ArrayList<>();
         int i = 0;
         int j = 0;
@@ -85,5 +100,19 @@ public final class RussianDiff {
             j++;
         }
         return result;
+    }
+
+    private static int[][] computeLcsLengths(String[] oldLines, String[] newLines) {
+        int oldLen = oldLines.length;
+        int newLen = newLines.length;
+        int[][] lengths = new int[oldLen + 1][newLen + 1];
+        for (int i = oldLen - 1; i >= 0; i--) {
+            for (int j = newLen - 1; j >= 0; j--) {
+                lengths[i][j] = oldLines[i].equals(newLines[j])
+                        ? lengths[i + 1][j + 1] + 1
+                        : Math.max(lengths[i + 1][j], lengths[i][j + 1]);
+            }
+        }
+        return lengths;
     }
 }
