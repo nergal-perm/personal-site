@@ -94,6 +94,44 @@ class MarkReviewedCliAcceptanceTest {
         assertTrue(Files.exists(reviewDirectory.resolve("blog/my-essay/approved/ru.md")));
     }
 
+    @Test
+    void secondMarkReviewedReplacesTheApprovedSnapshot() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Path note = vaultRoot.resolve("blog/my-essay.md");
+        Files.writeString(note, VALID_ESSAY);
+        Path approvedDirectory = vaultRoot.resolve("review/blog/my-essay/approved");
+
+        prepare();
+        assertEquals(0, markReviewed("blog/my-essay.md"));
+
+        Files.writeString(note, """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: New Essay
+                description: A new description.
+                ---
+                # New Essay
+
+                New body.""");
+        prepare();
+
+        int exitCode = markReviewed("blog/my-essay.md");
+
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertEquals("ready_to_publish", response.get("status").asText(),
+                () -> "second mark-reviewed response: " + response);
+        assertEquals(0, exitCode);
+        assertEquals("# New Essay\n\nNew body.", Files.readString(approvedDirectory.resolve("ru.md")));
+        assertEquals("# My Essay in English", Files.readString(approvedDirectory.resolve("en.md")));
+        assertEquals("New Essay", Files.readString(approvedDirectory.resolve("ru.title")));
+        assertEquals("A new description.", Files.readString(approvedDirectory.resolve("ru.description")));
+    }
+
     private void prepare() throws Exception {
         PrepareCommand prepareCommand = new PrepareCommand(
                 TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));
