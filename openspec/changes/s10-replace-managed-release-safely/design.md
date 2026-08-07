@@ -52,18 +52,39 @@ S08/S09 exactly. Rejected — `src/content` is shared by every publication; back
 replace one publication's two files would make concurrent installs for *different* publications interfere
 with each other's backups, which is strictly worse than today's already-fine-grained per-file writes.
 
-### D2 — Recovery always rolls back to the old generation, never forward-completes
+### D2 — Recovery keys off per-locale-file presence, not a rollback-vs-complete policy decision
 
-`recoverIfNeeded(identity)`, run at the top of `install(...)` before attempting a new replace (this adapter
-has no `read`/`find` beyond existence checks, so there is no separate read-path to hook, unlike S09): if
-`<id>.md.backup-<uuid>` exists for `ru` and/or `en`, the previous replace was interrupted after backing up
-but before (or during) completing its own move — restore the backup(s) to canonical and delete the backup
-marker(s), regardless of whether the canonical file at that path currently holds old or already-new bytes.
-This is a deliberately simpler policy than S09's "keep whichever side is complete": since a not-yet-finished
-replace's true completion also requires provenance to have advanced (written last), any leftover backup
-proves provenance was never reached either — so rolling back is always correct here, not merely simpler.
-Recompute provenance fresh after any rollback so it matches whatever ru/en state recovery leaves behind (old,
-by construction of this policy).
+**Correction (found by Task 4's implementer during self-review, before any code was written): the original
+version of this decision — "any leftover backup proves provenance was never reached, so always roll back" —
+was unsound.** The write order is: (1) backup old RU, (2) move new RU in, (3) backup old EN, (4) move new EN
+in, (5) compute and write provenance from the now-new canonical trees, (6) delete both backups. A crash *or
+even a caught, logged `IOException`* between step 5 and step 6 leaves a fully complete, already-successfully-
+reported NEW generation sitting next to a stale backup — directly contradicting "any leftover backup means
+provenance was never reached." Unconditional rollback in that state would silently destroy a successful
+install the next time `install`/recovery runs.
+
+The corrected policy needs no old-vs-new judgement call at all, because `ATOMIC_MOVE` already gives each
+locale file exactly three possible states, never a fourth: **fully old** (canonical present, no backup),
+**fully new** (canonical present, no backup — the swap and cleanup both completed), or **mid-swap**
+(canonical absent, backup present — the crash landed between removing old and installing new). Recovery,
+per locale file, independently:
+
+- **Canonical file present, backup also present:** the swap already completed (old or new — irrelevant,
+  whichever bytes are at the canonical path are already a complete, valid file by construction of
+  `ATOMIC_MOVE`). Delete the stale backup. Do not touch the canonical file.
+- **Canonical file absent, backup present:** the swap was interrupted before the new file ever displaced the
+  old one. Restore the backup to canonical.
+- **Neither present:** nothing to recover for this file.
+
+Recompute and rewrite provenance after any recovery action touched at least one locale file, so it matches
+whatever ru/en state recovery leaves behind — this is unconditionally safe now, unlike the rejected policy,
+because provenance is a pure function of current tree bytes and is never itself the thing being decided
+between.
+
+This replaces the original "always rollback" framing entirely; it is simpler than what it replaces (a
+presence check per file, no cross-file coordination needed) and is sound because it never needs to know
+whether the current canonical file is the old or new generation — only whether the atomic move that would
+produce *some* complete file ever completed.
 
 Alternative considered: mirror S09's "assess both sides, keep whichever is valid, restore the other" logic.
 Rejected as unnecessary complexity for this adapter — S09 needed that because its directory-swap makes
