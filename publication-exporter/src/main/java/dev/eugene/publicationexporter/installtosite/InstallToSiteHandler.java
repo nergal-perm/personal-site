@@ -6,7 +6,9 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateExc
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.site.ManagedSiteInstallOutcome;
 import dev.eugene.publicationexporter.site.ManagedSiteInstaller;
+import dev.eugene.publicationexporter.site.ManagedSiteRecoveryException;
 import dev.eugene.publicationexporter.site.SiteAlreadyInstalledException;
 import dev.eugene.publicationexporter.site.UnsafeManagedSiteEntryException;
 
@@ -43,6 +45,20 @@ public final class InstallToSiteHandler {
     }
 
     private InstallToSiteResult installApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot planned) {
+        try {
+            return approvedSnapshotWorkspace.withApprovalLock(
+                    identity, () -> installApprovedSnapshotUnderLock(identity, planned));
+        } catch (UncheckedIOException failure) {
+            return InstallToSiteResult.blocked(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
+            return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
+        }
+    }
+
+    private InstallToSiteResult installApprovedSnapshotUnderLock(
+            PublicationIdentity identity, CandidateSnapshot planned) {
         Optional<CandidateSnapshot> current;
         try {
             current = readCurrentApprovedSnapshot(identity);
@@ -53,18 +69,24 @@ public final class InstallToSiteHandler {
             return InstallToSiteResult.blocked(
                     "Approved snapshot changed since release was planned; site installation was not attempted.");
         }
+        ManagedSiteInstallOutcome outcome;
         try {
-            managedSiteInstaller.install(identity, planned);
+            outcome = managedSiteInstaller.installWithOutcome(identity, planned);
         } catch (SiteAlreadyInstalledException raceLoser) {
             return InstallToSiteResult.blocked(
                     "Another site installation is already in progress for this publication.");
         } catch (UncheckedIOException failure) {
             return InstallToSiteResult.blocked(IoFailureMessages.describe("Site installation failed", failure));
+        } catch (ManagedSiteRecoveryException failure) {
+            return InstallToSiteResult.blocked("Site installation blocked during managed-site recovery: "
+                    + failure.getMessage());
         } catch (UnsafeManagedSiteEntryException failure) {
             return InstallToSiteResult.blocked(
                     "Site installation refused unsafe managed content: " + failure.getMessage());
         }
-        return InstallToSiteResult.installed(identity);
+        return outcome.recoveredBeforeInstall()
+                ? InstallToSiteResult.installedAfterRecovery(identity)
+                : InstallToSiteResult.installed(identity);
     }
 
     private Optional<CandidateSnapshot> readCurrentApprovedSnapshot(PublicationIdentity identity) {
