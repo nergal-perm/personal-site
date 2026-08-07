@@ -93,11 +93,12 @@ The approved RU, EN, and semantic-reference map SHALL become visible as one cohe
 - **THEN** recovery deterministically restores or completes one coherent snapshot
 - **AND** the outcome is reported rather than silently guessed
 
-#### Scenario: A second approval is attempted
-- **GIVEN** an approved snapshot already exists for the publication
-- **WHEN** `mark-reviewed` is invoked again
-- **THEN** the request is blocked rather than silently replacing or silently ignoring the existing snapshot
-- **AND** the existing approved snapshot remains exactly as it was
+#### Scenario: A second approval replaces the prior snapshot
+- **GIVEN** an approved snapshot already exists for the publication and the new candidate passes RVA-04's
+  full revalidation
+- **WHEN** `mark-reviewed` installs the new snapshot
+- **THEN** the new snapshot atomically replaces the prior one as one coherent unit
+- **AND** no other workflow ever observes a mixed old/new snapshot
 
 ### Requirement: RVA-06 Keep approved snapshots immutable outside approval
 
