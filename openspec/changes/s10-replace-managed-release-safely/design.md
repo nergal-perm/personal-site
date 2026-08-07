@@ -92,14 +92,12 @@ together, currently agrees with its own provenance record. That agreement check 
 tamper-detection already computes (`SiteReleaseManifest` freshly recomputed and compared), so recovery reuses
 the same mechanism for a second purpose rather than inventing a new one.
 
-Alternative considered: mirror S09's "assess both sides, keep whichever is valid, restore the other" logic.
-Rejected as unnecessary complexity for this adapter — S09 needed that because its directory-swap makes
-"backup still exists AND canonical already has new bytes" a reachable, valid post-crash state (the crash
-landed between the new-move succeeding and backup cleanup). Here, because provenance is written strictly
-after both locale-file moves succeed and only the backup markers (not provenance) prove completion, "backup
-exists" only ever means "this specific file's own move may or may not have finished, but the overall
-replace as a whole never reached the provenance-write step that marks true completion" — so unconditional
-rollback of any file with a leftover backup is sound without needing to distinguish sub-cases.
+Alternative considered: two per-locale-file-independent policies were tried and rejected before landing on
+the provenance-vs-tree joint marker above — see Corrections 1 and 2 in this section's own text for why each
+failed (unconditional rollback destroys a completed-but-not-yet-cleaned-up install; per-file-independent
+presence checks can keep one locale file's new content while restoring the other's old content, producing a
+mixed generation). The provenance-vs-tree agreement check is the first version of this policy that is sound,
+because it is the only one that judges RU and EN jointly rather than file-by-file.
 
 ### D3 — Real cross-process lock via `FileChannel.tryLock()`, replacing the `createFile`-based one
 
@@ -130,17 +128,17 @@ handler that already holds both.
 
 ## Risks / Trade-offs
 
-- [Risk] Always-rollback-on-interruption (D2) means an operator retrying a replace after a crash always
-  redoes the full write, never resumes a "mostly done" install.
+- [Risk] Interruption-triggered rollback (D2) means an operator retrying a replace after a crash mid-swap
+  always redoes the full write for whichever locale files were touched, never resumes a "mostly done" install.
   → Mitigation: installs are cheap, local filesystem writes of a few KB; redoing one from scratch is not a
-  meaningful cost, and it keeps recovery logic simple and provably correct rather than optimized for a
-  vanishingly rare interruption case.
-- [Risk] Provenance has no per-publication backup, so if recovery rolls back ru/en but provenance was
-  somehow already written (should not happen given D2's "provenance last" ordering, but defensively), a
-  brief mismatch could exist until the next install recomputes it.
-  → Mitigation: `recoverIfNeeded` always recomputes and rewrites provenance after any rollback, so this
-  self-heals on the very next `install-to-site` call for *any* publication, and `check-content.mjs`'s gate
-  (REL-03) would catch a real mismatch before an Astro build proceeds in the meantime.
+  meaningful cost, and it keeps recovery logic provably correct (a joint marker, not per-file guesswork)
+  rather than optimized for a vanishingly rare interruption case.
+- [Risk] Recovery's provenance-vs-tree agreement check (D2) means recovery must be able to read and recompute
+  provenance correctly even in a partially-written state — a bug in that comparison itself could misjudge
+  completeness.
+  → Mitigation: the same `SiteReleaseManifest.computeOver(...)` comparison is already REL-03's tamper-
+  detection mechanism, independently tested; recovery reuses it rather than inventing a second, unproven
+  comparison.
 - [Risk] The cross-process lock (D3) is site-wide (one lock path for the whole install-lock directory, per
   S07's existing design), not per-publication — two operators replacing *different* publications' releases
   concurrently serialize unnecessarily.
