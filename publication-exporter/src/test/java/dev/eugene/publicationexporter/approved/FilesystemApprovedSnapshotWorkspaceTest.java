@@ -9,10 +9,13 @@ import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.io.UncheckedIOException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -151,134 +154,45 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
-    void separateInstancesCannotEnterTheSameApprovalCriticalSection() {
-        FilesystemApprovedSnapshotWorkspace first = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        FilesystemApprovedSnapshotWorkspace second = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        AtomicBoolean secondEntered = new AtomicBoolean();
+    void liveAdvisoryLockPreventsAnotherApprovalAttempt() throws Exception {
+        FilesystemApprovedSnapshotWorkspace contender = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
+        Files.createDirectories(lockFile.getParent());
+        AtomicBoolean contenderEntered = new AtomicBoolean();
 
-        first.withApprovalLock(IDENTITY, () -> {
-            Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
-            try {
-                assertEquals(Long.toString(ProcessHandle.current().pid()),
-                        Files.readString(lockFile, StandardCharsets.UTF_8));
-            } catch (java.io.IOException error) {
-                throw new UncheckedIOException(error);
-            }
+        try (FileChannel ownerChannel = FileChannel.open(lockFile,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+             FileLock ignored = ownerChannel.tryLock()) {
             assertThrows(ApprovedSnapshotApprovalInProgressException.class,
-                    () -> second.withApprovalLock(IDENTITY, () -> {
-                        secondEntered.set(true);
+                    () -> contender.withApprovalLock(IDENTITY, () -> {
+                        contenderEntered.set(true);
                         return null;
                     }));
-            assertFalse(secondEntered.get());
-            return null;
-        });
-
-        assertTrue(Files.notExists(reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock")));
+            assertFalse(contenderEntered.get());
+        }
     }
 
     @Test
-    void freshInstanceReclaimsDeadOwnerLockBeforeRecoveringInterruptedReplace() throws Exception {
+    void releasedAdvisoryLockAllowsFreshInstanceToRecoverInterruptedReplace() throws Exception {
         FilesystemApprovedSnapshotWorkspace original = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         installSnapshot(original, "Old");
         Path approvedDir = reviewRoot.resolve("blog/my-essay/approved");
         Path backupDir = approvedDir.resolveSibling("approved-backup-" + java.util.UUID.randomUUID());
         Files.move(approvedDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
         Path lockFile = approvedDir.resolveSibling(".mark-reviewed.lock");
-        long deadPid = Long.MAX_VALUE;
-        assertFalse(ProcessHandle.of(deadPid).map(ProcessHandle::isAlive).orElse(false));
-        Files.writeString(lockFile, Long.toString(deadPid), StandardCharsets.UTF_8);
+        try (FileChannel ownerChannel = FileChannel.open(lockFile,
+                StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+             FileLock ignored = ownerChannel.tryLock()) {
+            assertTrue(ignored.isValid());
+        }
 
         FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
         ApprovedSnapshotRecoveryException recovery = assertThrows(
                 ApprovedSnapshotRecoveryException.class, () -> freshInstance.read(IDENTITY));
         assertTrue(recovery.getMessage().contains("restored valid backup"));
-        assertTrue(Files.notExists(lockFile));
+        assertTrue(Files.exists(lockFile));
         assertEquals("Old RU", freshInstance.read(IDENTITY).orElseThrow().ruBody());
-    }
-
-    @Test
-    void staleLockReclaimerDoesNotDeleteReplacementAcquiredByAnotherReclaimer() throws Exception {
-        Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
-        Files.createDirectories(lockFile.getParent());
-        long deadPid = Long.MAX_VALUE;
-        assertFalse(ProcessHandle.of(deadPid).map(ProcessHandle::isAlive).orElse(false));
-        Files.writeString(lockFile, Long.toString(deadPid), StandardCharsets.UTF_8);
-        CountDownLatch secondObservedStaleLock = new CountDownLatch(1);
-        CountDownLatch letSecondAttemptReclaim = new CountDownLatch(1);
-        CountDownLatch firstEntered = new CountDownLatch(1);
-        CountDownLatch releaseFirst = new CountDownLatch(1);
-        AtomicBoolean secondEntered = new AtomicBoolean();
-        FilesystemApprovedSnapshotWorkspace first = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        FilesystemApprovedSnapshotWorkspace second = new FilesystemApprovedSnapshotWorkspace(
-                reviewRoot,
-                (source, target) -> Files.move(source, target, StandardCopyOption.ATOMIC_MOVE),
-                ignored -> {
-                },
-                ignored -> {
-                    secondObservedStaleLock.countDown();
-                    try {
-                        if (!letSecondAttemptReclaim.await(5, TimeUnit.SECONDS)) {
-                            throw new java.io.IOException("second reclaimer was not released");
-                        }
-                    } catch (InterruptedException interrupted) {
-                        Thread.currentThread().interrupt();
-                        throw new java.io.IOException(interrupted);
-                    }
-                });
-        var executor = Executors.newFixedThreadPool(2);
-        try {
-            var secondAttempt = executor.submit(() -> assertThrows(
-                    ApprovedSnapshotApprovalInProgressException.class,
-                    () -> second.withApprovalLock(IDENTITY, () -> {
-                        secondEntered.set(true);
-                        return null;
-                    })));
-            assertTrue(secondObservedStaleLock.await(5, TimeUnit.SECONDS));
-
-            var firstAttempt = executor.submit(() -> first.withApprovalLock(IDENTITY, () -> {
-                firstEntered.countDown();
-                try {
-                    if (!releaseFirst.await(5, TimeUnit.SECONDS)) {
-                        throw new IllegalStateException("first reclaimer was not released");
-                    }
-                } catch (InterruptedException interrupted) {
-                    Thread.currentThread().interrupt();
-                    throw new IllegalStateException(interrupted);
-                }
-                return null;
-            }));
-            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
-            assertEquals(Long.toString(ProcessHandle.current().pid()),
-                    Files.readString(lockFile, StandardCharsets.UTF_8));
-
-            letSecondAttemptReclaim.countDown();
-            secondAttempt.get(5, TimeUnit.SECONDS);
-
-            assertFalse(secondEntered.get());
-            assertEquals(Long.toString(ProcessHandle.current().pid()),
-                    Files.readString(lockFile, StandardCharsets.UTF_8));
-            releaseFirst.countDown();
-            firstAttempt.get(5, TimeUnit.SECONDS);
-            assertTrue(Files.notExists(lockFile));
-        } finally {
-            letSecondAttemptReclaim.countDown();
-            releaseFirst.countDown();
-            executor.shutdownNow();
-        }
-    }
-
-    @Test
-    void corruptLockOwnerIsNotReclaimed() throws Exception {
-        Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
-        Files.createDirectories(lockFile.getParent());
-        Files.writeString(lockFile, "not-a-pid", StandardCharsets.UTF_8);
-        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-
-        assertThrows(ApprovedSnapshotApprovalInProgressException.class,
-                () -> workspace.withApprovalLock(IDENTITY, () -> null));
-
-        assertEquals("not-a-pid", Files.readString(lockFile, StandardCharsets.UTF_8));
     }
 
     @Test

@@ -10,9 +10,11 @@ import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -32,41 +34,30 @@ import java.util.function.Supplier;
 final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorkspace {
 
     private static final int MAX_READ_ATTEMPTS = 5;
-    private static final int MAX_APPROVAL_LOCK_ATTEMPTS = 5;
+    private static final Path LOCK_FILE_NAME = Path.of(".mark-reviewed.lock");
 
     private final StagedDirectoryInstall stagedInstall;
     private final MoveOperation moveOperation;
     private final ReadObserver readObserver;
-    private final StaleLockObserver staleLockObserver;
     private final ThreadLocal<Set<PublicationIdentity>> heldApprovalLocks =
             ThreadLocal.withInitial(HashSet::new);
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot) {
         this(reviewRoot, (source, destination) ->
                 Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE), ignored -> {
-                }, ignored -> {
                 });
     }
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot, MoveOperation moveOperation) {
         this(reviewRoot, moveOperation, ignored -> {
-        }, ignored -> {
         });
     }
 
     FilesystemApprovedSnapshotWorkspace(
             Path reviewRoot, MoveOperation moveOperation, ReadObserver readObserver) {
-        this(reviewRoot, moveOperation, readObserver, ignored -> {
-        });
-    }
-
-    FilesystemApprovedSnapshotWorkspace(
-            Path reviewRoot, MoveOperation moveOperation, ReadObserver readObserver,
-            StaleLockObserver staleLockObserver) {
         this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(reviewRoot, "reviewRoot"));
         this.moveOperation = Objects.requireNonNull(moveOperation, "moveOperation");
         this.readObserver = Objects.requireNonNull(readObserver, "readObserver");
-        this.staleLockObserver = Objects.requireNonNull(staleLockObserver, "staleLockObserver");
     }
 
     @Override
@@ -114,106 +105,37 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         if (held.contains(identity)) {
             return operation.get();
         }
-        Path lockFile = acquireApprovalLock(identity);
-        held.add(identity);
-        Throwable operationFailure = null;
-        try {
-            return operation.get();
-        } catch (RuntimeException | Error failure) {
-            operationFailure = failure;
-            throw failure;
-        } finally {
-            held.remove(identity);
-            if (held.isEmpty()) {
-                heldApprovalLocks.remove();
-            }
-            releaseApprovalLock(lockFile, operationFailure);
-        }
-    }
-
-    private Path acquireApprovalLock(PublicationIdentity identity) {
         Path lockFile = approvalLockFile(identity);
-        String ownerPid = Long.toString(ProcessHandle.current().pid());
         try {
             stagedInstall.createParentDirectories(lockFile);
             requireWithinReviewRoot(lockFile);
-            for (int attempt = 0; attempt < MAX_APPROVAL_LOCK_ATTEMPTS; attempt++) {
+            try (FileChannel channel = FileChannel.open(lockFile,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                 FileLock ignored = tryAcquire(channel, identity)) {
+                held.add(identity);
                 try {
-                    Path createdLock = Files.writeString(lockFile, ownerPid,
-                            StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-                    if (ownerPid.equals(readApprovalLockOwner(createdLock))) {
-                        return createdLock;
+                    return operation.get();
+                } finally {
+                    held.remove(identity);
+                    if (held.isEmpty()) {
+                        heldApprovalLocks.remove();
                     }
-                } catch (FileAlreadyExistsException collision) {
-                    Optional<ApprovalLockSnapshot> observedLock = approvalLockSnapshot(lockFile);
-                    if (observedLock.isEmpty()) {
-                        throw new ApprovedSnapshotApprovalInProgressException(identity);
-                    }
-                    ApprovalLockSnapshot staleLock = observedLock.orElseThrow();
-                    if (!deadApprovalLockOwner(staleLock.ownerPid())) {
-                        throw new ApprovedSnapshotApprovalInProgressException(identity);
-                    }
-                    staleLockObserver.afterStaleLockObserved(lockFile);
-                    requireWithinReviewRoot(lockFile);
-                    deleteIfSameApprovalLock(lockFile, staleLock.fileKey());
-                } catch (NoSuchFileException disappeared) {
-                    // Another reclaimer removed or replaced the lock; retry acquisition.
                 }
             }
-            throw new ApprovedSnapshotApprovalInProgressException(identity);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
     }
 
-    private static Optional<ApprovalLockSnapshot> approvalLockSnapshot(Path lockFile) throws IOException {
-        BasicFileAttributes attributes = Files.readAttributes(
-                lockFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if (!attributes.isRegularFile() || attributes.fileKey() == null) {
-            return Optional.empty();
-        }
+    private FileLock tryAcquire(FileChannel channel, PublicationIdentity identity) throws IOException {
         try {
-            return Optional.of(new ApprovalLockSnapshot(
-                    attributes.fileKey(), Long.parseLong(readApprovalLockOwner(lockFile))));
-        } catch (NumberFormatException unreadableOwner) {
-            return Optional.empty();
-        }
-    }
-
-    private static String readApprovalLockOwner(Path lockFile) throws IOException {
-        return Files.readString(lockFile, StandardCharsets.UTF_8);
-    }
-
-    private static boolean deadApprovalLockOwner(long ownerPid) {
-        return ProcessHandle.of(ownerPid).map(owner -> !owner.isAlive()).orElse(true);
-    }
-
-    private static boolean deleteIfSameApprovalLock(Path lockFile, Object expectedFileKey) throws IOException {
-        try {
-            BasicFileAttributes currentAttributes = Files.readAttributes(
-                    lockFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            if (!expectedFileKey.equals(currentAttributes.fileKey())) {
-                return false;
+            FileLock lock = channel.tryLock();
+            if (lock == null) {
+                throw new ApprovedSnapshotApprovalInProgressException(identity);
             }
-            return Files.deleteIfExists(lockFile);
-        } catch (NoSuchFileException disappeared) {
-            return false;
-        }
-    }
-
-    private void releaseApprovalLock(Path lockFile, Throwable operationFailure) {
-        try {
-            requireWithinReviewRoot(lockFile);
-            Files.deleteIfExists(lockFile);
-        } catch (IOException | RuntimeException cleanupFailure) {
-            if (operationFailure != null) {
-                operationFailure.addSuppressed(cleanupFailure);
-                return;
-            }
-            if (cleanupFailure instanceof IOException ioFailure) {
-                throw new UncheckedIOException(ioFailure);
-            }
-            throw (RuntimeException) cleanupFailure;
+            return lock;
+        } catch (OverlappingFileLockException collision) {
+            throw new ApprovedSnapshotApprovalInProgressException(identity);
         }
     }
 
@@ -223,7 +145,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             throw new ApprovedSnapshotWorkspaceConfinementException(
                     approvedDirectory(identity), approvedDirectory(identity), stagedInstall.canonicalRoot());
         }
-        Path lockFile = parent.resolve(".mark-reviewed.lock").normalize();
+        Path lockFile = parent.resolve(LOCK_FILE_NAME).normalize();
         requireWithinReviewRoot(lockFile);
         return lockFile;
     }
@@ -410,8 +332,20 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
 
     private static boolean approvalReplacementInProgress(Path approvedDirectory) {
         Path parent = approvedDirectory.getParent();
-        return parent != null
-                && Files.exists(parent.resolve(".mark-reviewed.lock"), LinkOption.NOFOLLOW_LINKS);
+        if (parent == null) {
+            return false;
+        }
+        Path lockFile = parent.resolve(LOCK_FILE_NAME);
+        try (FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.WRITE);
+             FileLock ignored = channel.tryLock()) {
+            return ignored == null;
+        } catch (NoSuchFileException absent) {
+            return false;
+        } catch (OverlappingFileLockException collision) {
+            return true;
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
     }
 
     private Object directoryGeneration(Path approvedDirectory) {
@@ -558,14 +492,6 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     @FunctionalInterface
     interface ReadObserver {
         void afterRead(Path file) throws IOException;
-    }
-
-    @FunctionalInterface
-    interface StaleLockObserver {
-        void afterStaleLockObserved(Path lockFile) throws IOException;
-    }
-
-    private record ApprovalLockSnapshot(Object fileKey, long ownerPid) {
     }
 
     private record SnapshotAssessment(
