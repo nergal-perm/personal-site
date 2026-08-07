@@ -34,6 +34,22 @@ class TranslationJobTest {
     }
 
     @Test
+    void differentTitleProducesDifferentFingerprint() {
+        TranslationJob first = TranslationJob.forSource("body", "title one", "description");
+        TranslationJob second = TranslationJob.forSource("body", "title two", "description");
+
+        assertNotEquals(first.sourceFingerprint(), second.sourceFingerprint());
+    }
+
+    @Test
+    void differentDescriptionProducesDifferentFingerprint() {
+        TranslationJob first = TranslationJob.forSource("body", "title", "description one");
+        TranslationJob second = TranslationJob.forSource("body", "title", "description two");
+
+        assertNotEquals(first.sourceFingerprint(), second.sourceFingerprint());
+    }
+
+    @Test
     void twoJobsForSameSourceHaveDifferentIds() {
         TranslationJob first = TranslationJob.forSource("body", "title", "description");
         TranslationJob second = TranslationJob.forSource("body", "title", "description");

@@ -16,11 +16,22 @@ public final class TranslationJob {
     }
 
     public static TranslationJob forSource(String ruBody, String ruTitle, String ruDescription) {
+        requireSourceFields(ruBody, ruTitle, ruDescription);
+        String fingerprint = fingerprintFor(ruBody, ruTitle, ruDescription);
+        return new TranslationJob(UUID.randomUUID().toString(), fingerprint);
+    }
+
+    private static void requireSourceFields(String ruBody, String ruTitle, String ruDescription) {
         Objects.requireNonNull(ruBody, "ruBody");
         Objects.requireNonNull(ruTitle, "ruTitle");
         Objects.requireNonNull(ruDescription, "ruDescription");
-        String fingerprint = ContentHash.sha256Hex(ruBody + "\u0000" + ruTitle + "\u0000" + ruDescription);
-        return new TranslationJob(UUID.randomUUID().toString(), fingerprint);
+    }
+
+    private static String fingerprintFor(String ruBody, String ruTitle, String ruDescription) {
+        String canonicalSourceFingerprint = ruBody.length() + ":" + ruBody
+                + ruTitle.length() + ":" + ruTitle
+                + ruDescription.length() + ":" + ruDescription;
+        return ContentHash.sha256Hex(canonicalSourceFingerprint);
     }
 
     public String id() {
