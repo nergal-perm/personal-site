@@ -157,6 +157,13 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         AtomicBoolean secondEntered = new AtomicBoolean();
 
         first.withApprovalLock(IDENTITY, () -> {
+            Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
+            try {
+                assertEquals(Long.toString(ProcessHandle.current().pid()),
+                        Files.readString(lockFile, StandardCharsets.UTF_8));
+            } catch (java.io.IOException error) {
+                throw new UncheckedIOException(error);
+            }
             assertThrows(ApprovedSnapshotApprovalInProgressException.class,
                     () -> second.withApprovalLock(IDENTITY, () -> {
                         secondEntered.set(true);
@@ -167,6 +174,40 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         });
 
         assertTrue(Files.notExists(reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock")));
+    }
+
+    @Test
+    void freshInstanceReclaimsDeadOwnerLockBeforeRecoveringInterruptedReplace() throws Exception {
+        FilesystemApprovedSnapshotWorkspace original = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        installSnapshot(original, "Old");
+        Path approvedDir = reviewRoot.resolve("blog/my-essay/approved");
+        Path backupDir = approvedDir.resolveSibling("approved-backup-" + java.util.UUID.randomUUID());
+        Files.move(approvedDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
+        Path lockFile = approvedDir.resolveSibling(".mark-reviewed.lock");
+        long deadPid = Long.MAX_VALUE;
+        assertFalse(ProcessHandle.of(deadPid).map(ProcessHandle::isAlive).orElse(false));
+        Files.writeString(lockFile, Long.toString(deadPid), StandardCharsets.UTF_8);
+
+        FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        ApprovedSnapshotRecoveryException recovery = assertThrows(
+                ApprovedSnapshotRecoveryException.class, () -> freshInstance.read(IDENTITY));
+        assertTrue(recovery.getMessage().contains("restored valid backup"));
+        assertTrue(Files.notExists(lockFile));
+        assertEquals("Old RU", freshInstance.read(IDENTITY).orElseThrow().ruBody());
+    }
+
+    @Test
+    void corruptLockOwnerIsNotReclaimed() throws Exception {
+        Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
+        Files.createDirectories(lockFile.getParent());
+        Files.writeString(lockFile, "not-a-pid", StandardCharsets.UTF_8);
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        assertThrows(ApprovedSnapshotApprovalInProgressException.class,
+                () -> workspace.withApprovalLock(IDENTITY, () -> null));
+
+        assertEquals("not-a-pid", Files.readString(lockFile, StandardCharsets.UTF_8));
     }
 
     @Test

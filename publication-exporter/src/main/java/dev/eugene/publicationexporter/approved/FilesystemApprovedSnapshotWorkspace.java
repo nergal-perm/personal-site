@@ -16,6 +16,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
 import java.util.ArrayList;
@@ -30,6 +31,7 @@ import java.util.function.Supplier;
 final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorkspace {
 
     private static final int MAX_READ_ATTEMPTS = 5;
+    private static final int MAX_APPROVAL_LOCK_ATTEMPTS = 5;
 
     private final StagedDirectoryInstall stagedInstall;
     private final MoveOperation moveOperation;
@@ -122,11 +124,30 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         try {
             stagedInstall.createParentDirectories(lockFile);
             requireWithinReviewRoot(lockFile);
-            return Files.createFile(lockFile);
-        } catch (FileAlreadyExistsException collision) {
+            for (int attempt = 0; attempt < MAX_APPROVAL_LOCK_ATTEMPTS; attempt++) {
+                try {
+                    return Files.writeString(lockFile, Long.toString(ProcessHandle.current().pid()),
+                            StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                } catch (FileAlreadyExistsException collision) {
+                    if (!deadApprovalLockOwner(lockFile)) {
+                        throw new ApprovedSnapshotApprovalInProgressException(identity);
+                    }
+                    requireWithinReviewRoot(lockFile);
+                    Files.deleteIfExists(lockFile);
+                }
+            }
             throw new ApprovedSnapshotApprovalInProgressException(identity);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
+        }
+    }
+
+    private static boolean deadApprovalLockOwner(Path lockFile) {
+        try {
+            long ownerPid = Long.parseLong(Files.readString(lockFile, StandardCharsets.UTF_8));
+            return ProcessHandle.of(ownerPid).map(owner -> !owner.isAlive()).orElse(true);
+        } catch (IOException | NumberFormatException unreadableOwner) {
+            return false;
         }
     }
 
