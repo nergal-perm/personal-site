@@ -2,12 +2,10 @@ package dev.eugene.publicationexporter.markreviewed;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotAlreadyExistsException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
-import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
-import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
@@ -21,11 +19,16 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Stream;
 
 public final class MarkReviewedHandler {
 
     private static final String COMMAND = "mark-reviewed";
+    private static final ConcurrentMap<PublicationIdentity, ReentrantLock> APPROVAL_LOCKS =
+            new ConcurrentHashMap<>();
 
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
@@ -46,19 +49,25 @@ public final class MarkReviewedHandler {
 
     private BridgeResponse markReviewedAdmittedEssay(
             PublicationIdentity identity, String sourceBody, String sourceTitle, String sourceDescription) {
+        ReentrantLock lock = APPROVAL_LOCKS.computeIfAbsent(identity, ignored -> new ReentrantLock());
+        lock.lock();
+        try {
+            return markReviewedUnderLock(identity, sourceBody, sourceTitle, sourceDescription);
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private BridgeResponse markReviewedUnderLock(
+            PublicationIdentity identity, String sourceBody, String sourceTitle, String sourceDescription) {
         Optional<CandidateSnapshot> candidate;
-        Optional<CandidatePaths> approvedSnapshot;
         try {
             candidate = readCandidate(identity);
             if (candidate.isEmpty()) {
                 return noCandidateResponse();
             }
-            approvedSnapshot = findApprovedSnapshot(identity);
         } catch (LookupFailure failure) {
             return candidateLookupFailure(failure.getMessage());
-        }
-        if (approvedSnapshot.isPresent()) {
-            return alreadyApprovedResponse();
         }
         List<Diagnostic> staleness = stalenessDiagnostics(
                 sourceBody, sourceTitle, sourceDescription, candidate.get());
@@ -75,16 +84,6 @@ public final class MarkReviewedHandler {
             throw new LookupFailure(IoFailureMessages.describe("Candidate lookup failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
             throw new LookupFailure("Candidate lookup failed: " + failure.getMessage());
-        }
-    }
-
-    private Optional<CandidatePaths> findApprovedSnapshot(PublicationIdentity identity) {
-        try {
-            return approvedSnapshotWorkspace.find(identity);
-        } catch (UncheckedIOException failure) {
-            throw new LookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
-        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
-            throw new LookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
         }
     }
 

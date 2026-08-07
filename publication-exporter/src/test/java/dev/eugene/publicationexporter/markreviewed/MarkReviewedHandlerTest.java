@@ -1,7 +1,6 @@
 package dev.eugene.publicationexporter.markreviewed;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
-import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.approved.NullApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
@@ -98,7 +97,7 @@ class MarkReviewedHandlerTest {
     }
 
     @Test
-    void alreadyApprovedIsBlocked() {
+    void existingApprovedSnapshotIsReplaced() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
@@ -112,16 +111,19 @@ class MarkReviewedHandlerTest {
         candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
                 "A valid description.", "EN description.", referenceMap);
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
-        approvedSnapshotWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
+        approvedSnapshotWorkspace.install(identity, "Old body", "Old EN body", "Old title", "Old EN title",
                 "A valid description.", "EN description.", referenceMap);
         MarkReviewedHandler handler = new MarkReviewedHandler(candidateWorkspace, approvedSnapshotWorkspace);
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
 
-        assertFalse(response.ok());
-        assertEquals("metadata_blocked", response.status());
-        assertEquals("An approved snapshot already exists; replacing it is not yet supported.",
-                response.diagnostics().get(0).message());
+        assertTrue(response.ok());
+        assertEquals("ready_to_publish", response.status());
+        CandidateSnapshot approved = approvedSnapshotWorkspace.read(identity).orElseThrow();
+        assertEquals(ESSAY_BODY, approved.ruBody());
+        assertEquals("EN body", approved.enBody());
+        assertEquals("My Essay", approved.ruTitle());
+        assertEquals("EN title", approved.enTitle());
     }
 
     @Test
@@ -294,38 +296,6 @@ class MarkReviewedHandlerTest {
                 response.diagnostics().get(0).message());
     }
 
-    @Test
-    void approvedSnapshotLookupConfinementFailureReturnsBlockedResponse() {
-        MarkReviewedHandler handler = new MarkReviewedHandler(
-                exactCandidateWorkspace(),
-                approvedSnapshotWorkspaceThrowing(approvedSnapshotConfinementFailure()));
-
-        BridgeResponse response = handler.markReviewed(validEssayPath(), validEssayReader());
-
-        assertFalse(response.ok());
-        assertEquals("metadata_blocked", response.status());
-        assertEquals(2, response.schemaVersion());
-        assertEquals("mark-reviewed", response.command());
-        assertEquals("candidate", response.diagnostics().get(0).field());
-        assertTrue(response.diagnostics().get(0).message().contains("Approved snapshot lookup failed"));
-        assertTrue(response.diagnostics().get(0).blocking());
-    }
-
-    @Test
-    void approvedSnapshotLookupIoFailureReturnsBlockedResponse() {
-        MarkReviewedHandler handler = new MarkReviewedHandler(
-                exactCandidateWorkspace(),
-                approvedSnapshotWorkspaceThrowing(
-                        new UncheckedIOException(new IOException("approved directory unavailable"))));
-
-        BridgeResponse response = handler.markReviewed(validEssayPath(), validEssayReader());
-
-        assertFalse(response.ok());
-        assertEquals("metadata_blocked", response.status());
-        assertEquals("Approved snapshot lookup failed: approved directory unavailable",
-                response.diagnostics().get(0).message());
-    }
-
     private static CandidateWorkspace exactCandidateWorkspace() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
@@ -401,33 +371,6 @@ class MarkReviewedHandlerTest {
         };
     }
 
-    private static ApprovedSnapshotWorkspace approvedSnapshotWorkspaceThrowing(RuntimeException failure) {
-        return new ApprovedSnapshotWorkspace() {
-            @Override
-            public void install(
-                    PublicationIdentity identity,
-                    String ruBody,
-                    String enBody,
-                    String ruTitle,
-                    String enTitle,
-                    String ruDescription,
-                    String enDescription,
-                    ReferenceMap referenceMap) {
-                // no-op: this test double exercises only the lookup side
-            }
-
-            @Override
-            public Optional<CandidatePaths> find(PublicationIdentity identity) {
-                throw failure;
-            }
-
-            @Override
-            public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
-                throw failure;
-            }
-        };
-    }
-
     private static CandidateWorkspaceConfinementException candidateConfinementFailure() {
         CandidateWorkspace realWorkspace = CandidateWorkspace.create(Path.of("/review"));
         PublicationIdentity escapingIdentity = PublicationIdentity.of("../..", "essay", "outside");
@@ -437,17 +380,6 @@ class MarkReviewedHandlerTest {
             return failure;
         }
         throw new AssertionError("Expected an escaping identity to fail candidate-workspace confinement");
-    }
-
-    private static ApprovedSnapshotWorkspaceConfinementException approvedSnapshotConfinementFailure() {
-        ApprovedSnapshotWorkspace realWorkspace = ApprovedSnapshotWorkspace.create(Path.of("/review"));
-        PublicationIdentity escapingIdentity = PublicationIdentity.of("../..", "essay", "outside");
-        try {
-            realWorkspace.find(escapingIdentity);
-        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
-            return failure;
-        }
-        throw new AssertionError("Expected an escaping identity to fail approved-workspace confinement");
     }
 
     private static VaultRelativePath validEssayPath() {
