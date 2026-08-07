@@ -77,6 +77,26 @@ Not touched. `install-to-site` remains outside `bridge-contract/schema-v2.json`'
 S07's technical design, unchanged here) and produces no `BridgeResponse`. S10 introduces no new approval,
 translation, or semantic-occurrence concept.
 
+## Decisions recorded during the final whole-branch review
+
+The final review found two Critical findings that are architecturally deep enough to be scope-narrowing
+decisions rather than code fixes, mirroring S08's and S09's precedent for disproportionate-to-slice-scope
+gaps:
+
+- **REL-05 (atomicity)** — `dec-20260807-s10-managed-site-reader-atomicity-2a2526ed`. The three-path commit
+  (RU, EN, provenance) is atomic with respect to other installers (via the `FileChannel` lock) but not to
+  external readers (`check-content.mjs`, Astro's build, ordinary filesystem readers), who can observe an
+  intermediate torn state between the three moves. A true fix needs a single generation-publication boundary
+  (e.g. symlink-swap indirection) spanning the site project's own content-loading conventions — out of
+  proportion for this slice. REL-05's "atomic replacement" guarantee is narrowed accordingly for S10's scope.
+- **REL-03 (tamper attribution)** — `dec-20260807-s10-provenance-attribution-scope-70bbc467`. Recovery
+  recomputes site-wide provenance fresh from the whole payload tree, so restoring one publication's
+  interrupted swap can silently authenticate unrelated tampering to a different publication's content in the
+  same interval. This is inherited from S07's `SiteReleaseManifest` whole-tree-recompute design, not
+  introduced by S10; a real fix needs per-publication attribution spanning S06/S07's release-materialization
+  model. REL-03's "provenance or output is tampered with" scenario is narrowed for S10 to detecting *some*
+  mismatch against recorded provenance, not attributing it to the correct publication.
+
 ## Conclusion
 
 No file is written under `specs/` for this change: the functional collaborative-design pass found that
