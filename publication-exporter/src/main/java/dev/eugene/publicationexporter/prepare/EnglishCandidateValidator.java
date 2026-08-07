@@ -25,6 +25,14 @@ public final class EnglishCandidateValidator {
         Objects.requireNonNull(enDescription, "enDescription");
 
         List<String> diagnostics = new ArrayList<>();
+        diagnostics.addAll(blankFieldDiagnostics(enBody, enTitle, enDescription));
+        diagnostics.addAll(internalRouteDiagnostics(enBody));
+        diagnostics.addAll(droppedUrlDiagnostics(ruBody, enBody));
+        return diagnostics.isEmpty() ? Result.ok() : Result.invalid(diagnostics);
+    }
+
+    private static List<String> blankFieldDiagnostics(String enBody, String enTitle, String enDescription) {
+        List<String> diagnostics = new ArrayList<>();
         if (enBody.isBlank()) {
             diagnostics.add("Translation worker produced a blank body.");
         }
@@ -34,13 +42,21 @@ public final class EnglishCandidateValidator {
         if (enDescription.isBlank()) {
             diagnostics.add("Translation worker produced a blank description.");
         }
-        if (INTERNAL_RU_ROUTE.matcher(enBody).find()) {
-            diagnostics.add("English candidate contains an internal /ru/ route.");
-        }
+        return diagnostics;
+    }
+
+    private static List<String> internalRouteDiagnostics(String enBody) {
+        return INTERNAL_RU_ROUTE.matcher(enBody).find()
+                ? List.of("English candidate contains an internal /ru/ route.")
+                : List.of();
+    }
+
+    private static List<String> droppedUrlDiagnostics(String ruBody, String enBody) {
+        List<String> diagnostics = new ArrayList<>();
         for (String droppedUrl : droppedExternalUrls(ruBody, enBody)) {
             diagnostics.add("English candidate dropped external URL " + droppedUrl + ".");
         }
-        return diagnostics.isEmpty() ? Result.ok() : Result.invalid(diagnostics);
+        return diagnostics;
     }
 
     private static Set<String> droppedExternalUrls(String ruBody, String enBody) {
@@ -83,6 +99,22 @@ public final class EnglishCandidateValidator {
 
         public List<String> diagnostics() {
             return diagnostics;
+        }
+
+        @Override
+        public boolean equals(Object other) {
+            if (this == other) {
+                return true;
+            }
+            if (!(other instanceof Result that)) {
+                return false;
+            }
+            return valid == that.valid && diagnostics.equals(that.diagnostics);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(valid, diagnostics);
         }
     }
 }

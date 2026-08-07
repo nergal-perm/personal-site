@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.prepare;
 
 import org.junit.jupiter.api.Test;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -62,5 +63,16 @@ class EnglishCandidateValidatorTest {
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("https://example.com/x")));
+    }
+
+    @Test
+    void resultSupportsValueEqualityAndHashing() {
+        EnglishCandidateValidator.Result first = EnglishCandidateValidator.validate(
+                "Текст", "See https://example.com/x", "Title", "Description");
+        EnglishCandidateValidator.Result second = EnglishCandidateValidator.validate(
+                "Текст", "See https://example.com/x", "Title", "Description");
+
+        assertEquals(first, second);
+        assertEquals(first.hashCode(), second.hashCode());
     }
 }
