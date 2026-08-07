@@ -13,6 +13,6 @@ public interface TranslationWorker {
     }
 
     static TranslationWorker createNullStale() {
-        return new NullTranslationWorker(null);
+        return new NullTranslationWorker(TranslationResult.stale());
     }
 }

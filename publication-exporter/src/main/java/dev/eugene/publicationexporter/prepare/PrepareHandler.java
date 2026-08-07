@@ -43,43 +43,69 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(intake.identity());
-        if (approved.isPresent()) {
-            RussianDiff diff = RussianDiff.betweenBodies(approved.get().ruBody(), intake.body());
-            if (diff.isEmpty()) {
-                return BridgeResponse.prepared(COMMAND, intake.identity());
-            }
+        if (approvedRussianBodyIsUnchanged(intake.identity(), intake.body())) {
+            return BridgeResponse.prepared(COMMAND, intake.identity());
         }
         return prepareAdmittedEssay(intake.identity(), intake.body(), intake.title(), intake.description());
     }
 
+    private boolean approvedRussianBodyIsUnchanged(PublicationIdentity identity, String currentBody) {
+        Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
+        if (approved.isEmpty()) {
+            return false;
+        }
+        return RussianDiff.betweenBodies(approved.get().ruBody(), currentBody).isEmpty();
+    }
+
     private BridgeResponse prepareAdmittedEssay(
             PublicationIdentity identity, String ruBody, String ruTitle, String ruDescription) {
-        TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
-        TranslationResult translation;
-        try {
-            translation = translationWorker.translate(job, ruBody, ruTitle, ruDescription);
-        } catch (UncheckedIOException failure) {
-            return candidateFailure(IoFailureMessages.describe("Translation worker I/O failed", failure));
-        }
+        TranslationResult translation = translateCandidate(ruBody, ruTitle, ruDescription);
         if (!translation.succeeded()) {
-            return BridgeResponse.translationFailed(COMMAND,
-                    Diagnostic.blocking("candidate", translation.failureReason()));
+            return translationFailure(translation);
         }
         String enBody = translation.enBody();
         String enTitle = translation.enTitle();
         String enDescription = translation.enDescription();
 
-        EnglishCandidateValidator.Result validation =
-                EnglishCandidateValidator.validate(ruBody, enBody, enTitle, enDescription);
+        EnglishCandidateValidator.Result validation = validateEnglishCandidate(
+                ruBody, enBody, enTitle, enDescription);
         if (!validation.valid()) {
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
-        ReferenceMap referenceMap = ReferenceMap.empty(
+        ReferenceMap referenceMap = buildReferenceMap(
+                identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
+        return installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
+                ruDescription, enDescription, referenceMap);
+    }
+
+    private TranslationResult translateCandidate(String ruBody, String ruTitle, String ruDescription) {
+        TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
+        try {
+            return translationWorker.translate(job, ruBody, ruTitle, ruDescription);
+        } catch (UncheckedIOException failure) {
+            return TranslationResult.failure(IoFailureMessages.describe("Translation worker I/O failed", failure));
+        }
+    }
+
+    private static EnglishCandidateValidator.Result validateEnglishCandidate(
+            String ruBody, String enBody, String enTitle, String enDescription) {
+        return EnglishCandidateValidator.validate(ruBody, enBody, enTitle, enDescription);
+    }
+
+    private static ReferenceMap buildReferenceMap(
+            PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription) {
+        return ReferenceMap.empty(
                 identity,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
                 ContentHash.sha256Hex(ruTitle), ContentHash.sha256Hex(enTitle),
                 ContentHash.sha256Hex(ruDescription), ContentHash.sha256Hex(enDescription));
+    }
+
+    private BridgeResponse installCandidate(
+            PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription,
+            ReferenceMap referenceMap) {
         try {
             candidateWorkspace.install(identity, ruBody, enBody,
                     ruTitle, enTitle, ruDescription, enDescription, referenceMap);
@@ -89,6 +115,11 @@ public final class PrepareHandler {
             return candidateFailure("Candidate installation failed: " + failure.getMessage());
         }
         return BridgeResponse.prepared(COMMAND, identity);
+    }
+
+    private BridgeResponse translationFailure(TranslationResult translation) {
+        return BridgeResponse.translationFailed(COMMAND,
+                Diagnostic.blocking("candidate", translation.failureReason()));
     }
 
     private static Diagnostic blockingDiagnostics(List<String> diagnostics) {

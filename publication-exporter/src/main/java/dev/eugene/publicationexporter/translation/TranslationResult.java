@@ -28,6 +28,10 @@ public final class TranslationResult {
         return new TranslationResult(null, null, null, Objects.requireNonNull(reason, "reason"));
     }
 
+    public static TranslationResult stale() {
+        return failure("Translation result is stale.");
+    }
+
     public boolean succeeded() {
         return enBody != null;
     }

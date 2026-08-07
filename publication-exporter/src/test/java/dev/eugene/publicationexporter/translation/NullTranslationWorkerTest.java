@@ -70,6 +70,6 @@ class NullTranslationWorkerTest {
                         "RU", "RU title", "RU description");
 
         assertFalse(result.succeeded());
-        assertEquals("stale", result.failureReason());
+        assertEquals("Translation result is stale.", result.failureReason());
     }
 }

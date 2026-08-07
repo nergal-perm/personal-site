@@ -10,14 +10,14 @@ public final class NullTranslationWorker implements TranslationWorker {
     private final List<RequestedTranslation> requested = new ArrayList<>();
 
     public NullTranslationWorker(TranslationResult result) {
-        this.result = result;
+        this.result = Objects.requireNonNull(result, "result");
     }
 
     @Override
     public TranslationResult translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
         Objects.requireNonNull(job, "job");
         requested.add(RequestedTranslation.of(ruBody, ruTitle, ruDescription));
-        return result == null ? TranslationResult.failure("stale") : result;
+        return result;
     }
 
     public List<RequestedTranslation> requested() {

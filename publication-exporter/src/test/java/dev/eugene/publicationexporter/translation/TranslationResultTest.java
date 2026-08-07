@@ -28,6 +28,14 @@ class TranslationResultTest {
     }
 
     @Test
+    void staleExposesStaleFailureReason() {
+        TranslationResult result = TranslationResult.stale();
+
+        assertFalse(result.succeeded());
+        assertEquals("Translation result is stale.", result.failureReason());
+    }
+
+    @Test
     void successRejectsNullTitle() {
         assertThrows(NullPointerException.class, () -> TranslationResult.success("Hello", null, "d"));
     }
