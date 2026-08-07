@@ -62,4 +62,14 @@ class NullTranslationWorkerTest {
                 .translate(TranslationJob.forSource("RU", "RU title", "RU description"),
                         "RU", "RU title", "RU description").succeeded());
     }
+
+    @Test
+    void staleFactoryReturnsAStaleTranslationFailure() {
+        TranslationResult result = TranslationWorker.createNullStale()
+                .translate(TranslationJob.forSource("RU", "RU title", "RU description"),
+                        "RU", "RU title", "RU description");
+
+        assertFalse(result.succeeded());
+        assertEquals("stale", result.failureReason());
+    }
 }

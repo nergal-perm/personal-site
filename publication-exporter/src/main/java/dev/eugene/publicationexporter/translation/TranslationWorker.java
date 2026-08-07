@@ -11,4 +11,8 @@ public interface TranslationWorker {
     static TranslationWorker createNullFailing(String reason) {
         return new NullTranslationWorker(TranslationResult.failure(reason));
     }
+
+    static TranslationWorker createNullStale() {
+        return new NullTranslationWorker(null);
+    }
 }

@@ -1,9 +1,11 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.hash.ContentHash;
@@ -16,7 +18,9 @@ import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class PrepareHandler {
 
@@ -24,10 +28,14 @@ public final class PrepareHandler {
 
     private final TranslationWorker translationWorker;
     private final CandidateWorkspace candidateWorkspace;
+    private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
 
-    public PrepareHandler(TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace) {
+    public PrepareHandler(TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
+            ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
         this.translationWorker = Objects.requireNonNull(translationWorker, "translationWorker");
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
+        this.approvedSnapshotWorkspace =
+                Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
     }
 
     public BridgeResponse prepare(VaultRelativePath notePath, VaultReader vaultReader) {
@@ -35,13 +43,20 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
+        Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(intake.identity());
+        if (approved.isPresent()) {
+            RussianDiff diff = RussianDiff.betweenBodies(approved.get().ruBody(), intake.body());
+            if (diff.isEmpty()) {
+                return BridgeResponse.prepared(COMMAND, intake.identity());
+            }
+        }
         return prepareAdmittedEssay(intake.identity(), intake.body(), intake.title(), intake.description());
     }
 
     private BridgeResponse prepareAdmittedEssay(
             PublicationIdentity identity, String ruBody, String ruTitle, String ruDescription) {
-        TranslationResult translation;
         TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
+        TranslationResult translation;
         try {
             translation = translationWorker.translate(job, ruBody, ruTitle, ruDescription);
         } catch (UncheckedIOException failure) {
@@ -52,19 +67,13 @@ public final class PrepareHandler {
                     Diagnostic.blocking("candidate", translation.failureReason()));
         }
         String enBody = translation.enBody();
-        if (enBody.isBlank()) {
-            return BridgeResponse.translationFailed(COMMAND,
-                    Diagnostic.blocking("candidate", "Translation worker produced a blank candidate."));
-        }
         String enTitle = translation.enTitle();
-        if (enTitle.isBlank()) {
-            return BridgeResponse.translationFailed(COMMAND,
-                    Diagnostic.blocking("candidate", "Translation worker produced a blank title."));
-        }
         String enDescription = translation.enDescription();
-        if (enDescription.isBlank()) {
-            return BridgeResponse.translationFailed(COMMAND,
-                    Diagnostic.blocking("candidate", "Translation worker produced a blank description."));
+
+        EnglishCandidateValidator.Result validation =
+                EnglishCandidateValidator.validate(ruBody, enBody, enTitle, enDescription);
+        if (!validation.valid()) {
+            return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
         ReferenceMap referenceMap = ReferenceMap.empty(
                 identity,
@@ -80,6 +89,10 @@ public final class PrepareHandler {
             return candidateFailure("Candidate installation failed: " + failure.getMessage());
         }
         return BridgeResponse.prepared(COMMAND, identity);
+    }
+
+    private static Diagnostic blockingDiagnostics(List<String> diagnostics) {
+        return Diagnostic.blocking("candidate", String.join(" ", diagnostics));
     }
 
     private static BridgeResponse candidateFailure(String message) {

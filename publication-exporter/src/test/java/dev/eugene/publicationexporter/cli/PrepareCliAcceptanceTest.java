@@ -7,6 +7,12 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
+import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.ReferenceMap;
+import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +37,8 @@ class PrepareCliAcceptanceTest {
 
     private static final Path SCHEMA_PATH = Path.of("../bridge-contract/schema-v2.json");
     private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final PublicationIdentity IDENTITY =
+            PublicationIdentity.of("blog", "essay", "my-essay");
 
     @TempDir
     Path vaultRoot;
@@ -146,6 +154,85 @@ class PrepareCliAcceptanceTest {
         assertEquals("ready_for_review", response.get("status").asText());
     }
 
+    @Test
+    void preparingChangedApprovedEssayProducesDiffAndNewCandidate() throws Exception {
+        writeEssay("# My Essay\n\nChanged body.");
+        Path reviewRoot = vaultRoot.resolve("review");
+        installApproved(reviewRoot, "# My Essay\n\nApproved body.", "Old English candidate");
+        installCandidate(reviewRoot, "# My Essay\n\nChanged body.", "Old English candidate");
+
+        int exitCode = prepare("blog/my-essay.md",
+                TranslationWorker.createNull("New translated candidate", "New EN title", "New EN description."));
+
+        assertEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("ready_for_review", response.get("status").asText());
+        CandidateWorkspace candidates = CandidateWorkspace.create(reviewRoot);
+        assertEquals("New translated candidate", candidates.read(IDENTITY).orElseThrow().enBody());
+    }
+
+    @Test
+    void preparingWithOnlySerializationNoiseChangedInstallsNoNewCandidate() throws Exception {
+        writeEssay("# My Essay\n\nApproved body.   ");
+        Path reviewRoot = vaultRoot.resolve("review");
+        installApproved(reviewRoot, "# My Essay\n\nApproved body.", "Prior English candidate");
+        installCandidate(reviewRoot, "# My Essay\n\nApproved body.", "Prior English candidate");
+        NullTranslationWorker worker = new NullTranslationWorker(
+                dev.eugene.publicationexporter.translation.TranslationResult.success(
+                        "Must not be installed", "Must not be installed", "Must not be installed"));
+
+        int exitCode = prepare("blog/my-essay.md", worker);
+
+        assertEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("ready_for_review", response.get("status").asText());
+        assertTrue(worker.requested().isEmpty());
+        assertEquals("Prior English candidate",
+                CandidateWorkspace.create(reviewRoot).read(IDENTITY).orElseThrow().enBody());
+    }
+
+    @Test
+    void failedTranslationPreservesPriorCandidate() throws Exception {
+        writeEssay("# My Essay\n\nChanged body.");
+        Path reviewRoot = vaultRoot.resolve("review");
+        installApproved(reviewRoot, "# My Essay\n\nApproved body.", "Prior English candidate");
+        installCandidate(reviewRoot, "# My Essay\n\nChanged body.", "Prior English candidate");
+
+        int exitCode = prepare("blog/my-essay.md", TranslationWorker.createNullFailing("worker crashed"));
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("translation_failed", response.get("status").asText());
+        assertEquals("Prior English candidate",
+                CandidateWorkspace.create(reviewRoot).read(IDENTITY).orElseThrow().enBody());
+    }
+
+    @Test
+    void invalidTranslationPreservesPriorCandidate() throws Exception {
+        writeEssay("# My Essay\n\nChanged body.");
+        Path reviewRoot = vaultRoot.resolve("review");
+        installApproved(reviewRoot, "# My Essay\n\nApproved body.", "Prior English candidate");
+        installCandidate(reviewRoot, "# My Essay\n\nChanged body.", "Prior English candidate");
+
+        int exitCode = prepare("blog/my-essay.md",
+                TranslationWorker.createNull("New English [route](/ru/route)", "New EN title", "New EN description."));
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("translation_failed", response.get("status").asText());
+        assertTrue(response.get("diagnostics").get(0).get("message").asText().contains("/ru/"));
+        assertEquals("Prior English candidate",
+                CandidateWorkspace.create(reviewRoot).read(IDENTITY).orElseThrow().enBody());
+    }
+
     private int prepare(String notePath) {
         return new CommandLine(new Main()).execute(
                 "prepare",
@@ -154,6 +241,60 @@ class PrepareCliAcceptanceTest {
                 "--review", vaultRoot.resolve("review").toString(),
                 "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
                 "--json");
+    }
+
+    private int prepare(String notePath, TranslationWorker translationWorker) {
+        PrepareCommand prepareCommand = new PrepareCommand(translationWorker);
+        CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
+            @Override
+            public <K> K create(Class<K> cls) throws Exception {
+                if (cls == PrepareCommand.class) {
+                    return cls.cast(prepareCommand);
+                }
+                return CommandLine.defaultFactory().create(cls);
+            }
+        });
+        return commandLine.execute(
+                "prepare",
+                "--vault", vaultRoot.toString(),
+                "--note", notePath,
+                "--review", vaultRoot.resolve("review").toString(),
+                "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
+                "--json");
+    }
+
+    private void writeEssay(String body) throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.md"), """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: source-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                """ + body);
+    }
+
+    private void installApproved(Path reviewRoot, String ruBody, String enBody) {
+        ApprovedSnapshotWorkspace.create(reviewRoot).install(IDENTITY, ruBody, enBody,
+                "My Essay", "EN title", "A valid description.", "EN description.",
+                referenceMap(ruBody, enBody));
+    }
+
+    private void installCandidate(Path reviewRoot, String ruBody, String enBody) {
+        CandidateWorkspace.create(reviewRoot).install(IDENTITY, ruBody, enBody,
+                "My Essay", "EN title", "A valid description.", "EN description.",
+                referenceMap(ruBody, enBody));
+    }
+
+    private ReferenceMap referenceMap(String ruBody, String enBody) {
+        return ReferenceMap.empty(IDENTITY,
+                ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description."));
     }
 
     private JsonNode soleJsonValueOnStdout() throws Exception {

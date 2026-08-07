@@ -40,6 +40,7 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
             requireWithinReviewRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinReviewRoot(destination);
+            StagedDirectoryInstall.deleteRecursively(destination);
             stagedInstall.move(staging, destination);
         } catch (IOException error) {
             StagedDirectoryInstall.deleteRecursively(staging);

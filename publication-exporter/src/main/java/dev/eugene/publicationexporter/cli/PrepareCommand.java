@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.prepare.PrepareHandler;
@@ -51,7 +52,8 @@ public final class PrepareCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
-        BridgeResponse response = new PrepareHandler(translationWorker, candidateWorkspace)
+        ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
+        BridgeResponse response = new PrepareHandler(translationWorker, candidateWorkspace, approvedSnapshotWorkspace)
                 .prepare(VaultRelativePath.of(notePath), vaultReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));
