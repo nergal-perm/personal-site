@@ -48,10 +48,22 @@ public final class EnglishCandidateValidator {
     private static List<String> internalRouteDiagnostics(
             String enBody, String enTitle, String enDescription) {
         boolean internalRoutePresent = List.of(enBody, enTitle, enDescription).stream()
-                .anyMatch(field -> INTERNAL_RU_ROUTE.matcher(field).find());
+                .anyMatch(EnglishCandidateValidator::containsInternalRuRoute);
         return internalRoutePresent
                 ? List.of("English candidate contains an internal /ru/ route.")
                 : List.of();
+    }
+
+    private static boolean containsInternalRuRoute(String text) {
+        Matcher urlMatcher = EXTERNAL_URL.matcher(text);
+        StringBuilder withUrlsRemoved = new StringBuilder();
+        int lastEnd = 0;
+        while (urlMatcher.find()) {
+            withUrlsRemoved.append(text, lastEnd, urlMatcher.start());
+            lastEnd = urlMatcher.end();
+        }
+        withUrlsRemoved.append(text, lastEnd, text.length());
+        return INTERNAL_RU_ROUTE.matcher(withUrlsRemoved).find();
     }
 
     private static List<String> droppedUrlDiagnostics(String ruBody, String enBody) {

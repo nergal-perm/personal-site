@@ -19,6 +19,18 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void acceptsRetainedExternalUrlContainingRuRouteInAllFields() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Смотрите https://example.com/ru/docs для деталей.",
+                "See https://example.com/ru/docs for details.",
+                "Read https://example.com/ru/docs",
+                "Details at https://example.com/ru/docs");
+
+        assertTrue(result.valid());
+        assertTrue(result.diagnostics().isEmpty());
+    }
+
+    @Test
     void rejectsBlankBody() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
                 "Текст", "   ", "Title", "Description");
