@@ -15,9 +15,6 @@ public final class NullManagedSiteInstaller implements ManagedSiteInstaller {
     public void install(PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(approvedSnapshot, "approvedSnapshot");
-        if (installed.containsKey(identity)) {
-            throw new SiteAlreadyInstalledException(identity);
-        }
         installed.put(identity, approvedSnapshot);
     }
 

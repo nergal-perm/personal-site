@@ -26,11 +26,15 @@ class NullManagedSiteInstallerTest {
     }
 
     @Test
-    void aSecondInstallForTheSameIdentityThrows() {
+    void secondInstallReplacesThePriorGeneration() {
         NullManagedSiteInstaller installer = new NullManagedSiteInstaller();
-        installer.install(IDENTITY, SNAPSHOT);
+        installer.install(IDENTITY, candidateSnapshot("Old RU", "Old EN"));
 
-        assertThrows(SiteAlreadyInstalledException.class, () -> installer.install(IDENTITY, SNAPSHOT));
+        installer.install(IDENTITY, candidateSnapshot("New RU", "New EN"));
+
+        CandidateSnapshot installed = installer.installed().get(IDENTITY);
+        assertEquals("New RU", installed.ruBody());
+        assertEquals("New EN", installed.enBody());
     }
 
     @Test
@@ -53,5 +57,16 @@ class NullManagedSiteInstallerTest {
         assertTrue(((NullManagedSiteInstaller) installer).installed().isEmpty());
 
         installer.install(IDENTITY, SNAPSHOT);
+    }
+
+    private static CandidateSnapshot candidateSnapshot(String ruBody, String enBody) {
+        return CandidateSnapshot.of(
+                ruBody,
+                enBody,
+                "RU title",
+                "EN title",
+                "RU description.",
+                "EN description.",
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
     }
 }
