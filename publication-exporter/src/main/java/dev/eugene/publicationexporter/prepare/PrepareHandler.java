@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.prepare;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
@@ -57,6 +58,8 @@ public final class PrepareHandler {
         } catch (UncheckedIOException failure) {
             return approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
             return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
         }
         ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());

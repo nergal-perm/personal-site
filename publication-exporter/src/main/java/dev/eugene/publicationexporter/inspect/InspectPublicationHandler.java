@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.inspect;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
@@ -62,6 +63,8 @@ public final class InspectPublicationHandler {
                 return approvedLookupFailure(
                         IoFailureMessages.describe("Approved snapshot lookup failed", failure));
             } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+                return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+            } catch (ApprovedSnapshotWorkspaceStateException failure) {
                 return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
             }
         }

@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -82,12 +83,31 @@ class BuildFromReviewCliAcceptanceTest {
         assertTrue(Files.readString(releaseDir.resolve("release-provenance.json")).contains("\"contractEdition\":1"));
     }
 
+    @Test
+    void corruptedApprovedSnapshotProducesBlockedJsonInsteadOfEscaping() throws Exception {
+        Path reviewDirectory = workRoot.resolve("review");
+        Path outputRoot = workRoot.resolve("output");
+        CorruptedApprovedSnapshotFixture.write(reviewDirectory, IDENTITY);
+
+        int exitCode = buildFromReview(reviewDirectory, outputRoot);
+
+        assertNotEquals(0, exitCode);
+        JsonNode result = soleJsonValueOnStdout();
+        assertEquals(false, result.get("ok").asBoolean());
+        assertTrue(result.get("message").asText().contains("integrity validation failed"));
+        assertTrue(Files.notExists(outputRoot));
+    }
+
     private String installApprovedSnapshot(Path reviewDirectory, String ruBody, String enBody) {
-        String ruHash = dev.eugene.publicationexporter.hash.ContentHash.sha256Hex(ruBody);
-        String enHash = dev.eugene.publicationexporter.hash.ContentHash.sha256Hex(enBody);
+        String ruHash = ContentHash.sha256Hex(ruBody);
+        String enHash = ContentHash.sha256Hex(enBody);
         ApprovedSnapshotWorkspace.create(reviewDirectory)
                 .install(IDENTITY, ruBody, enBody, "RU title", "EN title",
-                        "RU description", "EN description", ReferenceMap.empty(IDENTITY, ruHash, enHash, "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+                        "RU description", "EN description", ReferenceMap.empty(
+                                IDENTITY, ruHash, enHash,
+                                ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
+                                ContentHash.sha256Hex("RU description"),
+                                ContentHash.sha256Hex("EN description")));
         return ruHash;
     }
 

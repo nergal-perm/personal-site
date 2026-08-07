@@ -1,7 +1,10 @@
 package dev.eugene.publicationexporter.markreviewed;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotAlreadyExistsException;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotApprovalInProgressException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
@@ -43,19 +46,46 @@ public final class MarkReviewedHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        return markReviewedAdmittedEssay(
-                intake.identity(), intake.body(), intake.title(), intake.description());
+        return markReviewedAdmittedEssay(notePath, vaultReader, intake.identity());
     }
 
     private BridgeResponse markReviewedAdmittedEssay(
-            PublicationIdentity identity, String sourceBody, String sourceTitle, String sourceDescription) {
+            VaultRelativePath notePath, VaultReader vaultReader, PublicationIdentity identity) {
         ReentrantLock lock = APPROVAL_LOCKS.computeIfAbsent(identity, ignored -> new ReentrantLock());
         lock.lock();
         try {
-            return markReviewedUnderLock(identity, sourceBody, sourceTitle, sourceDescription);
+            try {
+                return approvedSnapshotWorkspace.withApprovalLock(
+                        identity, () -> markReviewedWithFreshSource(notePath, vaultReader, identity));
+            } catch (ApprovedSnapshotApprovalInProgressException collision) {
+                return BridgeResponse.stale(COMMAND,
+                        Diagnostic.blocking("approved-snapshot", collision.getMessage()));
+            } catch (UncheckedIOException failure) {
+                return BridgeResponse.blocked(COMMAND,
+                        Diagnostic.blocking("approved-snapshot",
+                                IoFailureMessages.describe("Approved snapshot operation failed", failure)));
+            } catch (ApprovedSnapshotWorkspaceConfinementException | ApprovedSnapshotWorkspaceStateException failure) {
+                return BridgeResponse.blocked(COMMAND,
+                        Diagnostic.blocking("approved-snapshot",
+                                "Approved snapshot operation failed: " + failure.getMessage()));
+            }
         } finally {
             lock.unlock();
         }
+    }
+
+    private BridgeResponse markReviewedWithFreshSource(
+            VaultRelativePath notePath, VaultReader vaultReader, PublicationIdentity lockedIdentity) {
+        NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
+        if (!current.accepted()) {
+            return BridgeResponse.blocked(COMMAND, current.diagnostics());
+        }
+        if (!lockedIdentity.equals(current.identity())) {
+            return BridgeResponse.stale(COMMAND,
+                    Diagnostic.blocking("candidate", "Source publication identity changed while approval waited."));
+        }
+        return markReviewedUnderLock(
+                lockedIdentity, current.body(), current.title(), current.description());
     }
 
     private BridgeResponse markReviewedUnderLock(
@@ -202,6 +232,9 @@ public final class MarkReviewedHandler {
         } catch (UncheckedIOException failure) {
             return BridgeResponse.blocked(COMMAND,
                     Diagnostic.blocking("candidate", "Approved installation failed."));
+        } catch (ApprovedSnapshotWorkspaceConfinementException | ApprovedSnapshotWorkspaceStateException failure) {
+            return BridgeResponse.blocked(COMMAND,
+                    Diagnostic.blocking("approved-snapshot", "Approved installation failed: " + failure.getMessage()));
         }
         return BridgeResponse.approved(COMMAND, identity);
     }

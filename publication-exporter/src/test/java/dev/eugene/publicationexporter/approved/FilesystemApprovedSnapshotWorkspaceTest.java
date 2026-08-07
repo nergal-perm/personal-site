@@ -2,6 +2,8 @@ package dev.eugene.publicationexporter.approved;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 import org.junit.jupiter.api.Test;
@@ -13,6 +15,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.StandardCopyOption;
 import java.io.UncheckedIOException;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -59,7 +65,9 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     void findReturnsAbsolutePathsToTheInstalledFiles() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+                "RU description.", "EN description.", matchingReferenceMap(
+                        "RU body", "EN body", "RU title", "EN title",
+                        "RU description.", "EN description."));
 
         Optional<CandidatePaths> found = workspace.find(IDENTITY);
 
@@ -79,7 +87,9 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     @Test
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
+        ReferenceMap referenceMap = matchingReferenceMap(
+                "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -96,10 +106,139 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void readRetriesWhenApprovedDirectoryGenerationChangesMidRead() throws Exception {
+        installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "Old");
+        CountDownLatch oldRussianBodyRead = new CountDownLatch(1);
+        CountDownLatch replacementCompleted = new CountDownLatch(1);
+        AtomicBoolean pauseOnce = new AtomicBoolean();
+        FilesystemApprovedSnapshotWorkspace reader = new FilesystemApprovedSnapshotWorkspace(
+                reviewRoot,
+                (source, target) -> Files.move(source, target, StandardCopyOption.ATOMIC_MOVE),
+                file -> {
+                    if (file.getFileName().toString().equals("ru.md")
+                            && pauseOnce.compareAndSet(false, true)) {
+                        oldRussianBodyRead.countDown();
+                        try {
+                            if (!replacementCompleted.await(5, TimeUnit.SECONDS)) {
+                                throw new java.io.IOException("replacement did not complete");
+                            }
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new java.io.IOException(interrupted);
+                        }
+                    }
+                });
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var read = executor.submit(() -> reader.read(IDENTITY).orElseThrow());
+            assertTrue(oldRussianBodyRead.await(5, TimeUnit.SECONDS));
+
+            installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "New");
+            replacementCompleted.countDown();
+            CandidateSnapshot snapshot = read.get(5, TimeUnit.SECONDS);
+
+            assertEquals("New RU", snapshot.ruBody());
+            assertEquals("New EN", snapshot.enBody());
+            assertEquals("New RU title", snapshot.ruTitle());
+            assertEquals("New EN title", snapshot.enTitle());
+            assertEquals("New RU description", snapshot.ruDescription());
+            assertEquals("New EN description", snapshot.enDescription());
+            assertEquals(referenceMapFor("New"), snapshot.referenceMap());
+        } finally {
+            replacementCompleted.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void separateInstancesCannotEnterTheSameApprovalCriticalSection() {
+        FilesystemApprovedSnapshotWorkspace first = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        FilesystemApprovedSnapshotWorkspace second = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        AtomicBoolean secondEntered = new AtomicBoolean();
+
+        first.withApprovalLock(IDENTITY, () -> {
+            assertThrows(ApprovedSnapshotApprovalInProgressException.class,
+                    () -> second.withApprovalLock(IDENTITY, () -> {
+                        secondEntered.set(true);
+                        return null;
+                    }));
+            assertFalse(secondEntered.get());
+            return null;
+        });
+
+        assertTrue(Files.notExists(reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock")));
+    }
+
+    @Test
+    void secondInstanceCannotInstallWhileFirstInstanceIsMidReplace() throws Exception {
+        installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "Old");
+        CountDownLatch oldSnapshotMovedToBackup = new CountDownLatch(1);
+        CountDownLatch finishFirstInstall = new CountDownLatch(1);
+        AtomicInteger moves = new AtomicInteger();
+        FilesystemApprovedSnapshotWorkspace first = new FilesystemApprovedSnapshotWorkspace(
+                reviewRoot, (source, target) -> {
+                    Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+                    if (moves.incrementAndGet() == 1) {
+                        oldSnapshotMovedToBackup.countDown();
+                        try {
+                            if (!finishFirstInstall.await(5, TimeUnit.SECONDS)) {
+                                throw new java.io.IOException("first install was not released");
+                            }
+                        } catch (InterruptedException interrupted) {
+                            Thread.currentThread().interrupt();
+                            throw new java.io.IOException(interrupted);
+                        }
+                    }
+                });
+        FilesystemApprovedSnapshotWorkspace second = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var firstInstall = executor.submit(() -> installSnapshot(first, "First"));
+            assertTrue(oldSnapshotMovedToBackup.await(5, TimeUnit.SECONDS));
+
+            assertThrows(ApprovedSnapshotApprovalInProgressException.class,
+                    () -> installSnapshot(second, "Second"));
+            try (var entries = Files.list(reviewRoot.resolve("blog/my-essay"))) {
+                assertEquals(1, entries.filter(path -> validBackupDirectoryName(path.getFileName().toString())).count());
+            }
+
+            finishFirstInstall.countDown();
+            firstInstall.get(5, TimeUnit.SECONDS);
+            assertEquals("First RU", first.read(IDENTITY).orElseThrow().ruBody());
+        } finally {
+            finishFirstInstall.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
+    void readFailsTypedAfterFiveDirectoryGenerationChanges() {
+        installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "Initial");
+        AtomicInteger replacements = new AtomicInteger();
+        FilesystemApprovedSnapshotWorkspace writer = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        FilesystemApprovedSnapshotWorkspace reader = new FilesystemApprovedSnapshotWorkspace(
+                reviewRoot,
+                (source, target) -> Files.move(source, target, StandardCopyOption.ATOMIC_MOVE),
+                file -> {
+                    if (file.getFileName().toString().equals("ru.md")) {
+                        installSnapshot(writer, "Replacement" + replacements.incrementAndGet());
+                    }
+                });
+
+        ApprovedSnapshotWorkspaceStabilizationException failure = assertThrows(
+                ApprovedSnapshotWorkspaceStabilizationException.class, () -> reader.read(IDENTITY));
+
+        assertEquals(5, replacements.get());
+        assertTrue(failure.getMessage().contains("after 5 attempts"));
+    }
+
+    @Test
     void readRejectsSymlinkedMemberFileEscapingReviewRoot() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+                "RU description.", "EN description.", matchingReferenceMap(
+                        "RU body", "EN body", "RU title", "EN title",
+                        "RU description.", "EN description."));
         Path enPath = reviewRoot.resolve("blog/my-essay/approved/en.md");
         Path outsideEnPath = outsideRoot.resolve("outside-en.md");
         Files.writeString(outsideEnPath, "outside EN body");
@@ -110,29 +249,39 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
-    void readIsAbsentForAMismatchingReferenceMapIdentity() throws Exception {
+    void readRejectsAMismatchingReferenceMapIdentity() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+                "RU description.", "EN description.", matchingReferenceMap(
+                        "RU body", "EN body", "RU title", "EN title",
+                        "RU description.", "EN description."));
 
         Path referencesPath = reviewRoot.resolve("blog/my-essay/approved/references.json");
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
-        ReferenceMap mismatching = ReferenceMap.empty(otherIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
+        ReferenceMap mismatching = ReferenceMap.empty(otherIdentity,
+                ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"),
+                ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
+                ContentHash.sha256Hex("RU description."), ContentHash.sha256Hex("EN description."));
         Files.writeString(referencesPath, ReferenceMapCodec.write(mismatching), StandardCharsets.UTF_8);
 
-        assertEquals(Optional.empty(), workspace.read(IDENTITY));
+        ApprovedSnapshotIntegrityException failure = assertThrows(
+                ApprovedSnapshotIntegrityException.class, () -> workspace.read(IDENTITY));
+        assertTrue(failure.getMessage().contains("identity does not match"));
     }
 
     @Test
     void aSecondInstallForTheSameIdentityReplacesTheFirstSnapshot() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", referenceMap);
+                "RU description.", "EN description.", matchingReferenceMap(
+                        "RU body", "EN body", "RU title", "EN title",
+                        "RU description.", "EN description."));
 
         Path approvedDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("approved");
         workspace.install(IDENTITY, "RU body 2", "EN body 2", "RU title 2", "EN title 2",
-                "RU description 2.", "EN description 2.", referenceMap);
+                "RU description 2.", "EN description 2.", matchingReferenceMap(
+                        "RU body 2", "EN body 2", "RU title 2", "EN title 2",
+                        "RU description 2.", "EN description 2."));
 
         assertEquals("RU body 2", Files.readString(approvedDir.resolve("ru.md")));
         assertEquals("EN body 2", Files.readString(approvedDir.resolve("en.md")));
@@ -179,8 +328,10 @@ class FilesystemApprovedSnapshotWorkspaceTest {
 
         FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
-        dev.eugene.publicationexporter.candidate.CandidateSnapshot recovered =
-                freshInstance.read(IDENTITY).orElseThrow();
+        ApprovedSnapshotRecoveryException recovery = assertThrows(
+                ApprovedSnapshotRecoveryException.class, () -> freshInstance.read(IDENTITY));
+        assertTrue(recovery.getMessage().contains("restored valid backup"));
+        CandidateSnapshot recovered = freshInstance.read(IDENTITY).orElseThrow();
 
         assertEquals("Old RU", recovered.ruBody());
         assertEquals("Old EN", recovered.enBody());
@@ -202,10 +353,10 @@ class FilesystemApprovedSnapshotWorkspaceTest {
 
         FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
-        IllegalStateException failure = assertThrows(IllegalStateException.class,
+        ApprovedSnapshotIntegrityException failure = assertThrows(ApprovedSnapshotIntegrityException.class,
                 () -> freshInstance.read(IDENTITY));
 
-        assertTrue(failure.getMessage().contains(IDENTITY.toString()));
+        assertTrue(failure.getMessage().contains("unrecoverable"));
         assertTrue(failure.getMessage().contains(approvedDir.toString()));
         assertTrue(failure.getMessage().contains(backupDir.toString()));
     }
@@ -233,13 +384,69 @@ class FilesystemApprovedSnapshotWorkspaceTest {
 
         FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
-        dev.eugene.publicationexporter.candidate.CandidateSnapshot recovered =
-                freshInstance.read(IDENTITY).orElseThrow();
+        ApprovedSnapshotRecoveryException recovery = assertThrows(
+                ApprovedSnapshotRecoveryException.class, () -> freshInstance.read(IDENTITY));
+        assertTrue(recovery.getMessage().contains("kept the valid canonical snapshot"));
+        CandidateSnapshot recovered = freshInstance.read(IDENTITY).orElseThrow();
 
         assertEquals("New RU", recovered.ruBody());
         assertEquals("New EN", recovered.enBody());
         assertEquals(newReferenceMap, recovered.referenceMap());
         assertTrue(Files.notExists(backupDir), "stale backup should be cleaned up by recovery");
+    }
+
+    @Test
+    void corruptedCanonicalSnapshotIsReplacedByValidBackupAndReported() throws Exception {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        installSnapshot(workspace, "Old");
+        Path approvedDir = reviewRoot.resolve("blog/my-essay/approved");
+        Path backupDir = approvedDir.resolveSibling("approved-backup-" + java.util.UUID.randomUUID());
+        Files.move(approvedDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
+        writeSnapshotDirectory(approvedDir, "New");
+        Files.writeString(approvedDir.resolve("ru.md"), "tampered RU", StandardCharsets.UTF_8);
+
+        ApprovedSnapshotRecoveryException recovery = assertThrows(
+                ApprovedSnapshotRecoveryException.class, () -> workspace.read(IDENTITY));
+
+        assertTrue(recovery.getMessage().contains("integrity"));
+        CandidateSnapshot restored = workspace.read(IDENTITY).orElseThrow();
+        assertEquals("Old RU", restored.ruBody());
+        assertEquals("Old EN", restored.enBody());
+        assertEquals(referenceMapFor("Old"), restored.referenceMap());
+        assertTrue(Files.notExists(backupDir));
+        assertEquals("Old RU", Files.readString(approvedDir.resolve("ru.md")));
+    }
+
+    @Test
+    void manualBackupDecoyIsIgnoredAndPreserved() throws Exception {
+        installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "Valid");
+        Path decoy = reviewRoot.resolve("blog/my-essay/approved-backup-manual");
+        Files.createDirectories(decoy);
+        Files.writeString(decoy.resolve("operator-note.txt"), "keep me", StandardCharsets.UTF_8);
+
+        CandidateSnapshot snapshot = new FilesystemApprovedSnapshotWorkspace(reviewRoot)
+                .read(IDENTITY).orElseThrow();
+
+        assertEquals("Valid RU", snapshot.ruBody());
+        assertEquals("keep me", Files.readString(decoy.resolve("operator-note.txt")));
+    }
+
+    @Test
+    void multipleUuidBackupsFailWithoutDeletingEither() throws Exception {
+        installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "Canonical");
+        Path identityDirectory = reviewRoot.resolve("blog/my-essay");
+        Path firstBackup = identityDirectory.resolve("approved-backup-" + java.util.UUID.randomUUID());
+        Path secondBackup = identityDirectory.resolve("approved-backup-" + java.util.UUID.randomUUID());
+        writeSnapshotDirectory(firstBackup, "First");
+        writeSnapshotDirectory(secondBackup, "Second");
+
+        ApprovedSnapshotIntegrityException failure = assertThrows(
+                ApprovedSnapshotIntegrityException.class,
+                () -> new FilesystemApprovedSnapshotWorkspace(reviewRoot).read(IDENTITY));
+
+        assertTrue(failure.getMessage().contains("multiple recovery backups"));
+        assertTrue(Files.isDirectory(firstBackup));
+        assertTrue(Files.isDirectory(secondBackup));
     }
 
     @Test
@@ -288,8 +495,56 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     private static ReferenceMap referenceMap(String suffix) {
-        return ReferenceMap.empty(IDENTITY, "ru-hash-" + suffix, "en-hash-" + suffix,
-                "ru-title-hash-" + suffix, "en-title-hash-" + suffix,
-                "ru-description-hash-" + suffix, "en-description-hash-" + suffix);
+        String generation = Character.toUpperCase(suffix.charAt(0)) + suffix.substring(1);
+        return referenceMapFor(generation);
+    }
+
+    private static void installSnapshot(FilesystemApprovedSnapshotWorkspace workspace, String generation) {
+        workspace.install(IDENTITY,
+                generation + " RU", generation + " EN",
+                generation + " RU title", generation + " EN title",
+                generation + " RU description", generation + " EN description",
+                referenceMapFor(generation));
+    }
+
+    private static void writeSnapshotDirectory(Path directory, String generation) throws Exception {
+        Files.createDirectories(directory);
+        Files.writeString(directory.resolve("ru.md"), generation + " RU", StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("en.md"), generation + " EN", StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("ru.title"), generation + " RU title", StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("en.title"), generation + " EN title", StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("ru.description"), generation + " RU description", StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("en.description"), generation + " EN description", StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("references.json"),
+                ReferenceMapCodec.write(referenceMapFor(generation)), StandardCharsets.UTF_8);
+    }
+
+    private static ReferenceMap referenceMapFor(String generation) {
+        return matchingReferenceMap(
+                generation + " RU", generation + " EN",
+                generation + " RU title", generation + " EN title",
+                generation + " RU description", generation + " EN description");
+    }
+
+    private static ReferenceMap matchingReferenceMap(
+            String ruBody, String enBody, String ruTitle, String enTitle,
+            String ruDescription, String enDescription) {
+        return ReferenceMap.empty(IDENTITY,
+                ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(ruTitle), ContentHash.sha256Hex(enTitle),
+                ContentHash.sha256Hex(ruDescription), ContentHash.sha256Hex(enDescription));
+    }
+
+    private static boolean validBackupDirectoryName(String fileName) {
+        String prefix = "approved-backup-";
+        if (!fileName.startsWith(prefix)) {
+            return false;
+        }
+        try {
+            java.util.UUID.fromString(fileName.substring(prefix.length()));
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
     }
 }

@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.buildfromreview;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
@@ -32,6 +33,8 @@ public final class BuildFromReviewHandler {
         } catch (UncheckedIOException failure) {
             return ReleaseResult.blocked(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return ReleaseResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
             return ReleaseResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
         }
         if (approved.isEmpty()) {

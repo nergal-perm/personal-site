@@ -4,6 +4,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 
@@ -11,26 +12,47 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Objects;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorkspace {
 
+    private static final int MAX_READ_ATTEMPTS = 5;
+
     private final StagedDirectoryInstall stagedInstall;
     private final MoveOperation moveOperation;
+    private final ReadObserver readObserver;
+    private final ThreadLocal<Set<PublicationIdentity>> heldApprovalLocks =
+            ThreadLocal.withInitial(HashSet::new);
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot) {
         this(reviewRoot, (source, destination) ->
-                Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE));
+                Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE), ignored -> {
+                });
     }
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot, MoveOperation moveOperation) {
+        this(reviewRoot, moveOperation, ignored -> {
+        });
+    }
+
+    FilesystemApprovedSnapshotWorkspace(
+            Path reviewRoot, MoveOperation moveOperation, ReadObserver readObserver) {
         this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(reviewRoot, "reviewRoot"));
         this.moveOperation = Objects.requireNonNull(moveOperation, "moveOperation");
+        this.readObserver = Objects.requireNonNull(readObserver, "readObserver");
     }
 
     @Override
@@ -45,7 +67,17 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         Objects.requireNonNull(enDescription, "enDescription");
         Objects.requireNonNull(referenceMap, "referenceMap");
 
-        recoverIfNeeded(identity);
+        withApprovalLock(identity, () -> {
+            installUnderLock(identity, ruBody, enBody, ruTitle, enTitle,
+                    ruDescription, enDescription, referenceMap);
+            return null;
+        });
+    }
+
+    private void installUnderLock(PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription,
+            ReferenceMap referenceMap) {
+        recoverIfNeeded(identity, true);
         Path destination = approvedDirectory(identity);
         Path staging = createStagingDirectory();
         try {
@@ -58,6 +90,71 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);
         }
+    }
+
+    @Override
+    public <T> T withApprovalLock(PublicationIdentity identity, Supplier<T> operation) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(operation, "operation");
+        Set<PublicationIdentity> held = heldApprovalLocks.get();
+        if (held.contains(identity)) {
+            return operation.get();
+        }
+        Path lockFile = acquireApprovalLock(identity);
+        held.add(identity);
+        Throwable operationFailure = null;
+        try {
+            return operation.get();
+        } catch (RuntimeException | Error failure) {
+            operationFailure = failure;
+            throw failure;
+        } finally {
+            held.remove(identity);
+            if (held.isEmpty()) {
+                heldApprovalLocks.remove();
+            }
+            releaseApprovalLock(lockFile, operationFailure);
+        }
+    }
+
+    private Path acquireApprovalLock(PublicationIdentity identity) {
+        Path lockFile = approvalLockFile(identity);
+        try {
+            stagedInstall.createParentDirectories(lockFile);
+            requireWithinReviewRoot(lockFile);
+            return Files.createFile(lockFile);
+        } catch (FileAlreadyExistsException collision) {
+            throw new ApprovedSnapshotApprovalInProgressException(identity);
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private void releaseApprovalLock(Path lockFile, Throwable operationFailure) {
+        try {
+            requireWithinReviewRoot(lockFile);
+            Files.deleteIfExists(lockFile);
+        } catch (IOException | RuntimeException cleanupFailure) {
+            if (operationFailure != null) {
+                operationFailure.addSuppressed(cleanupFailure);
+                return;
+            }
+            if (cleanupFailure instanceof IOException ioFailure) {
+                throw new UncheckedIOException(ioFailure);
+            }
+            throw (RuntimeException) cleanupFailure;
+        }
+    }
+
+    private Path approvalLockFile(PublicationIdentity identity) {
+        Path parent = approvedDirectory(identity).getParent();
+        if (parent == null) {
+            throw new ApprovedSnapshotWorkspaceConfinementException(
+                    approvedDirectory(identity), approvedDirectory(identity), stagedInstall.canonicalRoot());
+        }
+        Path lockFile = parent.resolve(".mark-reviewed.lock").normalize();
+        requireWithinReviewRoot(lockFile);
+        return lockFile;
     }
 
     private void replaceApproved(Path staging, Path destination) throws IOException {
@@ -94,57 +191,97 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         moveOperation.move(source, destination);
     }
 
-    // Assumes at most one backup per identity: true within one JVM under MarkReviewedHandler's lock,
-    // but not across racing CLI processes; accepted residual per design.md's Risks and
-    // dec-20260807-s08-translation-worker-trust-boundary-8bab0bc6 (single-operator deployment model).
-    private void recoverIfNeeded(PublicationIdentity identity) {
+    private void recoverIfNeeded(PublicationIdentity identity, boolean validateWithoutBackup) {
         Path destination = approvedDirectory(identity);
         Optional<Path> backup = findBackupDirectory(destination);
         if (backup.isEmpty()) {
+            if (!validateWithoutBackup) {
+                return;
+            }
+            SnapshotAssessment destinationState = assessSnapshot(destination, identity);
+            if (destinationState.invalid()) {
+                throw destinationState.failure();
+            }
             return;
         }
-        boolean destinationComplete = containsApprovedSnapshot(destination);
-        boolean backupComplete = containsApprovedSnapshot(backup.get());
-        if (destinationComplete) {
-            StagedDirectoryInstall.deleteRecursively(backup.get());
-            return;
-        }
-        if (backupComplete) {
+        SnapshotAssessment destinationState = assessSnapshot(destination, identity);
+        SnapshotAssessment backupState = assessSnapshot(backup.get(), identity);
+        if (destinationState.valid()) {
             try {
+                deleteRecursively(backup.get());
+            } catch (IOException error) {
+                throw new UncheckedIOException(error);
+            }
+            throw new ApprovedSnapshotRecoveryException(
+                    "Approved snapshot recovery kept the valid canonical snapshot and removed backup "
+                            + backup.get() + ". Retry the command.");
+        }
+        if (backupState.valid()) {
+            try {
+                if (destinationState.present()) {
+                    deleteRecursively(destination);
+                }
                 moveWithinReviewRoot(backup.get(), destination);
             } catch (IOException error) {
                 throw new UncheckedIOException(error);
             }
-            return;
+            String reason = destinationState.invalid() ? " after canonical integrity validation failed" : "";
+            throw new ApprovedSnapshotRecoveryException(
+                    "Approved snapshot recovery restored valid backup " + backup.get() + reason
+                            + ". Retry the command.");
         }
-        throw new IllegalStateException(
-                "Approved snapshot for " + identity + " is unrecoverable: neither " + destination
-                        + " nor its backup " + backup.get() + " is a complete snapshot.");
+        String destinationDetail = destinationState.invalid()
+                ? destinationState.failure().getMessage()
+                : "canonical snapshot is absent";
+        String backupDetail = backupState.invalid()
+                ? backupState.failure().getMessage()
+                : "backup snapshot is absent";
+        throw new ApprovedSnapshotIntegrityException(destination,
+                "snapshot is unrecoverable; " + destinationDetail + "; " + backupDetail + ".");
     }
 
     private Optional<Path> findBackupDirectory(Path destination) {
         Path parent = destination.getParent();
-        if (parent == null || !Files.isDirectory(parent)) {
+        if (parent == null || !Files.isDirectory(parent, LinkOption.NOFOLLOW_LINKS)) {
             return Optional.empty();
         }
         String prefix = destination.getFileName().toString() + "-backup-";
         try (var entries = Files.list(parent)) {
-            return entries.filter(Files::isDirectory)
-                    .filter(entry -> entry.getFileName().toString().startsWith(prefix))
-                    .findFirst();
+            List<Path> backups = entries
+                    .filter(entry -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS))
+                    .filter(entry -> validBackupMarker(entry.getFileName().toString(), prefix))
+                    .toList();
+            if (backups.size() > 1) {
+                throw new ApprovedSnapshotIntegrityException(destination,
+                        "multiple recovery backups exist: " + backups + ".");
+            }
+            return backups.stream().findFirst();
         } catch (IOException error) {
             throw new UncheckedIOException(error);
+        }
+    }
+
+    private static boolean validBackupMarker(String fileName, String prefix) {
+        if (!fileName.startsWith(prefix)) {
+            return false;
+        }
+        String suffix = fileName.substring(prefix.length());
+        try {
+            return UUID.fromString(suffix).toString().equalsIgnoreCase(suffix);
+        } catch (IllegalArgumentException invalidUuid) {
+            return false;
         }
     }
 
     @Override
     public Optional<CandidatePaths> find(PublicationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
-        recoverIfNeeded(identity);
+        recoverBeforeAccess(identity);
         Path approvedDirectory = approvedDirectory(identity);
-        Path ruPath = approvedDirectory.resolve("ru.md");
-        Path enPath = approvedDirectory.resolve("en.md");
-        if (Files.exists(ruPath) && Files.exists(enPath)) {
+        Optional<CandidateSnapshot> snapshot = stableSnapshotFrom(approvedDirectory, identity);
+        if (snapshot.isPresent()) {
+            Path ruPath = approvedDirectory.resolve("ru.md");
+            Path enPath = approvedDirectory.resolve("en.md");
             return Optional.of(CandidatePaths.of(ruPath, enPath));
         }
         return Optional.empty();
@@ -153,26 +290,73 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     @Override
     public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
-        recoverIfNeeded(identity);
+        recoverBeforeAccess(identity);
         Path approvedDirectory = approvedDirectory(identity);
-        if (!containsApprovedSnapshot(approvedDirectory)) {
-            return Optional.empty();
+        return stableSnapshotFrom(approvedDirectory, identity);
+    }
+
+    private void recoverBeforeAccess(PublicationIdentity identity) {
+        Path destination = approvedDirectory(identity);
+        if (findBackupDirectory(destination).isEmpty()) {
+            return;
         }
-        return snapshotFrom(approvedDirectory, identity);
+        withApprovalLock(identity, () -> {
+            recoverIfNeeded(identity, false);
+            return null;
+        });
     }
 
-    private boolean containsApprovedSnapshot(Path approvedDirectory) {
-        return Files.exists(approvedFile(approvedDirectory, "ru.md"))
-                && Files.exists(approvedFile(approvedDirectory, "en.md"))
-                && Files.exists(approvedFile(approvedDirectory, "ru.title"))
-                && Files.exists(approvedFile(approvedDirectory, "en.title"))
-                && Files.exists(approvedFile(approvedDirectory, "ru.description"))
-                && Files.exists(approvedFile(approvedDirectory, "en.description"))
-                && Files.exists(approvedFile(approvedDirectory, "references.json"));
-    }
-
-    private Optional<CandidateSnapshot> snapshotFrom(
+    private Optional<CandidateSnapshot> stableSnapshotFrom(
             Path approvedDirectory, PublicationIdentity expectedIdentity) {
+        for (int attempt = 0; attempt < MAX_READ_ATTEMPTS; attempt++) {
+            Object generationBefore = directoryGeneration(approvedDirectory);
+            if (generationBefore == null) {
+                if (Files.notExists(approvedDirectory, LinkOption.NOFOLLOW_LINKS)
+                        && !approvalReplacementInProgress(approvedDirectory)) {
+                    return Optional.empty();
+                }
+                continue;
+            }
+            CandidateSnapshot snapshot;
+            try {
+                snapshot = snapshotFrom(approvedDirectory);
+            } catch (UncheckedIOException failure) {
+                if (generationBefore.equals(directoryGeneration(approvedDirectory))) {
+                    throw new ApprovedSnapshotIntegrityException(
+                            approvedDirectory, "required snapshot files could not be read.", failure);
+                }
+                continue;
+            }
+            Object generationAfter = directoryGeneration(approvedDirectory);
+            if (generationBefore.equals(generationAfter)) {
+                validateSnapshot(approvedDirectory, expectedIdentity, snapshot);
+                return Optional.of(snapshot);
+            }
+        }
+        throw new ApprovedSnapshotWorkspaceStabilizationException(
+                approvedDirectory, MAX_READ_ATTEMPTS);
+    }
+
+    private static boolean approvalReplacementInProgress(Path approvedDirectory) {
+        Path parent = approvedDirectory.getParent();
+        return parent != null
+                && Files.exists(parent.resolve(".mark-reviewed.lock"), LinkOption.NOFOLLOW_LINKS);
+    }
+
+    private Object directoryGeneration(Path approvedDirectory) {
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(
+                    approvedDirectory, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!attributes.isDirectory()) {
+                return null;
+            }
+            return attributes.fileKey();
+        } catch (IOException error) {
+            return null;
+        }
+    }
+
+    private CandidateSnapshot snapshotFrom(Path approvedDirectory) {
         try {
             String ruBody = readApprovedText(approvedFile(approvedDirectory, "ru.md"));
             String enBody = readApprovedText(approvedFile(approvedDirectory, "en.md"));
@@ -181,7 +365,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             String ruDescription = readApprovedText(approvedFile(approvedDirectory, "ru.description"));
             String enDescription = readApprovedText(approvedFile(approvedDirectory, "en.description"));
             ReferenceMap referenceMap = readReferenceMap(approvedFile(approvedDirectory, "references.json"));
-            return snapshotMatching(expectedIdentity, ruBody, enBody, ruTitle, enTitle,
+            return CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
                     ruDescription, enDescription, referenceMap);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
@@ -190,22 +374,66 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
 
     private String readApprovedText(Path bodyPath) throws IOException {
         requireWithinReviewRoot(bodyPath);
-        return Files.readString(bodyPath, StandardCharsets.UTF_8);
+        String text = Files.readString(bodyPath, StandardCharsets.UTF_8);
+        readObserver.afterRead(bodyPath);
+        return text;
     }
 
     private ReferenceMap readReferenceMap(Path referencesPath) throws IOException {
         requireWithinReviewRoot(referencesPath);
-        return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
+        try {
+            return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
+        } catch (UncheckedIOException | IllegalArgumentException | NullPointerException invalidReferenceMap) {
+            throw new IOException("references.json is invalid", invalidReferenceMap);
+        }
     }
 
-    private static Optional<CandidateSnapshot> snapshotMatching(
-            PublicationIdentity expectedIdentity, String ruBody, String enBody, String ruTitle, String enTitle,
-            String ruDescription, String enDescription, ReferenceMap referenceMap) {
+    private static void validateSnapshot(
+            Path approvedDirectory, PublicationIdentity expectedIdentity, CandidateSnapshot snapshot) {
+        ReferenceMap referenceMap = snapshot.referenceMap();
+        List<String> failures = new ArrayList<>();
         if (!referenceMap.identity().equals(expectedIdentity)) {
-            return Optional.empty();
+            failures.add("references.json identity does not match " + expectedIdentity);
         }
-        return Optional.of(CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
-                ruDescription, enDescription, referenceMap));
+        requireHash(failures, "ru.md", snapshot.ruBody(), referenceMap.ruHash());
+        requireHash(failures, "en.md", snapshot.enBody(), referenceMap.enHash());
+        requireHash(failures, "ru.title", snapshot.ruTitle(), referenceMap.ruTitleHash());
+        requireHash(failures, "en.title", snapshot.enTitle(), referenceMap.enTitleHash());
+        requireHash(failures, "ru.description", snapshot.ruDescription(), referenceMap.ruDescriptionHash());
+        requireHash(failures, "en.description", snapshot.enDescription(), referenceMap.enDescriptionHash());
+        if (!failures.isEmpty()) {
+            throw new ApprovedSnapshotIntegrityException(
+                    approvedDirectory, String.join("; ", failures) + ".");
+        }
+    }
+
+    private static void requireHash(List<String> failures, String fileName, String content, String expectedHash) {
+        if (!ContentHash.sha256Hex(content).equals(expectedHash)) {
+            failures.add(fileName + " does not match its recorded hash");
+        }
+    }
+
+    private SnapshotAssessment assessSnapshot(Path directory, PublicationIdentity expectedIdentity) {
+        boolean present = Files.exists(directory, LinkOption.NOFOLLOW_LINKS);
+        if (!present) {
+            return SnapshotAssessment.absent();
+        }
+        try {
+            Optional<CandidateSnapshot> snapshot = stableSnapshotFrom(directory, expectedIdentity);
+            return snapshot.isPresent()
+                    ? SnapshotAssessment.validSnapshot()
+                    : SnapshotAssessment.absent();
+        } catch (ApprovedSnapshotIntegrityException failure) {
+            return SnapshotAssessment.invalidSnapshot(failure);
+        }
+    }
+
+    private static void deleteRecursively(Path directory) throws IOException {
+        try (var paths = Files.walk(directory)) {
+            for (Path path : paths.sorted(Comparator.reverseOrder()).toList()) {
+                Files.deleteIfExists(path);
+            }
+        }
     }
 
     private Path approvedDirectory(PublicationIdentity identity) {
@@ -254,5 +482,30 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     @FunctionalInterface
     interface MoveOperation {
         void move(Path source, Path destination) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface ReadObserver {
+        void afterRead(Path file) throws IOException;
+    }
+
+    private record SnapshotAssessment(
+            boolean present, boolean valid, ApprovedSnapshotIntegrityException failure) {
+
+        private static SnapshotAssessment absent() {
+            return new SnapshotAssessment(false, false, null);
+        }
+
+        private static SnapshotAssessment validSnapshot() {
+            return new SnapshotAssessment(true, true, null);
+        }
+
+        private static SnapshotAssessment invalidSnapshot(ApprovedSnapshotIntegrityException failure) {
+            return new SnapshotAssessment(true, false, failure);
+        }
+
+        private boolean invalid() {
+            return present && !valid;
+        }
     }
 }

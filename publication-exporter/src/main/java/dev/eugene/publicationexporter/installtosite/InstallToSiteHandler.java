@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.installtosite;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
@@ -31,6 +32,8 @@ public final class InstallToSiteHandler {
         } catch (UncheckedIOException failure) {
             return InstallToSiteResult.blocked(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
             return InstallToSiteResult.blocked("Approved snapshot lookup failed: " + failure.getMessage());
         }
         if (approved.isEmpty()) {

@@ -6,7 +6,9 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 public interface ApprovedSnapshotWorkspace {
 
@@ -16,6 +18,11 @@ public interface ApprovedSnapshotWorkspace {
     Optional<CandidatePaths> find(PublicationIdentity identity);
 
     Optional<CandidateSnapshot> read(PublicationIdentity identity);
+
+    default <T> T withApprovalLock(PublicationIdentity identity, Supplier<T> operation) {
+        Objects.requireNonNull(identity, "identity");
+        return Objects.requireNonNull(operation, "operation").get();
+    }
 
     static ApprovedSnapshotWorkspace create(Path reviewRoot) {
         return new FilesystemApprovedSnapshotWorkspace(reviewRoot);

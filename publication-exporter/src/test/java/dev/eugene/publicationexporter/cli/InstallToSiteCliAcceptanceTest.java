@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -66,7 +67,11 @@ class InstallToSiteCliAcceptanceTest {
         ApprovedSnapshotWorkspace.create(reviewDirectory).install(IDENTITY,
                 "# My Essay", "# My Essay (EN)", "My Essay", "My Essay (EN)",
                 "A valid description.", "A valid description (EN).",
-                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+                ReferenceMap.empty(IDENTITY,
+                        ContentHash.sha256Hex("# My Essay"), ContentHash.sha256Hex("# My Essay (EN)"),
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("My Essay (EN)"),
+                        ContentHash.sha256Hex("A valid description."),
+                        ContentHash.sha256Hex("A valid description (EN).")));
 
         int exitCode = installToSite(reviewDirectory, siteRoot);
 
@@ -79,6 +84,21 @@ class InstallToSiteCliAcceptanceTest {
         assertTrue(Files.exists(siteRoot.resolve(".astro-export/release-provenance.json")));
         String manifest = Files.readString(siteRoot.resolve(".astro-export/release-provenance.json"));
         assertTrue(manifest.contains("\"schemaVersion\":1"));
+    }
+
+    @Test
+    void corruptedApprovedSnapshotProducesBlockedJsonInsteadOfEscaping() throws Exception {
+        Path reviewDirectory = workRoot.resolve("review");
+        Path siteRoot = workRoot.resolve("site");
+        CorruptedApprovedSnapshotFixture.write(reviewDirectory, IDENTITY);
+
+        int exitCode = installToSite(reviewDirectory, siteRoot);
+
+        assertNotEquals(0, exitCode);
+        JsonNode result = soleJsonValueOnStdout();
+        assertEquals(false, result.get("ok").asBoolean());
+        assertTrue(result.get("message").asText().contains("integrity validation failed"));
+        assertTrue(Files.notExists(siteRoot));
     }
 
     private int installToSite(Path reviewDirectory, Path siteRoot) {

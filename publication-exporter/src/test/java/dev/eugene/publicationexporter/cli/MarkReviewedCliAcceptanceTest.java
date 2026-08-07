@@ -132,6 +132,27 @@ class MarkReviewedCliAcceptanceTest {
         assertEquals("A new description.", Files.readString(approvedDirectory.resolve("ru.description")));
     }
 
+    @Test
+    void corruptedApprovedSnapshotProducesBlockedSchemaV2Response() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.md"), VALID_ESSAY);
+        prepare();
+        CorruptedApprovedSnapshotFixture.write(
+                vaultRoot.resolve("review"),
+                dev.eugene.publicationexporter.bridge.PublicationIdentity.of("blog", "essay", "my-essay"));
+
+        int exitCode = markReviewed("blog/my-essay.md");
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("metadata_blocked", response.get("status").asText());
+        assertEquals("approved-snapshot", response.get("diagnostics").get(0).get("field").asText());
+        assertTrue(response.get("diagnostics").get(0).get("message").asText()
+                .contains("integrity validation failed"));
+    }
+
     private void prepare() throws Exception {
         PrepareCommand prepareCommand = new PrepareCommand(
                 TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));

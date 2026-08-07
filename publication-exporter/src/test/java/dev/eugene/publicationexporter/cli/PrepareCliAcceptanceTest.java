@@ -90,6 +90,23 @@ class PrepareCliAcceptanceTest {
     }
 
     @Test
+    void corruptedApprovedSnapshotProducesBlockedSchemaV2Response() throws Exception {
+        writeEssay("# My Essay");
+        CorruptedApprovedSnapshotFixture.write(vaultRoot.resolve("review"), IDENTITY);
+
+        int exitCode = prepare("blog/my-essay.md");
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("metadata_blocked", response.get("status").asText());
+        assertEquals("approved-snapshot", response.get("diagnostics").get(0).get("field").asText());
+        assertTrue(response.get("diagnostics").get(0).get("message").asText()
+                .contains("integrity validation failed"));
+    }
+
+    @Test
     void notePathWithShellMetacharactersIsTreatedAsLiteralData() throws Exception {
         int exitCode = prepare("blog/note; touch pwned.md");
 

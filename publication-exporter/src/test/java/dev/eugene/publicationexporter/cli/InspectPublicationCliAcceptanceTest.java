@@ -219,6 +219,27 @@ class InspectPublicationCliAcceptanceTest {
     }
 
     @Test
+    void corruptedApprovedSnapshotProducesBlockedSchemaV2Response() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.writeString(vaultRoot.resolve("blog/my-essay.md"), VALID_ESSAY);
+        prepare();
+        CorruptedApprovedSnapshotFixture.write(
+                vaultRoot.resolve("review"),
+                dev.eugene.publicationexporter.bridge.PublicationIdentity.of("blog", "essay", "my-essay"));
+
+        int exitCode = inspect("blog/my-essay.md");
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("metadata_blocked", response.get("status").asText());
+        assertEquals("approved-snapshot", response.get("diagnostics").get(0).get("field").asText());
+        assertTrue(response.get("diagnostics").get(0).get("message").asText()
+                .contains("integrity validation failed"));
+    }
+
+    @Test
     void inspectingChangedApprovedEssayReportsDiff() throws Exception {
         Files.createDirectories(vaultRoot.resolve("blog"));
         Path note = vaultRoot.resolve("blog/my-essay.md");

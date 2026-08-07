@@ -567,6 +567,11 @@ class PrepareHandlerTest {
         ApprovedSnapshotWorkspace.create(reviewRoot).install(
                 identity, "# My Essay\n\nPlain prose body.", "EN body",
                 "My Essay", "EN title", "A valid description.", "EN description",
-                ReferenceMap.empty(identity, "ru", "en", "ru-title", "en-title", "ru-desc", "en-desc"));
+                ReferenceMap.empty(identity,
+                        ContentHash.sha256Hex("# My Essay\n\nPlain prose body."),
+                        ContentHash.sha256Hex("EN body"),
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("A valid description."),
+                        ContentHash.sha256Hex("EN description")));
     }
 }

@@ -8,6 +8,7 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -332,7 +333,10 @@ class InspectPublicationHandlerTest {
     private void installCandidateAndApproved(Path reviewRoot) {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         ReferenceMap referenceMap = ReferenceMap.empty(
-                identity, "ru", "en", "ru-title", "en-title", "ru-desc", "en-desc");
+                identity,
+                ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"),
+                ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
+                ContentHash.sha256Hex("RU description"), ContentHash.sha256Hex("EN description"));
         CandidateWorkspace.create(reviewRoot).install(
                 identity, "RU body", "EN body", "RU title", "EN title",
                 "RU description", "EN description", referenceMap);
