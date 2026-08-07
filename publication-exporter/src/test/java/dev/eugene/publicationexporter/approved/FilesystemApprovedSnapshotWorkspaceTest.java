@@ -10,6 +10,9 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.StandardCopyOption;
+import java.io.UncheckedIOException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -121,22 +124,99 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
-    void aSecondInstallForTheSameIdentityThrowsAndLeavesTheFirstSnapshotIntact() throws Exception {
+    void aSecondInstallForTheSameIdentityReplacesTheFirstSnapshot() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
         Path approvedDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("approved");
-        String referencesBeforeRejection = Files.readString(approvedDir.resolve("references.json"));
+        workspace.install(IDENTITY, "RU body 2", "EN body 2", "RU title 2", "EN title 2",
+                "RU description 2.", "EN description 2.", referenceMap);
 
-        assertThrows(ApprovedSnapshotAlreadyExistsException.class,
-                () -> workspace.install(IDENTITY, "RU body 2", "EN body 2", "RU title 2", "EN title 2",
-                        "RU description 2.", "EN description 2.", referenceMap));
+        assertEquals("RU body 2", Files.readString(approvedDir.resolve("ru.md")));
+        assertEquals("EN body 2", Files.readString(approvedDir.resolve("en.md")));
+        assertEquals("RU title 2", Files.readString(approvedDir.resolve("ru.title")));
+        assertEquals("EN title 2", Files.readString(approvedDir.resolve("en.title")));
+        assertEquals("RU description 2.", Files.readString(approvedDir.resolve("ru.description")));
+        assertEquals("EN description 2.", Files.readString(approvedDir.resolve("en.description")));
+    }
 
-        assertEquals("RU body", Files.readString(approvedDir.resolve("ru.md")));
-        assertEquals("EN body", Files.readString(approvedDir.resolve("en.md")));
-        assertEquals(referencesBeforeRejection, Files.readString(approvedDir.resolve("references.json")));
+    @Test
+    void failedNewMoveRestoresFullyReadableOldApprovedSnapshot() throws Exception {
+        new FilesystemApprovedSnapshotWorkspace(reviewRoot).install(
+                IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
+                "Old RU description", "Old EN description", referenceMap("old"));
+        AtomicInteger moves = new AtomicInteger();
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot,
+                (source, target) -> {
+                    if (moves.incrementAndGet() == 2) {
+                        throw new java.io.IOException("injected failure before new approved snapshot move");
+                    }
+                    Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+                });
+
+        UncheckedIOException failure = assertThrows(UncheckedIOException.class,
+                () -> workspace.install(IDENTITY, "New RU", "New EN", "New RU title", "New EN title",
+                        "New RU description", "New EN description", referenceMap("new")));
+
+        assertTrue(failure.getMessage().contains("injected failure"));
+        dev.eugene.publicationexporter.candidate.CandidateSnapshot restored = workspace.read(IDENTITY).orElseThrow();
+        assertEquals("Old RU", restored.ruBody());
+        assertEquals("Old EN", restored.enBody());
+    }
+
+    @Test
+    void freshInstanceRecoversFromInterruptedReplaceByRestoringBackup() throws Exception {
+        FilesystemApprovedSnapshotWorkspace original = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        original.install(IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
+                "Old RU description", "Old EN description", referenceMap("old"));
+
+        Path approvedDir = reviewRoot.resolve(IDENTITY.publicCollection()).resolve(IDENTITY.publicId())
+                .resolve("approved");
+        Path backupDir = approvedDir.resolveSibling("approved-backup-" + java.util.UUID.randomUUID());
+        Files.move(approvedDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
+
+        FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        dev.eugene.publicationexporter.candidate.CandidateSnapshot recovered =
+                freshInstance.read(IDENTITY).orElseThrow();
+
+        assertEquals("Old RU", recovered.ruBody());
+        assertEquals("Old EN", recovered.enBody());
+        assertTrue(Files.notExists(backupDir), "stale backup should be cleaned up by recovery");
+    }
+
+    @Test
+    void freshInstanceKeepsCompleteNewSnapshotAndCleansStaleBackup() throws Exception {
+        FilesystemApprovedSnapshotWorkspace original = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        original.install(IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
+                "Old RU description", "Old EN description", referenceMap("old"));
+
+        Path approvedDir = reviewRoot.resolve(IDENTITY.publicCollection()).resolve(IDENTITY.publicId())
+                .resolve("approved");
+        Path backupDir = approvedDir.resolveSibling("approved-backup-" + java.util.UUID.randomUUID());
+        Files.move(approvedDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
+        ReferenceMap newReferenceMap = referenceMap("new");
+        Files.createDirectories(approvedDir);
+        Files.writeString(approvedDir.resolve("ru.md"), "New RU", StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("en.md"), "New EN", StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("ru.title"), "New RU title", StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("en.title"), "New EN title", StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("ru.description"), "New RU description", StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("en.description"), "New EN description", StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("references.json"), ReferenceMapCodec.write(newReferenceMap),
+                StandardCharsets.UTF_8);
+
+        FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        dev.eugene.publicationexporter.candidate.CandidateSnapshot recovered =
+                freshInstance.read(IDENTITY).orElseThrow();
+
+        assertEquals("New RU", recovered.ruBody());
+        assertEquals("New EN", recovered.enBody());
+        assertEquals(newReferenceMap, recovered.referenceMap());
+        assertTrue(Files.notExists(backupDir), "stale backup should be cleaned up by recovery");
     }
 
     @Test
@@ -182,5 +262,11 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         try (var entries = Files.list(reviewRoot)) {
             assertFalse(entries.anyMatch(path -> path.getFileName().toString().startsWith("approved-staging-")));
         }
+    }
+
+    private static ReferenceMap referenceMap(String suffix) {
+        return ReferenceMap.empty(IDENTITY, "ru-hash-" + suffix, "en-hash-" + suffix,
+                "ru-title-hash-" + suffix, "en-title-hash-" + suffix,
+                "ru-description-hash-" + suffix, "en-description-hash-" + suffix);
     }
 }

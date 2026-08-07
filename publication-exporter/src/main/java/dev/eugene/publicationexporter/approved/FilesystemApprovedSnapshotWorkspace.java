@@ -11,16 +11,26 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorkspace {
 
     private final StagedDirectoryInstall stagedInstall;
+    private final MoveOperation moveOperation;
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot) {
+        this(reviewRoot, (source, destination) ->
+                Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE));
+    }
+
+    FilesystemApprovedSnapshotWorkspace(Path reviewRoot, MoveOperation moveOperation) {
         this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(reviewRoot, "reviewRoot"));
+        this.moveOperation = Objects.requireNonNull(moveOperation, "moveOperation");
     }
 
     @Override
@@ -35,19 +45,94 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         Objects.requireNonNull(enDescription, "enDescription");
         Objects.requireNonNull(referenceMap, "referenceMap");
 
+        recoverIfNeeded(identity);
         Path destination = approvedDirectory(identity);
-        if (Files.exists(destination)) {
-            throw new ApprovedSnapshotAlreadyExistsException(identity);
-        }
         Path staging = createStagingDirectory();
         try {
             writeSnapshot(staging, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap);
             requireWithinReviewRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinReviewRoot(destination);
-            stagedInstall.move(staging, destination);
+            replaceApproved(staging, destination);
         } catch (IOException error) {
             StagedDirectoryInstall.deleteRecursively(staging);
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private void replaceApproved(Path staging, Path destination) throws IOException {
+        Path backup = null;
+        if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
+            backup = destination.resolveSibling("approved-backup-" + UUID.randomUUID()).normalize();
+            moveWithinReviewRoot(destination, backup);
+        }
+        try {
+            moveWithinReviewRoot(staging, destination);
+        } catch (IOException installFailure) {
+            restoreBackup(backup, destination, installFailure);
+            throw installFailure;
+        }
+        if (backup != null) {
+            StagedDirectoryInstall.deleteRecursively(backup);
+        }
+    }
+
+    private void restoreBackup(Path backup, Path destination, IOException installFailure) {
+        if (backup == null) {
+            return;
+        }
+        try {
+            moveWithinReviewRoot(backup, destination);
+        } catch (IOException | RuntimeException restoreFailure) {
+            installFailure.addSuppressed(restoreFailure);
+        }
+    }
+
+    private void moveWithinReviewRoot(Path source, Path destination) throws IOException {
+        requireWithinReviewRoot(source);
+        requireWithinReviewRoot(destination);
+        moveOperation.move(source, destination);
+    }
+
+    // Assumes at most one backup per identity: true within one JVM under MarkReviewedHandler's lock,
+    // but not across racing CLI processes; accepted residual per design.md's Risks and
+    // dec-20260807-s08-translation-worker-trust-boundary-8bab0bc6 (single-operator deployment model).
+    private void recoverIfNeeded(PublicationIdentity identity) {
+        Path destination = approvedDirectory(identity);
+        Optional<Path> backup = findBackupDirectory(destination);
+        if (backup.isEmpty()) {
+            return;
+        }
+        boolean destinationComplete = containsApprovedSnapshot(destination);
+        boolean backupComplete = containsApprovedSnapshot(backup.get());
+        if (destinationComplete) {
+            StagedDirectoryInstall.deleteRecursively(backup.get());
+            return;
+        }
+        if (backupComplete) {
+            try {
+                moveWithinReviewRoot(backup.get(), destination);
+            } catch (IOException error) {
+                throw new UncheckedIOException(error);
+            }
+            return;
+        }
+        throw new IllegalStateException(
+                "Approved snapshot for " + identity + " is unrecoverable: neither " + destination
+                        + " nor its backup " + backup.get() + " is a complete snapshot.");
+    }
+
+    private Optional<Path> findBackupDirectory(Path destination) {
+        Path parent = destination.getParent();
+        if (parent == null || !Files.isDirectory(parent)) {
+            return Optional.empty();
+        }
+        String prefix = destination.getFileName().toString() + "-backup-";
+        try (var entries = Files.list(parent)) {
+            return entries.filter(Files::isDirectory)
+                    .filter(entry -> entry.getFileName().toString().startsWith(prefix))
+                    .findFirst();
+        } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
     }
@@ -55,6 +140,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     @Override
     public Optional<CandidatePaths> find(PublicationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
+        recoverIfNeeded(identity);
         Path approvedDirectory = approvedDirectory(identity);
         Path ruPath = approvedDirectory.resolve("ru.md");
         Path enPath = approvedDirectory.resolve("en.md");
@@ -67,6 +153,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     @Override
     public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
+        recoverIfNeeded(identity);
         Path approvedDirectory = approvedDirectory(identity);
         if (!containsApprovedSnapshot(approvedDirectory)) {
             return Optional.empty();
@@ -162,5 +249,10 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         Files.writeString(approvedFile(staging, "en.description"), enDescription, StandardCharsets.UTF_8);
         Files.writeString(approvedFile(staging, "references.json"),
                 ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
+    }
+
+    @FunctionalInterface
+    interface MoveOperation {
+        void move(Path source, Path destination) throws IOException;
     }
 }
