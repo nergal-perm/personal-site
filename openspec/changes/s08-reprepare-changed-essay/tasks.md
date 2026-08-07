@@ -61,7 +61,7 @@ confinement; `ReviewPlan` gains a `changedPublication(...)` factory and `Inspect
 
 `grep -rn "translationWorker.translate(\|TranslationWorker.create\|implements TranslationWorker" publication-exporter/src` before starting — confirms the only implementors are `NullTranslationWorker` and `ProcessTranslationWorker`, and the only call site is `PrepareHandler.prepareAdmittedEssay`, per `feedback_java_interface_change_task_planning`.
 
-- [ ] 1.1 **Write the failing unit test for `TranslationJob`**
+- [x] 1.1 **Write the failing unit test for `TranslationJob`**
 
 ```java
 package dev.eugene.publicationexporter.translation;
@@ -109,12 +109,12 @@ class TranslationJobTest {
 }
 ```
 
-- [ ] 1.2 **Run it to confirm it fails to compile** (`TranslationJob` doesn't exist yet)
+- [x] 1.2 **Run it to confirm it fails to compile** (`TranslationJob` doesn't exist yet)
 
 Run: `cd publication-exporter && mvn -q -Dtest=TranslationJobTest test`
 Expected: compilation FAILURE — `cannot find symbol: class TranslationJob`
 
-- [ ] 1.3 **Implement `TranslationJob`**
+- [x] 1.3 **Implement `TranslationJob`**
 
 ```java
 package dev.eugene.publicationexporter.translation;
@@ -176,12 +176,12 @@ public final class TranslationJob {
 Confirm `ContentHash.sha256Hex` is `public static String sha256Hex(String)` before writing this — read
 `publication-exporter/src/main/java/dev/eugene/publicationexporter/hash/ContentHash.java` first.
 
-- [ ] 1.4 **Run the test to confirm it passes**
+- [x] 1.4 **Run the test to confirm it passes**
 
 Run: `cd publication-exporter && mvn -q -Dtest=TranslationJobTest test`
 Expected: PASS, 4/4.
 
-- [ ] 1.5 **Change `TranslationWorker#translate` to accept a `TranslationJob`, update both implementors**
+- [x] 1.5 **Change `TranslationWorker#translate` to accept a `TranslationJob`, update both implementors**
 
 `TranslationWorker.java`:
 ```java
@@ -209,7 +209,7 @@ to `translate(TranslationJob job, String ruBody, String ruTitle, String ruDescri
 `Objects.requireNonNull(job, "job")` as the first line. Leave the scratch-directory/process-invocation body
 otherwise unchanged in this task — Task 6 hardens it to use `job` for confinement.
 
-- [ ] 1.6 **Update the only call site, `PrepareHandler.prepareAdmittedEssay`**
+- [x] 1.6 **Update the only call site, `PrepareHandler.prepareAdmittedEssay`**
 
 ```java
 TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
@@ -221,19 +221,19 @@ try {
 ```
 Add `import dev.eugene.publicationexporter.translation.TranslationJob;` to `PrepareHandler.java`.
 
-- [ ] 1.7 **Update `PrepareHandlerTest`'s existing `translationWorker.translate(...)` verifications, if any, to the new signature**
+- [x] 1.7 **Update `PrepareHandlerTest`'s existing `translationWorker.translate(...)` verifications, if any, to the new signature**
 
 Read `publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/PrepareHandlerTest.java`
 first — it very likely only calls `TranslationWorker.createNull(...)`/`createNullFailing(...)` factories
 (which don't change shape), so this step may be a no-op; confirm by running the full suite in 1.8 rather than
 guessing.
 
-- [ ] 1.8 **Run the full suite to confirm no other call site broke**
+- [x] 1.8 **Run the full suite to confirm no other call site broke**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS, all 324+4 tests passing (existing 324 plus the 4 new `TranslationJobTest` cases).
 
-- [ ] 1.9 **Commit**
+- [x] 1.9 **Commit**
 
 ```bash
 cd publication-exporter
@@ -264,7 +264,7 @@ git commit -m "feat(translation): thread TranslationJob (job id + source fingerp
 This is the "genuinely combinatorial ... logic unclear at acceptance-test scope" case
 `openspec/implementation-plan.md` calls out for unit tests, per D1 in `design.md`.
 
-- [ ] 2.1 **Write failing unit tests covering the LCS diff's combinatorial cases**
+- [x] 2.1 **Write failing unit tests covering the LCS diff's combinatorial cases**
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -343,12 +343,12 @@ class RussianDiffTest {
 }
 ```
 
-- [ ] 2.2 **Run it to confirm it fails to compile**
+- [x] 2.2 **Run it to confirm it fails to compile**
 
 Run: `cd publication-exporter && mvn -q -Dtest=RussianDiffTest test`
 Expected: compilation FAILURE — `RussianDiff` doesn't exist.
 
-- [ ] 2.3 **Implement `RussianDiff` with a standard O(n·m) LCS line diff**
+- [x] 2.3 **Implement `RussianDiff` with a standard O(n·m) LCS line diff**
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -442,12 +442,12 @@ public final class RussianDiff {
 }
 ```
 
-- [ ] 2.4 **Run the tests to confirm they pass**
+- [x] 2.4 **Run the tests to confirm they pass**
 
 Run: `cd publication-exporter && mvn -q -Dtest=RussianDiffTest test`
 Expected: PASS, 6/6.
 
-- [ ] 2.5 **Commit**
+- [x] 2.5 **Commit**
 
 ```bash
 cd publication-exporter
@@ -470,7 +470,7 @@ git commit -m "feat(prepare): add RussianDiff line-based LCS diff for TRP-02"
   `Result.invalid(List<String> diagnostics): Result`, `Result#valid(): boolean`, `Result#diagnostics(): List<String>`.
 - Consumes: nothing beyond `java.util.regex` and `java.util` — pure function, no I/O.
 
-- [ ] 3.1 **Write failing unit tests for each PCM-06 check**
+- [x] 3.1 **Write failing unit tests for each PCM-06 check**
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -541,12 +541,12 @@ class EnglishCandidateValidatorTest {
 }
 ```
 
-- [ ] 3.2 **Run it to confirm compilation failure**
+- [x] 3.2 **Run it to confirm compilation failure**
 
 Run: `cd publication-exporter && mvn -q -Dtest=EnglishCandidateValidatorTest test`
 Expected: compilation FAILURE — `EnglishCandidateValidator` doesn't exist.
 
-- [ ] 3.3 **Implement `EnglishCandidateValidator`**
+- [x] 3.3 **Implement `EnglishCandidateValidator`**
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -639,12 +639,12 @@ public final class EnglishCandidateValidator {
 }
 ```
 
-- [ ] 3.4 **Run the tests to confirm they pass**
+- [x] 3.4 **Run the tests to confirm they pass**
 
 Run: `cd publication-exporter && mvn -q -Dtest=EnglishCandidateValidatorTest test`
 Expected: PASS, 6/6.
 
-- [ ] 3.5 **Commit**
+- [x] 3.5 **Commit**
 
 ```bash
 cd publication-exporter
@@ -672,9 +672,9 @@ This is the "one failing system-boundary acceptance test written in Given-When-T
 implementation-plan.md discipline requires before touching production code for the behavioral core of this
 slice.
 
-- [ ] 4.1 **Read the current `PrepareCliAcceptanceTest` and `PrepareCommand` composition root to learn the exact test harness shape (constructor wiring, how CLI args map to a note path, how output JSON is asserted) before writing new cases** — do not skip this: the existing file's helper methods (e.g. a `runPrepare(...)` helper, in-memory vault seeding) are reused verbatim, not reinvented.
+- [x] 4.1 **Read the current `PrepareCliAcceptanceTest` and `PrepareCommand` composition root to learn the exact test harness shape (constructor wiring, how CLI args map to a note path, how output JSON is asserted) before writing new cases** — do not skip this: the existing file's helper methods (e.g. a `runPrepare(...)` helper, in-memory vault seeding) are reused verbatim, not reinvented.
 
-- [ ] 4.2 **Write four failing acceptance test cases appended to `PrepareCliAcceptanceTest`**, following the exact helper-method patterns found in 4.1 (adapt argument names to match; the GIVEN/WHEN/THEN below is the required behavior, not literal syntax):
+- [x] 4.2 **Write four failing acceptance test cases appended to `PrepareCliAcceptanceTest`**, following the exact helper-method patterns found in 4.1 (adapt argument names to match; the GIVEN/WHEN/THEN below is the required behavior, not literal syntax):
 
   - `preparingChangedApprovedEssayProducesDiffAndNewCandidate()` — **GIVEN** an approved RU/EN snapshot and a
     source note whose body differs from the approved RU body, **WHEN** `prepare` runs with a translation
@@ -694,7 +694,7 @@ slice.
     body containing an internal `/ru/` route, **WHEN** `prepare` runs, **THEN** the response is
     `translation_failed` with a diagnostic mentioning `/ru/`, and the prior EN candidate bytes are unchanged.
 
-- [ ] 4.3 **Run the new tests to confirm they fail for the right reason** (assertion failures on old
+- [x] 4.3 **Run the new tests to confirm they fail for the right reason** (assertion failures on old
   unconditional-install behavior, not compilation errors — if compilation fails, the helper method signatures
   guessed in 4.2 don't match 4.1's actual harness; fix the test code, not the production code, until it
   compiles and fails on behavior)
@@ -703,7 +703,7 @@ Run: `cd publication-exporter && mvn -q -Dtest=PrepareCliAcceptanceTest test`
 Expected: 4 new FAILURES on assertions (old candidate gets overwritten every time; no diagnostics mention
 `/ru/`), 0 compilation errors.
 
-- [ ] 4.4 **Commit the failing tests on their own** (outside-in discipline: the red step is a checkpoint)
+- [x] 4.4 **Commit the failing tests on their own** (outside-in discipline: the red step is a checkpoint)
 
 ```bash
 cd publication-exporter
@@ -731,7 +731,7 @@ git commit -m "test(prepare): add failing acceptance tests for reprepare-changed
   `grep -rn "new PrepareHandler(" publication-exporter/src` first — update every call site (production CLI
   composition root and any remaining test helpers Task 4 didn't already touch).
 
-- [ ] 5.1 **Give `NullTranslationWorker` job/fingerprint-aware behavior needed by Task 4's stale/wrong-job cases**
+- [x] 5.1 **Give `NullTranslationWorker` job/fingerprint-aware behavior needed by Task 4's stale/wrong-job cases**
 
 Read the current `NullTranslationWorker.java` (from Task 1.5) first. Add two more factory methods without
 removing the existing two:
@@ -750,7 +750,7 @@ precise stale-vs-wrong-job distinction than this, prefer extending `TranslationR
 factory (mirroring `failure(String)`) over inventing new `NullTranslationWorker` states — check
 `TranslationResult.java`'s existing shape before deciding; keep whichever is the smaller diff.
 
-- [ ] 5.2 **Rewrite `PrepareHandler.prepareAdmittedEssay` to diff, validate, and job-authenticate before install**
+- [x] 5.2 **Rewrite `PrepareHandler.prepareAdmittedEssay` to diff, validate, and job-authenticate before install**
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -862,19 +862,19 @@ Note: this keeps the S03 first-publication path byte-identical in observable beh
 skips straight to `prepareAdmittedEssay`, same as before) while adding the diff short-circuit and PCM-06
 validation for both paths, per D1/D2's "strengthens S03 too" note in `design.md`.
 
-- [ ] 5.3 **Update every remaining `new PrepareHandler(...)` call site to pass an `ApprovedSnapshotWorkspace`** — production composition root uses the real `ApprovedSnapshotWorkspace.create(reviewRoot)` (same `reviewRoot` already passed to `CandidateWorkspace.create(reviewRoot)`, confirm they share the root by reading the composition root code first); existing unit/acceptance tests not yet updated by Task 4 pass `ApprovedSnapshotWorkspace.createNull()` for an absent baseline.
+- [x] 5.3 **Update every remaining `new PrepareHandler(...)` call site to pass an `ApprovedSnapshotWorkspace`** — production composition root uses the real `ApprovedSnapshotWorkspace.create(reviewRoot)` (same `reviewRoot` already passed to `CandidateWorkspace.create(reviewRoot)`, confirm they share the root by reading the composition root code first); existing unit/acceptance tests not yet updated by Task 4 pass `ApprovedSnapshotWorkspace.createNull()` for an absent baseline.
 
-- [ ] 5.4 **Run `PrepareHandlerTest` and `PrepareCliAcceptanceTest`**
+- [x] 5.4 **Run `PrepareHandlerTest` and `PrepareCliAcceptanceTest`**
 
 Run: `cd publication-exporter && mvn -q -Dtest=PrepareHandlerTest,PrepareCliAcceptanceTest test`
 Expected: PASS, including the 4 previously-failing cases from Task 4.
 
-- [ ] 5.5 **Run the full suite**
+- [x] 5.5 **Run the full suite**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS, all tests green, elapsed time still well under a few seconds.
 
-- [ ] 5.6 **Commit**
+- [x] 5.6 **Commit**
 
 ```bash
 cd publication-exporter
@@ -901,7 +901,7 @@ git commit -m "feat(prepare): diff against approved baseline, validate English c
   updated to pass a job root (production composition root: a fixed subdirectory under the configured review
   root or system temp root — confirm which by reading the CLI composition root; tests: a JUnit `@TempDir`).
 
-- [ ] 6.1 **Write a failing contract test proving job-directory confinement and fingerprint authentication for the real adapter**
+- [x] 6.1 **Write a failing contract test proving job-directory confinement and fingerprint authentication for the real adapter**
 
 ```java
 package dev.eugene.publicationexporter.translation;
@@ -957,12 +957,12 @@ class ProcessTranslationWorkerJobConfinementTest {
 Read `TranslationCommand.java` first to confirm its exact functional-interface shape (`argsFor(Path, String)`)
 matches the lambda above before finalizing this test.
 
-- [ ] 6.2 **Run it to confirm the escape case currently succeeds (proving the gap) and the constructor doesn't compile yet**
+- [x] 6.2 **Run it to confirm the escape case currently succeeds (proving the gap) and the constructor doesn't compile yet**
 
 Run: `cd publication-exporter && mvn -q -Dtest=ProcessTranslationWorkerJobConfinementTest test`
 Expected: compilation FAILURE — no 3-arg `ProcessTranslationWorker` constructor yet.
 
-- [ ] 6.3 **Change `ProcessTranslationWorker` to create its scratch directory under the given job root, named by `job.id()`, and validate every collected file resolves within it**
+- [x] 6.3 **Change `ProcessTranslationWorker` to create its scratch directory under the given job root, named by `job.id()`, and validate every collected file resolves within it**
 
 Modify `createScratchWorkdir()` to become an instance method taking `TranslationJob job`:
 
@@ -1020,9 +1020,9 @@ This makes the "escape one level up" test case in 6.1 fail to find `candidate.en
 was written to `workdir.getParent()`), which surfaces as `missingFileFailure(...)` — a `translation_failed`
 result, matching TRP-04's "rejected before candidate installation" requirement.
 
-- [ ] 6.4 **Update the production CLI composition root's `ProcessTranslationWorker` construction to pass a job root** — read the composition root file first (found via `grep -rn "new ProcessTranslationWorker(" publication-exporter/src/main`) and pass a dedicated subdirectory (e.g. `<reviewRoot>/.jobs`), consistent with how `CandidateWorkspace.create(reviewRoot)` is already rooted.
+- [x] 6.4 **Update the production CLI composition root's `ProcessTranslationWorker` construction to pass a job root** — read the composition root file first (found via `grep -rn "new ProcessTranslationWorker(" publication-exporter/src/main`) and pass a dedicated subdirectory (e.g. `<reviewRoot>/.jobs`), consistent with how `CandidateWorkspace.create(reviewRoot)` is already rooted.
 
-- [ ] 6.5 **Run the new contract test and the full suite**
+- [x] 6.5 **Run the new contract test and the full suite**
 
 Run: `cd publication-exporter && mvn -q -Dtest=ProcessTranslationWorkerJobConfinementTest test`
 Expected: PASS, 2/2.
@@ -1030,7 +1030,7 @@ Expected: PASS, 2/2.
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 6.6 **Commit**
+- [x] 6.6 **Commit**
 
 ```bash
 cd publication-exporter
@@ -1058,21 +1058,21 @@ git commit -m "feat(translation): confine ProcessTranslationWorker results to th
 - Produces (changed): `InspectPublicationHandler(CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace)`.
   `grep -rn "new InspectPublicationHandler(" publication-exporter/src` first.
 
-- [ ] 7.1 **Write a failing acceptance test**: `inspectingChangedApprovedEssayReportsDiff()` — **GIVEN** an
+- [x] 7.1 **Write a failing acceptance test**: `inspectingChangedApprovedEssayReportsDiff()` — **GIVEN** an
   approved RU/EN snapshot, a ready candidate, and a source note whose body differs from the approved RU body,
   **WHEN** `inspect-publication` runs, **THEN** the response's `reviewPlan.baselineState` is `"changed"` and
   `reviewPlan.diff` is non-empty and matches the expected added/removed lines. Follow the exact test-harness
   helper patterns already present in `InspectPublicationCliAcceptanceTest` (read it first — do not guess
   field/method names).
 
-- [ ] 7.2 **Run it to confirm it fails**
+- [x] 7.2 **Run it to confirm it fails**
 
 Run: `cd publication-exporter && mvn -q -Dtest=InspectPublicationCliAcceptanceTest test`
 Expected: FAILURE — `baselineState` is currently always `"absent"`... wait, currently it's hardcoded to the
 `firstPublication` factory only when a candidate exists; confirm the actual current failure mode by running
 this before assuming, then proceed.
 
-- [ ] 7.3 **Add `ReviewPlan.changedPublication(...)`**
+- [x] 7.3 **Add `ReviewPlan.changedPublication(...)`**
 
 ```java
 public static ReviewPlan changedPublication(
@@ -1096,7 +1096,7 @@ of a first-publication plan still see a `diff` key present but empty, not absent
 `bridge-contract/schema-v2.json`'s `additionalProperties: true` that adding this key cannot break plugin
 contract validation before finalizing). Update `equals`/`hashCode`/`toString` to include `diff`.
 
-- [ ] 7.4 **Wire `InspectPublicationHandler` to `ApprovedSnapshotWorkspace` and branch on baseline presence**
+- [x] 7.4 **Wire `InspectPublicationHandler` to `ApprovedSnapshotWorkspace` and branch on baseline presence**
 
 ```java
 public InspectPublicationHandler(
@@ -1115,11 +1115,11 @@ against `BridgeResponse.essayInspected`'s parameter meaning before changing, sin
 right is exactly what RVA-01's "independent absent candidate/approved/reference/release states" scenario
 from S02 already covers and must keep covering).
 
-- [ ] 7.5 **Update the production composition root's `new InspectPublicationHandler(...)` call site** to pass
+- [x] 7.5 **Update the production composition root's `new InspectPublicationHandler(...)` call site** to pass
   the same `ApprovedSnapshotWorkspace` instance the composition root already builds for `PrepareHandler`
   (Task 5.3) and `MarkReviewedHandler` — do not construct a second one against a different root.
 
-- [ ] 7.6 **Run the acceptance test and the full suite**
+- [x] 7.6 **Run the acceptance test and the full suite**
 
 Run: `cd publication-exporter && mvn -q -Dtest=InspectPublicationCliAcceptanceTest test`
 Expected: PASS.
@@ -1127,7 +1127,7 @@ Expected: PASS.
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS, all tests green.
 
-- [ ] 7.7 **Commit**
+- [x] 7.7 **Commit**
 
 ```bash
 cd publication-exporter
@@ -1144,21 +1144,21 @@ git commit -m "feat(inspect): report changed-publication review plan with Russia
 
 **Files:** none created/modified — verification only.
 
-- [ ] 8.1 **Run the complete Maven test suite**
+- [x] 8.1 **Run the complete Maven test suite**
 
 Run: `cd publication-exporter && mvn -B test`
 Expected: `Tests run: 3XX+, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`, total elapsed time still
 sub-second-to-low-seconds (matches the <1s in-memory acceptance-subset constraint; the two slow items in this
 suite, if any, stay in the real-adapter contract tests only, per existing project pattern).
 
-- [ ] 8.2 **Manually trace each requirement scenario in `scope-pins.md` to the test(s) that now exercise it**:
+- [x] 8.2 **Manually trace each requirement scenario in `scope-pins.md` to the test(s) that now exercise it**:
   TRP-02 (both scenarios) → Task 4/5 tests; TRP-03 (both scenarios) → Task 4/5 tests; TRP-04 (both scenarios)
   → Task 6 tests; RVA-02 changed-publication scenario → Task 7 test; PCM-06 (both scenarios) → Task 3 unit
   tests plus Task 4/5 acceptance coverage. Note any scenario without a direct test in a short list for the
   final branch review to flag — do not silently mark this task done if one is missing.
 
-- [ ] 8.3 **Confirm `git status` is clean except for this slice's new/modified files** (no stray build
+- [x] 8.3 **Confirm `git status` is clean except for this slice's new/modified files** (no stray build
   artifacts, no `target/` changes committed).
 
-- [ ] 8.4 **This task has no commit of its own** — it is the checkpoint before subagent-driven-development
+- [x] 8.4 **This task has no commit of its own** — it is the checkpoint before subagent-driven-development
   hands off to the four parallel review passes and the final whole-branch review.
