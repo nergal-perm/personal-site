@@ -2,17 +2,8 @@ package dev.eugene.publicationexporter.translation;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.UncheckedIOException;
-import java.nio.channels.Channels;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.LinkOption;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
-import java.util.Comparator;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -22,8 +13,6 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     private static final String BODY_FILE_NAME = "candidate.en.md";
     private static final String TITLE_FILE_NAME = "candidate.en.title.txt";
     private static final String DESCRIPTION_FILE_NAME = "candidate.en.description.txt";
-    private static final String FINGERPRINT_FILE_NAME = "job.fingerprint";
-
     private final TranslationCommand command;
     private final Duration timeout;
     private final Path jobRoot;
@@ -37,14 +26,12 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     @Override
     public TranslationResult translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
         Objects.requireNonNull(job, "job");
-        JobWorkspace workspace = createScratchWorkdir(job);
+        JobWorkspace workspace = JobWorkspace.createAt(jobRoot, job);
         try {
-            writeFingerprint(workspace, job.sourceFingerprint());
+            workspace.writeFingerprint(job.sourceFingerprint());
             return runAndCollect(workspace, job, prompt(ruBody, ruTitle, ruDescription));
         } finally {
-            if (workspace.identityIsCurrentQuietly()) {
-                deleteRecursively(workspace.path());
-            }
+            workspace.cleanup();
         }
     }
 
@@ -97,92 +84,24 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     private TranslationResult collectResult(JobWorkspace workspace, TranslationJob job) {
-        FileRead fingerprint = readIfPresent(workspace, FINGERPRINT_FILE_NAME);
-        if (fingerprint.isMissing()) {
-            return missingFileFailure(FINGERPRINT_FILE_NAME);
-        }
-        if (fingerprint.error() != null) {
-            return readFailure(FINGERPRINT_FILE_NAME, fingerprint.error());
-        }
-        if (!job.sourceFingerprint().equals(fingerprint.content())) {
-            return TranslationResult.failure("Translation worker job fingerprint did not match the request.");
-        }
-
-        FileRead body = readIfPresent(workspace, BODY_FILE_NAME);
-        if (body.isMissing()) {
-            return missingFileFailure(BODY_FILE_NAME);
-        }
-        if (body.error() != null) {
-            return readFailure(BODY_FILE_NAME, body.error());
-        }
-
-        FileRead title = readIfPresent(workspace, TITLE_FILE_NAME);
-        if (title.isMissing()) {
-            return missingFileFailure(TITLE_FILE_NAME);
-        }
-        if (title.error() != null) {
-            return readFailure(TITLE_FILE_NAME, title.error());
-        }
-
-        FileRead description = readIfPresent(workspace, DESCRIPTION_FILE_NAME);
-        if (description.isMissing()) {
-            return missingFileFailure(DESCRIPTION_FILE_NAME);
-        }
-        if (description.error() != null) {
-            return readFailure(DESCRIPTION_FILE_NAME, description.error());
-        }
-
-        return TranslationResult.success(body.content(), title.content(), description.content());
-    }
-
-    private FileRead readIfPresent(JobWorkspace workspace, String fileName) {
-        Path file = workspace.path().resolve(fileName).normalize();
         try {
-            FileSnapshot before = snapshotWithinJob(workspace, file, fileName);
-            if (before == null) {
-                return FileRead.missing();
-            }
-            byte[] content;
-            try (var channel = Files.newByteChannel(
-                    file, StandardOpenOption.READ, LinkOption.NOFOLLOW_LINKS);
-                    var input = Channels.newInputStream(channel)) {
-                content = input.readAllBytes();
-            }
-            FileSnapshot after = snapshotWithinJob(workspace, file, fileName);
-            if (after == null || !before.sameFileAs(after) || after.size() != content.length) {
-                return FileRead.missing();
-            }
-            return FileRead.present(new String(content, StandardCharsets.UTF_8));
-        } catch (NoSuchFileException error) {
-            return FileRead.missing();
-        } catch (IOException error) {
-            return Files.isSymbolicLink(file) ? FileRead.missing() : FileRead.unreadable(error);
+            workspace.requireMatchingFingerprint(job.sourceFingerprint());
+            return validatedResultFrom(workspace);
+        } catch (JobWorkspace.FingerprintMismatchException mismatch) {
+            return TranslationResult.failure("Translation worker job fingerprint did not match the request.");
+        } catch (JobWorkspace.MissingFileException missing) {
+            return missingFileFailure(missing.fileName());
+        } catch (JobWorkspace.UnreadableFileException unreadable) {
+            return readFailure(unreadable.fileName(), unreadable.error());
         }
     }
 
-    private static FileSnapshot snapshotWithinJob(
-            JobWorkspace workspace, Path file, String fileName) throws IOException {
-        if (!file.getParent().equals(workspace.path()) || !workspace.identityIsCurrent()) {
-            return null;
-        }
-        Path resolved = file.toRealPath();
-        if (!resolved.getParent().equals(workspace.canonicalPath())) {
-            return null;
-        }
-        BasicFileAttributes attributes = Files.readAttributes(
-                file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-        if (!attributes.isRegularFile() || attributes.fileKey() == null || hardLinkCount(file) != 1) {
-            return null;
-        }
-        return new FileSnapshot(attributes.fileKey(), attributes.size());
-    }
-
-    private static int hardLinkCount(Path file) throws IOException {
-        Object count = Files.getAttribute(file, "unix:nlink", LinkOption.NOFOLLOW_LINKS);
-        if (!(count instanceof Number number)) {
-            throw new IOException("Could not determine hard-link count for " + file);
-        }
-        return number.intValue();
+    private TranslationResult validatedResultFrom(JobWorkspace workspace)
+            throws JobWorkspace.MissingFileException, JobWorkspace.UnreadableFileException {
+        return TranslationResult.success(
+                workspace.readRequiredResult(BODY_FILE_NAME),
+                workspace.readRequiredResult(TITLE_FILE_NAME),
+                workspace.readRequiredResult(DESCRIPTION_FILE_NAME));
     }
 
     private static TranslationResult missingFileFailure(String fileName) {
@@ -191,49 +110,6 @@ public final class ProcessTranslationWorker implements TranslationWorker {
 
     private static TranslationResult readFailure(String fileName, IOException error) {
         return TranslationResult.failure("Could not read " + fileName + ": " + error.getMessage());
-    }
-
-    private record FileRead(String content, IOException error) {
-
-        private static FileRead present(String content) {
-            return new FileRead(content, null);
-        }
-
-        private static FileRead missing() {
-            return new FileRead(null, null);
-        }
-
-        private static FileRead unreadable(IOException error) {
-            return new FileRead(null, error);
-        }
-
-        private boolean isMissing() {
-            return content == null && error == null;
-        }
-    }
-
-    private record FileSnapshot(Object fileKey, long size) {
-
-        private boolean sameFileAs(FileSnapshot other) {
-            return fileKey.equals(other.fileKey);
-        }
-    }
-
-    private record JobWorkspace(Path path, Path canonicalPath, Object directoryKey) {
-
-        private boolean identityIsCurrent() throws IOException {
-            BasicFileAttributes attributes = Files.readAttributes(
-                    path, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            return attributes.isDirectory() && directoryKey.equals(attributes.fileKey());
-        }
-
-        private boolean identityIsCurrentQuietly() {
-            try {
-                return identityIsCurrent();
-            } catch (IOException ignored) {
-                return false;
-            }
-        }
     }
 
     private static String prompt(String ruBody, String ruTitle, String ruDescription) {
@@ -257,57 +133,6 @@ public final class ProcessTranslationWorker implements TranslationWorker {
                 %s
                 </body>
                 """.formatted(ruTitle, ruDescription, ruBody);
-    }
-
-    private JobWorkspace createScratchWorkdir(TranslationJob job) {
-        try {
-            Path canonicalRoot = Files.createDirectories(jobRoot).toRealPath();
-            Path requestedWorkdir = canonicalRoot.resolve(job.id()).normalize();
-            if (!canonicalRoot.equals(requestedWorkdir.getParent())) {
-                throw new IOException("Translation job ID escapes the configured job root.");
-            }
-            Files.createDirectory(requestedWorkdir);
-            Path canonicalWorkdir = requestedWorkdir.toRealPath();
-            if (!canonicalRoot.equals(canonicalWorkdir.getParent())) {
-                throw new IOException("Translation job directory escapes the configured job root.");
-            }
-            BasicFileAttributes attributes = Files.readAttributes(
-                    requestedWorkdir, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
-            if (!attributes.isDirectory() || attributes.fileKey() == null) {
-                throw new IOException("Translation job directory identity is unavailable.");
-            }
-            return new JobWorkspace(requestedWorkdir, canonicalWorkdir, attributes.fileKey());
-        } catch (IOException error) {
-            throw new UncheckedIOException(error);
-        }
-    }
-
-    private static void writeFingerprint(JobWorkspace workspace, String fingerprint) {
-        Path marker = workspace.path().resolve(FINGERPRINT_FILE_NAME);
-        try (var channel = Files.newByteChannel(
-                marker, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE,
-                LinkOption.NOFOLLOW_LINKS);
-                var output = Channels.newOutputStream(channel)) {
-            output.write(fingerprint.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException error) {
-            throw new UncheckedIOException(error);
-        }
-    }
-
-    private static void deleteRecursively(Path root) {
-        try (var paths = Files.walk(root)) {
-            paths.sorted(Comparator.reverseOrder()).forEach(ProcessTranslationWorker::deleteQuietly);
-        } catch (IOException ignored) {
-            // best-effort scratch-directory cleanup; a leftover temp dir is not a correctness failure
-        }
-    }
-
-    private static void deleteQuietly(Path path) {
-        try {
-            Files.deleteIfExists(path);
-        } catch (IOException ignored) {
-            // best-effort; see deleteRecursively
-        }
     }
 
     private static Duration requirePositive(Duration timeout) {

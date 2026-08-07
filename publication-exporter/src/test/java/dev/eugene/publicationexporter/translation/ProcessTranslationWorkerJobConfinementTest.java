@@ -12,6 +12,8 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ProcessTranslationWorkerJobConfinementTest {
@@ -132,6 +134,25 @@ class ProcessTranslationWorkerJobConfinementTest {
 
         assertFalse(result.succeeded());
         assertTrue(Files.exists(replacementSentinel));
+    }
+
+    @Test
+    void workspacesForDifferentJobIdsDoNotShareResults(@TempDir Path jobRoot) throws Exception {
+        TranslationJob jobA = TranslationJob.forSource("job A body", "job A title", "job A description");
+        TranslationJob jobB = TranslationJob.forSource("job B body", "job B title", "job B description");
+        JobWorkspace workspaceA = JobWorkspace.createAt(jobRoot, jobA);
+        JobWorkspace workspaceB = JobWorkspace.createAt(jobRoot, jobB);
+        try {
+            writeResult(workspaceA.path());
+
+            assertNotEquals(workspaceA.path(), workspaceB.path());
+            assertEquals("translated body", workspaceA.readRequiredResult("candidate.en.md"));
+            assertThrows(JobWorkspace.MissingFileException.class,
+                    () -> workspaceB.readRequiredResult("candidate.en.md"));
+        } finally {
+            workspaceA.cleanup();
+            workspaceB.cleanup();
+        }
     }
 
     private static void writeResult(Path workdir) {
