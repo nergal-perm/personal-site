@@ -16,6 +16,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -24,7 +25,6 @@ import java.util.concurrent.Future;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -36,6 +36,14 @@ class FilesystemManagedSiteInstallerTest {
     private static final CandidateSnapshot SNAPSHOT = CandidateSnapshot.of(
             "# RU body", "# EN body", "RU title", "EN title", "RU description.", "EN description.",
             ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+    private static final CandidateSnapshot REPLACEMENT_SNAPSHOT = CandidateSnapshot.of(
+            "# Replacement RU body", "# Replacement EN body",
+            "Replacement RU title", "Replacement EN title",
+            "Replacement RU description.", "Replacement EN description.",
+            ReferenceMap.empty(IDENTITY,
+                    "replacement-ru-hash", "replacement-en-hash",
+                    "replacement-ru-title-hash", "replacement-en-title-hash",
+                    "replacement-ru-description-hash", "replacement-en-description-hash"));
     private static final CandidateSnapshot OTHER_SNAPSHOT = CandidateSnapshot.of(
             "# Other RU body", "# Other EN body", "Other RU title", "Other EN title",
             "Other RU description.", "Other EN description.",
@@ -100,29 +108,81 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void aSecondInstallForTheSameIdentityThrowsWithoutReplacingEitherLocaleFile() throws Exception {
-        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
-        installer.install(IDENTITY, SNAPSHOT);
-        String ruBefore = Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md"));
-        String enBefore = Files.readString(siteRoot.resolve("src/content/blog/en/my-essay.md"));
+    void nextInstallRecoversAnInterruptedSingleLocaleReplacement() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        Files.move(ruFile, ruBackup);
+        assertFalse(Files.exists(ruFile));
+        assertTrue(Files.isRegularFile(ruBackup));
 
-        assertThrows(SiteAlreadyInstalledException.class, () -> installer.install(IDENTITY, SNAPSHOT));
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
 
-        assertEquals(ruBefore, Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md")));
-        assertEquals(enBefore, Files.readString(siteRoot.resolve("src/content/blog/en/my-essay.md")));
+        assertTrue(Files.readString(ruFile).endsWith(SNAPSHOT.ruBody()));
+        assertFalse(Files.exists(ruBackup));
     }
 
     @Test
-    void anInstallWithOnlyOneExistingLocaleFileIsRejectedBeforeWritingTheOther() throws Exception {
+    void recoveryKeepsCanonicalLocaleAndDeletesItsStaleBackup() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        Files.copy(ruFile, ruBackup);
+        Files.writeString(ruFile, "completed canonical generation");
+        Files.delete(manifest);
+        Files.createDirectory(manifest);
+
+        assertThrows(UncheckedIOException.class,
+                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, REPLACEMENT_SNAPSHOT));
+
+        assertEquals("completed canonical generation", Files.readString(ruFile));
+        assertFalse(Files.exists(ruBackup));
+    }
+
+    @Test
+    void recoveryRejectsMultipleBackupsForOneLocale() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path firstBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path secondBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        String canonicalBefore = Files.readString(ruFile);
+        Files.copy(ruFile, firstBackup);
+        Files.copy(ruFile, secondBackup);
+
+        UncheckedIOException failure = assertThrows(UncheckedIOException.class,
+                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, REPLACEMENT_SNAPSHOT));
+
+        assertTrue(failure.getMessage().contains("Multiple locale recovery backups exist"));
+        assertEquals(canonicalBefore, Files.readString(ruFile));
+        assertTrue(Files.isRegularFile(firstBackup));
+        assertTrue(Files.isRegularFile(secondBackup));
+    }
+
+    @Test
+    void secondInstallReplacesThePriorGeneration() throws Exception {
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        installer.install(IDENTITY, SNAPSHOT);
+
+        installer.install(IDENTITY, REPLACEMENT_SNAPSHOT);
+
+        assertTrue(Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md"))
+                .endsWith(REPLACEMENT_SNAPSHOT.ruBody()));
+        assertTrue(Files.readString(siteRoot.resolve("src/content/blog/en/my-essay.md"))
+                .endsWith(REPLACEMENT_SNAPSHOT.enBody()));
+    }
+
+    @Test
+    void anInstallWithOnlyOneExistingLocaleFileReplacesItAndWritesTheOther() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
         Files.createDirectories(ruFile.getParent());
         Files.writeString(ruFile, "pre-existing", StandardCharsets.UTF_8);
 
-        assertThrows(SiteAlreadyInstalledException.class,
-                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT));
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
 
-        assertFalse(Files.exists(siteRoot.resolve("src/content/blog/en/my-essay.md")));
-        assertEquals("pre-existing", Files.readString(ruFile, StandardCharsets.UTF_8));
+        assertTrue(Files.readString(ruFile).endsWith(SNAPSHOT.ruBody()));
+        assertTrue(Files.readString(enFile).endsWith(SNAPSHOT.enBody()));
     }
 
     @Test
@@ -176,7 +236,7 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void rollbackFailureLeavesSiteWideLockUntilManualRecovery() throws Exception {
+    void rollbackFailureReleasesTheSiteWideLockAndAllowsRetry() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path ruDirectory = ruFile.getParent();
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
@@ -187,7 +247,6 @@ class FilesystemManagedSiteInstallerTest {
 
         Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(ruDirectory);
         ExecutorService installers = Executors.newSingleThreadExecutor();
-        Path installationLock;
         try {
             Future<Throwable> firstInstall = installers.submit(() -> {
                 try {
@@ -207,24 +266,18 @@ class FilesystemManagedSiteInstallerTest {
                     () -> "expected manifest IOException but got " + firstFailure);
             assertTrue(Files.isRegularFile(ruFile), "failed RU rollback must leave the orphan visible");
             assertFalse(Files.exists(enFile), "EN rollback should still complete independently");
-            installationLock = awaitInstallationLock(siteRoot);
-            assertTrue(Files.isRegularFile(installationLock));
-
-            assertThrows(SiteAlreadyInstalledException.class,
-                    () -> new FilesystemManagedSiteInstaller(siteRoot).install(OTHER_IDENTITY, OTHER_SNAPSHOT));
         } finally {
             Files.setPosixFilePermissions(ruDirectory, originalPermissions);
             installers.shutdownNow();
         }
 
-        Files.delete(ruFile);
         Files.delete(manifest);
-        Files.delete(installationLock);
 
-        new FilesystemManagedSiteInstaller(siteRoot).install(OTHER_IDENTITY, OTHER_SNAPSHOT);
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
 
-        assertTrue(Files.isRegularFile(siteRoot.resolve("src/content/blog/ru/another-essay.md")));
-        assertTrue(Files.isRegularFile(siteRoot.resolve("src/content/blog/en/another-essay.md")));
+        assertTrue(Files.readString(ruFile).endsWith(SNAPSHOT.ruBody()));
+        assertTrue(Files.readString(enFile).endsWith(SNAPSHOT.enBody()));
+        assertTrue(Files.isRegularFile(manifest));
     }
 
     @Test
@@ -371,44 +424,20 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void lockReleaseFailureAfterManifestCommitDoesNotReportTheInstallAsFailed() throws Exception {
+    void anExistingUnlockedInstallationLockFileDoesNotBlockInstallation() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
-        createSparsePayload(siteRoot.resolve("public/assets/vault/slow-payload.bin"), 64 * 1024 * 1024);
+        Path installationLock = siteRoot.resolve(".astro-export/install-locks/.site.installing");
+        Files.createDirectories(installationLock.getParent());
+        Files.writeString(installationLock, "stale lock-file bytes");
 
-        ExecutorService installers = Executors.newSingleThreadExecutor();
-        try {
-            Future<Throwable> install = installers.submit(() -> {
-                try {
-                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
-                    return null;
-                } catch (Throwable error) {
-                    return error;
-                }
-            });
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
 
-            awaitPathExists(ruFile);
-            Path installationLock = awaitInstallationLock(siteRoot);
-            Path lockDirectory = installationLock.getParent();
-            Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(lockDirectory);
-            Throwable reportedFailure;
-            try {
-                Files.setPosixFilePermissions(lockDirectory, Set.of(
-                        PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
-                reportedFailure = resultOf(install);
-            } finally {
-                Files.setPosixFilePermissions(lockDirectory, originalPermissions);
-            }
-
-            assertNull(reportedFailure,
-                    () -> "a committed install must not fail because lock cleanup failed: " + reportedFailure);
-            assertTrue(Files.isRegularFile(ruFile));
-            assertTrue(Files.isRegularFile(enFile));
-            assertTrue(Files.isRegularFile(manifest));
-        } finally {
-            installers.shutdownNow();
-        }
+        assertTrue(Files.isRegularFile(installationLock));
+        assertTrue(Files.isRegularFile(ruFile));
+        assertTrue(Files.isRegularFile(enFile));
+        assertTrue(Files.isRegularFile(manifest));
     }
 
     @Test
@@ -447,23 +476,4 @@ class FilesystemManagedSiteInstallerTest {
         }
     }
 
-    private static Path awaitInstallationLock(Path siteRoot) throws Exception {
-        Path lockRoot = siteRoot.resolve(".astro-export/install-locks");
-        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
-        while (System.nanoTime() < deadline) {
-            if (Files.isDirectory(lockRoot)) {
-                try (var candidates = Files.walk(lockRoot)) {
-                    Path lock = candidates
-                            .filter(path -> path.getFileName().toString().endsWith(".installing"))
-                            .findFirst()
-                            .orElse(null);
-                    if (lock != null) {
-                        return lock;
-                    }
-                }
-            }
-            Thread.sleep(1);
-        }
-        throw new AssertionError("timed out waiting for an installation lock under " + lockRoot);
-    }
 }

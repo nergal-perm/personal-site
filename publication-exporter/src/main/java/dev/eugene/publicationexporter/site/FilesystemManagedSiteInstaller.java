@@ -7,7 +7,9 @@ import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -16,6 +18,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 public final class FilesystemManagedSiteInstaller implements ManagedSiteInstaller {
 
@@ -34,8 +37,10 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         requireInstallationInputs(identity, approvedSnapshot);
         Path ruDestination = markdownFile(identity, "ru");
         Path enDestination = markdownFile(identity, "en");
-        rejectIfAlreadyInstalled(identity, ruDestination, enDestination);
-        installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
+        withInstallationLock(identity, () -> {
+            recoverIfNeeded(ruDestination, enDestination);
+            installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
+        });
     }
 
     private void installFromStaging(PublicationIdentity identity, CandidateSnapshot approvedSnapshot,
@@ -43,7 +48,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         Path staging = createStagingDirectory();
         try {
             stageLocaleFiles(staging, identity, approvedSnapshot);
-            installManagedGeneration(staging, identity, ruDestination, enDestination);
+            installManagedGeneration(staging, ruDestination, enDestination);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         } finally {
@@ -55,13 +60,6 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
             PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(approvedSnapshot, "approvedSnapshot");
-    }
-
-    private void rejectIfAlreadyInstalled(
-            PublicationIdentity identity, Path ruDestination, Path enDestination) {
-        if (exists(ruDestination) || exists(enDestination)) {
-            throw new SiteAlreadyInstalledException(identity);
-        }
     }
 
     private Path createStagingDirectory() {
@@ -86,67 +84,49 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         writeStagedFile(staging, locale + ".md", frontmatter(identity, approvedSnapshot, locale) + body);
     }
 
-    private void installManagedGeneration(
-            Path staging, PublicationIdentity identity, Path ruDestination, Path enDestination) throws IOException {
-        Path installationLock = acquireInstallationLock(identity);
-        Path installedRuDestination = null;
-        Path installedEnDestination = null;
-        Throwable installationFailure = null;
-        boolean enRollbackCompleted = true;
-        boolean ruRollbackCompleted = true;
+    private void installManagedGeneration(Path staging, Path ruDestination, Path enDestination) throws IOException {
+        Path ruBackup = replaceLocaleFile(stagedFile(staging, "ru.md"), ruDestination);
         try {
-            rejectIfAlreadyInstalled(identity, ruDestination, enDestination);
-            installedRuDestination = moveNewLocaleFile(stagedFile(staging, "ru.md"), ruDestination, identity);
-            installedEnDestination = moveNewLocaleFile(stagedFile(staging, "en.md"), enDestination, identity);
-            ensurePayloadRoots();
-            writeProvenance(staging);
-        } catch (IOException | RuntimeException failure) {
-            installationFailure = failure;
-            enRollbackCompleted = rollbackInstalledLocaleFile(installedEnDestination, failure);
-            ruRollbackCompleted = rollbackInstalledLocaleFile(installedRuDestination, failure);
-            throw failure;
-        } finally {
-            if (installationFailure != null && (!enRollbackCompleted || !ruRollbackCompleted)) {
-                warnAboutIncompleteInstallationRollback(installationLock, installationFailure);
-            } else {
-                releaseInstallationLock(installationLock, installationFailure);
+            Path enBackup = replaceLocaleFile(stagedFile(staging, "en.md"), enDestination);
+            try {
+                ensurePayloadRoots();
+                writeProvenance(staging);
+            } catch (IOException | RuntimeException failure) {
+                restoreLocaleBackup(enDestination, enBackup, failure);
+                throw failure;
             }
+            deleteLocaleBackupIfPresent(enBackup);
+        } catch (IOException | RuntimeException failure) {
+            restoreLocaleBackup(ruDestination, ruBackup, failure);
+            throw failure;
+        }
+        deleteLocaleBackupIfPresent(ruBackup);
+    }
+
+    private void withInstallationLock(PublicationIdentity identity, Runnable operation) {
+        Path lockFile = installationLock();
+        try {
+            Path resolvedLock = createAndResolveParentDirectories(lockFile);
+            try (FileChannel channel = FileChannel.open(resolvedLock,
+                    StandardOpenOption.CREATE, StandardOpenOption.WRITE);
+                 FileLock ignored = tryAcquire(channel, identity)) {
+                operation.run();
+            }
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
         }
     }
 
-    private Path acquireInstallationLock(PublicationIdentity identity) throws IOException {
-        Path resolvedLock = createAndResolveParentDirectories(installationLock());
+    private FileLock tryAcquire(FileChannel channel, PublicationIdentity identity) throws IOException {
         try {
-            return Files.createFile(resolvedLock);
-        } catch (FileAlreadyExistsException collision) {
+            FileLock lock = channel.tryLock();
+            if (lock == null) {
+                throw new SiteAlreadyInstalledException(identity);
+            }
+            return lock;
+        } catch (OverlappingFileLockException collision) {
             throw new SiteAlreadyInstalledException(identity);
         }
-    }
-
-    private void releaseInstallationLock(Path installationLock, Throwable installationFailure) throws IOException {
-        try {
-            Path resolvedParent = resolveWithinSiteRoot(installationLock.getParent());
-            Files.deleteIfExists(resolvedParent.resolve(installationLock.getFileName()));
-        } catch (IOException | RuntimeException cleanupFailure) {
-            if (installationFailure == null) {
-                warnAboutCommittedInstallationLock(installationLock, cleanupFailure);
-                return;
-            }
-            installationFailure.addSuppressed(cleanupFailure);
-        }
-    }
-
-    private static void warnAboutCommittedInstallationLock(Path installationLock, Throwable cleanupFailure) {
-        System.err.println("WARNING: site installation committed, but the site-wide lock could not be removed at "
-                + installationLock + ". Remove this stale lock before the next install. Cause: " + cleanupFailure);
-    }
-
-    private static void warnAboutIncompleteInstallationRollback(
-            Path installationLock, Throwable installationFailure) {
-        System.err.println("WARNING: site installation failed and locale-file rollback was incomplete; "
-                + "the site is in a torn/orphaned-content state. The site-wide lock remains at "
-                + installationLock + ". An operator must inspect the site and manually clean up orphaned content "
-                + "before removing this lock. Cause: " + installationFailure);
     }
 
     private Path installationLock() {
@@ -155,31 +135,128 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
                 .normalize();
     }
 
-    private Path moveNewLocaleFile(Path source, Path destination, PublicationIdentity identity)
-            throws IOException {
+    private Path replaceLocaleFile(Path source, Path destination) throws IOException {
         Path resolvedDestination = createAndResolveParentDirectories(destination);
         Path resolvedSource = resolveWithinSiteRoot(source);
+        Path backup = null;
+        if (Files.exists(resolvedDestination, LinkOption.NOFOLLOW_LINKS)) {
+            backup = resolveWithinSiteRoot(resolvedDestination.resolveSibling(
+                    resolvedDestination.getFileName() + ".backup-" + UUID.randomUUID()).normalize());
+            moveLocaleFile(resolvedDestination, backup);
+        }
         try {
-            Files.move(resolvedSource, resolvedDestination, StandardCopyOption.ATOMIC_MOVE);
-            return resolvedDestination;
-        } catch (FileAlreadyExistsException collision) {
-            throw new SiteAlreadyInstalledException(identity);
+            moveLocaleFile(resolvedSource, resolvedDestination);
+        } catch (IOException | RuntimeException failure) {
+            if (backup != null) {
+                restoreLocaleBackup(resolvedDestination, backup, failure);
+            }
+            throw failure;
+        }
+        return backup;
+    }
+
+    private void restoreLocaleBackup(Path destination, Path backup, Throwable installationFailure) {
+        try {
+            Path resolvedDestination = resolveWithinSiteRoot(destination);
+            Files.deleteIfExists(resolvedDestination);
+            if (backup != null) {
+                moveLocaleFile(backup, destination);
+            }
+        } catch (IOException | RuntimeException restoreFailure) {
+            installationFailure.addSuppressed(restoreFailure);
         }
     }
 
-    private static boolean rollbackInstalledLocaleFile(
-            Path installedDestination, Throwable installationFailure) {
-        if (installedDestination == null) {
-            return true;
+    private void deleteLocaleBackupIfPresent(Path backup) {
+        if (backup == null) {
+            return;
         }
         try {
-            // moveNewLocaleFile returned this already-confined path; reuse it directly so rollback
-            // cannot follow a freshly re-derived symlink alias between validation and deletion.
-            Files.deleteIfExists(installedDestination);
-            return true;
-        } catch (IOException | RuntimeException rollbackFailure) {
-            installationFailure.addSuppressed(rollbackFailure);
+            Files.deleteIfExists(resolveWithinSiteRoot(backup));
+        } catch (IOException error) {
+            System.err.println("WARNING: could not remove stale locale backup " + backup + ": " + error);
+        }
+    }
+
+    private void recoverIfNeeded(Path ruDestination, Path enDestination) {
+        boolean recovered = recoverLocaleFile(ruDestination) | recoverLocaleFile(enDestination);
+        if (recovered) {
+            writeProvenanceForCurrentState();
+        }
+    }
+
+    private boolean recoverLocaleFile(Path destination) {
+        Path resolvedDestination = resolveWithinSiteRoot(destination);
+        Optional<Path> backup = findLocaleBackup(resolvedDestination);
+        if (backup.isEmpty()) {
             return false;
+        }
+        try {
+            if (Files.exists(resolveWithinSiteRoot(resolvedDestination), LinkOption.NOFOLLOW_LINKS)) {
+                Files.delete(resolveWithinSiteRoot(backup.get()));
+            } else {
+                moveLocaleFile(backup.get(), resolvedDestination);
+            }
+            return true;
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private Optional<Path> findLocaleBackup(Path destination) {
+        Path resolvedDestination = resolveWithinSiteRoot(destination);
+        Path parent = resolvedDestination.getParent();
+        if (parent == null) {
+            throw new ManagedSiteInstallerConfinementException(
+                    resolvedDestination, resolvedDestination, stagedInstall.canonicalRoot());
+        }
+        Path resolvedParent = resolveWithinSiteRoot(parent);
+        if (!Files.isDirectory(resolvedParent, LinkOption.NOFOLLOW_LINKS)) {
+            return Optional.empty();
+        }
+        String prefix = resolvedDestination.getFileName() + ".backup-";
+        try (var entries = Files.list(resolvedParent)) {
+            List<Path> backups = entries
+                    .filter(entry -> Files.isRegularFile(entry, LinkOption.NOFOLLOW_LINKS))
+                    .filter(entry -> validBackupMarker(entry.getFileName().toString(), prefix))
+                    .map(this::resolveWithinSiteRoot)
+                    .toList();
+            if (backups.size() > 1) {
+                throw new UncheckedIOException(new IOException(
+                        "Multiple locale recovery backups exist for " + resolvedDestination + ": " + backups));
+            }
+            return backups.stream().findFirst();
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private static boolean validBackupMarker(String fileName, String prefix) {
+        if (!fileName.startsWith(prefix)) {
+            return false;
+        }
+        String suffix = fileName.substring(prefix.length());
+        try {
+            return UUID.fromString(suffix).toString().equalsIgnoreCase(suffix);
+        } catch (IllegalArgumentException invalidUuid) {
+            return false;
+        }
+    }
+
+    private void moveLocaleFile(Path source, Path destination) throws IOException {
+        Files.move(resolveWithinSiteRoot(source), resolveWithinSiteRoot(destination),
+                StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    private void writeProvenanceForCurrentState() {
+        Path staging = createStagingDirectory();
+        try {
+            ensurePayloadRoots();
+            writeProvenance(staging);
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        } finally {
+            deleteStagingDirectory(staging);
         }
     }
 
@@ -232,10 +309,6 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
             resolveWithinSiteRoot(stagedInstall.canonicalRoot().resolve(relativeRoot));
         }
         return SiteReleaseManifest.computeOver(stagedInstall.canonicalRoot(), PAYLOAD_ROOTS);
-    }
-
-    private boolean exists(Path candidate) {
-        return Files.exists(resolveWithinSiteRoot(candidate), LinkOption.NOFOLLOW_LINKS);
     }
 
     private Path markdownFile(PublicationIdentity identity, String locale) {
