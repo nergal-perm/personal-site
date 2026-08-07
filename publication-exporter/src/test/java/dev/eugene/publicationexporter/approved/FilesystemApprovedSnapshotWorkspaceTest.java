@@ -188,6 +188,29 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void freshInstanceRejectsAnIncompleteBackupAsUnrecoverable() throws Exception {
+        FilesystemApprovedSnapshotWorkspace original = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        original.install(IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
+                "Old RU description", "Old EN description", referenceMap("old"));
+
+        Path approvedDir = reviewRoot.resolve(IDENTITY.publicCollection()).resolve(IDENTITY.publicId())
+                .resolve("approved");
+        Path backupDir = approvedDir.resolveSibling("approved-backup-" + java.util.UUID.randomUUID());
+        Files.move(approvedDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
+        Files.delete(backupDir.resolve("en.md"));
+        assertFalse(Files.exists(approvedDir));
+
+        FilesystemApprovedSnapshotWorkspace freshInstance = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> freshInstance.read(IDENTITY));
+
+        assertTrue(failure.getMessage().contains(IDENTITY.toString()));
+        assertTrue(failure.getMessage().contains(approvedDir.toString()));
+        assertTrue(failure.getMessage().contains(backupDir.toString()));
+    }
+
+    @Test
     void freshInstanceKeepsCompleteNewSnapshotAndCleansStaleBackup() throws Exception {
         FilesystemApprovedSnapshotWorkspace original = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         original.install(IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
