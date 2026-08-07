@@ -32,11 +32,20 @@ public final class SiteReleaseManifest {
     }
 
     public static SiteReleaseManifest computeOver(Path siteRoot, List<String> payloadRoots) {
+        return computeOver(siteRoot, payloadRoots, List.of());
+    }
+
+    static SiteReleaseManifest computeOver(
+            Path siteRoot, List<String> payloadRoots, List<Path> ignoredFiles) {
+        List<Path> normalizedIgnoredFiles = ignoredFiles.stream()
+                .map(path -> path.toAbsolutePath().normalize())
+                .toList();
         List<ManagedTreeHash> managedTrees = new ArrayList<>();
         for (String relative : payloadRoots) {
-            managedTrees.add(ManagedTreeHash.of(relative, hashTree(siteRoot.resolve(relative))));
+            managedTrees.add(ManagedTreeHash.of(relative,
+                    hashTree(siteRoot.resolve(relative), normalizedIgnoredFiles)));
         }
-        List<PayloadFileHash> managedFiles = hashPayloadFiles(siteRoot, payloadRoots);
+        List<PayloadFileHash> managedFiles = hashPayloadFiles(siteRoot, payloadRoots, normalizedIgnoredFiles);
         String digest = computePayloadDigest(managedTrees, managedFiles);
         return new SiteReleaseManifest(managedTrees, managedFiles, digest);
     }
@@ -139,10 +148,11 @@ public final class SiteReleaseManifest {
         return sha256Hex(withoutDigest.toCanonicalJson().getBytes(StandardCharsets.UTF_8));
     }
 
-    private static List<PayloadFileHash> hashPayloadFiles(Path siteRoot, List<String> payloadRoots) {
+    private static List<PayloadFileHash> hashPayloadFiles(
+            Path siteRoot, List<String> payloadRoots, List<Path> ignoredFiles) {
         List<PayloadFileHash> records = new ArrayList<>();
         for (String relativeRoot : payloadRoots) {
-            for (Path file : listTreeSortedByRelativePath(siteRoot.resolve(relativeRoot))) {
+            for (Path file : listTreeSortedByRelativePath(siteRoot.resolve(relativeRoot), ignoredFiles)) {
                 String relative = slash(siteRoot.relativize(file).toString());
                 EntryKind kind = entryKind(file, relative, "payload");
                 if (kind == EntryKind.DIRECTORY) continue;
@@ -153,10 +163,10 @@ public final class SiteReleaseManifest {
         return records;
     }
 
-    private static String hashTree(Path root) {
+    private static String hashTree(Path root, List<Path> ignoredFiles) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            for (Path file : listTreeSortedByRelativePath(root)) {
+            for (Path file : listTreeSortedByRelativePath(root, ignoredFiles)) {
                 String relative = slash(root.relativize(file).toString());
                 byte[] relativeBytes = relative.getBytes(StandardCharsets.UTF_8);
                 EntryKind kind = entryKind(file, relative, "tree");
@@ -173,12 +183,15 @@ public final class SiteReleaseManifest {
         }
     }
 
-    private static List<Path> listTreeSortedByRelativePath(Path root) {
+    private static List<Path> listTreeSortedByRelativePath(Path root, List<Path> ignoredFiles) {
         if (Files.isSymbolicLink(root) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
             throw UnsafeManagedSiteEntryException.treeIsNotDirectory(root);
         }
         try (Stream<Path> walk = Files.walk(root)) {
-            List<Path> entries = walk.filter(path -> !path.equals(root)).toList();
+            List<Path> entries = walk
+                    .filter(path -> !path.equals(root))
+                    .filter(path -> !ignoredFiles.contains(path.toAbsolutePath().normalize()))
+                    .toList();
             List<Path> sorted = new ArrayList<>(entries);
             sorted.sort(Comparator.comparing(path -> slash(root.relativize(path).toString())));
             return sorted;

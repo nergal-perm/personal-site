@@ -44,6 +44,12 @@ class FilesystemManagedSiteInstallerTest {
                     "replacement-ru-hash", "replacement-en-hash",
                     "replacement-ru-title-hash", "replacement-en-title-hash",
                     "replacement-ru-description-hash", "replacement-en-description-hash"));
+    private static final CandidateSnapshot UNWRITABLE_SNAPSHOT = CandidateSnapshot.of(
+            "\uD800", "unused", "title", "title", "description", "description",
+            ReferenceMap.empty(IDENTITY,
+                    "unwritable-ru-hash", "unwritable-en-hash",
+                    "unwritable-ru-title-hash", "unwritable-en-title-hash",
+                    "unwritable-ru-description-hash", "unwritable-en-description-hash"));
     private static final CandidateSnapshot OTHER_SNAPSHOT = CandidateSnapshot.of(
             "# Other RU body", "# Other EN body", "Other RU title", "Other EN title",
             "Other RU description.", "Other EN description.",
@@ -123,21 +129,73 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void recoveryKeepsCanonicalLocaleAndDeletesItsStaleBackup() throws Exception {
+    void recoveryRollsBackRuWhenItsSwapCompletedBeforeEnStarted() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
         Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
-        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        installer.install(IDENTITY, SNAPSHOT);
+        String oldRu = Files.readString(ruFile);
+        String oldEn = Files.readString(enFile);
+        String oldManifest = Files.readString(manifest);
+
+        installer.install(IDENTITY, REPLACEMENT_SNAPSHOT);
+        String newRu = Files.readString(ruFile);
+
+        Files.writeString(ruFile, oldRu);
+        Files.writeString(enFile, oldEn);
+        Files.writeString(manifest, oldManifest);
         Files.copy(ruFile, ruBackup);
-        Files.writeString(ruFile, "completed canonical generation");
-        Files.delete(manifest);
-        Files.createDirectory(manifest);
+        Files.writeString(ruFile, newRu);
 
         assertThrows(UncheckedIOException.class,
+                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, UNWRITABLE_SNAPSHOT));
+
+        assertEquals(oldRu, Files.readString(ruFile));
+        assertEquals(oldEn, Files.readString(enFile));
+        assertEquals(oldManifest, Files.readString(manifest));
+        assertFalse(Files.exists(ruBackup));
+    }
+
+    @Test
+    void recoveryKeepsCanonicalGenerationWhenProvenanceMatchesAndDeletesCleanupDebris() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        installer.install(IDENTITY, SNAPSHOT);
+        String oldRu = Files.readString(ruFile);
+        installer.install(IDENTITY, REPLACEMENT_SNAPSHOT);
+        String completedRu = Files.readString(ruFile);
+        String completedEn = Files.readString(enFile);
+        String completedManifest = Files.readString(manifest);
+        Files.writeString(ruBackup, oldRu);
+
+        assertThrows(UncheckedIOException.class,
+                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, UNWRITABLE_SNAPSHOT));
+
+        assertEquals(completedRu, Files.readString(ruFile));
+        assertEquals(completedEn, Files.readString(enFile));
+        assertEquals(completedManifest, Files.readString(manifest));
+        assertFalse(Files.exists(ruBackup));
+    }
+
+    @Test
+    void recoveryFailsLoudlyWhenProvenanceMismatchesWithoutAnyBackup() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        String oldEn = Files.readString(enFile);
+        Files.writeString(ruFile, "unclassifiable canonical bytes");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, REPLACEMENT_SNAPSHOT));
 
-        assertEquals("completed canonical generation", Files.readString(ruFile));
-        assertFalse(Files.exists(ruBackup));
+        assertTrue(failure.getMessage().contains("provenance does not match the current managed tree"));
+        assertEquals("unclassifiable canonical bytes", Files.readString(ruFile));
+        assertEquals(oldEn, Files.readString(enFile));
     }
 
     @Test
@@ -173,16 +231,18 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void anInstallWithOnlyOneExistingLocaleFileReplacesItAndWritesTheOther() throws Exception {
+    void anInstallWithOnlyOneExistingLocaleFileFailsLoudlyWithoutRecoveryBackups() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
         Files.createDirectories(ruFile.getParent());
         Files.writeString(ruFile, "pre-existing", StandardCharsets.UTF_8);
 
-        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT));
 
-        assertTrue(Files.readString(ruFile).endsWith(SNAPSHOT.ruBody()));
-        assertTrue(Files.readString(enFile).endsWith(SNAPSHOT.enBody()));
+        assertTrue(failure.getMessage().contains("provenance does not match the current managed tree"));
+        assertEquals("pre-existing", Files.readString(ruFile));
+        assertFalse(Files.exists(enFile));
     }
 
     @Test
@@ -213,25 +273,32 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
-    void aManifestReplaceFailureRollsBackBothLocalesAndAllowsTheSameIdentityToRetry() throws Exception {
+    void unreadableProvenanceWithoutBackupsFailsLoudlyAndAllowsRetryAfterRepair() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        installer.install(IDENTITY, SNAPSHOT);
+        String oldRu = Files.readString(ruFile);
+        String oldEn = Files.readString(enFile);
+        String oldManifest = Files.readString(manifest);
+        Files.delete(manifest);
         Files.createDirectories(manifest);
         assertTrue(Files.isDirectory(manifest));
 
-        assertThrows(UncheckedIOException.class,
-                () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT));
+        assertThrows(ManagedSiteRecoveryException.class,
+                () -> installer.install(IDENTITY, REPLACEMENT_SNAPSHOT));
 
-        assertFalse(Files.exists(ruFile));
-        assertFalse(Files.exists(enFile));
+        assertEquals(oldRu, Files.readString(ruFile));
+        assertEquals(oldEn, Files.readString(enFile));
         assertTrue(Files.isDirectory(manifest));
 
         Files.delete(manifest);
-        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        Files.writeString(manifest, oldManifest);
+        installer.install(IDENTITY, REPLACEMENT_SNAPSHOT);
 
-        assertTrue(Files.isRegularFile(ruFile));
-        assertTrue(Files.isRegularFile(enFile));
+        assertTrue(Files.readString(ruFile).endsWith(REPLACEMENT_SNAPSHOT.ruBody()));
+        assertTrue(Files.readString(enFile).endsWith(REPLACEMENT_SNAPSHOT.enBody()));
         assertTrue(Files.isRegularFile(manifest));
     }
 
@@ -241,31 +308,33 @@ class FilesystemManagedSiteInstallerTest {
         Path ruDirectory = ruFile.getParent();
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
-        Files.createDirectories(ruDirectory);
-        Files.createDirectories(manifest);
         createSparsePayload(siteRoot.resolve("public/assets/vault/slow-payload.bin"), 64 * 1024 * 1024);
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        String oldEn = Files.readString(enFile);
 
         Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(ruDirectory);
         ExecutorService installers = Executors.newSingleThreadExecutor();
         try {
             Future<Throwable> firstInstall = installers.submit(() -> {
                 try {
-                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, REPLACEMENT_SNAPSHOT);
                     return null;
                 } catch (Throwable error) {
                     return error;
                 }
             });
 
-            awaitPathExists(ruFile);
+            awaitFileEndsWith(ruFile, REPLACEMENT_SNAPSHOT.ruBody());
             Files.setPosixFilePermissions(ruDirectory, Set.of(
                     PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
+            Files.delete(manifest);
+            Files.createDirectory(manifest);
 
             Throwable firstFailure = resultOf(firstInstall);
             assertTrue(firstFailure instanceof UncheckedIOException,
                     () -> "expected manifest IOException but got " + firstFailure);
             assertTrue(Files.isRegularFile(ruFile), "failed RU rollback must leave the orphan visible");
-            assertFalse(Files.exists(enFile), "EN rollback should still complete independently");
+            assertEquals(oldEn, Files.readString(enFile), "EN rollback should still complete independently");
         } finally {
             Files.setPosixFilePermissions(ruDirectory, originalPermissions);
             installers.shutdownNow();
@@ -273,10 +342,10 @@ class FilesystemManagedSiteInstallerTest {
 
         Files.delete(manifest);
 
-        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, REPLACEMENT_SNAPSHOT);
 
-        assertTrue(Files.readString(ruFile).endsWith(SNAPSHOT.ruBody()));
-        assertTrue(Files.readString(enFile).endsWith(SNAPSHOT.enBody()));
+        assertTrue(Files.readString(ruFile).endsWith(REPLACEMENT_SNAPSHOT.ruBody()));
+        assertTrue(Files.readString(enFile).endsWith(REPLACEMENT_SNAPSHOT.enBody()));
         assertTrue(Files.isRegularFile(manifest));
     }
 
@@ -392,30 +461,33 @@ class FilesystemManagedSiteInstallerTest {
         Path ruFile = ruDirectory.resolve("my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
         Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
-        Files.createDirectories(ruDirectory);
-        Files.createDirectories(manifest);
-        createSparsePayload(siteRoot.resolve("public/assets/vault/slow-payload.bin"), 16 * 1024 * 1024);
+        createSparsePayload(siteRoot.resolve("public/assets/vault/slow-payload.bin"), 64 * 1024 * 1024);
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+        String oldRu = Files.readString(ruFile);
+        String oldEn = Files.readString(enFile);
 
         ExecutorService installers = Executors.newSingleThreadExecutor();
         try {
             Future<Throwable> firstInstall = installers.submit(() -> {
                 try {
-                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, SNAPSHOT);
+                    new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, REPLACEMENT_SNAPSHOT);
                     return null;
                 } catch (Throwable error) {
                     return error;
                 }
             });
 
-            awaitPathExists(ruFile);
+            awaitFileEndsWith(ruFile, REPLACEMENT_SNAPSHOT.ruBody());
+            Files.delete(manifest);
+            Files.createDirectory(manifest);
             assertThrows(SiteAlreadyInstalledException.class,
                     () -> new FilesystemManagedSiteInstaller(siteRoot).install(OTHER_IDENTITY, OTHER_SNAPSHOT));
 
             Throwable firstFailure = resultOf(firstInstall);
             assertTrue(firstFailure instanceof UncheckedIOException,
                     () -> "expected manifest IOException but got " + firstFailure);
-            assertFalse(Files.exists(ruFile));
-            assertFalse(Files.exists(enFile));
+            assertEquals(oldRu, Files.readString(ruFile));
+            assertEquals(oldEn, Files.readString(enFile));
             assertFalse(Files.exists(siteRoot.resolve("src/content/blog/ru/another-essay.md")));
             assertFalse(Files.exists(siteRoot.resolve("src/content/blog/en/another-essay.md")));
         } finally {
@@ -466,14 +538,15 @@ class FilesystemManagedSiteInstallerTest {
         }
     }
 
-    private static void awaitPathExists(Path path) throws Exception {
+    private static void awaitFileEndsWith(Path path, String suffix) throws Exception {
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
-        while (!Files.exists(path) && System.nanoTime() < deadline) {
+        while (System.nanoTime() < deadline) {
+            if (Files.isRegularFile(path) && Files.readString(path).endsWith(suffix)) {
+                return;
+            }
             Thread.sleep(1);
         }
-        if (!Files.exists(path)) {
-            throw new AssertionError("timed out waiting for " + path);
-        }
+        throw new AssertionError("timed out waiting for " + path + " to end with " + suffix);
     }
 
 }

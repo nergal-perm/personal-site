@@ -89,15 +89,14 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         try {
             Path enBackup = replaceLocaleFile(stagedFile(staging, "en.md"), enDestination);
             try {
-                ensurePayloadRoots();
-                writeProvenance(staging);
+                writeProvenanceForCurrentState(ruBackup, enBackup);
             } catch (IOException | RuntimeException failure) {
-                restoreLocaleBackup(enDestination, enBackup, failure);
+                rollbackLocaleReplacement(enDestination, enBackup, failure);
                 throw failure;
             }
             deleteLocaleBackupIfPresent(enBackup);
         } catch (IOException | RuntimeException failure) {
-            restoreLocaleBackup(ruDestination, ruBackup, failure);
+            rollbackLocaleReplacement(ruDestination, ruBackup, failure);
             throw failure;
         }
         deleteLocaleBackupIfPresent(ruBackup);
@@ -148,17 +147,18 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
             moveLocaleFile(resolvedSource, resolvedDestination);
         } catch (IOException | RuntimeException failure) {
             if (backup != null) {
-                restoreLocaleBackup(resolvedDestination, backup, failure);
+                rollbackLocaleReplacement(resolvedDestination, backup, failure);
             }
             throw failure;
         }
         return backup;
     }
 
-    private void restoreLocaleBackup(Path destination, Path backup, Throwable installationFailure) {
+    private void rollbackLocaleReplacement(Path destination, Path backup, Throwable installationFailure) {
         try {
             Path resolvedDestination = resolveWithinSiteRoot(destination);
             Files.deleteIfExists(resolvedDestination);
+            // A null backup means this replacement created a previously absent canonical file.
             if (backup != null) {
                 moveLocaleFile(backup, destination);
             }
@@ -179,25 +179,59 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     }
 
     private void recoverIfNeeded(Path ruDestination, Path enDestination) {
-        boolean recovered = recoverLocaleFile(ruDestination) | recoverLocaleFile(enDestination);
-        if (recovered) {
+        Optional<Path> ruBackup = findLocaleBackup(ruDestination);
+        Optional<Path> enBackup = findLocaleBackup(enDestination);
+        boolean backupExists = ruBackup.isPresent() || enBackup.isPresent();
+        if (!backupExists && freshInstallationState(ruDestination, enDestination)) {
+            return;
+        }
+
+        SiteReleaseManifest currentManifest;
+        try {
+            ensurePayloadRoots();
+            currentManifest = computeManifest(ruBackup.orElse(null), enBackup.orElse(null));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+        if (provenanceMatches(currentManifest)) {
+            ruBackup.ifPresent(this::deleteLocaleBackupIfPresent);
+            enBackup.ifPresent(this::deleteLocaleBackupIfPresent);
+            return;
+        }
+        if (!backupExists) {
+            throw ManagedSiteRecoveryException.provenanceMismatchWithoutBackups(manifestPath());
+        }
+
+        ruBackup.ifPresent(backup -> restoreInterruptedLocale(ruDestination, backup));
+        enBackup.ifPresent(backup -> restoreInterruptedLocale(enDestination, backup));
+        try {
             writeProvenanceForCurrentState();
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
         }
     }
 
-    private boolean recoverLocaleFile(Path destination) {
-        Path resolvedDestination = resolveWithinSiteRoot(destination);
-        Optional<Path> backup = findLocaleBackup(resolvedDestination);
-        if (backup.isEmpty()) {
+    private boolean freshInstallationState(Path ruDestination, Path enDestination) {
+        return !Files.exists(resolveWithinSiteRoot(ruDestination), LinkOption.NOFOLLOW_LINKS)
+                && !Files.exists(resolveWithinSiteRoot(enDestination), LinkOption.NOFOLLOW_LINKS)
+                && !Files.exists(resolveWithinSiteRoot(manifestPath()), LinkOption.NOFOLLOW_LINKS);
+    }
+
+    private boolean provenanceMatches(SiteReleaseManifest currentManifest) {
+        try {
+            Path recordedProvenance = resolveWithinSiteRoot(manifestPath());
+            return Files.isRegularFile(recordedProvenance, LinkOption.NOFOLLOW_LINKS)
+                    && Files.readString(recordedProvenance, StandardCharsets.UTF_8)
+                            .equals(currentManifest.toCanonicalJson());
+        } catch (IOException | SecurityException unreadable) {
             return false;
         }
+    }
+
+    private void restoreInterruptedLocale(Path destination, Path backup) {
         try {
-            if (Files.exists(resolveWithinSiteRoot(resolvedDestination), LinkOption.NOFOLLOW_LINKS)) {
-                Files.delete(resolveWithinSiteRoot(backup.get()));
-            } else {
-                moveLocaleFile(backup.get(), resolvedDestination);
-            }
-            return true;
+            Files.deleteIfExists(resolveWithinSiteRoot(destination));
+            moveLocaleFile(backup, destination);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
@@ -248,22 +282,19 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
                 StandardCopyOption.ATOMIC_MOVE);
     }
 
-    private void writeProvenanceForCurrentState() {
-        Path staging = createStagingDirectory();
+    private void writeProvenanceForCurrentState(Path... ignoredBackups) throws IOException {
+        ensurePayloadRoots();
+        SiteReleaseManifest manifest = computeManifest(ignoredBackups);
+        Path destination = createAndResolveParentDirectories(manifestPath());
+        Path temporary = resolveWithinSiteRoot(Files.createTempFile(
+                destination.getParent(), "release-provenance-", ".tmp"));
         try {
-            ensurePayloadRoots();
-            writeProvenance(staging);
-        } catch (IOException error) {
-            throw new UncheckedIOException(error);
+            Files.writeString(temporary, manifest.toCanonicalJson(), StandardCharsets.UTF_8,
+                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            replaceFile(temporary, destination);
         } finally {
-            deleteStagingDirectory(staging);
+            Files.deleteIfExists(resolveWithinSiteRoot(temporary));
         }
-    }
-
-    private void writeProvenance(Path staging) throws IOException {
-        SiteReleaseManifest manifest = computeManifest();
-        writeStagedFile(staging, "release-provenance.json", manifest.toCanonicalJson());
-        replaceFile(stagedFile(staging, "release-provenance.json"), manifestPath());
     }
 
     private void writeStagedFile(Path staging, String fileName, String content) throws IOException {
@@ -303,12 +334,16 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
     }
 
-    private SiteReleaseManifest computeManifest() {
+    private SiteReleaseManifest computeManifest(Path... ignoredBackups) {
         resolveWithinSiteRoot(stagedInstall.canonicalRoot());
         for (String relativeRoot : PAYLOAD_ROOTS) {
             resolveWithinSiteRoot(stagedInstall.canonicalRoot().resolve(relativeRoot));
         }
-        return SiteReleaseManifest.computeOver(stagedInstall.canonicalRoot(), PAYLOAD_ROOTS);
+        List<Path> ignored = java.util.Arrays.stream(ignoredBackups)
+                .filter(Objects::nonNull)
+                .map(this::resolveWithinSiteRoot)
+                .toList();
+        return SiteReleaseManifest.computeOver(stagedInstall.canonicalRoot(), PAYLOAD_ROOTS, ignored);
     }
 
     private Path markdownFile(PublicationIdentity identity, String locale) {
