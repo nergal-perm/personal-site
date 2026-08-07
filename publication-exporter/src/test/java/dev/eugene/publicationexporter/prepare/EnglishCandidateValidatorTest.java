@@ -56,6 +56,42 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void rejectsReferenceStyleInternalRuRoute() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст", "See [another essay][ru].\n\n[ru]: /ru/blog/other", "Title", "Description");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
+    }
+
+    @Test
+    void rejectsHtmlInternalRuRoute() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст", "See <a href=\"/ru/blog/other\">another essay</a>.", "Title", "Description");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
+    }
+
+    @Test
+    void rejectsInternalRuRouteInTitle() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст", "Body", "Read /ru/blog/other", "Description");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
+    }
+
+    @Test
+    void rejectsInternalRuRouteInDescription() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст", "Body", "Title", "Read /ru/blog/other");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
+    }
+
+    @Test
     void rejectsDroppedExternalUrl() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
                 "Смотрите https://example.com/x для деталей.",

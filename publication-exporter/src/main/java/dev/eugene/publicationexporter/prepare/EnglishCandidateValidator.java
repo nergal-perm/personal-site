@@ -13,7 +13,7 @@ public final class EnglishCandidateValidator {
     private static final Pattern EXTERNAL_URL =
             Pattern.compile("https?://[^\\s)\\]]+");
     private static final Pattern INTERNAL_RU_ROUTE =
-            Pattern.compile("\\]\\(/ru/[^)]*\\)");
+            Pattern.compile("/ru/");
 
     private EnglishCandidateValidator() {
     }
@@ -26,7 +26,7 @@ public final class EnglishCandidateValidator {
 
         List<String> diagnostics = new ArrayList<>();
         diagnostics.addAll(blankFieldDiagnostics(enBody, enTitle, enDescription));
-        diagnostics.addAll(internalRouteDiagnostics(enBody));
+        diagnostics.addAll(internalRouteDiagnostics(enBody, enTitle, enDescription));
         diagnostics.addAll(droppedUrlDiagnostics(ruBody, enBody));
         return diagnostics.isEmpty() ? Result.ok() : Result.invalid(diagnostics);
     }
@@ -45,8 +45,11 @@ public final class EnglishCandidateValidator {
         return diagnostics;
     }
 
-    private static List<String> internalRouteDiagnostics(String enBody) {
-        return INTERNAL_RU_ROUTE.matcher(enBody).find()
+    private static List<String> internalRouteDiagnostics(
+            String enBody, String enTitle, String enDescription) {
+        boolean internalRoutePresent = List.of(enBody, enTitle, enDescription).stream()
+                .anyMatch(field -> INTERNAL_RU_ROUTE.matcher(field).find());
+        return internalRoutePresent
                 ? List.of("English candidate contains an internal /ru/ route.")
                 : List.of();
     }
