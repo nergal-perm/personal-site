@@ -9,6 +9,7 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementExc
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
+import dev.eugene.publicationexporter.translation.TranslationJob;
 import dev.eugene.publicationexporter.translation.TranslationResult;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -40,8 +41,9 @@ public final class PrepareHandler {
     private BridgeResponse prepareAdmittedEssay(
             PublicationIdentity identity, String ruBody, String ruTitle, String ruDescription) {
         TranslationResult translation;
+        TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
         try {
-            translation = translationWorker.translate(ruBody, ruTitle, ruDescription);
+            translation = translationWorker.translate(job, ruBody, ruTitle, ruDescription);
         } catch (UncheckedIOException failure) {
             return candidateFailure(IoFailureMessages.describe("Translation worker I/O failed", failure));
         }

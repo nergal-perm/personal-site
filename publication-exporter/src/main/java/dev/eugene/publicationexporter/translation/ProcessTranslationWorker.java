@@ -31,7 +31,8 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     @Override
-    public TranslationResult translate(String ruBody, String ruTitle, String ruDescription) {
+    public TranslationResult translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
+        Objects.requireNonNull(job, "job");
         Path workdir = createScratchWorkdir();
         try {
             return runAndCollect(workdir, prompt(ruBody, ruTitle, ruDescription));

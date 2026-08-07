@@ -333,7 +333,7 @@ class PrepareHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        TranslationWorker failingWorker = (ruBody, ruTitle, ruDescription) -> {
+        TranslationWorker failingWorker = (job, ruBody, ruTitle, ruDescription) -> {
             throw new UncheckedIOException(new IOException("scratch directory unavailable"));
         };
         PrepareHandler handler = new PrepareHandler(failingWorker, workspace);

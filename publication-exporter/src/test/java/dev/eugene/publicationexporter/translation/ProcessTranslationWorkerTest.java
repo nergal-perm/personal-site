@@ -27,7 +27,9 @@ class ProcessTranslationWorkerTest {
                 writesFixedResult("Translated text", "Translated title", "Translated description."),
                 Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertTrue(result.succeeded());
         assertEquals("Translated text", result.enBody());
@@ -40,7 +42,9 @@ class ProcessTranslationWorkerTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 (workdir, prompt) -> List.of("sh", "-c", "true"), Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("candidate.en.md"));
@@ -53,7 +57,9 @@ class ProcessTranslationWorkerTest {
                         "printf '%s' 'body' > candidate.en.md && printf '%s' 'desc' > candidate.en.description.txt"),
                 Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored", "ignored");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored", "ignored"),
+                "ignored", "ignored", "ignored");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("candidate.en.title.txt"));
@@ -76,7 +82,9 @@ class ProcessTranslationWorkerTest {
                 },
                 Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored", "ignored");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored", "ignored"),
+                "ignored", "ignored", "ignored");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("Could not read candidate.en.title.txt:"));
@@ -87,7 +95,9 @@ class ProcessTranslationWorkerTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 (workdir, prompt) -> List.of("sh", "-c", "exit 3"), Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("3"));
@@ -98,7 +108,9 @@ class ProcessTranslationWorkerTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 (workdir, prompt) -> List.of("sh", "-c", "sleep 5"), Duration.ofMillis(200));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().toLowerCase().contains("timed out"));
@@ -114,7 +126,9 @@ class ProcessTranslationWorkerTest {
                                 + "printf '%s' 'Translated description.' > candidate.en.description.txt"),
                 Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertTrue(result.succeeded());
         assertEquals("Translated text", result.enBody());
@@ -147,7 +161,9 @@ class ProcessTranslationWorkerTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 writesSymlinkedResult, Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("without writing candidate.en.md"));
@@ -170,7 +186,9 @@ class ProcessTranslationWorkerTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 writesSymlinkedTitle, Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("without writing candidate.en.title.txt"));
@@ -193,7 +211,9 @@ class ProcessTranslationWorkerTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 writesSymlinkedDescription, Duration.ofSeconds(5));
 
-        TranslationResult result = worker.translate("ignored", "ignored title", "ignored description");
+        TranslationResult result = worker.translate(
+                TranslationJob.forSource("ignored", "ignored title", "ignored description"),
+                "ignored", "ignored title", "ignored description");
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("without writing candidate.en.description.txt"));

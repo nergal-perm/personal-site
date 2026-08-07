@@ -2,7 +2,7 @@ package dev.eugene.publicationexporter.translation;
 
 public interface TranslationWorker {
 
-    TranslationResult translate(String ruBody, String ruTitle, String ruDescription);
+    TranslationResult translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription);
 
     static TranslationWorker createNull(String enBody, String enTitle, String enDescription) {
         return new NullTranslationWorker(TranslationResult.success(enBody, enTitle, enDescription));

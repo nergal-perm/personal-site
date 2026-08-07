@@ -14,7 +14,8 @@ public final class NullTranslationWorker implements TranslationWorker {
     }
 
     @Override
-    public TranslationResult translate(String ruBody, String ruTitle, String ruDescription) {
+    public TranslationResult translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
+        Objects.requireNonNull(job, "job");
         requested.add(RequestedTranslation.of(ruBody, ruTitle, ruDescription));
         return result;
     }
