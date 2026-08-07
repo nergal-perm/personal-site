@@ -64,7 +64,7 @@
       "if": {
         "type": "object",
         "required": ["baselineState"],
-        "properties": { "baselineState": { "const": "absent" } }
+        "properties": { "baselineState": { "enum": ["absent", "changed"] } }
       },
       "then": {
         "type": "object",
@@ -103,7 +103,7 @@
         }
       },
       "properties": {
-        "baselineState": { "type": "string", "enum": ["absent", "complete"] },
+        "baselineState": { "type": "string", "enum": ["absent", "changed", "complete"] },
         "targets": {
           "type": "array",
           "minItems": 2,

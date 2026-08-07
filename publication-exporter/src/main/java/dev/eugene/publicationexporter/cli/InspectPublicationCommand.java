@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
@@ -31,7 +32,8 @@ public final class InspectPublicationCommand implements Callable<Integer> {
     public Integer call() throws Exception {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
-        BridgeResponse response = new InspectPublicationHandler(candidateWorkspace)
+        ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
+        BridgeResponse response = new InspectPublicationHandler(candidateWorkspace, approvedSnapshotWorkspace)
                 .inspect(VaultRelativePath.of(notePath), vaultReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));

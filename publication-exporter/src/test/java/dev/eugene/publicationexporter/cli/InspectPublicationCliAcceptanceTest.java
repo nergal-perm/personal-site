@@ -216,6 +216,38 @@ class InspectPublicationCliAcceptanceTest {
         assertTrue(targets.get(1).get("publishedPath").isNull());
     }
 
+    @Test
+    void inspectingChangedApprovedEssayReportsDiff() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Path note = vaultRoot.resolve("blog/my-essay.md");
+        Files.writeString(note, VALID_ESSAY);
+        prepare();
+        approve();
+
+        Files.writeString(note, CHANGED_ESSAY);
+        prepare();
+
+        int exitCode = inspect("blog/my-essay.md");
+
+        assertEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertTrue(response.get("ok").asBoolean());
+        assertEquals("ready", response.get("approvedSnapshotState").asText());
+        JsonNode reviewPlan = response.get("reviewPlan");
+        assertEquals("changed", reviewPlan.get("baselineState").asText());
+        JsonNode diff = reviewPlan.get("diff");
+        assertTrue(diff.isArray());
+        assertTrue(diff.findValues("kind").stream()
+                .anyMatch(line -> line.asText().equals("REMOVED")));
+        assertTrue(diff.findValues("kind").stream()
+                .anyMatch(line -> line.asText().equals("ADDED")));
+        assertTrue(diff.findValues("text").stream()
+                .anyMatch(line -> line.asText().equals("# My Essay")));
+        assertTrue(diff.findValues("text").stream()
+                .anyMatch(line -> line.asText().equals("# Changed My Essay")));
+    }
+
     private void prepare() throws Exception {
         PrepareCommand prepareCommand = new PrepareCommand(
                 TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));
@@ -231,6 +263,19 @@ class InspectPublicationCliAcceptanceTest {
 
         int exitCode = commandLine.execute(
                 "prepare",
+                "--vault", vaultRoot.toString(),
+                "--note", "blog/my-essay.md",
+                "--review", vaultRoot.resolve("review").toString(),
+                "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
+                "--json");
+
+        assertEquals(0, exitCode);
+        capturedOut.reset();
+    }
+
+    private void approve() {
+        int exitCode = new CommandLine(new Main()).execute(
+                "mark-reviewed",
                 "--vault", vaultRoot.toString(),
                 "--note", "blog/my-essay.md",
                 "--review", vaultRoot.resolve("review").toString(),
@@ -261,6 +306,18 @@ class InspectPublicationCliAcceptanceTest {
             description: A valid description.
             ---
             # My Essay""";
+
+    private static final String CHANGED_ESSAY = """
+            ---
+            publish: true
+            publicCollection: blog
+            publicContentType: essay
+            publicId: my-essay
+            id: 8f2c-my-essay
+            title: My Essay
+            description: A valid description.
+            ---
+            # Changed My Essay""";
 
     /**
      * Reads stdout as exactly one JSON value and fails if anything but whitespace follows it, so

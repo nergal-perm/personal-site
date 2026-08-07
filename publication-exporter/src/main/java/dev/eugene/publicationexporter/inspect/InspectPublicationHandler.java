@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.inspect;
 
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
@@ -10,6 +11,7 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.prepare.RussianDiff;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
@@ -26,9 +28,17 @@ public final class InspectPublicationHandler {
     private static final String READY = "ready";
 
     private final CandidateWorkspace candidateWorkspace;
+    private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
 
     public InspectPublicationHandler(CandidateWorkspace candidateWorkspace) {
+        this(candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
+    }
+
+    public InspectPublicationHandler(
+            CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
+        this.approvedSnapshotWorkspace =
+                Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
     }
 
     public BridgeResponse inspect(VaultRelativePath notePath, VaultReader vaultReader) {
@@ -60,12 +70,20 @@ public final class InspectPublicationHandler {
 
     private BridgeResponse readyForReviewResponse(
             PublicationIdentity identity, CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot) {
-        return BridgeResponse.essayInspected(
-                COMMAND, READY_FOR_REVIEW, identity,
-                READY, ABSENT, ABSENT, ABSENT, ReviewPlan.firstPublication(
+        Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
+        ReviewPlan reviewPlan = approved.isPresent()
+                ? ReviewPlan.changedPublication(
                         candidatePaths,
                         candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
-                        candidateSnapshot.ruDescription(), candidateSnapshot.enDescription()));
+                        candidateSnapshot.ruDescription(), candidateSnapshot.enDescription(),
+                        RussianDiff.betweenBodies(approved.get().ruBody(), candidateSnapshot.ruBody()))
+                : ReviewPlan.firstPublication(
+                        candidatePaths,
+                        candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
+                        candidateSnapshot.ruDescription(), candidateSnapshot.enDescription());
+        return BridgeResponse.essayInspected(
+                COMMAND, READY_FOR_REVIEW, identity,
+                READY, approved.isPresent() ? READY : ABSENT, ABSENT, ABSENT, reviewPlan);
     }
 
     private BridgeResponse notPreparedResponse(PublicationIdentity identity) {

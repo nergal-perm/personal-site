@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.bridge;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.prepare.RussianDiff;
 
 import java.util.List;
 import java.util.Objects;
@@ -9,6 +10,7 @@ import java.util.Objects;
 public final class ReviewPlan {
 
     private static final String BASELINE_ABSENT = "absent";
+    private static final String BASELINE_CHANGED = "changed";
 
     private final String baselineState;
     private final List<ReviewTarget> targets;
@@ -16,6 +18,7 @@ public final class ReviewPlan {
     private final String enTitle;
     private final String ruDescription;
     private final String enDescription;
+    private final List<RussianDiff.Line> diff;
 
     private ReviewPlan(
             String baselineState,
@@ -23,13 +26,15 @@ public final class ReviewPlan {
             String ruTitle,
             String enTitle,
             String ruDescription,
-            String enDescription) {
+            String enDescription,
+            List<RussianDiff.Line> diff) {
         this.baselineState = Objects.requireNonNull(baselineState, "baselineState");
         this.targets = List.copyOf(Objects.requireNonNull(targets, "targets"));
         this.ruTitle = Objects.requireNonNull(ruTitle, "ruTitle");
         this.enTitle = Objects.requireNonNull(enTitle, "enTitle");
         this.ruDescription = Objects.requireNonNull(ruDescription, "ruDescription");
         this.enDescription = Objects.requireNonNull(enDescription, "enDescription");
+        this.diff = List.copyOf(Objects.requireNonNull(diff, "diff"));
     }
 
     public static ReviewPlan firstPublication(
@@ -42,7 +47,22 @@ public final class ReviewPlan {
         return new ReviewPlan(BASELINE_ABSENT, List.of(
                 ReviewTarget.of("ru", candidatePaths.ruPath().toString(), null),
                 ReviewTarget.of("en", candidatePaths.enPath().toString(), null)),
-                ruTitle, enTitle, ruDescription, enDescription);
+                ruTitle, enTitle, ruDescription, enDescription, List.of());
+    }
+
+    public static ReviewPlan changedPublication(
+            CandidatePaths candidatePaths,
+            String ruTitle,
+            String enTitle,
+            String ruDescription,
+            String enDescription,
+            RussianDiff diff) {
+        Objects.requireNonNull(candidatePaths, "candidatePaths");
+        Objects.requireNonNull(diff, "diff");
+        return new ReviewPlan(BASELINE_CHANGED, List.of(
+                ReviewTarget.of("ru", candidatePaths.ruPath().toString(), null),
+                ReviewTarget.of("en", candidatePaths.enPath().toString(), null)),
+                ruTitle, enTitle, ruDescription, enDescription, diff.lines());
     }
 
     @JsonProperty("baselineState")
@@ -75,6 +95,11 @@ public final class ReviewPlan {
         return enDescription;
     }
 
+    @JsonProperty("diff")
+    public List<RussianDiff.Line> diff() {
+        return diff;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -88,12 +113,13 @@ public final class ReviewPlan {
                 && ruTitle.equals(that.ruTitle)
                 && enTitle.equals(that.enTitle)
                 && ruDescription.equals(that.ruDescription)
-                && enDescription.equals(that.enDescription);
+                && enDescription.equals(that.enDescription)
+                && diff.equals(that.diff);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(baselineState, targets, ruTitle, enTitle, ruDescription, enDescription);
+        return Objects.hash(baselineState, targets, ruTitle, enTitle, ruDescription, enDescription, diff);
     }
 
     @Override
@@ -103,6 +129,7 @@ public final class ReviewPlan {
                 + ", ruTitle=" + ruTitle
                 + ", enTitle=" + enTitle
                 + ", ruDescription=" + ruDescription
-                + ", enDescription=" + enDescription + "]";
+                + ", enDescription=" + enDescription
+                + ", diff=" + diff + "]";
     }
 }
