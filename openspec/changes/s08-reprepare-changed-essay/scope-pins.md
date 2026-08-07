@@ -42,6 +42,18 @@ authentication surface (job ID, source fingerprint, traversal/symlink/hard-link/
 concurrent-stale-writer). No new scenario is needed; this is an implementation change to `TranslationWorker`
 and its adapters (see `design.md`), not a requirement-text gap.
 
+**Threat-model narrowing (recorded post-implementation, via `dec-20260807-s08-translation-worker-trust-boundary-8bab0bc6`):**
+`ProcessTranslationWorker`/`JobWorkspace` fully implement path/identity confinement (traversal, symlink,
+hard-link substitution, wrong job ID, wrong fingerprint) and a bounded output-drain fix, all independently
+verified by the final whole-branch review. One residual is explicitly NOT closed by this slice and is
+covered by that decision instead of a code fix: a same-UID translation worker process (or a surviving
+descendant) can still mutate a same-length result file in place during the brief window between the
+exporter's identity check and its read (a TOCTOU race), and the in-process per-`PublicationIdentity` lock
+added for the competing-completion fix (finding 1 of the final review) does not extend across separate CLI
+process invocations, which is how the real Obsidian plugin actually calls `prepare`. The decision narrows
+TRP-04's unqualified text to a single-operator, same-UID-trusted-worker deployment model until a future gate
+revisits it — see the decision record for the full rationale, invariants, and rollback plan.
+
 ### Requirements TRP-01, TRP-05, TRP-06
 
 Not touched. TRP-01 (first candidate) is realized by S03 and unaffected — S08 only adds the diffed-scope
