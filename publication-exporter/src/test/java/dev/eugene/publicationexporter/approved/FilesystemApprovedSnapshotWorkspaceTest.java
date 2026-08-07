@@ -198,6 +198,77 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void staleLockReclaimerDoesNotDeleteReplacementAcquiredByAnotherReclaimer() throws Exception {
+        Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
+        Files.createDirectories(lockFile.getParent());
+        long deadPid = Long.MAX_VALUE;
+        assertFalse(ProcessHandle.of(deadPid).map(ProcessHandle::isAlive).orElse(false));
+        Files.writeString(lockFile, Long.toString(deadPid), StandardCharsets.UTF_8);
+        CountDownLatch secondObservedStaleLock = new CountDownLatch(1);
+        CountDownLatch letSecondAttemptReclaim = new CountDownLatch(1);
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch releaseFirst = new CountDownLatch(1);
+        AtomicBoolean secondEntered = new AtomicBoolean();
+        FilesystemApprovedSnapshotWorkspace first = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        FilesystemApprovedSnapshotWorkspace second = new FilesystemApprovedSnapshotWorkspace(
+                reviewRoot,
+                (source, target) -> Files.move(source, target, StandardCopyOption.ATOMIC_MOVE),
+                ignored -> {
+                },
+                ignored -> {
+                    secondObservedStaleLock.countDown();
+                    try {
+                        if (!letSecondAttemptReclaim.await(5, TimeUnit.SECONDS)) {
+                            throw new java.io.IOException("second reclaimer was not released");
+                        }
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw new java.io.IOException(interrupted);
+                    }
+                });
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            var secondAttempt = executor.submit(() -> assertThrows(
+                    ApprovedSnapshotApprovalInProgressException.class,
+                    () -> second.withApprovalLock(IDENTITY, () -> {
+                        secondEntered.set(true);
+                        return null;
+                    })));
+            assertTrue(secondObservedStaleLock.await(5, TimeUnit.SECONDS));
+
+            var firstAttempt = executor.submit(() -> first.withApprovalLock(IDENTITY, () -> {
+                firstEntered.countDown();
+                try {
+                    if (!releaseFirst.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("first reclaimer was not released");
+                    }
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(interrupted);
+                }
+                return null;
+            }));
+            assertTrue(firstEntered.await(5, TimeUnit.SECONDS));
+            assertEquals(Long.toString(ProcessHandle.current().pid()),
+                    Files.readString(lockFile, StandardCharsets.UTF_8));
+
+            letSecondAttemptReclaim.countDown();
+            secondAttempt.get(5, TimeUnit.SECONDS);
+
+            assertFalse(secondEntered.get());
+            assertEquals(Long.toString(ProcessHandle.current().pid()),
+                    Files.readString(lockFile, StandardCharsets.UTF_8));
+            releaseFirst.countDown();
+            firstAttempt.get(5, TimeUnit.SECONDS);
+            assertTrue(Files.notExists(lockFile));
+        } finally {
+            letSecondAttemptReclaim.countDown();
+            releaseFirst.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test
     void corruptLockOwnerIsNotReclaimed() throws Exception {
         Path lockFile = reviewRoot.resolve("blog/my-essay/.mark-reviewed.lock");
         Files.createDirectories(lockFile.getParent());

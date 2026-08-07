@@ -14,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
@@ -36,25 +37,36 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     private final StagedDirectoryInstall stagedInstall;
     private final MoveOperation moveOperation;
     private final ReadObserver readObserver;
+    private final StaleLockObserver staleLockObserver;
     private final ThreadLocal<Set<PublicationIdentity>> heldApprovalLocks =
             ThreadLocal.withInitial(HashSet::new);
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot) {
         this(reviewRoot, (source, destination) ->
                 Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE), ignored -> {
+                }, ignored -> {
                 });
     }
 
     FilesystemApprovedSnapshotWorkspace(Path reviewRoot, MoveOperation moveOperation) {
         this(reviewRoot, moveOperation, ignored -> {
+        }, ignored -> {
         });
     }
 
     FilesystemApprovedSnapshotWorkspace(
             Path reviewRoot, MoveOperation moveOperation, ReadObserver readObserver) {
+        this(reviewRoot, moveOperation, readObserver, ignored -> {
+        });
+    }
+
+    FilesystemApprovedSnapshotWorkspace(
+            Path reviewRoot, MoveOperation moveOperation, ReadObserver readObserver,
+            StaleLockObserver staleLockObserver) {
         this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(reviewRoot, "reviewRoot"));
         this.moveOperation = Objects.requireNonNull(moveOperation, "moveOperation");
         this.readObserver = Objects.requireNonNull(readObserver, "readObserver");
+        this.staleLockObserver = Objects.requireNonNull(staleLockObserver, "staleLockObserver");
     }
 
     @Override
@@ -121,19 +133,31 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
 
     private Path acquireApprovalLock(PublicationIdentity identity) {
         Path lockFile = approvalLockFile(identity);
+        String ownerPid = Long.toString(ProcessHandle.current().pid());
         try {
             stagedInstall.createParentDirectories(lockFile);
             requireWithinReviewRoot(lockFile);
             for (int attempt = 0; attempt < MAX_APPROVAL_LOCK_ATTEMPTS; attempt++) {
                 try {
-                    return Files.writeString(lockFile, Long.toString(ProcessHandle.current().pid()),
+                    Path createdLock = Files.writeString(lockFile, ownerPid,
                             StandardCharsets.UTF_8, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+                    if (ownerPid.equals(readApprovalLockOwner(createdLock))) {
+                        return createdLock;
+                    }
                 } catch (FileAlreadyExistsException collision) {
-                    if (!deadApprovalLockOwner(lockFile)) {
+                    Optional<ApprovalLockSnapshot> observedLock = approvalLockSnapshot(lockFile);
+                    if (observedLock.isEmpty()) {
                         throw new ApprovedSnapshotApprovalInProgressException(identity);
                     }
+                    ApprovalLockSnapshot staleLock = observedLock.orElseThrow();
+                    if (!deadApprovalLockOwner(staleLock.ownerPid())) {
+                        throw new ApprovedSnapshotApprovalInProgressException(identity);
+                    }
+                    staleLockObserver.afterStaleLockObserved(lockFile);
                     requireWithinReviewRoot(lockFile);
-                    Files.deleteIfExists(lockFile);
+                    deleteIfSameApprovalLock(lockFile, staleLock.fileKey());
+                } catch (NoSuchFileException disappeared) {
+                    // Another reclaimer removed or replaced the lock; retry acquisition.
                 }
             }
             throw new ApprovedSnapshotApprovalInProgressException(identity);
@@ -142,11 +166,37 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         }
     }
 
-    private static boolean deadApprovalLockOwner(Path lockFile) {
+    private static Optional<ApprovalLockSnapshot> approvalLockSnapshot(Path lockFile) throws IOException {
+        BasicFileAttributes attributes = Files.readAttributes(
+                lockFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+        if (!attributes.isRegularFile() || attributes.fileKey() == null) {
+            return Optional.empty();
+        }
         try {
-            long ownerPid = Long.parseLong(Files.readString(lockFile, StandardCharsets.UTF_8));
-            return ProcessHandle.of(ownerPid).map(owner -> !owner.isAlive()).orElse(true);
-        } catch (IOException | NumberFormatException unreadableOwner) {
+            return Optional.of(new ApprovalLockSnapshot(
+                    attributes.fileKey(), Long.parseLong(readApprovalLockOwner(lockFile))));
+        } catch (NumberFormatException unreadableOwner) {
+            return Optional.empty();
+        }
+    }
+
+    private static String readApprovalLockOwner(Path lockFile) throws IOException {
+        return Files.readString(lockFile, StandardCharsets.UTF_8);
+    }
+
+    private static boolean deadApprovalLockOwner(long ownerPid) {
+        return ProcessHandle.of(ownerPid).map(owner -> !owner.isAlive()).orElse(true);
+    }
+
+    private static boolean deleteIfSameApprovalLock(Path lockFile, Object expectedFileKey) throws IOException {
+        try {
+            BasicFileAttributes currentAttributes = Files.readAttributes(
+                    lockFile, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS);
+            if (!expectedFileKey.equals(currentAttributes.fileKey())) {
+                return false;
+            }
+            return Files.deleteIfExists(lockFile);
+        } catch (NoSuchFileException disappeared) {
             return false;
         }
     }
@@ -508,6 +558,14 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     @FunctionalInterface
     interface ReadObserver {
         void afterRead(Path file) throws IOException;
+    }
+
+    @FunctionalInterface
+    interface StaleLockObserver {
+        void afterStaleLockObserved(Path lockFile) throws IOException;
+    }
+
+    private record ApprovalLockSnapshot(Object fileKey, long ownerPid) {
     }
 
     private record SnapshotAssessment(
