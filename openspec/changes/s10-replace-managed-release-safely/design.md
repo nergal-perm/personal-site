@@ -52,39 +52,45 @@ S08/S09 exactly. Rejected — `src/content` is shared by every publication; back
 replace one publication's two files would make concurrent installs for *different* publications interfere
 with each other's backups, which is strictly worse than today's already-fine-grained per-file writes.
 
-### D2 — Recovery keys off per-locale-file presence, not a rollback-vs-complete policy decision
+### D2 — Recovery uses provenance-vs-tree agreement as the joint completion marker, then restores per-file from backup
 
-**Correction (found by Task 4's implementer during self-review, before any code was written): the original
-version of this decision — "any leftover backup proves provenance was never reached, so always roll back" —
-was unsound.** The write order is: (1) backup old RU, (2) move new RU in, (3) backup old EN, (4) move new EN
-in, (5) compute and write provenance from the now-new canonical trees, (6) delete both backups. A crash *or
-even a caught, logged `IOException`* between step 5 and step 6 leaves a fully complete, already-successfully-
-reported NEW generation sitting next to a stale backup — directly contradicting "any leftover backup means
-provenance was never reached." Unconditional rollback in that state would silently destroy a successful
-install the next time `install`/recovery runs.
+**Correction 1 (found by Task 4's implementer, before any code was written): the original "any leftover
+backup proves provenance was never reached, so always roll back" premise was unsound.** The write order is:
+(1) backup old RU, (2) move new RU in, (3) backup old EN, (4) move new EN in, (5) compute and write provenance
+from the now-new canonical trees, (6) delete both backups. A crash *or even a caught, logged `IOException`*
+between step 5 and step 6 leaves a fully complete, already-successfully-reported NEW generation sitting next
+to a stale backup — directly contradicting "any leftover backup means provenance was never reached."
 
-The corrected policy needs no old-vs-new judgement call at all, because `ATOMIC_MOVE` already gives each
-locale file exactly three possible states, never a fourth: **fully old** (canonical present, no backup),
-**fully new** (canonical present, no backup — the swap and cleanup both completed), or **mid-swap**
-(canonical absent, backup present — the crash landed between removing old and installing new). Recovery,
-per locale file, independently:
+**Correction 2 (found by Task 4's independent review, after Correction 1 landed): a per-locale-file-
+independent presence check — "canonical present ⇒ keep whichever bytes are there, canonical absent ⇒ restore
+from backup" — is ALSO unsound, because RU and EN swap independently (steps 1-2 for RU complete fully before
+steps 3-4 for EN even begin).** A crash between step 2 and step 3 leaves RU already fully swapped to new
+(canonical present, backup present, cleanup pending) while EN was never touched (canonical present with OLD
+bytes, no backup, since step 3 never ran). Per-file-independent recovery would keep new RU and leave old EN —
+a mixed generation, exactly what REL-05 forbids exposing.
 
-- **Canonical file present, backup also present:** the swap already completed (old or new — irrelevant,
-  whichever bytes are at the canonical path are already a complete, valid file by construction of
-  `ATOMIC_MOVE`). Delete the stale backup. Do not touch the canonical file.
-- **Canonical file absent, backup present:** the swap was interrupted before the new file ever displaced the
-  old one. Restore the backup to canonical.
-- **Neither present:** nothing to recover for this file.
+**The correct policy needs a *joint* completion marker spanning both locale files, and provenance already is
+one:** provenance is a hash of the current payload tree, written only after step 4 (both files fully new) and
+before step 6 (cleanup). So:
 
-Recompute and rewrite provenance after any recovery action touched at least one locale file, so it matches
-whatever ru/en state recovery leaves behind — this is unconditionally safe now, unlike the rejected policy,
-because provenance is a pure function of current tree bytes and is never itself the thing being decided
-between.
+1. Recompute a manifest fresh from the CURRENT canonical tree state (the same `SiteReleaseManifest.computeOver(...)`
+   call `writeProvenance(...)` already uses) and compare it against whatever provenance is currently recorded
+   on disk (if any).
+2. **Match (or no leftover backups exist at all):** the last write fully completed and is self-consistent —
+   delete any leftover backups (pure post-commit cleanup debris) and leave canonical files untouched.
+3. **Mismatch, or provenance missing/unreadable, with at least one backup present:** the swap was interrupted
+   before both files and provenance all agreed — restore every locale file that HAS a backup back to its old
+   bytes (files with no backup were never touched by the interrupted attempt and are therefore already
+   consistent old bytes on their own). After restoring, recompute and rewrite provenance fresh from the now-
+   fully-old tree state, so provenance and tree agree again.
+4. **Mismatch with zero backups present:** should not be reachable if the lock (D3) genuinely spans the whole
+   sequence — fail loudly with a clear diagnostic rather than silently guessing, matching REL-05's "reported
+   rather than silently guessed."
 
-This replaces the original "always rollback" framing entirely; it is simpler than what it replaces (a
-presence check per file, no cross-file coordination needed) and is sound because it never needs to know
-whether the current canonical file is the old or new generation — only whether the atomic move that would
-produce *some* complete file ever completed.
+This still needs no old-vs-new judgement about any *individual* file — only whether the whole tree, taken
+together, currently agrees with its own provenance record. That agreement check is exactly what REL-03's
+tamper-detection already computes (`SiteReleaseManifest` freshly recomputed and compared), so recovery reuses
+the same mechanism for a second purpose rather than inventing a new one.
 
 Alternative considered: mirror S09's "assess both sides, keep whichever is valid, restore the other" logic.
 Rejected as unnecessary complexity for this adapter — S09 needed that because its directory-swap makes
