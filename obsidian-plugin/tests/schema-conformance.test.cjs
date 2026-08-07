@@ -372,6 +372,17 @@ function essayInspectedWithReviewPlanFixture() {
   };
 }
 
+function essayInspectedWithChangedReviewPlanFixture() {
+  const fixture = essayInspectedWithReviewPlanFixture();
+  fixture.approvedSnapshotState = "ready";
+  fixture.reviewPlan.baselineState = "changed";
+  fixture.reviewPlan.diff = [
+    { kind: "REMOVED", text: "title: Old title" },
+    { kind: "ADDED", text: "title: New title" },
+  ];
+  return fixture;
+}
+
 test("ready-for-review-with-plan fixture conforms to bridge-contract/schema-v2.json", () => {
   const schema = loadSchema();
   const fixture = essayInspectedWithReviewPlanFixture();
@@ -393,6 +404,23 @@ test("validator rejects a reviewPlan with an unrecognised baselineState", () => 
   fixture.reviewPlan.baselineState = "not-a-real-state";
   const errors = validateAgainstSchema(schema, fixture);
   assert.ok(errors.length > 0);
+});
+
+test("changed reviewPlan with a non-empty diff conforms to schema v2", () => {
+  const errors = validateAgainstSchema(loadSchema(), essayInspectedWithChangedReviewPlanFixture());
+  assert.deepEqual(errors, []);
+});
+
+test("validator rejects a changed reviewPlan without diff", () => {
+  const fixture = essayInspectedWithChangedReviewPlanFixture();
+  delete fixture.reviewPlan.diff;
+  assert.ok(validateAgainstSchema(loadSchema(), fixture).length > 0);
+});
+
+test("validator rejects a changed reviewPlan with an empty diff", () => {
+  const fixture = essayInspectedWithChangedReviewPlanFixture();
+  fixture.reviewPlan.diff = [];
+  assert.ok(validateAgainstSchema(loadSchema(), fixture).length > 0);
 });
 
 test("validator rejects reversed reviewPlan target order", () => {

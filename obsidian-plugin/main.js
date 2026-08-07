@@ -292,8 +292,14 @@ function localDiagnostic(message, field = "bridge") {
 }
 
 function validateReviewPlan(plan) {
-  if (!plan || !["absent", "complete"].includes(plan.baselineState)) {
+  if (!plan || !["absent", "changed", "complete"].includes(plan.baselineState)) {
     throw new Error("Exporter вернул неизвестное состояние published baseline.");
+  }
+  if (
+    plan.baselineState === "changed" &&
+    (!Array.isArray(plan.diff) || plan.diff.length === 0)
+  ) {
+    throw new Error("Changed baseline требует непустой diff русского оригинала.");
   }
   if (!Array.isArray(plan.targets) || plan.targets.length !== 2) {
     throw new Error("Exporter должен вернуть ровно две цели проверки.");
@@ -321,6 +327,18 @@ function validateReviewPlan(plan) {
     }
     return target;
   });
+}
+
+function changedDiffNotice(diff) {
+  const changedLines = diff.filter((line) => line && line.kind !== "UNCHANGED");
+  const preview = changedLines.slice(0, 8).map((line) => {
+    const prefix = line.kind === "ADDED" ? "+" : line.kind === "REMOVED" ? "-" : " ";
+    return `${prefix} ${line.text}`;
+  });
+  if (changedLines.length > preview.length) {
+    preview.push(`… ещё ${changedLines.length - preview.length}`);
+  }
+  return `Изменения русского оригинала:\n${preview.join("\n")}`;
 }
 
 function zedCliDiagnostic(zedCli) {
@@ -579,6 +597,9 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
         target,
       );
       if (diagnostic) diagnostics.push(diagnostic);
+    }
+    if (diagnostics.length === 0 && plan.baselineState === "changed") {
+      new Notice(changedDiffNotice(plan.diff));
     }
     return { ok: diagnostics.length === 0, diagnostics };
   }

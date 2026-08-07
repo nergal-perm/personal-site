@@ -61,7 +61,7 @@ function fakeSpawnResult({ stdout = "", stderr = "", exitCode = 0, error = null 
 
 function reviewPlan(baselineState = "absent") {
   const complete = baselineState === "complete";
-  return {
+  const plan = {
     baselineState,
     targets: [
       {
@@ -76,6 +76,13 @@ function reviewPlan(baselineState = "absent") {
       },
     ],
   };
+  if (baselineState === "changed") {
+    plan.diff = [
+      { kind: "REMOVED", text: "title: Old title" },
+      { kind: "ADDED", text: "title: New title" },
+    ];
+  }
+  return plan;
 }
 
 function sequenceSpawn(results) {
@@ -791,6 +798,24 @@ test("complete baseline launches published-to-proposed RU and EN diffs", async (
       "/review/blog/essay/en.md",
     ],
   ]);
+});
+
+test("changed baseline launches both candidate files and surfaces the Russian diff", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+  const harness = loadPluginHarness({ spawn: process.spawn });
+  const plugin = new harness.PluginClass(harness.app);
+  await plugin.onload();
+
+  const result = await plugin.launchReviewPlan(reviewPlan("changed"));
+
+  assert.deepEqual(result, { ok: true, diagnostics: [] });
+  assert.deepEqual(process.calls.map(({ args }) => args), [
+    ["-n", "/review/blog/essay/ru.md"],
+    ["-n", "/review/blog/essay/en.md"],
+  ]);
+  const messages = harness.notices.map(({ message }) => message).join("\n");
+  assert.match(messages, /- title: Old title/);
+  assert.match(messages, /\+ title: New title/);
 });
 
 test("missing or non-executable Zed CLI blocks both launches", async () => {
