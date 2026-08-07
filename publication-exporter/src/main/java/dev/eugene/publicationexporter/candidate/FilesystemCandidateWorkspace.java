@@ -9,16 +9,26 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 
 final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
     private final StagedDirectoryInstall stagedInstall;
+    private final MoveOperation moveOperation;
 
     FilesystemCandidateWorkspace(Path reviewRoot) {
+        this(reviewRoot, (source, destination) ->
+                Files.move(source, destination, StandardCopyOption.ATOMIC_MOVE));
+    }
+
+    FilesystemCandidateWorkspace(Path reviewRoot, MoveOperation moveOperation) {
         this.stagedInstall = StagedDirectoryInstall.rootedAt(Objects.requireNonNull(reviewRoot, "reviewRoot"));
+        this.moveOperation = Objects.requireNonNull(moveOperation, "moveOperation");
     }
 
     @Override
@@ -40,12 +50,45 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
             requireWithinReviewRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinReviewRoot(destination);
-            StagedDirectoryInstall.deleteRecursively(destination);
-            stagedInstall.move(staging, destination);
+            replaceCandidate(staging, destination);
         } catch (IOException error) {
             StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);
         }
+    }
+
+    private void replaceCandidate(Path staging, Path destination) throws IOException {
+        Path backup = null;
+        if (Files.exists(destination, LinkOption.NOFOLLOW_LINKS)) {
+            backup = destination.resolveSibling("candidate-backup-" + UUID.randomUUID()).normalize();
+            moveWithinReviewRoot(destination, backup);
+        }
+        try {
+            moveWithinReviewRoot(staging, destination);
+        } catch (IOException installFailure) {
+            restoreBackup(backup, destination, installFailure);
+            throw installFailure;
+        }
+        if (backup != null) {
+            StagedDirectoryInstall.deleteRecursively(backup);
+        }
+    }
+
+    private void restoreBackup(Path backup, Path destination, IOException installFailure) {
+        if (backup == null) {
+            return;
+        }
+        try {
+            moveWithinReviewRoot(backup, destination);
+        } catch (IOException | RuntimeException restoreFailure) {
+            installFailure.addSuppressed(restoreFailure);
+        }
+    }
+
+    private void moveWithinReviewRoot(Path source, Path destination) throws IOException {
+        requireWithinReviewRoot(source);
+        requireWithinReviewRoot(destination);
+        moveOperation.move(source, destination);
     }
 
     @Override
@@ -161,5 +204,11 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         Files.writeString(candidateFile(staging, "en.description"), enDescription, StandardCharsets.UTF_8);
         Files.writeString(candidateFile(staging, "references.json"),
                 ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
+    }
+
+    @FunctionalInterface
+    interface MoveOperation {
+
+        void move(Path source, Path destination) throws IOException;
     }
 }

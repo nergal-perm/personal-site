@@ -5,9 +5,12 @@ import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Optional;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -65,6 +68,53 @@ class FilesystemCandidateWorkspaceTest {
                     .filter(path -> path.getFileName().toString().startsWith("candidate-staging-"))
                     .count();
             assertEquals(0, stagingLeftovers);
+        }
+    }
+
+    @Test
+    void replacingCandidateInstallsNewSnapshotAndRemovesBackup() throws Exception {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        workspace.install(IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
+                "Old RU description", "Old EN description", referenceMap("old"));
+
+        workspace.install(IDENTITY, "New RU", "New EN", "New RU title", "New EN title",
+                "New RU description", "New EN description", referenceMap("new"));
+
+        CandidateSnapshot installed = workspace.read(IDENTITY).orElseThrow();
+        assertEquals("New RU", installed.ruBody());
+        assertEquals("New EN", installed.enBody());
+        try (var entries = Files.list(reviewRoot.resolve("blog/my-essay"))) {
+            assertFalse(entries.anyMatch(path -> path.getFileName().toString().startsWith("candidate-backup-")));
+        }
+    }
+
+    @Test
+    void failedNewMoveRestoresFullyReadableOldCandidate() throws Exception {
+        new FilesystemCandidateWorkspace(reviewRoot).install(
+                IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
+                "Old RU description", "Old EN description", referenceMap("old"));
+        AtomicInteger moves = new AtomicInteger();
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot, (source, target) -> {
+            if (moves.incrementAndGet() == 2) {
+                throw new java.io.IOException("injected failure before new candidate move");
+            }
+            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+        });
+
+        UncheckedIOException failure = assertThrows(UncheckedIOException.class,
+                () -> workspace.install(IDENTITY, "New RU", "New EN", "New RU title", "New EN title",
+                        "New RU description", "New EN description", referenceMap("new")));
+
+        assertTrue(failure.getMessage().contains("injected failure"));
+        CandidateSnapshot restored = workspace.read(IDENTITY).orElseThrow();
+        assertEquals("Old RU", restored.ruBody());
+        assertEquals("Old EN", restored.enBody());
+        assertEquals("Old RU title", restored.ruTitle());
+        assertEquals("Old EN title", restored.enTitle());
+        assertEquals("Old RU description", restored.ruDescription());
+        assertEquals("Old EN description", restored.enDescription());
+        try (var entries = Files.list(reviewRoot.resolve("blog/my-essay"))) {
+            assertFalse(entries.anyMatch(path -> path.getFileName().toString().startsWith("candidate-backup-")));
         }
     }
 
@@ -245,5 +295,12 @@ class FilesystemCandidateWorkspaceTest {
         assertEquals("EN title", read.get().enTitle());
         assertEquals("RU description.", read.get().ruDescription());
         assertEquals("EN description.", read.get().enDescription());
+    }
+
+    private ReferenceMap referenceMap(String generation) {
+        return ReferenceMap.empty(IDENTITY,
+                generation + "-ru", generation + "-en",
+                generation + "-ru-title", generation + "-en-title",
+                generation + "-ru-description", generation + "-en-description");
     }
 }
