@@ -22,11 +22,23 @@ public final class RussianDiff {
     }
 
     public static RussianDiff betweenBodies(String approvedBody, String currentBody) {
+        return between(approvedBody, "", "", currentBody, "", "");
+    }
+
+    public static RussianDiff between(
+            String approvedBody, String approvedTitle, String approvedDescription,
+            String currentBody, String currentTitle, String currentDescription) {
         Objects.requireNonNull(approvedBody, "approvedBody");
+        Objects.requireNonNull(approvedTitle, "approvedTitle");
+        Objects.requireNonNull(approvedDescription, "approvedDescription");
         Objects.requireNonNull(currentBody, "currentBody");
-        String[] oldLines = normalize(approvedBody);
-        String[] newLines = normalize(currentBody);
-        return new RussianDiff(lcsDiff(oldLines, newLines));
+        Objects.requireNonNull(currentTitle, "currentTitle");
+        Objects.requireNonNull(currentDescription, "currentDescription");
+        List<Line> completeDiff = new ArrayList<>();
+        completeDiff.addAll(labeledFieldDiff("title", approvedTitle, currentTitle));
+        completeDiff.addAll(labeledFieldDiff("description", approvedDescription, currentDescription));
+        completeDiff.addAll(lcsDiff(normalize(approvedBody), normalize(currentBody)));
+        return new RussianDiff(completeDiff);
     }
 
     public boolean isEmpty() {
@@ -100,6 +112,16 @@ public final class RussianDiff {
             j++;
         }
         return result;
+    }
+
+    private static List<Line> labeledFieldDiff(String label, String approved, String current) {
+        List<Line> fieldDiff = lcsDiff(normalize(approved), normalize(current));
+        if (fieldDiff.stream().allMatch(line -> line.kind() == LineKind.UNCHANGED)) {
+            return List.of();
+        }
+        return fieldDiff.stream()
+                .map(line -> new Line(line.kind(), label + ": " + line.text()))
+                .toList();
     }
 
     private static int[][] computeLcsLengths(String[] oldLines, String[] newLines) {

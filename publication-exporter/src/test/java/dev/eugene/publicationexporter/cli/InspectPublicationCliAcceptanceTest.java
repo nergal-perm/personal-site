@@ -245,6 +245,36 @@ class InspectPublicationCliAcceptanceTest {
                 MAPPER.readerForListOf(RussianDiff.Line.class).readValue(diff.traverse(MAPPER)));
     }
 
+    @Test
+    void inspectingTitleOnlyChangeReportsTitleDiff() throws Exception {
+        Path note = writeEssay("My Essay", "A valid description.", "# My Essay");
+        prepare();
+        approve();
+        Files.writeString(note, essay("Changed title", "A valid description.", "# My Essay"));
+        prepare();
+
+        assertEquals(0, inspect("blog/my-essay.md"));
+
+        JsonNode diff = soleJsonValueOnStdout().at("/reviewPlan/diff");
+        assertEquals("title: My Essay", diff.get(0).get("text").asText());
+        assertEquals("title: Changed title", diff.get(1).get("text").asText());
+    }
+
+    @Test
+    void inspectingDescriptionOnlyChangeReportsDescriptionDiff() throws Exception {
+        Path note = writeEssay("My Essay", "A valid description.", "# My Essay");
+        prepare();
+        approve();
+        Files.writeString(note, essay("My Essay", "Changed description.", "# My Essay"));
+        prepare();
+
+        assertEquals(0, inspect("blog/my-essay.md"));
+
+        JsonNode diff = soleJsonValueOnStdout().at("/reviewPlan/diff");
+        assertEquals("description: A valid description.", diff.get(0).get("text").asText());
+        assertEquals("description: Changed description.", diff.get(1).get("text").asText());
+    }
+
     private void prepare() throws Exception {
         PrepareCommand prepareCommand = new PrepareCommand(
                 TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));
@@ -315,6 +345,27 @@ class InspectPublicationCliAcceptanceTest {
             description: A valid description.
             ---
             # Changed My Essay""";
+
+    private Path writeEssay(String title, String description, String body) throws Exception {
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Path note = vaultRoot.resolve("blog/my-essay.md");
+        Files.writeString(note, essay(title, description, body));
+        return note;
+    }
+
+    private static String essay(String title, String description, String body) {
+        return """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: %s
+                description: %s
+                ---
+                %s""".formatted(title, description, body);
+    }
 
     /**
      * Reads stdout as exactly one JSON value and fails if anything but whitespace follows it, so

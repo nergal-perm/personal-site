@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.inspect;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
@@ -55,13 +56,24 @@ public final class InspectPublicationHandler {
             return candidateLookupFailure("Candidate lookup failed: " + failure.getMessage());
         }
         if (candidatePaths.isPresent() && candidateSnapshot.isPresent()) {
-            return readyForReviewResponse(intake.identity(), candidatePaths.get(), candidateSnapshot.get());
+            try {
+                return readyForReviewResponse(intake.identity(), candidatePaths.get(), candidateSnapshot.get());
+            } catch (UncheckedIOException failure) {
+                return approvedLookupFailure(
+                        IoFailureMessages.describe("Approved snapshot lookup failed", failure));
+            } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+                return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+            }
         }
         return notPreparedResponse(intake.identity());
     }
 
     private static BridgeResponse candidateLookupFailure(String message) {
         return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("candidate", message));
+    }
+
+    private static BridgeResponse approvedLookupFailure(String message) {
+        return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("approved-snapshot", message));
     }
 
     private BridgeResponse readyForReviewResponse(
@@ -82,7 +94,10 @@ public final class InspectPublicationHandler {
                     candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
                     candidateSnapshot.ruDescription(), candidateSnapshot.enDescription());
         }
-        RussianDiff diff = RussianDiff.betweenBodies(approved.get().ruBody(), candidateSnapshot.ruBody());
+        CandidateSnapshot baseline = approved.get();
+        RussianDiff diff = RussianDiff.between(
+                baseline.ruBody(), baseline.ruTitle(), baseline.ruDescription(),
+                candidateSnapshot.ruBody(), candidateSnapshot.ruTitle(), candidateSnapshot.ruDescription());
         return ReviewPlan.changedPublication(
                 candidatePaths,
                 candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),

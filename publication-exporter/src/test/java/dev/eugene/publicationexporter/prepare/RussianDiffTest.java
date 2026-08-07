@@ -92,4 +92,30 @@ class RussianDiffTest {
         assertFalse(diff.isEmpty());
         assertEquals(List.of(new RussianDiff.Line(RussianDiff.LineKind.ADDED, "new line")), diff.lines());
     }
+
+    @Test
+    void titleOnlyChangeMakesCompleteDiffNonEmpty() {
+        RussianDiff diff = RussianDiff.between(
+                "same body", "Old title", "same description",
+                "same body", "New title", "same description");
+
+        assertFalse(diff.isEmpty());
+        assertEquals(List.of(
+                new RussianDiff.Line(RussianDiff.LineKind.REMOVED, "title: Old title"),
+                new RussianDiff.Line(RussianDiff.LineKind.ADDED, "title: New title"),
+                new RussianDiff.Line(RussianDiff.LineKind.UNCHANGED, "same body")), diff.lines());
+    }
+
+    @Test
+    void descriptionOnlyChangeMakesCompleteDiffNonEmpty() {
+        RussianDiff diff = RussianDiff.between(
+                "same body", "same title", "Old description",
+                "same body", "same title", "New description");
+
+        assertFalse(diff.isEmpty());
+        assertEquals(List.of(
+                new RussianDiff.Line(RussianDiff.LineKind.REMOVED, "description: Old description"),
+                new RussianDiff.Line(RussianDiff.LineKind.ADDED, "description: New description"),
+                new RussianDiff.Line(RussianDiff.LineKind.UNCHANGED, "same body")), diff.lines());
+    }
 }

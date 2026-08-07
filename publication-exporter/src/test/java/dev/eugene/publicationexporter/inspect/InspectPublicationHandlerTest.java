@@ -12,9 +12,11 @@ import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -26,6 +28,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class InspectPublicationHandlerTest {
+
+    @TempDir
+    Path temporaryRoot;
 
     private final InspectPublicationHandler handler =
             new InspectPublicationHandler(
@@ -233,6 +238,45 @@ class InspectPublicationHandlerTest {
         assertTrue(response.diagnostics().get(0).blocking());
     }
 
+    @Test
+    void corruptApprovedSnapshotReturnsStructuredBlockedResponse() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("corrupt-review");
+        installCandidateAndApproved(reviewRoot);
+        Files.writeString(reviewRoot.resolve("blog/my-essay/approved/references.json"), "not-json");
+        InspectPublicationHandler handlerWithCorruptApproved = new InspectPublicationHandler(
+                CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.create(reviewRoot));
+
+        BridgeResponse response = handlerWithCorruptApproved.inspect(
+                VaultRelativePath.of("blog/my-essay.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("approved-snapshot", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Approved snapshot lookup failed"));
+    }
+
+    @Test
+    void escapingApprovedMemberReturnsStructuredBlockedResponse() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("escaping-review");
+        installCandidateAndApproved(reviewRoot);
+        Path outside = Files.writeString(temporaryRoot.resolve("outside-approved-ru.md"), "outside");
+        Path ruPath = reviewRoot.resolve("blog/my-essay/approved/ru.md");
+        Files.delete(ruPath);
+        Files.createSymbolicLink(ruPath, outside);
+        InspectPublicationHandler handlerWithEscapingApproved = new InspectPublicationHandler(
+                CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.create(reviewRoot));
+
+        BridgeResponse response = handlerWithEscapingApproved.inspect(
+                VaultRelativePath.of("blog/my-essay.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("approved-snapshot", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("escapes review root"));
+    }
+
     private CandidateWorkspace candidateWorkspaceThrowing(RuntimeException failure) {
         return new CandidateWorkspace() {
             @Override
@@ -283,5 +327,17 @@ class InspectPublicationHandlerTest {
                 throw failure;
             }
         };
+    }
+
+    private void installCandidateAndApproved(Path reviewRoot) {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ReferenceMap referenceMap = ReferenceMap.empty(
+                identity, "ru", "en", "ru-title", "en-title", "ru-desc", "en-desc");
+        CandidateWorkspace.create(reviewRoot).install(
+                identity, "RU body", "EN body", "RU title", "EN title",
+                "RU description", "EN description", referenceMap);
+        ApprovedSnapshotWorkspace.create(reviewRoot).install(
+                identity, "RU body", "EN body", "RU title", "EN title",
+                "RU description", "EN description", referenceMap);
     }
 }
