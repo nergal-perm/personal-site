@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.inspect;
 
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
@@ -27,7 +28,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class InspectPublicationHandlerTest {
 
     private final InspectPublicationHandler handler =
-            new InspectPublicationHandler(CandidateWorkspace.createNull());
+            new InspectPublicationHandler(
+                    CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.createNull());
 
     @Test
     void unsafePathIsBlockedWithEscapeDiagnostic() {
@@ -169,7 +171,8 @@ class InspectPublicationHandlerTest {
         candidateWorkspace.install(identity, "RU body", "EN body",
                 "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(identity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
-        InspectPublicationHandler handlerWithCandidate = new InspectPublicationHandler(candidateWorkspace);
+        InspectPublicationHandler handlerWithCandidate = new InspectPublicationHandler(
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
 
         BridgeResponse response = handlerWithCandidate.inspect(path, vaultReader);
 
@@ -193,7 +196,8 @@ class InspectPublicationHandlerTest {
     @Test
     void candidateLookupConfinementFailureReturnsBlockedResponse() {
         CandidateWorkspace candidateWorkspace = candidateWorkspaceThrowing(candidateConfinementFailure());
-        InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(candidateWorkspace);
+        InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
 
@@ -212,7 +216,8 @@ class InspectPublicationHandlerTest {
     void candidateLookupIoFailureReturnsBlockedResponse() {
         CandidateWorkspace candidateWorkspace = candidateWorkspaceThrowing(
                 new UncheckedIOException(new IOException("candidate directory unavailable")));
-        InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(candidateWorkspace);
+        InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
 

@@ -7,6 +7,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import dev.eugene.publicationexporter.prepare.RussianDiff;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -19,6 +20,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -237,15 +239,10 @@ class InspectPublicationCliAcceptanceTest {
         JsonNode reviewPlan = response.get("reviewPlan");
         assertEquals("changed", reviewPlan.get("baselineState").asText());
         JsonNode diff = reviewPlan.get("diff");
-        assertTrue(diff.isArray());
-        assertTrue(diff.findValues("kind").stream()
-                .anyMatch(line -> line.asText().equals("REMOVED")));
-        assertTrue(diff.findValues("kind").stream()
-                .anyMatch(line -> line.asText().equals("ADDED")));
-        assertTrue(diff.findValues("text").stream()
-                .anyMatch(line -> line.asText().equals("# My Essay")));
-        assertTrue(diff.findValues("text").stream()
-                .anyMatch(line -> line.asText().equals("# Changed My Essay")));
+        assertEquals(List.of(
+                new RussianDiff.Line(RussianDiff.LineKind.REMOVED, "# My Essay"),
+                new RussianDiff.Line(RussianDiff.LineKind.ADDED, "# Changed My Essay")),
+                MAPPER.readerForListOf(RussianDiff.Line.class).readValue(diff.traverse(MAPPER)));
     }
 
     private void prepare() throws Exception {

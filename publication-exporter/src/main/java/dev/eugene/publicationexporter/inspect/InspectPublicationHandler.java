@@ -30,10 +30,6 @@ public final class InspectPublicationHandler {
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
 
-    public InspectPublicationHandler(CandidateWorkspace candidateWorkspace) {
-        this(candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
-    }
-
     public InspectPublicationHandler(
             CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
@@ -70,20 +66,27 @@ public final class InspectPublicationHandler {
 
     private BridgeResponse readyForReviewResponse(
             PublicationIdentity identity, CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot) {
-        Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
-        ReviewPlan reviewPlan = approved.isPresent()
-                ? ReviewPlan.changedPublication(
-                        candidatePaths,
-                        candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
-                        candidateSnapshot.ruDescription(), candidateSnapshot.enDescription(),
-                        RussianDiff.betweenBodies(approved.get().ruBody(), candidateSnapshot.ruBody()))
-                : ReviewPlan.firstPublication(
-                        candidatePaths,
-                        candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
-                        candidateSnapshot.ruDescription(), candidateSnapshot.enDescription());
+        ReviewPlan reviewPlan = reviewPlanFor(identity, candidatePaths, candidateSnapshot);
+        String approvedSnapshotState = reviewPlan.baselineState().equals("changed") ? READY : ABSENT;
         return BridgeResponse.essayInspected(
                 COMMAND, READY_FOR_REVIEW, identity,
-                READY, approved.isPresent() ? READY : ABSENT, ABSENT, ABSENT, reviewPlan);
+                READY, approvedSnapshotState, ABSENT, ABSENT, reviewPlan);
+    }
+
+    private ReviewPlan reviewPlanFor(
+            PublicationIdentity identity, CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot) {
+        Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
+        if (approved.isEmpty()) {
+            return ReviewPlan.firstPublication(
+                    candidatePaths,
+                    candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
+                    candidateSnapshot.ruDescription(), candidateSnapshot.enDescription());
+        }
+        RussianDiff diff = RussianDiff.betweenBodies(approved.get().ruBody(), candidateSnapshot.ruBody());
+        return ReviewPlan.changedPublication(
+                candidatePaths,
+                candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
+                candidateSnapshot.ruDescription(), candidateSnapshot.enDescription(), diff);
     }
 
     private BridgeResponse notPreparedResponse(PublicationIdentity identity) {
