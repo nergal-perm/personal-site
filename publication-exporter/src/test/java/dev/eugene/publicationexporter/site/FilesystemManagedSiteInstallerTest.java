@@ -159,6 +159,47 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
+    void provenanceWriteFailureDuringRecoveryLeavesBackupForNextRecoveryAttempt() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path ruBackup = ruFile.resolveSibling(ruFile.getFileName() + ".backup-" + UUID.randomUUID());
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        installer.install(IDENTITY, SNAPSHOT);
+        String oldRu = Files.readString(ruFile);
+        String oldEn = Files.readString(enFile);
+        String oldManifest = Files.readString(manifest);
+
+        installer.install(IDENTITY, REPLACEMENT_SNAPSHOT);
+        String newRu = Files.readString(ruFile);
+
+        Files.writeString(ruFile, oldRu);
+        Files.writeString(enFile, oldEn);
+        Files.copy(ruFile, ruBackup);
+        Files.writeString(ruFile, newRu);
+        Files.delete(manifest);
+        Files.createDirectory(manifest);
+
+        assertThrows(UncheckedIOException.class,
+                () -> installer.install(IDENTITY, UNWRITABLE_SNAPSHOT));
+
+        assertEquals(oldRu, Files.readString(ruFile));
+        assertEquals(oldEn, Files.readString(enFile));
+        assertTrue(Files.isRegularFile(ruBackup));
+        assertTrue(Files.isDirectory(manifest));
+
+        Files.delete(manifest);
+
+        assertThrows(UncheckedIOException.class,
+                () -> installer.install(IDENTITY, UNWRITABLE_SNAPSHOT));
+
+        assertEquals(oldRu, Files.readString(ruFile));
+        assertEquals(oldEn, Files.readString(enFile));
+        assertEquals(oldManifest, Files.readString(manifest));
+        assertFalse(Files.exists(ruBackup));
+    }
+
+    @Test
     void recoveryKeepsCanonicalGenerationWhenProvenanceMatchesAndDeletesCleanupDebris() throws Exception {
         Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
         Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");

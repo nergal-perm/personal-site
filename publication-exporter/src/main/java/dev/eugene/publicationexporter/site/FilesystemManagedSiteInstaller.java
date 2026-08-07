@@ -205,10 +205,12 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         ruBackup.ifPresent(backup -> restoreInterruptedLocale(ruDestination, backup));
         enBackup.ifPresent(backup -> restoreInterruptedLocale(enDestination, backup));
         try {
-            writeProvenanceForCurrentState();
+            writeProvenanceForCurrentState(ruBackup.orElse(null), enBackup.orElse(null));
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
+        ruBackup.ifPresent(this::deleteLocaleBackupIfPresent);
+        enBackup.ifPresent(this::deleteLocaleBackupIfPresent);
     }
 
     private boolean freshInstallationState(Path ruDestination, Path enDestination) {
@@ -231,7 +233,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     private void restoreInterruptedLocale(Path destination, Path backup) {
         try {
             Files.deleteIfExists(resolveWithinSiteRoot(destination));
-            moveLocaleFile(backup, destination);
+            Files.copy(resolveWithinSiteRoot(backup), resolveWithinSiteRoot(destination));
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
