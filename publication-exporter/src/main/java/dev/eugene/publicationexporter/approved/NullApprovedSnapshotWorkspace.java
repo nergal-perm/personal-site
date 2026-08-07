@@ -20,7 +20,6 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
             String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
         validateInstallArguments(identity, ruBody, enBody, ruTitle, enTitle,
                 ruDescription, enDescription, referenceMap);
-        ensureNotAlreadyInstalled(identity);
         installed.put(identity, CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
                 ruDescription, enDescription, referenceMap));
     }
@@ -36,12 +35,6 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
         Objects.requireNonNull(ruDescription, "ruDescription");
         Objects.requireNonNull(enDescription, "enDescription");
         Objects.requireNonNull(referenceMap, "referenceMap");
-    }
-
-    private void ensureNotAlreadyInstalled(PublicationIdentity identity) {
-        if (installed.containsKey(identity)) {
-            throw new ApprovedSnapshotAlreadyExistsException(identity);
-        }
     }
 
     @Override

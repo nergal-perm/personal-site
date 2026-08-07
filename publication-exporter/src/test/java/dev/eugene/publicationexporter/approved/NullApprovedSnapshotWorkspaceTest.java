@@ -8,7 +8,6 @@ import org.junit.jupiter.api.Test;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class NullApprovedSnapshotWorkspaceTest {
@@ -52,15 +51,24 @@ class NullApprovedSnapshotWorkspaceTest {
     }
 
     @Test
-    void aSecondInstallForTheSameIdentityThrows() {
+    void secondInstallReplacesThePriorSnapshot() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
-        workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", referenceMap);
+        workspace.install(IDENTITY, "Old RU", "Old EN", "Old RU title", "Old EN title",
+                "Old RU description", "Old EN description", referenceMap("old"));
 
-        assertThrows(ApprovedSnapshotAlreadyExistsException.class,
-                () -> workspace.install(IDENTITY, "RU body 2", "EN body 2", "RU title 2", "EN title 2",
-                        "RU description 2.", "EN description 2.", referenceMap));
+        workspace.install(IDENTITY, "New RU", "New EN", "New RU title", "New EN title",
+                "New RU description", "New EN description", referenceMap("new"));
+
+        Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read = workspace.read(IDENTITY);
+
+        assertTrue(read.isPresent());
+        assertEquals("New RU", read.get().ruBody());
+        assertEquals("New EN", read.get().enBody());
+    }
+
+    private static ReferenceMap referenceMap(String hash) {
+        return ReferenceMap.empty(IDENTITY, hash + "-ru", hash + "-en", hash + "-ru-title", hash + "-en-title",
+                hash + "-ru-description", hash + "-en-description");
     }
 
     @Test
