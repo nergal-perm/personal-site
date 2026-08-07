@@ -47,7 +47,14 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         Path enDestination = markdownFile(identity, "en");
         return withInstallationLock(identity, () -> {
             boolean recovered = recoverIfNeeded(ruDestination, enDestination);
-            installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
+            try {
+                installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
+            } catch (RuntimeException failure) {
+                if (recovered) {
+                    throw ManagedSiteInstallationFailedAfterRecoveryException.afterRecovery(failure);
+                }
+                throw failure;
+            }
             return recovered
                     ? ManagedSiteInstallOutcome.RECOVERED_AND_INSTALLED
                     : ManagedSiteInstallOutcome.INSTALLED;

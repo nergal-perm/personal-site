@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateExc
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.site.ManagedSiteInstallationFailedAfterRecoveryException;
 import dev.eugene.publicationexporter.site.ManagedSiteInstallOutcome;
 import dev.eugene.publicationexporter.site.ManagedSiteInstaller;
 import dev.eugene.publicationexporter.site.ManagedSiteRecoveryException;
@@ -75,6 +76,18 @@ public final class InstallToSiteHandler {
         } catch (SiteAlreadyInstalledException raceLoser) {
             return InstallToSiteResult.blocked(
                     "Another site installation is already in progress for this publication.");
+        } catch (ManagedSiteInstallationFailedAfterRecoveryException failure) {
+            Throwable cause = failure.getCause();
+            if (cause instanceof UncheckedIOException ioFailure) {
+                return InstallToSiteResult.blocked(IoFailureMessages.describe(
+                        "Managed site recovery restored a coherent prior generation, but subsequent site installation failed",
+                        ioFailure));
+            }
+            String detail = cause.getMessage();
+            return InstallToSiteResult.blocked(detail == null || detail.isBlank()
+                    ? "Managed site recovery restored a coherent prior generation, but subsequent site installation failed."
+                    : "Managed site recovery restored a coherent prior generation, but subsequent site installation failed: "
+                            + detail);
         } catch (UncheckedIOException failure) {
             return InstallToSiteResult.blocked(IoFailureMessages.describe("Site installation failed", failure));
         } catch (ManagedSiteRecoveryException failure) {

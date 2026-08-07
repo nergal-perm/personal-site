@@ -15,7 +15,9 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -190,6 +192,36 @@ class InstallToSiteHandlerTest {
         assertEquals("Recovered from an interrupted prior installation before proceeding.", result.message());
         assertTrue(Files.readString(ruFile).endsWith("New RU body"));
         assertFalse(Files.exists(backup));
+    }
+
+    @Test
+    void failedInstallAfterRecoveryProducesBlockedResultMentioningBothOutcomes() throws Exception {
+        ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.createNull();
+        installApprovedSnapshot(approvedSnapshotWorkspace, "Old");
+        ManagedSiteInstaller installer = ManagedSiteInstaller.create(siteRoot);
+        installer.install(IDENTITY, approvedSnapshotWorkspace.read(IDENTITY).orElseThrow());
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enDirectory = siteRoot.resolve("src/content/blog/en");
+        Path backup = siteRoot.resolve(".astro-export/managed-backups/src/content/blog/ru")
+                .resolve("my-essay.md.backup-00000000-0000-0000-0000-000000000001");
+        Files.createDirectories(backup.getParent());
+        Files.copy(ruFile, backup);
+        Files.writeString(ruFile, "interrupted replacement bytes");
+        installApprovedSnapshot(approvedSnapshotWorkspace, "New");
+        Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(enDirectory);
+        try {
+            Files.setPosixFilePermissions(enDirectory, Set.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
+
+            InstallToSiteResult result = new InstallToSiteHandler(approvedSnapshotWorkspace, installer)
+                    .installToSite(IDENTITY);
+
+            assertFalse(result.ok());
+            assertTrue(result.message().contains("recovery restored a coherent prior generation"));
+            assertTrue(result.message().contains("subsequent site installation failed"));
+        } finally {
+            Files.setPosixFilePermissions(enDirectory, originalPermissions);
+        }
     }
 
     private static ApprovedSnapshotWorkspace workspaceThatChangesOnSecondRead(

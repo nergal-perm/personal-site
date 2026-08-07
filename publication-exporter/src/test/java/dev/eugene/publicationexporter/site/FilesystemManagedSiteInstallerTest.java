@@ -149,8 +149,10 @@ class FilesystemManagedSiteInstallerTest {
         Files.copy(ruFile, ruBackup);
         Files.writeString(ruFile, newRu);
 
-        assertThrows(UncheckedIOException.class,
+        ManagedSiteInstallationFailedAfterRecoveryException failure = assertThrows(
+                ManagedSiteInstallationFailedAfterRecoveryException.class,
                 () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, UNWRITABLE_SNAPSHOT));
+        assertTrue(failure.getCause() instanceof UncheckedIOException);
 
         assertEquals(oldRu, Files.readString(ruFile));
         assertEquals(oldEn, Files.readString(enFile));
@@ -190,8 +192,10 @@ class FilesystemManagedSiteInstallerTest {
 
         Files.delete(manifest);
 
-        assertThrows(UncheckedIOException.class,
+        ManagedSiteInstallationFailedAfterRecoveryException failure = assertThrows(
+                ManagedSiteInstallationFailedAfterRecoveryException.class,
                 () -> installer.install(IDENTITY, UNWRITABLE_SNAPSHOT));
+        assertTrue(failure.getCause() instanceof UncheckedIOException);
 
         assertEquals(oldRu, Files.readString(ruFile));
         assertEquals(oldEn, Files.readString(enFile));
@@ -214,13 +218,49 @@ class FilesystemManagedSiteInstallerTest {
         String completedManifest = Files.readString(manifest);
         Files.writeString(ruBackup, oldRu);
 
-        assertThrows(UncheckedIOException.class,
+        ManagedSiteInstallationFailedAfterRecoveryException failure = assertThrows(
+                ManagedSiteInstallationFailedAfterRecoveryException.class,
                 () -> new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, UNWRITABLE_SNAPSHOT));
+        assertTrue(failure.getCause() instanceof UncheckedIOException);
 
         assertEquals(completedRu, Files.readString(ruFile));
         assertEquals(completedEn, Files.readString(enFile));
         assertEquals(completedManifest, Files.readString(manifest));
         assertFalse(Files.exists(ruBackup));
+    }
+
+    @Test
+    void failedInstallAfterRecoveryReportsThatRecoveryAlreadyRestoredThePriorGeneration() throws Exception {
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-essay.md");
+        Path enFile = siteRoot.resolve("src/content/blog/en/my-essay.md");
+        Path enDirectory = enFile.getParent();
+        Path ruBackup = newManagedBackupPath(ruFile);
+        Path manifest = siteRoot.resolve(".astro-export/release-provenance.json");
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        installer.install(IDENTITY, SNAPSHOT);
+        String oldRu = Files.readString(ruFile);
+        String oldEn = Files.readString(enFile);
+        String oldManifest = Files.readString(manifest);
+        Files.copy(ruFile, ruBackup);
+        Files.writeString(ruFile, "interrupted replacement bytes");
+
+        Set<PosixFilePermission> originalPermissions = Files.getPosixFilePermissions(enDirectory);
+        try {
+            Files.setPosixFilePermissions(enDirectory, Set.of(
+                    PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE));
+
+            ManagedSiteInstallationFailedAfterRecoveryException failure = assertThrows(
+                    ManagedSiteInstallationFailedAfterRecoveryException.class,
+                    () -> installer.installWithOutcome(IDENTITY, REPLACEMENT_SNAPSHOT));
+
+            assertTrue(failure.getCause() instanceof UncheckedIOException);
+            assertEquals(oldRu, Files.readString(ruFile));
+            assertEquals(oldEn, Files.readString(enFile));
+            assertEquals(oldManifest, Files.readString(manifest));
+            assertFalse(Files.exists(ruBackup));
+        } finally {
+            Files.setPosixFilePermissions(enDirectory, originalPermissions);
+        }
     }
 
     @Test
