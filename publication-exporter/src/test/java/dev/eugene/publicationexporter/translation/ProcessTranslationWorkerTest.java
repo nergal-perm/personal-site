@@ -23,7 +23,7 @@ class ProcessTranslationWorkerTest {
 
     @Test
     void resultFileWrittenByTheProcessIsReturnedAsSuccess() {
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 writesFixedResult("Translated text", "Translated title", "Translated description."),
                 Duration.ofSeconds(5));
 
@@ -39,7 +39,7 @@ class ProcessTranslationWorkerTest {
 
     @Test
     void missingResultFileIsReportedAsFailure() {
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 (workdir, prompt) -> List.of("sh", "-c", "true"), Duration.ofSeconds(5));
 
         TranslationResult result = worker.translate(
@@ -52,7 +52,7 @@ class ProcessTranslationWorkerTest {
 
     @Test
     void missingTitleFileIsReportedAsFailure() {
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 (workdir, prompt) -> List.of("sh", "-c",
                         "printf '%s' 'body' > candidate.en.md && printf '%s' 'desc' > candidate.en.description.txt"),
                 Duration.ofSeconds(5));
@@ -67,7 +67,7 @@ class ProcessTranslationWorkerTest {
 
     @Test
     void unreadableTitleFileIsReportedAsFailure() throws Exception {
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 (workdir, prompt) -> {
                     writeString(workdir.resolve("candidate.en.md"), "body");
                     Path title = workdir.resolve("candidate.en.title.txt");
@@ -92,7 +92,7 @@ class ProcessTranslationWorkerTest {
 
     @Test
     void nonZeroExitIsReportedAsFailure() {
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 (workdir, prompt) -> List.of("sh", "-c", "exit 3"), Duration.ofSeconds(5));
 
         TranslationResult result = worker.translate(
@@ -105,7 +105,7 @@ class ProcessTranslationWorkerTest {
 
     @Test
     void timeoutIsReportedAsFailure() {
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 (workdir, prompt) -> List.of("sh", "-c", "sleep 5"), Duration.ofMillis(200));
 
         TranslationResult result = worker.translate(
@@ -118,7 +118,7 @@ class ProcessTranslationWorkerTest {
 
     @Test
     void largeCombinedOutputDoesNotPreventProcessCompletion() {
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 (workdir, prompt) -> List.of("sh", "-c",
                         "yes | head -c 200000; "
                                 + "printf '%s' 'Translated text' > candidate.en.md && "
@@ -139,7 +139,7 @@ class ProcessTranslationWorkerTest {
     @Test
     void timeoutUnderOneMillisecondIsRejected() {
         IllegalArgumentException error = assertThrows(IllegalArgumentException.class,
-                () -> new ProcessTranslationWorker(
+                () -> processWorker(
                         writesFixedResult("Translated text", "Translated title", "Translated description."),
                         Duration.ofNanos(500)));
 
@@ -158,7 +158,7 @@ class ProcessTranslationWorkerTest {
             }
             return List.of("sh", "-c", "true");
         };
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 writesSymlinkedResult, Duration.ofSeconds(5));
 
         TranslationResult result = worker.translate(
@@ -183,7 +183,7 @@ class ProcessTranslationWorkerTest {
             }
             return List.of("sh", "-c", "true");
         };
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 writesSymlinkedTitle, Duration.ofSeconds(5));
 
         TranslationResult result = worker.translate(
@@ -208,7 +208,7 @@ class ProcessTranslationWorkerTest {
             }
             return List.of("sh", "-c", "true");
         };
-        ProcessTranslationWorker worker = new ProcessTranslationWorker(
+        ProcessTranslationWorker worker = processWorker(
                 writesSymlinkedDescription, Duration.ofSeconds(5));
 
         TranslationResult result = worker.translate(
@@ -217,6 +217,10 @@ class ProcessTranslationWorkerTest {
 
         assertFalse(result.succeeded());
         assertTrue(result.failureReason().contains("without writing candidate.en.description.txt"));
+    }
+
+    private ProcessTranslationWorker processWorker(TranslationCommand command, Duration timeout) {
+        return new ProcessTranslationWorker(command, timeout, externalRoot.resolve("jobs"));
     }
 
     private static void writeString(Path path, String content) {

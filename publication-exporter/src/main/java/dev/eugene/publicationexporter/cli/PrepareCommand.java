@@ -17,20 +17,28 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Callable;
+import java.util.function.Function;
 
 @Command(name = "prepare")
 public final class PrepareCommand implements Callable<Integer> {
 
     private static final Duration TRANSLATION_TIMEOUT = Duration.ofSeconds(900);
 
-    private final TranslationWorker translationWorker;
+    private final Function<Path, TranslationWorker> translationWorkerForJobRoot;
 
     public PrepareCommand() {
-        this(new ProcessTranslationWorker(new CodexTranslationCommand(), TRANSLATION_TIMEOUT));
+        this(jobRoot -> new ProcessTranslationWorker(
+                new CodexTranslationCommand(), TRANSLATION_TIMEOUT, jobRoot));
     }
 
     PrepareCommand(TranslationWorker translationWorker) {
-        this.translationWorker = Objects.requireNonNull(translationWorker, "translationWorker");
+        Objects.requireNonNull(translationWorker, "translationWorker");
+        this.translationWorkerForJobRoot = ignored -> translationWorker;
+    }
+
+    private PrepareCommand(Function<Path, TranslationWorker> translationWorkerForJobRoot) {
+        this.translationWorkerForJobRoot = Objects.requireNonNull(
+                translationWorkerForJobRoot, "translationWorkerForJobRoot");
     }
 
     @Option(names = "--vault", required = true)
@@ -53,6 +61,7 @@ public final class PrepareCommand implements Callable<Integer> {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
+        TranslationWorker translationWorker = translationWorkerForJobRoot.apply(jobsDirectory);
         BridgeResponse response = new PrepareHandler(translationWorker, candidateWorkspace, approvedSnapshotWorkspace)
                 .prepare(VaultRelativePath.of(notePath), vaultReader);
 
