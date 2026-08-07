@@ -21,6 +21,11 @@ public final class InstallToSiteResult {
         return new InstallToSiteResult(true, Objects.requireNonNull(identity, "identity"), null);
     }
 
+    public static InstallToSiteResult installedAfterRecovery(PublicationIdentity identity) {
+        return new InstallToSiteResult(true, Objects.requireNonNull(identity, "identity"),
+                "Recovered from an interrupted prior installation before proceeding.");
+    }
+
     public static InstallToSiteResult blocked(String message) {
         return new InstallToSiteResult(false, null, Objects.requireNonNull(message, "message"));
     }

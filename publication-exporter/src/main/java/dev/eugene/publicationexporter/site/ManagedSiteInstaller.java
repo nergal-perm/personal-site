@@ -9,6 +9,12 @@ public interface ManagedSiteInstaller {
 
     void install(PublicationIdentity identity, CandidateSnapshot approvedSnapshot);
 
+    default ManagedSiteInstallOutcome installWithOutcome(
+            PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
+        install(identity, approvedSnapshot);
+        return ManagedSiteInstallOutcome.INSTALLED;
+    }
+
     static ManagedSiteInstaller createNull() {
         return new NullManagedSiteInstaller();
     }

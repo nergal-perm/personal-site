@@ -142,6 +142,31 @@ class InstallToSiteCliAcceptanceTest {
         assertTrue(Files.notExists(siteRoot));
     }
 
+    @Test
+    void managedSiteRecoveryFailureProducesBlockedJsonInsteadOfEscaping() throws Exception {
+        Path reviewDirectory = workRoot.resolve("review");
+        Path siteRoot = workRoot.resolve("site");
+        ApprovedSnapshotWorkspace.create(reviewDirectory).install(IDENTITY,
+                "# My Essay", "# My Essay (EN)", "My Essay", "My Essay (EN)",
+                "A valid description.", "A valid description (EN).",
+                ReferenceMap.empty(IDENTITY,
+                        ContentHash.sha256Hex("# My Essay"), ContentHash.sha256Hex("# My Essay (EN)"),
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("My Essay (EN)"),
+                        ContentHash.sha256Hex("A valid description."),
+                        ContentHash.sha256Hex("A valid description (EN).")));
+        assertEquals(0, installToSite(reviewDirectory, siteRoot));
+        capturedOut.reset();
+        Files.writeString(siteRoot.resolve("src/content/blog/ru/my-essay.md"), "tampered managed content");
+
+        int exitCode = installToSite(reviewDirectory, siteRoot);
+
+        assertNotEquals(0, exitCode);
+        JsonNode result = soleJsonValueOnStdout();
+        assertEquals(false, result.get("ok").asBoolean());
+        assertTrue(result.get("message").asText().contains("Managed site recovery cannot continue"));
+        assertTrue(result.get("message").asText().contains("provenance does not match the current managed tree"));
+    }
+
     private int installToSite(Path reviewDirectory, Path siteRoot) {
         return new CommandLine(new Main()).execute(
                 "install-to-site",
