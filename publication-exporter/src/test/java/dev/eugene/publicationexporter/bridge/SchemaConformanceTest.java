@@ -12,6 +12,7 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
+import dev.eugene.publicationexporter.prepare.RussianDiff;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
@@ -125,6 +126,27 @@ class SchemaConformanceTest {
     }
 
     @Test
+    void changedReviewPlanWithNonEmptyDiffConformsToSchemaV2() throws Exception {
+        assertConformsToSchemaV2(changedReadyForReviewResponse());
+    }
+
+    @Test
+    void changedReviewPlanWithoutDiffDoesNotConformToSchemaV2() throws Exception {
+        ObjectNode response = responseNode(changedReadyForReviewResponse());
+        ((ObjectNode) response.get("reviewPlan")).remove("diff");
+
+        assertDoesNotConformToSchemaV2(response);
+    }
+
+    @Test
+    void changedReviewPlanWithEmptyDiffDoesNotConformToSchemaV2() throws Exception {
+        ObjectNode response = responseNode(changedReadyForReviewResponse());
+        ((ObjectNode) response.get("reviewPlan")).putArray("diff");
+
+        assertDoesNotConformToSchemaV2(response);
+    }
+
+    @Test
     void approvedResponseConformsToSchemaV2() throws Exception {
         BridgeResponse response = BridgeResponse.approved(
                 "mark-reviewed", PublicationIdentity.of("blog", "essay", "my-essay"));
@@ -149,6 +171,21 @@ class SchemaConformanceTest {
                 "inspect-publication", "ready_for_review", identity,
                 "ready", "absent", "absent", "absent", ReviewPlan.firstPublication(
                         candidatePaths, "RU title", "EN title", "RU description.", "EN description."));
+    }
+
+    private BridgeResponse changedReadyForReviewResponse() {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        CandidatePaths candidatePaths = CandidatePaths.of(
+                Path.of("/review/blog/my-essay/candidate/ru.md"),
+                Path.of("/review/blog/my-essay/candidate/en.md"));
+        RussianDiff diff = RussianDiff.between(
+                "RU body", "Old RU title", "RU description.",
+                "RU body", "New RU title", "RU description.");
+        return BridgeResponse.essayInspected(
+                "inspect-publication", "ready_for_review", identity,
+                "ready", "ready", "absent", "absent", ReviewPlan.changedPublication(
+                        candidatePaths, "New RU title", "EN title",
+                        "RU description.", "EN description.", diff));
     }
 
     private void assertConformsToSchemaV2(BridgeResponse response) throws Exception {
