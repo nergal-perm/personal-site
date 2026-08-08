@@ -50,6 +50,17 @@ class FilesystemWorkflowStatusEditorTest {
     }
 
     @Test
+    void writeBlocksWhenTheNoteIsMissing() {
+        FilesystemWorkflowStatusEditor editor = new FilesystemWorkflowStatusEditor(vaultRoot);
+
+        WorkflowStatusEditor.Result result = editor.write(
+                VaultRelativePath.of("blog/missing.md"), ContentHash.sha256Hex(SOURCE), "stale");
+
+        assertFalse(result.isWritten());
+        assertEquals("Source changed since it was validated.", result.blockedReason());
+    }
+
+    @Test
     void writePreservesPosixPermissions() throws Exception {
         Path note = writeNote("blog/my-essay.md", SOURCE);
         Set<PosixFilePermission> restrictive = PosixFilePermissions.fromString("rw-------");

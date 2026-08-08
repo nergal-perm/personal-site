@@ -43,14 +43,57 @@ public final class Frontmatter {
         String newLineText = key + ": " + value;
         int existingIndex = existingKeyLineIndex(lines, key, closingIndex);
         return existingIndex >= 0
-                ? spliceReplace(lines, existingIndex, newLineText)
+                ? spliceValueReplace(lines, existingIndex, value)
                 : spliceInsertBefore(lines, closingIndex, newLineText);
     }
 
-    private String spliceReplace(List<String> lines, int lineIndex, String newLineText) {
-        int start = lineStartOffset(lineIndex);
-        int end = start + lines.get(lineIndex).length();
-        return originalSource.substring(0, start) + newLineText + originalSource.substring(end);
+    private String spliceValueReplace(List<String> lines, int lineIndex, String newValue) {
+        String line = lines.get(lineIndex);
+        int valueStartInLine = valueStartOffset(line);
+        int valueEndInLine = valueEndOffset(line, valueStartInLine);
+        int lineStart = lineStartOffset(lineIndex);
+        int valueStart = lineStart + valueStartInLine;
+        int valueEnd = lineStart + valueEndInLine;
+        return originalSource.substring(0, valueStart) + newValue + originalSource.substring(valueEnd);
+    }
+
+    private static int valueStartOffset(String line) {
+        int offset = line.indexOf(':') + 1;
+        while (offset < line.length() && Character.isWhitespace(line.charAt(offset))) {
+            offset++;
+        }
+        return offset;
+    }
+
+    private static int valueEndOffset(String line, int valueStart) {
+        int end = inlineCommentStart(line, valueStart);
+        while (end > valueStart && Character.isWhitespace(line.charAt(end - 1))) {
+            end--;
+        }
+        return end;
+    }
+
+    private static int inlineCommentStart(String line, int valueStart) {
+        boolean inSingleQuotes = false;
+        boolean inDoubleQuotes = false;
+        boolean escaped = false;
+        for (int index = valueStart; index < line.length(); index++) {
+            char current = line.charAt(index);
+            if (inDoubleQuotes && current == '\\' && !escaped) {
+                escaped = true;
+                continue;
+            }
+            if (current == '\'' && !inDoubleQuotes) {
+                inSingleQuotes = !inSingleQuotes;
+            } else if (current == '"' && !inSingleQuotes && !escaped) {
+                inDoubleQuotes = !inDoubleQuotes;
+            } else if (current == '#' && !inSingleQuotes && !inDoubleQuotes
+                    && index > valueStart && Character.isWhitespace(line.charAt(index - 1))) {
+                return index;
+            }
+            escaped = false;
+        }
+        return line.length();
     }
 
     private String spliceInsertBefore(List<String> lines, int lineIndex, String newLineText) {

@@ -53,7 +53,11 @@ final class FilesystemVaultReader implements VaultReader {
     }
 
     private boolean hasPublishTrueFlag(Path file) {
-        return Frontmatter.parse(readUtf8(file)).flag("publish");
+        try {
+            return Frontmatter.parse(readUtf8(file)).flag("publish");
+        } catch (UncheckedIOException unreadable) {
+            return false;
+        }
     }
 
     private VaultRelativePath toVaultRelativePath(Path file) {

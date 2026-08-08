@@ -15,9 +15,11 @@ import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import dev.eugene.publicationexporter.workflow.NullWorkflowStatusEditor;
 import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -29,6 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class RefreshPublicationQueueHandlerTest {
+
+    @TempDir
+    Path temporaryRoot;
 
     private static final VaultRelativePath STALE_SCALAR_NOTE = VaultRelativePath.of("blog/stale-scalar.md");
     private static final VaultRelativePath UP_TO_DATE_NOTE = VaultRelativePath.of("blog/up-to-date.md");
@@ -122,18 +127,27 @@ class RefreshPublicationQueueHandlerTest {
     }
 
     @Test
-    void refreshDoesNotTreatIncompleteCandidateAsReadyForReview() {
-        VaultRelativePath notePath = VaultRelativePath.of("blog/incomplete-candidate.md");
-        String source = essaySource("incomplete-candidate", "workflowStatus: ready_for_review");
-        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(notePath, source));
+    void refreshCountsIncompleteCandidateUncertainButClassifiesAbsentCandidateNormally() {
+        VaultRelativePath incompletePath = VaultRelativePath.of("blog/incomplete-candidate.md");
+        VaultRelativePath absentPath = VaultRelativePath.of("blog/absent-candidate.md");
+        String incompleteSource = essaySource(
+                "incomplete-candidate", "workflowStatus: ready_for_review");
+        String absentSource = essaySource(
+                "absent-candidate", "workflowStatus: ready_for_review");
+        Map<VaultRelativePath, String> notes = new LinkedHashMap<>();
+        notes.put(incompletePath, incompleteSource);
+        notes.put(absentPath, absentSource);
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(notes);
         RefreshPublicationQueueHandler handler = new RefreshPublicationQueueHandler(
                 incompleteCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.refresh(VaultReader.createNull(Map.of(notePath, source)));
+        BridgeResponse response = handler.refresh(VaultReader.createNull(notes));
 
         assertEquals(1, response.updatedCount());
         assertEquals(0, response.unchangedCount());
-        assertEquals("not_prepared", editor.currentValue(notePath, "workflowStatus"));
+        assertEquals(1, response.uncertainCount());
+        assertEquals("ready_for_review", editor.currentValue(incompletePath, "workflowStatus"));
+        assertEquals("not_prepared", editor.currentValue(absentPath, "workflowStatus"));
     }
 
     @Test
@@ -172,6 +186,42 @@ class RefreshPublicationQueueHandlerTest {
         assertEquals("not_prepared", delegateEditor.currentValue(laterSuccessPath, "workflowStatus"));
     }
 
+    @Test
+    void malformedCandidateManifestIsUncertainAndDoesNotAbortLaterNotes() throws Exception {
+        VaultRelativePath malformedPath = VaultRelativePath.of("blog/malformed-candidate.md");
+        VaultRelativePath laterPath = VaultRelativePath.of("blog/later-note.md");
+        Map<VaultRelativePath, String> notes = new LinkedHashMap<>();
+        notes.put(malformedPath,
+                essaySource("malformed-candidate", "workflowStatus: ready_for_review"));
+        notes.put(laterPath,
+                essaySource("later-note", "workflowStatus: ready_for_review"));
+
+        Path reviewRoot = temporaryRoot.resolve("review");
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
+        PublicationIdentity malformedIdentity =
+                PublicationIdentity.of("blog", "essay", "malformed-candidate");
+        candidateWorkspace.install(
+                malformedIdentity, "RU", "EN", "RU title", "EN title",
+                "RU description.", "EN description.",
+                ReferenceMap.empty(malformedIdentity,
+                        "ru-hash", "en-hash", "ru-title-hash", "en-title-hash",
+                        "ru-description-hash", "en-description-hash"));
+        Files.writeString(
+                reviewRoot.resolve("blog/malformed-candidate/candidate/references.json"), "{}");
+
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(notes);
+        RefreshPublicationQueueHandler handler = new RefreshPublicationQueueHandler(
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = assertDoesNotThrow(
+                () -> handler.refresh(VaultReader.createNull(notes)));
+
+        assertEquals(1, response.updatedCount());
+        assertEquals(0, response.unchangedCount());
+        assertEquals(1, response.uncertainCount());
+        assertEquals("not_prepared", editor.currentValue(laterPath, "workflowStatus"));
+    }
+
     private String essaySource(String publicId, String workflowStatusLine) {
         return "---\npublish: true\npublicCollection: blog\npublicContentType: essay\npublicId: " + publicId
                 + "\nid: id-" + publicId + "\ntitle: Title\ndescription: A description.\n"
@@ -189,7 +239,10 @@ class RefreshPublicationQueueHandlerTest {
 
             @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
-                return Optional.of(CandidatePaths.of(Path.of("candidate/ru.md"), Path.of("candidate/en.md")));
+                return identity.publicId().equals("incomplete-candidate")
+                        ? Optional.of(CandidatePaths.of(
+                                Path.of("candidate/ru.md"), Path.of("candidate/en.md")))
+                        : Optional.empty();
             }
 
             @Override

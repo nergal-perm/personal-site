@@ -25,6 +25,7 @@ public final class InspectPublicationHandler {
 
     private static final String COMMAND = "inspect-publication";
     private static final String READY_FOR_REVIEW = "ready_for_review";
+    private static final String WORKFLOW_STATUS_KEY = "workflowStatus";
     private static final String ABSENT = "absent";
     private static final String READY = "ready";
 
@@ -68,7 +69,8 @@ public final class InspectPublicationHandler {
                 return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
             }
         }
-        return notPreparedOrReadyToPublishResponse(intake.identity());
+        return notPreparedOrReadyToPublishResponse(
+                intake.identity(), intake.frontmatterString(WORKFLOW_STATUS_KEY));
     }
 
     private static BridgeResponse candidateLookupFailure(String message) {
@@ -107,7 +109,8 @@ public final class InspectPublicationHandler {
                 candidateSnapshot.ruDescription(), candidateSnapshot.enDescription(), diff);
     }
 
-    private BridgeResponse notPreparedOrReadyToPublishResponse(PublicationIdentity identity) {
+    private BridgeResponse notPreparedOrReadyToPublishResponse(
+            PublicationIdentity identity, Optional<String> persistedWorkflowStatus) {
         boolean approvedPresent;
         try {
             approvedPresent = approvedSnapshotWorkspace.read(identity).isPresent();
@@ -118,7 +121,7 @@ public final class InspectPublicationHandler {
         } catch (ApprovedSnapshotWorkspaceStateException failure) {
             return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
         }
-        String status = classifier.classify(false, approvedPresent, Optional.empty());
+        String status = classifier.classify(false, approvedPresent, persistedWorkflowStatus);
         String approvedState = approvedPresent ? READY : ABSENT;
         return BridgeResponse.essayInspected(
                 COMMAND, status, identity,

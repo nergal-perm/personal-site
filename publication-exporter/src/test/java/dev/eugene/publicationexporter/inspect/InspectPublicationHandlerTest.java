@@ -108,6 +108,22 @@ class InspectPublicationHandlerTest {
     }
 
     @Test
+    void persistedStaleWithoutCandidateOrApprovedIsReportedByInspect() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        String staleEssay = VALID_ESSAY.replace(
+                "description: A valid description.\n",
+                "description: A valid description.\nworkflowStatus: stale\n");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, staleEssay));
+
+        BridgeResponse response = handler.inspect(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("stale", response.status());
+        assertEquals("absent", response.candidateState());
+        assertEquals("absent", response.approvedSnapshotState());
+    }
+
+    @Test
     void approvedSnapshotWithNoCandidateReportsReadyToPublishNotNotPrepared() {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();

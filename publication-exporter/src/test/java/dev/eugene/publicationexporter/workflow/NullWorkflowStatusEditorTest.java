@@ -35,4 +35,15 @@ class NullWorkflowStatusEditorTest {
         assertFalse(result.isWritten());
         assertEquals("Source changed since it was validated.", result.blockedReason());
     }
+
+    @Test
+    void writeBlocksWhenTheNoteIsMissing() {
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor();
+
+        WorkflowStatusEditor.Result result =
+                editor.write(PATH, ContentHash.sha256Hex(SOURCE), "stale");
+
+        assertFalse(result.isWritten());
+        assertEquals("Source changed since it was validated.", result.blockedReason());
+    }
 }

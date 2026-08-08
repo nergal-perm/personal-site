@@ -29,7 +29,11 @@ final class FilesystemWorkflowStatusEditor implements WorkflowStatusEditor {
     @Override
     public Result write(VaultRelativePath notePath, String expectedSourceHash, String newValue) {
         requireWriteArguments(notePath, expectedSourceHash, newValue);
-        Path target = requireNote(notePath);
+        Optional<Path> resolvedTarget = resolveWithinVault(notePath);
+        if (resolvedTarget.isEmpty()) {
+            return Result.blocked("Source changed since it was validated.");
+        }
+        Path target = resolvedTarget.get();
         String currentSource = readSource(target);
         if (!matchesExpectedSource(currentSource, expectedSourceHash)) {
             return Result.blocked("Source changed since it was validated.");
@@ -44,11 +48,6 @@ final class FilesystemWorkflowStatusEditor implements WorkflowStatusEditor {
         Objects.requireNonNull(notePath, "notePath");
         Objects.requireNonNull(expectedSourceHash, "expectedSourceHash");
         Objects.requireNonNull(newValue, "newValue");
-    }
-
-    private Path requireNote(VaultRelativePath notePath) {
-        return resolveWithinVault(notePath)
-                .orElseThrow(() -> new IllegalStateException("Note not found: " + notePath.value()));
     }
 
     private static boolean matchesExpectedSource(String source, String expectedSourceHash) {

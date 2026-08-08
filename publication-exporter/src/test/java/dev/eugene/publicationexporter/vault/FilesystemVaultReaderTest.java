@@ -144,6 +144,17 @@ class FilesystemVaultReaderTest {
     }
 
     @Test
+    void listPublishCandidatesSkipsUndecodableMarkdownAndReturnsValidCandidates() throws Exception {
+        writeNote(vaultRoot, "blog/my-essay.md", "---\npublish: true\n---\nBody.");
+        Path corrupt = vaultRoot.resolve("blog/corrupt.md");
+        Files.write(corrupt, new byte[] {(byte) 0xC3, (byte) 0x28});
+        VaultReader vaultReader = VaultReader.create(vaultRoot);
+
+        assertEquals(List.of(VaultRelativePath.of("blog/my-essay.md")),
+                vaultReader.listPublishCandidates());
+    }
+
+    @Test
     void listPublishCandidatesExcludesSymlinkEscapingTheVaultRoot() throws Exception {
         Path externalPublishedNote = writeNote(
                 outsideVaultRoot, "published.md", "---\npublish: true\n---\nOutside body.");

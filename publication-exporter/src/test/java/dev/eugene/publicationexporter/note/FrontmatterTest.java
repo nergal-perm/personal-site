@@ -37,6 +37,18 @@ class FrontmatterTest {
     }
 
     @Test
+    void withScalarSetReplacesOnlyTheExistingValueBytes() {
+        String source = "---\nworkflowStatus:    stale   # keep\npublicId: my-essay\n---\nBody.";
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        String updated = frontmatter.withScalarSet("workflowStatus", "ready_for_review");
+
+        assertEquals(
+                "---\nworkflowStatus:    ready_for_review   # keep\npublicId: my-essay\n---\nBody.",
+                updated);
+    }
+
+    @Test
     void withScalarSetInsertsAnAbsentKeyBeforeTheClosingDelimiter() {
         Frontmatter frontmatter = Frontmatter.parse("""
                 ---

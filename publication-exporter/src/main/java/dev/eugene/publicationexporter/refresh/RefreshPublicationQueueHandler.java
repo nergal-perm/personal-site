@@ -1,13 +1,10 @@
 package dev.eugene.publicationexporter.refresh;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
-import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
-import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
-import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -65,20 +62,17 @@ public final class RefreshPublicationQueueHandler {
             candidateSnapshot = candidatePaths.isPresent()
                     ? candidateWorkspace.read(intake.identity())
                     : Optional.empty();
-        } catch (UncheckedIOException failure) {
+        } catch (RuntimeException failure) {
             return ReconcileOutcome.UNCERTAIN;
-        } catch (CandidateWorkspaceConfinementException failure) {
+        }
+        if (candidatePaths.isPresent() && candidateSnapshot.isEmpty()) {
             return ReconcileOutcome.UNCERTAIN;
         }
         boolean candidatePresent = candidatePaths.isPresent() && candidateSnapshot.isPresent();
         boolean approvedPresent;
         try {
             approvedPresent = approvedSnapshotWorkspace.read(intake.identity()).isPresent();
-        } catch (UncheckedIOException failure) {
-            return ReconcileOutcome.UNCERTAIN;
-        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
-            return ReconcileOutcome.UNCERTAIN;
-        } catch (ApprovedSnapshotWorkspaceStateException failure) {
+        } catch (RuntimeException failure) {
             return ReconcileOutcome.UNCERTAIN;
         }
         Optional<String> persisted = intake.frontmatterString(WORKFLOW_STATUS_KEY);

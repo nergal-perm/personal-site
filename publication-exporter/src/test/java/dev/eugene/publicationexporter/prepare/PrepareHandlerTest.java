@@ -117,8 +117,8 @@ class PrepareHandlerTest {
         BridgeResponse response = handler.prepare(path, vaultReader);
 
         assertEquals("stale", response.status());
-        assertEquals(null, editor.currentValue(path, "workflowStatus"));
-        assertEquals(2, reads.get());
+        assertEquals("stale", editor.currentValue(path, "workflowStatus"));
+        assertEquals(3, reads.get());
     }
 
     @Test

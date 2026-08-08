@@ -23,6 +23,7 @@ import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
 import java.io.UncheckedIOException;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -109,7 +110,7 @@ public final class PrepareHandler {
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
         if (!sourceStillMatches(notePath, vaultReader, identity, job)) {
-            recordWorkflowStatus(notePath, sourceHash, WorkflowState.STALE);
+            recordStaleWorkflowStatus(notePath, vaultReader);
             return BridgeResponse.stale(COMMAND,
                     Diagnostic.blocking("candidate", "Source note changed while translation was in progress."));
         }
@@ -127,6 +128,15 @@ public final class PrepareHandler {
         try {
             workflowStatusEditor.write(notePath, sourceHash, status);
         } catch (UncheckedIOException ignored) {
+        }
+    }
+
+    private void recordStaleWorkflowStatus(VaultRelativePath notePath, VaultReader vaultReader) {
+        try {
+            String currentSource = vaultReader.readSource(notePath);
+            recordWorkflowStatus(
+                    notePath, ContentHash.sha256Hex(currentSource), WorkflowState.STALE);
+        } catch (UncheckedIOException | NoSuchElementException ignored) {
         }
     }
 
