@@ -828,7 +828,7 @@ git commit -m "feat(workflow): add FilesystemWorkflowStatusEditor — atomic, by
 - Produces: `VaultReader#listPublishCandidates()` returning `List<VaultRelativePath>`, used by
   `RefreshPublicationQueueHandler` (Task 9).
 
-- [ ] 5.1 **Add the method to the `VaultReader` interface**
+- [x] 5.1 **Add the method to the `VaultReader` interface**
 
 ```java
 public interface VaultReader {
@@ -853,7 +853,7 @@ public interface VaultReader {
 }
 ```
 
-- [ ] 5.2 **Write failing `NullVaultReader` tests, then implement**
+- [x] 5.2 **Write failing `NullVaultReader` tests, then implement**
 
 ```java
 @Test
@@ -885,7 +885,7 @@ Add `import dev.eugene.publicationexporter.note.Frontmatter;` and `import java.u
 Run: `cd publication-exporter && mvn -q -Dtest=NullVaultReaderTest test` — confirm FAIL then PASS across the
 write/implement steps as usual.
 
-- [ ] 5.3 **Write failing `FilesystemVaultReader` tests, then implement**
+- [x] 5.3 **Write failing `FilesystemVaultReader` tests, then implement**
 
 ```java
 @Test
@@ -934,12 +934,12 @@ Add `import dev.eugene.publicationexporter.note.Frontmatter;`, `import java.util
 consistent with every other vault-relative path already produced/consumed in this codebase (`/`-separated), in
 case the code ever runs on Windows.
 
-- [ ] 5.4 **Run the full suite**
+- [x] 5.4 **Run the full suite**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 5.5 **Commit**
+- [x] 5.5 **Commit**
 
 ```bash
 cd publication-exporter
