@@ -1285,7 +1285,7 @@ for the first time, since a failed prepare installs nothing else."
 - Produces: `BridgeResponse.queueRefreshed(String command, int updatedCount, int unchangedCount, int
   uncertainCount)`, used by `RefreshPublicationQueueHandler` (Task 9).
 
-- [ ] 8.1 **Add the three nullable count fields and the factory to `BridgeResponse`**
+- [x] 8.1 **Add the three nullable count fields and the factory to `BridgeResponse`**
 
 ```java
 private final Integer updatedCount;
@@ -1325,7 +1325,7 @@ for every other field in this class. `"queue_refreshed"` is `refresh-publication
 classification, which is reported per-item inside the counts here, not as this response's own top-level
 `status`).
 
-- [ ] 8.2 **Add the schema properties and a conditional requiring them for `refresh-publication-queue`**
+- [x] 8.2 **Add the schema properties and a conditional requiring them for `refresh-publication-queue`**
 
 In `bridge-contract/schema-v2.json`, add to the top-level `properties` object:
 
@@ -1371,7 +1371,7 @@ Replace the existing top-level `"if": {...}, "then": {...}` pair with this `"all
 keys removed, one `allOf` key added) — everything else in the file (`definitions`, other `properties`) stays
 unchanged.
 
-- [ ] 8.3 **Add `SchemaConformanceTest` cases**
+- [x] 8.3 **Add `SchemaConformanceTest` cases**
 
 ```java
 @Test
@@ -1390,7 +1390,7 @@ void queueRefreshedResponseWithoutCountsDoesNotConformToSchemaV2() throws Except
 }
 ```
 
-- [ ] 8.4 **Run the schema conformance tests and the full suite**
+- [x] 8.4 **Run the schema conformance tests and the full suite**
 
 Run: `cd publication-exporter && mvn -q -Dtest=SchemaConformanceTest test`
 Expected: PASS, including every pre-existing case (the restructured `allOf` must not change behavior for any
@@ -1399,7 +1399,7 @@ existing command/status combination — this is the regression risk of this task
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 8.5 **Commit**
+- [x] 8.5 **Commit**
 
 ```bash
 cd publication-exporter
