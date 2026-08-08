@@ -376,7 +376,7 @@ git commit -m "feat(workflow): add WorkflowState vocabulary and WorkflowStateCla
   class Task 4 hasn't created yet.
 - Consumes: `VaultRelativePath` (existing, `vault` package).
 
-- [ ] 3.1 **Write the port and its `Result` type**
+- [x] 3.1 **Write the port and its `Result` type**
 
 ```java
 package dev.eugene.publicationexporter.workflow;
@@ -426,7 +426,7 @@ A static factory named `written()` and an instance accessor also named `written(
 class — Java rejects the static/instance member conflict outright, regardless of return type. The accessor is
 named `isWritten()` (matching this codebase's general boolean-accessor convention), not `written()`.
 
-- [ ] 3.2 **Write the failing `NullWorkflowStatusEditorTest`**
+- [x] 3.2 **Write the failing `NullWorkflowStatusEditorTest`**
 
 ```java
 package dev.eugene.publicationexporter.workflow;
@@ -469,12 +469,12 @@ class NullWorkflowStatusEditorTest {
 }
 ```
 
-- [ ] 3.3 **Run to confirm compilation failure** (`NullWorkflowStatusEditor` does not exist yet)
+- [x] 3.3 **Run to confirm compilation failure** (`NullWorkflowStatusEditor` does not exist yet)
 
 Run: `cd publication-exporter && mvn -q -Dtest=NullWorkflowStatusEditorTest test`
 Expected: compilation FAILURE.
 
-- [ ] 3.4 **Implement `NullWorkflowStatusEditor`**, in-memory, using the same `Frontmatter.withScalarSet` the
+- [x] 3.4 **Implement `NullWorkflowStatusEditor`**, in-memory, using the same `Frontmatter.withScalarSet` the
   real adapter will use — this is intentional: the fake reuses the real domain logic (`Frontmatter`), it only
   fakes the I/O boundary, per nullables discipline.
 
@@ -526,12 +526,12 @@ public final class NullWorkflowStatusEditor implements WorkflowStatusEditor {
 `NullVaultReader`'s existing convention (`VaultRelativePath` has no `equals`/`hashCode`-friendly map use
 elsewhere beyond what `NullVaultReader` already does — read it first, it uses the same `String`-keyed pattern).
 
-- [ ] 3.5 **Run to confirm the tests pass**
+- [x] 3.5 **Run to confirm the tests pass**
 
 Run: `cd publication-exporter && mvn -q -Dtest=NullWorkflowStatusEditorTest test`
 Expected: PASS.
 
-- [ ] 3.6 **Commit**
+- [x] 3.6 **Commit**
 
 ```bash
 cd publication-exporter
