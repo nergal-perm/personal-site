@@ -281,6 +281,24 @@ class InspectPublicationHandlerTest {
     }
 
     @Test
+    void corruptApprovedSnapshotWithNoCandidateReturnsStructuredBlockedResponse() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("corrupt-approved-only-review");
+        installApprovedOnly(reviewRoot);
+        Files.writeString(reviewRoot.resolve("blog/my-essay/approved/references.json"), "not-json");
+        InspectPublicationHandler handlerWithCorruptApproved = new InspectPublicationHandler(
+                CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.create(reviewRoot));
+
+        BridgeResponse response = handlerWithCorruptApproved.inspect(
+                VaultRelativePath.of("blog/my-essay.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("approved-snapshot", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Approved snapshot lookup failed"));
+    }
+
+    @Test
     void escapingApprovedMemberReturnsStructuredBlockedResponse() throws Exception {
         Path reviewRoot = temporaryRoot.resolve("escaping-review");
         installCandidateAndApproved(reviewRoot);
@@ -368,6 +386,18 @@ class InspectPublicationHandlerTest {
         CandidateWorkspace.create(reviewRoot).install(
                 identity, "RU body", "EN body", "RU title", "EN title",
                 "RU description", "EN description", referenceMap);
+        ApprovedSnapshotWorkspace.create(reviewRoot).install(
+                identity, "RU body", "EN body", "RU title", "EN title",
+                "RU description", "EN description", referenceMap);
+    }
+
+    private void installApprovedOnly(Path reviewRoot) {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ReferenceMap referenceMap = ReferenceMap.empty(
+                identity,
+                ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"),
+                ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
+                ContentHash.sha256Hex("RU description"), ContentHash.sha256Hex("EN description"));
         ApprovedSnapshotWorkspace.create(reviewRoot).install(
                 identity, "RU body", "EN body", "RU title", "EN title",
                 "RU description", "EN description", referenceMap);

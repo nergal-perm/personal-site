@@ -115,6 +115,8 @@ public final class InspectPublicationHandler {
             return approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
             return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
+            return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
         }
         String status = classifier.classify(false, approvedPresent, Optional.empty());
         String approvedState = approvedPresent ? READY : ABSENT;
