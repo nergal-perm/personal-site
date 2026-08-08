@@ -1732,13 +1732,13 @@ git commit -m "feat(refresh): add refresh-publication-queue command (BRG-01, BRG
 
 **Files:** none created/modified — verification only.
 
-- [ ] 10.1 **Run the complete Maven test suite**
+- [x] 10.1 **Run the complete Maven test suite**
 
 Run: `cd publication-exporter && mvn -B test`
 Expected: `Tests run: 4XX+, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`. (Baseline before this slice was
 420 tests, 0 failures — confirm the new total is strictly higher and nothing regressed.)
 
-- [ ] 10.2 **Manually trace each requirement scenario to its covering test(s):**
+- [x] 10.2 **Manually trace each requirement scenario to its covering test(s):**
   - BRG-01 refresh clause ("no current-note argument required or accepted") → Task 9's CLI command has no
     `--note` option; confirm `RefreshPublicationQueueCliAcceptanceTest` doesn't pass one.
   - BRG-04 "Approved snapshot exists with no pending candidate" (new scenario) → Task 6's
@@ -1755,9 +1755,9 @@ Expected: `Tests run: 4XX+, Failures: 0, Errors: 0, Skipped: 0`, `BUILD SUCCESS`
   - TRP-06 "Source changed concurrently" → Task 4's `writeBlocksWithoutTouchingTheFileWhenHashDoesNotMatch` and
     Task 3's `NullWorkflowStatusEditorTest` equivalent.
 
-- [ ] 10.3 **Confirm `git status` is clean except for this slice's new/modified files**, and that
+- [x] 10.3 **Confirm `git status` is clean except for this slice's new/modified files**, and that
   `bridge-contract/schema-v2.json` (repo root, outside `publication-exporter/`) was actually committed in
   Task 8 — it is easy to miss since it's outside the module directory the rest of this plan works in.
 
-- [ ] 10.4 **This task has no commit of its own** — it is the checkpoint before subagent-driven-development
+- [x] 10.4 **This task has no commit of its own** — it is the checkpoint before subagent-driven-development
   hands off to the four parallel review passes and the final whole-branch review.
