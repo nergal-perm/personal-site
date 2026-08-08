@@ -38,28 +38,49 @@ public final class Frontmatter {
     public String withScalarSet(String key, String value) {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
+
         List<String> lines = new ArrayList<>(originalSource.lines().toList());
         int closingIndex = closingDelimiterLineIndex(lines);
+        List<String> updatedLines = setScalarLine(lines, key, value, closingIndex);
+        return rebuildSource(updatedLines);
+    }
+
+    private String rebuildSource(List<String> lines) {
+        String lineEnding = lineEnding(originalSource);
+        String rebuilt = String.join(lineEnding, lines);
+        return originalSource.endsWith(lineEnding) ? rebuilt + lineEnding : rebuilt;
+    }
+
+    private static List<String> setScalarLine(List<String> lines, String key, String value, int closingDelimiterLineIndex) {
         String newLine = key + ": " + value;
-        int existingIndex = existingKeyLineIndex(lines, key, closingIndex);
+        int existingIndex = existingKeyLineIndex(lines, key, closingDelimiterLineIndex);
         if (existingIndex >= 0) {
             lines.set(existingIndex, newLine);
         } else {
-            lines.add(closingIndex, newLine);
+            lines.add(closingDelimiterLineIndex, newLine);
         }
-        String lineEnding = originalSource.contains("\r\n") ? "\r\n" : "\n";
-        String rebuilt = String.join(lineEnding, lines);
-        boolean sourceEndsWithNewline = originalSource.endsWith("\n");
-        return sourceEndsWithNewline ? rebuilt + lineEnding : rebuilt;
+        return lines;
     }
 
     private static int closingDelimiterLineIndex(List<String> lines) {
-        for (int index = 1; index < lines.size(); index++) {
-            if (DELIMITER.equals(lines.get(index).strip())) {
-                return index;
-            }
+        if (lines.isEmpty() || !lines.get(0).strip().equals(DELIMITER)) {
+            throw new IllegalStateException("withScalarSet requires a note with frontmatter already present.");
         }
-        throw new IllegalStateException("withScalarSet requires a note with frontmatter already present.");
+        ParsedHeader header = parseHeader(lines);
+        if (header == null) {
+            throw new IllegalStateException("withScalarSet requires a note with frontmatter already present.");
+        }
+        return header.closingDelimiterLineIndex();
+    }
+
+    private static String lineEnding(String source) {
+        if (source.contains("\r\n")) {
+            return "\r\n";
+        }
+        if (source.contains("\r")) {
+            return "\r";
+        }
+        return "\n";
     }
 
     private static int existingKeyLineIndex(List<String> lines, String key, int closingIndex) {
@@ -89,7 +110,8 @@ public final class Frontmatter {
 
     @Override
     public String toString() {
-        return "Frontmatter[frontmatterValues=" + frontmatterValues + ", body=" + body + "]";
+        return "Frontmatter[frontmatterValues=" + frontmatterValues + ", body=" + body
+                + ", originalSource=" + originalSource + "]";
     }
 
     private static boolean startsWithFrontmatterDelimiter(List<String> lines) {

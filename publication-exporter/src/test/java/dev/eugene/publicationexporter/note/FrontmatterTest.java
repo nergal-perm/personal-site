@@ -68,6 +68,27 @@ class FrontmatterTest {
     }
 
     @Test
+    void withScalarSetThrowsOnNoFrontmatterWhenBodyContainsDelimiter() {
+        Frontmatter frontmatter = Frontmatter.parse("Text\n---\nMore");
+
+        IllegalStateException exception = assertThrows(IllegalStateException.class,
+                () -> frontmatter.withScalarSet("workflowStatus", "ready"));
+
+        assertEquals("withScalarSet requires a note with frontmatter already present.", exception.getMessage());
+    }
+
+    @Test
+    void withScalarSetPreservesLoneCrLineEndingsAndBodyExactly() {
+        String source = "---\rpublicId: my-essay\r---\r# My Essay\rPlain prose.\r";
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        String updated = frontmatter.withScalarSet("workflowStatus", "stale");
+
+        assertEquals("---\rpublicId: my-essay\rworkflowStatus: stale\r---\r# My Essay\rPlain prose.\r",
+                updated);
+    }
+
+    @Test
     void parsesStringValue() {
         Frontmatter frontmatter = Frontmatter.parse("""
                 ---
