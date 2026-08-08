@@ -12,6 +12,62 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FrontmatterTest {
 
     @Test
+    void withScalarSetReplacesAnExistingKeyInPlace() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publish: true
+                workflowStatus: ready_for_review
+                publicId: my-essay
+                ---
+                # Body
+
+                Text.""");
+
+        String updated = frontmatter.withScalarSet("workflowStatus", "ready_to_publish");
+
+        assertEquals("""
+                ---
+                publish: true
+                workflowStatus: ready_to_publish
+                publicId: my-essay
+                ---
+                # Body
+
+                Text.""", updated);
+    }
+
+    @Test
+    void withScalarSetInsertsAnAbsentKeyBeforeTheClosingDelimiter() {
+        Frontmatter frontmatter = Frontmatter.parse("""
+                ---
+                publish: true
+                publicId: my-essay
+                ---
+                Body.""");
+
+        String updated = frontmatter.withScalarSet("workflowStatus", "not_prepared");
+
+        assertEquals("""
+                ---
+                publish: true
+                publicId: my-essay
+                workflowStatus: not_prepared
+                ---
+                Body.""", updated);
+    }
+
+    @Test
+    void withScalarSetPreservesLineEndingsAndBodyExactly() {
+        String source = "---\r\npublish: true\r\n---\r\nBody with trailing space \r\n";
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        String updated = frontmatter.withScalarSet("workflowStatus", "stale");
+
+        assertTrue(updated.startsWith("---\r\npublish: true\r\nworkflowStatus: stale\r\n---\r\n"));
+        assertTrue(updated.endsWith("Body with trailing space \r\n"));
+    }
+
+    @Test
     void parsesStringValue() {
         Frontmatter frontmatter = Frontmatter.parse("""
                 ---

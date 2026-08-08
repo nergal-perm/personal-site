@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.note;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -12,24 +13,63 @@ public final class Frontmatter {
 
     private final Map<String, FrontmatterScalar> frontmatterValues;
     private final String body;
+    private final String originalSource;
 
-    private Frontmatter(Map<String, FrontmatterScalar> frontmatterValues, String body) {
+    private Frontmatter(Map<String, FrontmatterScalar> frontmatterValues, String body, String originalSource) {
         this.frontmatterValues = Map.copyOf(frontmatterValues);
         this.body = Objects.requireNonNull(body, "body");
+        this.originalSource = Objects.requireNonNull(originalSource, "originalSource");
     }
 
     public static Frontmatter parse(String noteSource) {
         Objects.requireNonNull(noteSource, "noteSource");
         List<String> lines = noteSource.lines().toList();
         if (!startsWithFrontmatterDelimiter(lines)) {
-            return new Frontmatter(Map.of(), noteSource);
+            return new Frontmatter(Map.of(), noteSource, noteSource);
         }
         ParsedHeader header = parseHeader(lines);
         if (header == null) {
-            return new Frontmatter(Map.of(), noteSource);
+            return new Frontmatter(Map.of(), noteSource, noteSource);
         }
         return new Frontmatter(header.values(),
-                bodyAfter(noteSource, header.closingDelimiterLineIndex()));
+                bodyAfter(noteSource, header.closingDelimiterLineIndex()), noteSource);
+    }
+
+    public String withScalarSet(String key, String value) {
+        Objects.requireNonNull(key, "key");
+        Objects.requireNonNull(value, "value");
+        List<String> lines = new ArrayList<>(originalSource.lines().toList());
+        int closingIndex = closingDelimiterLineIndex(lines);
+        String newLine = key + ": " + value;
+        int existingIndex = existingKeyLineIndex(lines, key, closingIndex);
+        if (existingIndex >= 0) {
+            lines.set(existingIndex, newLine);
+        } else {
+            lines.add(closingIndex, newLine);
+        }
+        String lineEnding = originalSource.contains("\r\n") ? "\r\n" : "\n";
+        String rebuilt = String.join(lineEnding, lines);
+        boolean sourceEndsWithNewline = originalSource.endsWith("\n");
+        return sourceEndsWithNewline ? rebuilt + lineEnding : rebuilt;
+    }
+
+    private static int closingDelimiterLineIndex(List<String> lines) {
+        for (int index = 1; index < lines.size(); index++) {
+            if (DELIMITER.equals(lines.get(index).strip())) {
+                return index;
+            }
+        }
+        throw new IllegalStateException("withScalarSet requires a note with frontmatter already present.");
+    }
+
+    private static int existingKeyLineIndex(List<String> lines, String key, int closingIndex) {
+        for (int index = 1; index < closingIndex; index++) {
+            int colon = lines.get(index).indexOf(':');
+            if (colon >= 0 && lines.get(index).substring(0, colon).strip().equals(key)) {
+                return index;
+            }
+        }
+        return -1;
     }
 
     public Optional<String> string(String key) {
