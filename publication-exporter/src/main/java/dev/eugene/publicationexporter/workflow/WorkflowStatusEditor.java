@@ -2,11 +2,16 @@ package dev.eugene.publicationexporter.workflow;
 
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
+import java.nio.file.Path;
 import java.util.Objects;
 
 public interface WorkflowStatusEditor {
 
     Result write(VaultRelativePath notePath, String expectedSourceHash, String newValue);
+
+    static WorkflowStatusEditor create(Path vaultRoot) {
+        return new FilesystemWorkflowStatusEditor(vaultRoot);
+    }
 
     static WorkflowStatusEditor createNull() {
         return new NullWorkflowStatusEditor();
