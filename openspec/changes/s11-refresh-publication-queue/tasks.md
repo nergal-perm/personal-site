@@ -1115,7 +1115,7 @@ git commit -m "fix(inspect): report ready_to_publish for an approved snapshot wi
 `grep -rn "new PrepareHandler(" publication-exporter/src` first to find every call site before editing the
 constructor.
 
-- [ ] 7.1 **Write failing tests**: success writes `ready_for_review`, translation failure writes
+- [x] 7.1 **Write failing tests**: success writes `ready_for_review`, translation failure writes
   `translation_failed`, staleness writes `stale`; a write failure (editor blocks) does not change what
   `prepare` itself returns.
 
@@ -1155,12 +1155,12 @@ line 66; check whether a failure-result overload already exists or needs adding 
 test-only-scoped addition to `NullTranslationWorker` — if it doesn't exist, add
 `TranslationWorker.createNull(TranslationResult result)` mirroring the existing factory's shape).
 
-- [ ] 7.2 **Run to confirm compilation failure** (`PrepareHandler` has no four-argument constructor yet)
+- [x] 7.2 **Run to confirm compilation failure** (`PrepareHandler` has no four-argument constructor yet)
 
 Run: `cd publication-exporter && mvn -q -Dtest=PrepareHandlerTest test`
 Expected: compilation FAILURE.
 
-- [ ] 7.3 **Add the constructor parameter and three additive write call sites**
+- [x] 7.3 **Add the constructor parameter and three additive write call sites**
 
 ```java
 private final WorkflowStatusEditor workflowStatusEditor;
@@ -1224,7 +1224,7 @@ returns; it is best-effort bookkeeping for later `inspect`/`refresh` calls, not 
 Add `import dev.eugene.publicationexporter.workflow.WorkflowState;` and
 `import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;`.
 
-- [ ] 7.4 **Update `PrepareCommand`'s wiring**
+- [x] 7.4 **Update `PrepareCommand`'s wiring**
 
 ```java
 @Override
@@ -1245,12 +1245,12 @@ public Integer call() throws Exception {
 
 Add `import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;`.
 
-- [ ] 7.5 **Update every remaining `new PrepareHandler(...)` call site** found by the Task 7 preamble `grep`
+- [x] 7.5 **Update every remaining `new PrepareHandler(...)` call site** found by the Task 7 preamble `grep`
   (there is at least one more in `PrepareHandlerTest.java`'s other existing test methods, and possibly
   `SchemaConformanceTest.java` or `PrepareCliAcceptanceTest.java`) — pass `WorkflowStatusEditor.createNull()` (or
   a seeded `NullWorkflowStatusEditor`, matching whatever the test needs to assert) to each.
 
-- [ ] 7.6 **Run to confirm the new tests pass and nothing else regressed**
+- [x] 7.6 **Run to confirm the new tests pass and nothing else regressed**
 
 Run: `cd publication-exporter && mvn -q -Dtest=PrepareHandlerTest,PrepareCliAcceptanceTest test`
 Expected: PASS.
@@ -1258,7 +1258,7 @@ Expected: PASS.
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 7.7 **Commit**
+- [x] 7.7 **Commit**
 
 ```bash
 cd publication-exporter
