@@ -966,7 +966,7 @@ git commit -m "feat(vault): add VaultReader.listPublishCandidates as a cheap pub
 - Produces: unchanged public API (`InspectPublicationHandler(CandidateWorkspace, ApprovedSnapshotWorkspace)`,
   `inspect(VaultRelativePath, VaultReader)`) — only internal classification changes.
 
-- [ ] 6.1 **Write the failing test for the previously-mishandled case**
+- [x] 6.1 **Write the failing test for the previously-mishandled case**
 
 ```java
 @Test
@@ -995,12 +995,12 @@ void approvedSnapshotWithNoCandidateReportsReadyToPublishNotNotPrepared() {
 Reuse the existing `VALID_ESSAY` constant already in this test file (its `publicId` must be `my-essay` to match
 `identity` above — confirm before running, adjust the literal if the existing constant uses a different id).
 
-- [ ] 6.2 **Run to confirm it fails** — current code returns `not_prepared` for this case.
+- [x] 6.2 **Run to confirm it fails** — current code returns `not_prepared` for this case.
 
 Run: `cd publication-exporter && mvn -q -Dtest=InspectPublicationHandlerTest test`
 Expected: FAILURE — `expected: <ready_to_publish> but was: <not_prepared>`.
 
-- [ ] 6.3 **Wire the classifier into `inspect(...)`**
+- [x] 6.3 **Wire the classifier into `inspect(...)`**
 
 ```java
 private final WorkflowStateClassifier classifier = new WorkflowStateClassifier();
@@ -1061,14 +1061,14 @@ BRG-04's first scenario ("neither is collapsed into `ready_to_publish`"), which 
 required, since the observable behavior is already correct without it — if you do wire it in for consistency,
 confirm `readyForReviewResponse`'s existing tests still pass unchanged.
 
-- [ ] 6.4 **Run to confirm the new test passes and nothing regressed**
+- [x] 6.4 **Run to confirm the new test passes and nothing regressed**
 
 Run: `cd publication-exporter && mvn -q -Dtest=InspectPublicationHandlerTest test`
 Expected: PASS, all cases including the pre-existing "no publication work has started" (neither candidate nor
 approved present) case, which must still return `not_prepared` — `classifier.classify(false, false,
 Optional.empty())` returns `NOT_PREPARED` per Task 2, so this should hold without further changes; verify it does.
 
-- [ ] 6.5 **Add a `SchemaConformanceTest` case for the new status value**
+- [x] 6.5 **Add a `SchemaConformanceTest` case for the new status value**
 
 ```java
 @Test
@@ -1082,12 +1082,12 @@ void readyToPublishInspectionResponseConformsToSchemaV2() throws Exception {
 }
 ```
 
-- [ ] 6.6 **Run the full suite**
+- [x] 6.6 **Run the full suite**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 6.7 **Commit**
+- [x] 6.7 **Commit**
 
 ```bash
 cd publication-exporter
