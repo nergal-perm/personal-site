@@ -16,7 +16,7 @@ import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.prepare.RussianDiff;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
-
+import dev.eugene.publicationexporter.workflow.WorkflowStateClassifier;
 import java.io.UncheckedIOException;
 import java.util.Objects;
 import java.util.Optional;
@@ -24,13 +24,13 @@ import java.util.Optional;
 public final class InspectPublicationHandler {
 
     private static final String COMMAND = "inspect-publication";
-    private static final String NOT_PREPARED = "not_prepared";
     private static final String READY_FOR_REVIEW = "ready_for_review";
     private static final String ABSENT = "absent";
     private static final String READY = "ready";
 
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
+    private final WorkflowStateClassifier classifier = new WorkflowStateClassifier();
 
     public InspectPublicationHandler(
             CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
@@ -68,7 +68,7 @@ public final class InspectPublicationHandler {
                 return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
             }
         }
-        return notPreparedResponse(intake.identity());
+        return notPreparedOrReadyToPublishResponse(intake.identity());
     }
 
     private static BridgeResponse candidateLookupFailure(String message) {
@@ -107,9 +107,19 @@ public final class InspectPublicationHandler {
                 candidateSnapshot.ruDescription(), candidateSnapshot.enDescription(), diff);
     }
 
-    private BridgeResponse notPreparedResponse(PublicationIdentity identity) {
+    private BridgeResponse notPreparedOrReadyToPublishResponse(PublicationIdentity identity) {
+        boolean approvedPresent;
+        try {
+            approvedPresent = approvedSnapshotWorkspace.read(identity).isPresent();
+        } catch (UncheckedIOException failure) {
+            return approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        }
+        String status = classifier.classify(false, approvedPresent, Optional.empty());
+        String approvedState = approvedPresent ? READY : ABSENT;
         return BridgeResponse.essayInspected(
-                COMMAND, NOT_PREPARED, identity,
-                ABSENT, ABSENT, ABSENT, ABSENT, null);
+                COMMAND, status, identity,
+                ABSENT, approvedState, ABSENT, ABSENT, null);
     }
 }

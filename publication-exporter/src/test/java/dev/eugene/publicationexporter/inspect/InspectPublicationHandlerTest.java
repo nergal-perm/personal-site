@@ -108,6 +108,28 @@ class InspectPublicationHandlerTest {
     }
 
     @Test
+    void approvedSnapshotWithNoCandidateReportsReadyToPublishNotNotPrepared() {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, "RU body", "EN body", "RU title", "EN title",
+                "RU description.", "EN description.", ReferenceMap.empty(identity,
+                        ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"),
+                        ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("RU description."), ContentHash.sha256Hex("EN description.")));
+        InspectPublicationHandler handler =
+                new InspectPublicationHandler(CandidateWorkspace.createNull(), approved);
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY));
+
+        BridgeResponse response = handler.inspect(VaultRelativePath.of("blog/my-essay.md"), vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("ready_to_publish", response.status());
+        assertEquals("absent", response.candidateState());
+        assertEquals("ready", response.approvedSnapshotState());
+    }
+
+    @Test
     void essayMissingSourceIdIsBlocked() {
         String essayWithoutSourceId = """
                 ---

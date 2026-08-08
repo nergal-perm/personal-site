@@ -12,6 +12,7 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
+import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.prepare.RussianDiff;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -62,6 +63,16 @@ class SchemaConformanceTest {
 
         assertTrue(response.ok());
         assertEquals("not_prepared", response.status());
+
+        assertConformsToSchemaV2(response);
+    }
+
+    @Test
+    void readyToPublishInspectionResponseConformsToSchemaV2() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        BridgeResponse response = BridgeResponse.essayInspected(
+                "inspect-publication", "ready_to_publish", identity,
+                "absent", "ready", "absent", "absent", null);
 
         assertConformsToSchemaV2(response);
     }
