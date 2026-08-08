@@ -5,15 +5,30 @@
   "type": "object",
   "required": ["schemaVersion", "command", "ok", "status", "diagnostics", "workspaceHealth"],
   "additionalProperties": true,
-  "if": {
-    "type": "object",
-    "required": ["command", "status"],
-    "properties": {
-      "command": { "const": "inspect-publication" },
-      "status": { "const": "ready_for_review" }
+  "allOf": [
+    {
+      "if": {
+        "type": "object",
+        "required": ["command", "status"],
+        "properties": {
+          "command": { "const": "inspect-publication" },
+          "status": { "const": "ready_for_review" }
+        }
+      },
+      "then": { "type": "object", "required": ["reviewPlan"] }
+    },
+    {
+      "if": {
+        "type": "object",
+        "required": ["command"],
+        "properties": { "command": { "const": "refresh-publication-queue" } }
+      },
+      "then": {
+        "type": "object",
+        "required": ["updatedCount", "unchangedCount", "uncertainCount"]
+      }
     }
-  },
-  "then": { "type": "object", "required": ["reviewPlan"] },
+  ],
   "properties": {
     "schemaVersion": { "const": 2 },
     "command": {
@@ -44,7 +59,10 @@
     "approvedSnapshotState": { "type": "string" },
     "semanticReferenceState": { "type": "string" },
     "releaseState": { "type": "string" },
-    "reviewPlan": { "$ref": "#/definitions/reviewPlan" }
+    "reviewPlan": { "$ref": "#/definitions/reviewPlan" },
+    "updatedCount": { "type": "integer" },
+    "unchangedCount": { "type": "integer" },
+    "uncertainCount": { "type": "integer" }
   },
   "definitions": {
     "diagnostic": {

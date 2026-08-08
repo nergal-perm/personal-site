@@ -21,6 +21,9 @@ public final class BridgeResponse {
     private final String semanticReferenceState;
     private final String releaseState;
     private final ReviewPlan reviewPlan;
+    private final Integer updatedCount;
+    private final Integer unchangedCount;
+    private final Integer uncertainCount;
 
     private BridgeResponse(
             int schemaVersion,
@@ -34,7 +37,10 @@ public final class BridgeResponse {
             String approvedSnapshotState,
             String semanticReferenceState,
             String releaseState,
-            ReviewPlan reviewPlan) {
+            ReviewPlan reviewPlan,
+            Integer updatedCount,
+            Integer unchangedCount,
+            Integer uncertainCount) {
         this.schemaVersion = schemaVersion;
         this.command = Objects.requireNonNull(command, "command");
         this.ok = ok;
@@ -47,6 +53,9 @@ public final class BridgeResponse {
         this.semanticReferenceState = semanticReferenceState;
         this.releaseState = releaseState;
         this.reviewPlan = reviewPlan;
+        this.updatedCount = updatedCount;
+        this.unchangedCount = unchangedCount;
+        this.uncertainCount = uncertainCount;
     }
 
     public static BridgeResponse blocked(String command, Diagnostic diagnostic) {
@@ -55,13 +64,13 @@ public final class BridgeResponse {
 
     public static BridgeResponse blocked(String command, List<Diagnostic> diagnostics) {
         return new BridgeResponse(2, command, false, "metadata_blocked",
-                List.copyOf(diagnostics), List.of(), null, null, null, null, null, null);
+                List.copyOf(diagnostics), List.of(), null, null, null, null, null, null, null, null, null);
     }
 
     public static BridgeResponse prepared(String command, PublicationIdentity identity) {
         return new BridgeResponse(2, command, true, "ready_for_review",
                 List.of(), List.of(), Objects.requireNonNull(identity, "identity"),
-                null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 
     public static BridgeResponse translationFailed(String command, Diagnostic diagnostic) {
@@ -70,13 +79,13 @@ public final class BridgeResponse {
 
     public static BridgeResponse translationFailed(String command, List<Diagnostic> diagnostics) {
         return new BridgeResponse(2, command, false, "translation_failed",
-                List.copyOf(diagnostics), List.of(), null, null, null, null, null, null);
+                List.copyOf(diagnostics), List.of(), null, null, null, null, null, null, null, null, null);
     }
 
     public static BridgeResponse approved(String command, PublicationIdentity identity) {
         return new BridgeResponse(2, command, true, "ready_to_publish",
                 List.of(), List.of(), Objects.requireNonNull(identity, "identity"),
-                null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 
     public static BridgeResponse stale(String command, Diagnostic diagnostic) {
@@ -85,7 +94,13 @@ public final class BridgeResponse {
 
     public static BridgeResponse stale(String command, List<Diagnostic> diagnostics) {
         return new BridgeResponse(2, command, false, "stale",
-                List.copyOf(diagnostics), List.of(), null, null, null, null, null, null);
+                List.copyOf(diagnostics), List.of(), null, null, null, null, null, null, null, null, null);
+    }
+
+    public static BridgeResponse queueRefreshed(
+            String command, int updatedCount, int unchangedCount, int uncertainCount) {
+        return new BridgeResponse(2, command, true, "queue_refreshed", List.of(), List.of(),
+                null, null, null, null, null, null, updatedCount, unchangedCount, uncertainCount);
     }
 
     public static BridgeResponse essayInspected(
@@ -103,7 +118,7 @@ public final class BridgeResponse {
                 Objects.requireNonNull(approvedSnapshotState, "approvedSnapshotState"),
                 Objects.requireNonNull(semanticReferenceState, "semanticReferenceState"),
                 Objects.requireNonNull(releaseState, "releaseState"),
-                reviewPlan);
+                reviewPlan, null, null, null);
     }
 
     @JsonProperty("schemaVersion")
@@ -166,6 +181,21 @@ public final class BridgeResponse {
         return reviewPlan;
     }
 
+    @JsonProperty("updatedCount")
+    public Integer updatedCount() {
+        return updatedCount;
+    }
+
+    @JsonProperty("unchangedCount")
+    public Integer unchangedCount() {
+        return unchangedCount;
+    }
+
+    @JsonProperty("uncertainCount")
+    public Integer uncertainCount() {
+        return uncertainCount;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -185,13 +215,17 @@ public final class BridgeResponse {
                 && Objects.equals(approvedSnapshotState, that.approvedSnapshotState)
                 && Objects.equals(semanticReferenceState, that.semanticReferenceState)
                 && Objects.equals(releaseState, that.releaseState)
-                && Objects.equals(reviewPlan, that.reviewPlan);
+                && Objects.equals(reviewPlan, that.reviewPlan)
+                && Objects.equals(updatedCount, that.updatedCount)
+                && Objects.equals(unchangedCount, that.unchangedCount)
+                && Objects.equals(uncertainCount, that.uncertainCount);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(schemaVersion, command, ok, status, diagnostics, workspaceHealth,
-                identity, candidateState, approvedSnapshotState, semanticReferenceState, releaseState, reviewPlan);
+                identity, candidateState, approvedSnapshotState, semanticReferenceState, releaseState, reviewPlan,
+                updatedCount, unchangedCount, uncertainCount);
     }
 
     @Override
@@ -201,6 +235,7 @@ public final class BridgeResponse {
                 + ", workspaceHealth=" + workspaceHealth + ", identity=" + identity
                 + ", candidateState=" + candidateState + ", approvedSnapshotState=" + approvedSnapshotState
                 + ", semanticReferenceState=" + semanticReferenceState + ", releaseState=" + releaseState
-                + ", reviewPlan=" + reviewPlan + "]";
+                + ", reviewPlan=" + reviewPlan + ", updatedCount=" + updatedCount
+                + ", unchangedCount=" + unchangedCount + ", uncertainCount=" + uncertainCount + "]";
     }
 }

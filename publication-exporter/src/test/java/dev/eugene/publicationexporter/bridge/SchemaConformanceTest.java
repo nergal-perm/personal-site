@@ -173,6 +173,21 @@ class SchemaConformanceTest {
         assertConformsToSchemaV2(response);
     }
 
+    @Test
+    void queueRefreshedResponseConformsToSchemaV2() throws Exception {
+        BridgeResponse response = BridgeResponse.queueRefreshed("refresh-publication-queue", 2, 5, 1);
+
+        assertConformsToSchemaV2(response);
+    }
+
+    @Test
+    void queueRefreshedResponseWithoutCountsDoesNotConformToSchemaV2() throws Exception {
+        ObjectNode response = responseNode(BridgeResponse.queueRefreshed("refresh-publication-queue", 2, 5, 1));
+        response.remove("updatedCount");
+
+        assertDoesNotConformToSchemaV2(response);
+    }
+
     private BridgeResponse readyForReviewResponse() {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         CandidatePaths candidatePaths = CandidatePaths.of(
