@@ -1432,7 +1432,7 @@ refresh-publication-queue and existing fixtures are unaffected."
   `WorkflowStatusEditor` (Task 3/4), `NoteIntake` (existing, unmodified), `BridgeResponse.queueRefreshed(...)`
   (Task 8).
 
-- [ ] 9.1 **Write the failing acceptance test first**, an in-memory small vault covering the decisive and
+- [x] 9.1 **Write the failing acceptance test first**, an in-memory small vault covering the decisive and
   uncertain cases the functional design pass specified (not `translating` — scope-pinned, no fixture for it):
 
 ```java
@@ -1539,12 +1539,12 @@ response.uncertainCount())` above. If you choose differently, update this commen
 and record the choice in your task completion report — this is a genuine judgment call the design docs left
 implicit.
 
-- [ ] 9.2 **Run to confirm compilation failure**
+- [x] 9.2 **Run to confirm compilation failure**
 
 Run: `cd publication-exporter && mvn -q -Dtest=RefreshPublicationQueueHandlerTest test`
 Expected: compilation FAILURE.
 
-- [ ] 9.3 **Implement `RefreshPublicationQueueHandler`**
+- [x] 9.3 **Implement `RefreshPublicationQueueHandler`**
 
 ```java
 package dev.eugene.publicationexporter.refresh;
@@ -1623,7 +1623,7 @@ public final class RefreshPublicationQueueHandler {
 }
 ```
 
-- [ ] 9.4 **Run to confirm the acceptance test passes**, iterating on the fixture's seeded values from step 9.1
+- [x] 9.4 **Run to confirm the acceptance test passes**, iterating on the fixture's seeded values from step 9.1
   until the assertions and the implementation agree (they must meet in the middle honestly — do not change the
   production `classify`/`reconcileOne` logic just to make an arbitrary fixture number match; if a count seems
   wrong, re-derive it by hand from `design.md` D2's classifier rules first).
@@ -1631,7 +1631,7 @@ public final class RefreshPublicationQueueHandler {
 Run: `cd publication-exporter && mvn -q -Dtest=RefreshPublicationQueueHandlerTest test`
 Expected: PASS.
 
-- [ ] 9.5 **Write the CLI wiring** — read `PrepareCommand.java` (already fully quoted in Task 7.4) and
+- [x] 9.5 **Write the CLI wiring** — read `PrepareCommand.java` (already fully quoted in Task 7.4) and
   `MarkReviewedCommand.java` for the exact option-declaration style first:
 
 ```java
@@ -1680,7 +1680,7 @@ public final class RefreshPublicationQueueCommand implements Callable<Integer> {
 
 No `--note` option — per BRG-01's refresh clause, this command never accepts a current-note path.
 
-- [ ] 9.6 **Register the subcommand in `Main.java`**
+- [x] 9.6 **Register the subcommand in `Main.java`**
 
 ```java
 @Command(name = "publication-exporter", subcommands = {
@@ -1688,7 +1688,7 @@ No `--note` option — per BRG-01's refresh clause, this command never accepts a
         BuildFromReviewCommand.class, InstallToSiteCommand.class, RefreshPublicationQueueCommand.class })
 ```
 
-- [ ] 9.7 **Write the failing `RefreshPublicationQueueCliAcceptanceTest`**, reading
+- [x] 9.7 **Write the failing `RefreshPublicationQueueCliAcceptanceTest`**, reading
   `PrepareCliAcceptanceTest.java` first to match its exact harness style (temp vault/review directory setup,
   process/CLI invocation style — confirm whether existing CLI acceptance tests invoke `Main` in-process or via a
   spawned process, and match that exactly, do not invent a new harness style):
@@ -1702,19 +1702,19 @@ void refreshReportsQueueRefreshedWithZeroCountsForAnEmptyVault() throws Exceptio
 }
 ```
 
-- [ ] 9.8 **Run to confirm it fails, then run everything to confirm it passes** once the CLI is wired
+- [x] 9.8 **Run to confirm it fails, then run everything to confirm it passes** once the CLI is wired
   (Tasks 9.5-9.6 should already make this pass without further production code changes — if it doesn't,
   the gap is in the acceptance test harness matching, not new handler logic).
 
 Run: `cd publication-exporter && mvn -q -Dtest=RefreshPublicationQueueCliAcceptanceTest test`
 Expected: PASS.
 
-- [ ] 9.9 **Run the full suite**
+- [x] 9.9 **Run the full suite**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 9.10 **Commit**
+- [x] 9.10 **Commit**
 
 ```bash
 cd publication-exporter
