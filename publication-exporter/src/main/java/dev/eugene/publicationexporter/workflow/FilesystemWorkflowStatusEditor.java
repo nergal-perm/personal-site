@@ -28,25 +28,46 @@ final class FilesystemWorkflowStatusEditor implements WorkflowStatusEditor {
 
     @Override
     public Result write(VaultRelativePath notePath, String expectedSourceHash, String newValue) {
+        requireWriteArguments(notePath, expectedSourceHash, newValue);
+        Path target = requireNote(notePath);
+        String currentSource = readSource(target);
+        if (!matchesExpectedSource(currentSource, expectedSourceHash)) {
+            return Result.blocked("Source changed since it was validated.");
+        }
+        String updatedSource = updateWorkflowStatus(currentSource, newValue);
+        atomicReplace(target, updatedSource);
+        return Result.written();
+    }
+
+    private static void requireWriteArguments(
+            VaultRelativePath notePath, String expectedSourceHash, String newValue) {
         Objects.requireNonNull(notePath, "notePath");
         Objects.requireNonNull(expectedSourceHash, "expectedSourceHash");
         Objects.requireNonNull(newValue, "newValue");
-        Path real = resolveWithinVault(notePath)
+    }
+
+    private Path requireNote(VaultRelativePath notePath) {
+        return resolveWithinVault(notePath)
                 .orElseThrow(() -> new IllegalStateException("Note not found: " + notePath.value()));
-        String current = readUtf8(real);
-        if (!ContentHash.sha256Hex(current).equals(expectedSourceHash)) {
-            return Result.blocked("Source changed since it was validated.");
-        }
-        String updated = Frontmatter.parse(current).withScalarSet(WORKFLOW_STATUS_KEY, newValue);
-        atomicReplace(real, updated);
-        return Result.written();
+    }
+
+    private static boolean matchesExpectedSource(String source, String expectedSourceHash) {
+        return ContentHash.sha256Hex(source).equals(expectedSourceHash);
+    }
+
+    private static String updateWorkflowStatus(String source, String newValue) {
+        return Frontmatter.parse(source).withScalarSet(WORKFLOW_STATUS_KEY, newValue);
+    }
+
+    private static String readSource(Path file) {
+        return readUtf8(file);
     }
 
     private void atomicReplace(Path target, String newContent) {
         Path temp = target.resolveSibling(target.getFileName() + ".workflow-" + UUID.randomUUID());
         try {
+            createTempWithSourcePermissions(target, temp);
             Files.writeString(temp, newContent, StandardCharsets.UTF_8);
-            copyPosixPermissionsIfSupported(target, temp);
             Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (IOException error) {
             deleteQuietly(temp);
@@ -54,10 +75,14 @@ final class FilesystemWorkflowStatusEditor implements WorkflowStatusEditor {
         }
     }
 
-    private static void copyPosixPermissionsIfSupported(Path source, Path temp) throws IOException {
+    private static void createTempWithSourcePermissions(Path source, Path temp) throws IOException {
         PosixFileAttributeView view = Files.getFileAttributeView(source, PosixFileAttributeView.class);
         if (view != null) {
-            Files.setPosixFilePermissions(temp, view.readAttributes().permissions());
+            Files.createFile(temp,
+                    java.nio.file.attribute.PosixFilePermissions.asFileAttribute(
+                            view.readAttributes().permissions()));
+        } else {
+            Files.createFile(temp);
         }
     }
 
