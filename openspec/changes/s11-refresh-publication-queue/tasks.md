@@ -560,7 +560,7 @@ git commit -m "feat(workflow): add WorkflowStatusEditor port and its in-memory N
   permission preservation, atomicity).
 - Consumes: `Frontmatter.withScalarSet` (Task 1), `ContentHash.sha256Hex` (existing).
 
-- [ ] 4.1 **Write failing tests**: hash-match writes and updates only the declared key; hash-mismatch blocks
+- [x] 4.1 **Write failing tests**: hash-match writes and updates only the declared key; hash-mismatch blocks
   without touching the file; POSIX permissions are preserved; every other byte (including CRLF line endings and
   a body with unicode) is preserved.
 
@@ -637,12 +637,12 @@ class FilesystemWorkflowStatusEditorTest {
 }
 ```
 
-- [ ] 4.2 **Run to confirm compilation failure**
+- [x] 4.2 **Run to confirm compilation failure**
 
 Run: `cd publication-exporter && mvn -q -Dtest=FilesystemWorkflowStatusEditorTest test`
 Expected: compilation FAILURE.
 
-- [ ] 4.3 **Implement `FilesystemWorkflowStatusEditor`**
+- [x] 4.3 **Implement `FilesystemWorkflowStatusEditor`**
 
 ```java
 package dev.eugene.publicationexporter.workflow;
@@ -763,7 +763,7 @@ codebase implements this locally rather than sharing a utility; this one does th
 ATOMIC_MOVE, REPLACE_EXISTING)` requires the temp file and target to be on the same filesystem, guaranteed here
 since the temp file is created as a sibling of the target (`target.resolveSibling(...)`).
 
-- [ ] 4.3b **Add the `create(Path vaultRoot)` static factory back to the `WorkflowStatusEditor` interface**
+- [x] 4.3b **Add the `create(Path vaultRoot)` static factory back to the `WorkflowStatusEditor` interface**
 
 Task 3 deliberately shipped without this factory — it would have referenced `FilesystemWorkflowStatusEditor`
 before that class existed, which doesn't compile. Now that this task has created it, add the factory to
@@ -791,19 +791,19 @@ public interface WorkflowStatusEditor {
 Add the `import java.nio.file.Path;` back to `WorkflowStatusEditor.java` (Task 3 removed it since it was
 unused without `create`).
 
-- [ ] 4.4 **Run to confirm the tests pass**
+- [x] 4.4 **Run to confirm the tests pass**
 
 Run: `cd publication-exporter && mvn -q -Dtest=FilesystemWorkflowStatusEditorTest test`
 Expected: PASS. (The POSIX-permissions test is a no-op assertion-skip concern only on non-POSIX filesystems,
 which this project's existing CI/dev environment is not — matches the assumption other filesystem tests in this
 codebase already make.)
 
-- [ ] 4.5 **Run the full suite**
+- [x] 4.5 **Run the full suite**
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 4.6 **Commit**
+- [x] 4.6 **Commit**
 
 ```bash
 cd publication-exporter
