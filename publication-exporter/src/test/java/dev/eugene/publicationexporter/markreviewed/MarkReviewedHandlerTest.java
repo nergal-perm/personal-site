@@ -19,6 +19,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
@@ -330,6 +331,11 @@ class MarkReviewedHandlerTest {
                     secondRequestAdmittedOldSource.countDown();
                 }
                 return admitted;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
             }
         };
         NullApprovedSnapshotWorkspace approved = new NullApprovedSnapshotWorkspace();

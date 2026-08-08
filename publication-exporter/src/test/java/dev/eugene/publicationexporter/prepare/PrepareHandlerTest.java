@@ -22,6 +22,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -112,6 +113,11 @@ class PrepareHandlerTest {
                     fail("Prepare must not read the unrelated invalid note.");
                 }
                 return validNoteReader.readSource(notePath);
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
             }
         };
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
@@ -308,6 +314,11 @@ class PrepareHandlerTest {
             public String readSource(VaultRelativePath notePath) {
                 return fail("Prepare must not read a non-Markdown path.");
             }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
+            }
         };
         PrepareHandler handler = new PrepareHandler(
                 TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
@@ -380,6 +391,11 @@ class PrepareHandlerTest {
             @Override
             public String readSource(VaultRelativePath notePath) {
                 return source.get();
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
             }
         };
         CountDownLatch firstTranslationStarted = new CountDownLatch(1);
@@ -533,6 +549,11 @@ class PrepareHandlerTest {
             @Override
             public String readSource(VaultRelativePath notePath) {
                 throw failure;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
             }
         };
     }

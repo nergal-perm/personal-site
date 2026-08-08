@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.vault;
 
+import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 
 public interface VaultReader {
@@ -8,11 +10,9 @@ public interface VaultReader {
 
     String readSource(VaultRelativePath notePath);
 
-    default java.util.List<VaultRelativePath> listPublishCandidates() {
-        return java.util.List.of();
-    }
+    List<VaultRelativePath> listPublishCandidates();
 
-    static VaultReader create(java.nio.file.Path vaultRoot) {
+    static VaultReader create(Path vaultRoot) {
         return new FilesystemVaultReader(vaultRoot);
     }
 

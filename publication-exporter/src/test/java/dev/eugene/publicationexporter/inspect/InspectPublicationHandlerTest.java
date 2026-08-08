@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Optional;
@@ -326,6 +327,11 @@ class InspectPublicationHandlerTest {
             @Override
             public String readSource(VaultRelativePath notePath) {
                 throw failure;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
             }
         };
     }
