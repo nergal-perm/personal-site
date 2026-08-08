@@ -91,4 +91,18 @@ class NoteIntakeTest {
         assertEquals("My Essay", result.title());
         assertEquals("A valid description.", result.description());
     }
+
+    @Test
+    void acceptedIntakeExposesArbitraryFrontmatterScalarsFromItsParsedSource() {
+        String essayWithWorkflowStatus = VALID_ESSAY.replace(
+                "description: A valid description.",
+                "description: A valid description.\nworkflowStatus: ready_for_review");
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        NoteIntake.Result result = intake.admit(
+                path, VaultReader.createNull(Map.of(path, essayWithWorkflowStatus)));
+
+        assertTrue(result.accepted());
+        assertEquals("ready_for_review", result.frontmatterString("workflowStatus").orElseThrow());
+        assertTrue(result.frontmatterString("missingScalar").isEmpty());
+    }
 }

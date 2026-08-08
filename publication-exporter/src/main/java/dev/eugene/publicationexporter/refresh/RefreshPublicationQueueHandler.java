@@ -1,17 +1,20 @@
 package dev.eugene.publicationexporter.refresh;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
+import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
-import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.intake.NoteIntake;
-import dev.eugene.publicationexporter.note.Frontmatter;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import dev.eugene.publicationexporter.workflow.WorkflowStateClassifier;
 import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
-import java.util.List;
+import java.io.UncheckedIOException;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -51,21 +54,45 @@ public final class RefreshPublicationQueueHandler {
     }
 
     private ReconcileOutcome reconcileOne(VaultRelativePath notePath, VaultReader vaultReader) {
-        String source = vaultReader.readSource(notePath);
         NoteIntake.Result intake = new NoteIntake().admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return ReconcileOutcome.EXCLUDED;
         }
-        boolean candidatePresent = candidateWorkspace.find(intake.identity()).isPresent();
-        boolean approvedPresent = approvedSnapshotWorkspace.read(intake.identity()).isPresent();
-        Optional<String> persisted = Frontmatter.parse(source).string(WORKFLOW_STATUS_KEY);
+        Optional<CandidatePaths> candidatePaths;
+        Optional<CandidateSnapshot> candidateSnapshot;
+        try {
+            candidatePaths = candidateWorkspace.find(intake.identity());
+            candidateSnapshot = candidatePaths.isPresent()
+                    ? candidateWorkspace.read(intake.identity())
+                    : Optional.empty();
+        } catch (UncheckedIOException failure) {
+            return ReconcileOutcome.UNCERTAIN;
+        } catch (CandidateWorkspaceConfinementException failure) {
+            return ReconcileOutcome.UNCERTAIN;
+        }
+        boolean candidatePresent = candidatePaths.isPresent() && candidateSnapshot.isPresent();
+        boolean approvedPresent;
+        try {
+            approvedPresent = approvedSnapshotWorkspace.read(intake.identity()).isPresent();
+        } catch (UncheckedIOException failure) {
+            return ReconcileOutcome.UNCERTAIN;
+        } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
+            return ReconcileOutcome.UNCERTAIN;
+        } catch (ApprovedSnapshotWorkspaceStateException failure) {
+            return ReconcileOutcome.UNCERTAIN;
+        }
+        Optional<String> persisted = intake.frontmatterString(WORKFLOW_STATUS_KEY);
         String classified = classifier.classify(candidatePresent, approvedPresent, persisted);
         if (persisted.isPresent() && persisted.get().equals(classified)) {
             return ReconcileOutcome.UNCHANGED;
         }
-        String sourceHash = ContentHash.sha256Hex(source);
-        WorkflowStatusEditor.Result write = workflowStatusEditor.write(notePath, sourceHash, classified);
-        return write.isWritten() ? ReconcileOutcome.UPDATED : ReconcileOutcome.UNCERTAIN;
+        try {
+            WorkflowStatusEditor.Result write =
+                    workflowStatusEditor.write(notePath, intake.sourceHash(), classified);
+            return write.isWritten() ? ReconcileOutcome.UPDATED : ReconcileOutcome.UNCERTAIN;
+        } catch (UncheckedIOException failure) {
+            return ReconcileOutcome.UNCERTAIN;
+        }
     }
 
     private enum ReconcileOutcome {

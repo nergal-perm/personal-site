@@ -12,6 +12,7 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class NoteIntake {
 
@@ -94,6 +95,11 @@ public final class NoteIntake {
         /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String sourceHash() {
             return sourceHash;
+        }
+
+        /** Only meaningful when {@link #accepted()} is {@code true}. */
+        public Optional<String> frontmatterString(String key) {
+            return frontmatter.string(Objects.requireNonNull(key, "key"));
         }
 
         /** Only meaningful when {@link #accepted()} is {@code true}. */
