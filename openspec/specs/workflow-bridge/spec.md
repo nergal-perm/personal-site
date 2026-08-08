@@ -72,6 +72,12 @@ Inspection responses SHALL report candidate, approved-snapshot, semantic-referen
 - **THEN** candidate, approved-snapshot, semantic-reference, and release state are each reported as absent, independently of one another
 - **AND** the response is `ok: true` with a workflow status that reflects "admitted, nothing prepared yet" rather than collapsing to `metadata_blocked`
 
+#### Scenario: Approved snapshot exists with no pending candidate
+- **GIVEN** an admitted note with an installed approved snapshot and no candidate present
+- **WHEN** inspection runs
+- **THEN** candidate state is absent and approved-snapshot state is ready
+- **AND** the response's overall workflow status is `ready_to_publish`, not `not_prepared`
+
 ### Requirement: BRG-05 Use the six-state workflow vocabulary consistently
 
 Note and queue observations SHALL classify the operational workflow as exactly one of `metadata_blocked`, `translating`, `ready_for_review`, `ready_to_publish`, `translation_failed`, or `stale`, without treating diagnostics as extra states.
