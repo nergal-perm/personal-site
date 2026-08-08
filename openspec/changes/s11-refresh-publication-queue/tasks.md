@@ -368,9 +368,12 @@ git commit -m "feat(workflow): add WorkflowState vocabulary and WorkflowStateCla
 
 **Interfaces:**
 - Produces: `WorkflowStatusEditor#write(VaultRelativePath notePath, String expectedSourceHash, String newValue)`
-  returning `WorkflowStatusEditor.Result` (a small sealed-style value: `written()` or `blocked(reason)`), used by
-  Tasks 6, 7, 9. `WorkflowStatusEditor.create(Path vaultRoot)` / `createNull()` static factories, matching every
-  other port in this codebase (`CandidateWorkspace.create/createNull`, `VaultReader.create/createNull`).
+  returning `WorkflowStatusEditor.Result` (a small sealed-style value: `written()` static factory / `isWritten()`
+  instance accessor — NOT `written()` for both, that's a static-vs-instance member conflict Java rejects outright
+  — or `blocked(reason)`), used by Tasks 6, 7, 9. This task adds only `createNull()`; the `create(Path vaultRoot)`
+  static factory (matching every other port's `create/createNull` pair) is added in Task 4, once
+  `FilesystemWorkflowStatusEditor` — the class it needs to reference — actually exists. Task 3 cannot reference a
+  class Task 4 hasn't created yet.
 - Consumes: `VaultRelativePath` (existing, `vault` package).
 
 - [ ] 3.1 **Write the port and its `Result` type**
@@ -380,16 +383,11 @@ package dev.eugene.publicationexporter.workflow;
 
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
-import java.nio.file.Path;
 import java.util.Objects;
 
 public interface WorkflowStatusEditor {
 
     Result write(VaultRelativePath notePath, String expectedSourceHash, String newValue);
-
-    static WorkflowStatusEditor create(Path vaultRoot) {
-        return new FilesystemWorkflowStatusEditor(vaultRoot);
-    }
 
     static WorkflowStatusEditor createNull() {
         return new NullWorkflowStatusEditor();
@@ -397,11 +395,11 @@ public interface WorkflowStatusEditor {
 
     final class Result {
 
-        private final boolean written;
+        private final boolean wasWritten;
         private final String blockedReason;
 
-        private Result(boolean written, String blockedReason) {
-            this.written = written;
+        private Result(boolean wasWritten, String blockedReason) {
+            this.wasWritten = wasWritten;
             this.blockedReason = blockedReason;
         }
 
@@ -413,8 +411,8 @@ public interface WorkflowStatusEditor {
             return new Result(false, Objects.requireNonNull(reason, "reason"));
         }
 
-        public boolean written() {
-            return written;
+        public boolean isWritten() {
+            return wasWritten;
         }
 
         public String blockedReason() {
@@ -423,6 +421,10 @@ public interface WorkflowStatusEditor {
     }
 }
 ```
+
+A static factory named `written()` and an instance accessor also named `written()` cannot coexist on the same
+class — Java rejects the static/instance member conflict outright, regardless of return type. The accessor is
+named `isWritten()` (matching this codebase's general boolean-accessor convention), not `written()`.
 
 - [ ] 3.2 **Write the failing `NullWorkflowStatusEditorTest`**
 
@@ -451,7 +453,7 @@ class NullWorkflowStatusEditorTest {
         WorkflowStatusEditor.Result result =
                 editor.write(PATH, ContentHash.sha256Hex(SOURCE), "ready_for_review");
 
-        assertTrue(result.written());
+        assertTrue(result.isWritten());
         assertEquals("ready_for_review", editor.currentValue(PATH, "workflowStatus"));
     }
 
@@ -461,7 +463,7 @@ class NullWorkflowStatusEditorTest {
 
         WorkflowStatusEditor.Result result = editor.write(PATH, "stale-hash", "ready_for_review");
 
-        assertFalse(result.written());
+        assertFalse(result.isWritten());
         assertEquals("Source changed since it was validated.", result.blockedReason());
     }
 }
@@ -546,6 +548,8 @@ git commit -m "feat(workflow): add WorkflowStatusEditor port and its in-memory N
 **Files:**
 - Create: `publication-exporter/src/main/java/dev/eugene/publicationexporter/workflow/FilesystemWorkflowStatusEditor.java`
 - Create: `publication-exporter/src/test/java/dev/eugene/publicationexporter/workflow/FilesystemWorkflowStatusEditorTest.java`
+- Modify: `publication-exporter/src/main/java/dev/eugene/publicationexporter/workflow/WorkflowStatusEditor.java`
+  (add back the `create(Path)` factory Task 3 deliberately omitted — see step 4.3b)
 - Read first: `publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/FilesystemVaultReader.java`
   (confinement pattern to mirror), `publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/PrepareHandler.java`
   lines 123-133 (`sourceStillMatches` — the guard shape being reused).
@@ -594,7 +598,7 @@ class FilesystemWorkflowStatusEditorTest {
         WorkflowStatusEditor.Result result = editor.write(
                 VaultRelativePath.of("blog/my-essay.md"), ContentHash.sha256Hex(SOURCE), "ready_for_review");
 
-        assertTrue(result.written());
+        assertTrue(result.isWritten());
         String updated = Files.readString(note, StandardCharsets.UTF_8);
         assertEquals("---\npublish: true\npublicId: my-essay\nworkflowStatus: ready_for_review\n---\n"
                 + "# Title\n\nBody тест.", updated);
@@ -608,7 +612,7 @@ class FilesystemWorkflowStatusEditorTest {
         WorkflowStatusEditor.Result result = editor.write(
                 VaultRelativePath.of("blog/my-essay.md"), "stale-hash", "ready_for_review");
 
-        assertFalse(result.written());
+        assertFalse(result.isWritten());
         assertEquals(SOURCE, Files.readString(note, StandardCharsets.UTF_8));
     }
 
@@ -759,6 +763,34 @@ codebase implements this locally rather than sharing a utility; this one does th
 ATOMIC_MOVE, REPLACE_EXISTING)` requires the temp file and target to be on the same filesystem, guaranteed here
 since the temp file is created as a sibling of the target (`target.resolveSibling(...)`).
 
+- [ ] 4.3b **Add the `create(Path vaultRoot)` static factory back to the `WorkflowStatusEditor` interface**
+
+Task 3 deliberately shipped without this factory — it would have referenced `FilesystemWorkflowStatusEditor`
+before that class existed, which doesn't compile. Now that this task has created it, add the factory to
+`WorkflowStatusEditor.java`, matching every other port's `create`/`createNull` pair:
+
+```java
+import java.nio.file.Path;
+
+public interface WorkflowStatusEditor {
+
+    Result write(VaultRelativePath notePath, String expectedSourceHash, String newValue);
+
+    static WorkflowStatusEditor create(Path vaultRoot) {
+        return new FilesystemWorkflowStatusEditor(vaultRoot);
+    }
+
+    static WorkflowStatusEditor createNull() {
+        return new NullWorkflowStatusEditor();
+    }
+
+    // Result class unchanged from Task 3
+}
+```
+
+Add the `import java.nio.file.Path;` back to `WorkflowStatusEditor.java` (Task 3 removed it since it was
+unused without `create`).
+
 - [ ] 4.4 **Run to confirm the tests pass**
 
 Run: `cd publication-exporter && mvn -q -Dtest=FilesystemWorkflowStatusEditorTest test`
@@ -776,6 +808,7 @@ Expected: BUILD SUCCESS.
 ```bash
 cd publication-exporter
 git add src/main/java/dev/eugene/publicationexporter/workflow/FilesystemWorkflowStatusEditor.java \
+        src/main/java/dev/eugene/publicationexporter/workflow/WorkflowStatusEditor.java \
         src/test/java/dev/eugene/publicationexporter/workflow/FilesystemWorkflowStatusEditorTest.java
 git commit -m "feat(workflow): add FilesystemWorkflowStatusEditor — atomic, byte/permission-preserving (TRP-06)"
 ```
@@ -1581,7 +1614,7 @@ public final class RefreshPublicationQueueHandler {
         }
         String sourceHash = ContentHash.sha256Hex(source);
         WorkflowStatusEditor.Result write = workflowStatusEditor.write(notePath, sourceHash, classified);
-        return write.written() ? ReconcileOutcome.UPDATED : ReconcileOutcome.UNCERTAIN;
+        return write.isWritten() ? ReconcileOutcome.UPDATED : ReconcileOutcome.UNCERTAIN;
     }
 
     private enum ReconcileOutcome {
