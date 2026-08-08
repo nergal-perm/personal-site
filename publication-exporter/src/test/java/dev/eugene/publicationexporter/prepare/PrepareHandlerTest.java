@@ -100,7 +100,7 @@ class PrepareHandlerTest {
 
             @Override
             public String readSource(VaultRelativePath notePath) {
-                return reads.incrementAndGet() <= 2 ? VALID_ESSAY : essayWithBody("Changed while translating.");
+                return reads.incrementAndGet() <= 1 ? VALID_ESSAY : essayWithBody("Changed while translating.");
             }
 
             @Override
@@ -108,7 +108,8 @@ class PrepareHandlerTest {
                 return List.of();
             }
         };
-        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, VALID_ESSAY));
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(
+                Map.of(path, essayWithBody("Changed while translating.")));
         PrepareHandler handler = new PrepareHandler(
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
@@ -116,7 +117,8 @@ class PrepareHandlerTest {
         BridgeResponse response = handler.prepare(path, vaultReader);
 
         assertEquals("stale", response.status());
-        assertEquals("stale", editor.currentValue(path, "workflowStatus"));
+        assertEquals(null, editor.currentValue(path, "workflowStatus"));
+        assertEquals(2, reads.get());
     }
 
     @Test
@@ -134,6 +136,23 @@ class PrepareHandlerTest {
         assertTrue(response.ok());
         assertEquals("ready_for_review", response.status());
         assertEquals(null, editor.currentValue(path, "workflowStatus"));
+    }
+
+    @Test
+    void workflowStatusIoFailureDoesNotChangePrepareResponse() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+        WorkflowStatusEditor editor = (notePath, expectedSourceHash, newValue) -> {
+            throw new UncheckedIOException(new IOException("workflow status file unavailable"));
+        };
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
     }
 
     @Test

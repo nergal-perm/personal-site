@@ -3,6 +3,7 @@ package dev.eugene.publicationexporter.intake;
 import dev.eugene.publicationexporter.admission.EssayAdmission;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.note.Frontmatter;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -32,12 +33,14 @@ public final class NoteIntake {
 
     private Result admitExistingNote(VaultRelativePath notePath, VaultReader vaultReader) {
         try {
-            Frontmatter frontmatter = Frontmatter.parse(vaultReader.readSource(notePath));
+            String source = vaultReader.readSource(notePath);
+            Frontmatter frontmatter = Frontmatter.parse(source);
+            String sourceHash = ContentHash.sha256Hex(source);
             EssayAdmission.Result admission = new EssayAdmission().admit(frontmatter);
             if (!admission.accepted()) {
                 return Result.blocked(admission.diagnostics());
             }
-            return Result.accepted(admission, frontmatter);
+            return Result.accepted(admission, frontmatter, sourceHash);
         } catch (NoSuchElementException | UncheckedIOException failure) {
             return Result.blocked(List.of(
                     Diagnostic.blocking("note", "Note was not found in the vault.")));
@@ -48,18 +51,22 @@ public final class NoteIntake {
 
         private final EssayAdmission.Result admission;
         private final Frontmatter frontmatter;
+        private final String sourceHash;
         private final List<Diagnostic> diagnostics;
 
-        private Result(EssayAdmission.Result admission, Frontmatter frontmatter, List<Diagnostic> diagnostics) {
+        private Result(EssayAdmission.Result admission, Frontmatter frontmatter,
+                String sourceHash, List<Diagnostic> diagnostics) {
             this.admission = admission;
             this.frontmatter = frontmatter;
+            this.sourceHash = sourceHash;
             this.diagnostics = List.copyOf(diagnostics);
         }
 
-        static Result accepted(EssayAdmission.Result admission, Frontmatter frontmatter) {
+        static Result accepted(EssayAdmission.Result admission, Frontmatter frontmatter, String sourceHash) {
             return new Result(
                     Objects.requireNonNull(admission, "admission"),
                     Objects.requireNonNull(frontmatter, "frontmatter"),
+                    Objects.requireNonNull(sourceHash, "sourceHash"),
                     List.of());
         }
 
@@ -67,7 +74,7 @@ public final class NoteIntake {
             if (diagnostics.isEmpty()) {
                 throw new IllegalArgumentException("blocked() requires at least one diagnostic");
             }
-            return new Result(null, null, diagnostics);
+            return new Result(null, null, null, diagnostics);
         }
 
         public boolean accepted() {
@@ -82,6 +89,11 @@ public final class NoteIntake {
         /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String body() {
             return frontmatter.body();
+        }
+
+        /** Only meaningful when {@link #accepted()} is {@code true}. */
+        public String sourceHash() {
+            return sourceHash;
         }
 
         /** Only meaningful when {@link #accepted()} is {@code true}. */

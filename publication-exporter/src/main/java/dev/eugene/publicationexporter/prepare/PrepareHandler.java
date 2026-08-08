@@ -70,7 +70,7 @@ public final class PrepareHandler {
         installLock.lock();
         try {
             return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
-                    intake.body(), intake.title(), intake.description());
+                    intake.sourceHash(), intake.body(), intake.title(), intake.description());
         } finally {
             installLock.unlock();
         }
@@ -90,8 +90,8 @@ public final class PrepareHandler {
 
     private BridgeResponse prepareAdmittedEssay(
             VaultRelativePath notePath, VaultReader vaultReader,
-            PublicationIdentity identity, String ruBody, String ruTitle, String ruDescription) {
-        String sourceHash = ContentHash.sha256Hex(vaultReader.readSource(notePath));
+            PublicationIdentity identity, String sourceHash,
+            String ruBody, String ruTitle, String ruDescription) {
         TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
         TranslationResult translation = translateCandidate(job, ruBody, ruTitle, ruDescription);
         if (!translation.succeeded()) {
@@ -124,7 +124,10 @@ public final class PrepareHandler {
     }
 
     private void recordWorkflowStatus(VaultRelativePath notePath, String sourceHash, String status) {
-        workflowStatusEditor.write(notePath, sourceHash, status);
+        try {
+            workflowStatusEditor.write(notePath, sourceHash, status);
+        } catch (UncheckedIOException ignored) {
+        }
     }
 
     private TranslationResult translateCandidate(
