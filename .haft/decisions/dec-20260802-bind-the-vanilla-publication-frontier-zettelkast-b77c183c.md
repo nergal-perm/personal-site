@@ -1,23 +1,23 @@
 ---
 id: dec-20260802-bind-the-vanilla-publication-frontier-zettelkast-b77c183c
 kind: DecisionRecord
-version: 2
+version: 3
 status: active
 title: Publication-frontier Zettelkasten identity (base)
 context: semantic-links
 mode: deep
 valid_until: 2026-11-02T00:00:00Z
 created_at: 2026-08-02T10:30:59Z
-updated_at: 2026-08-02T14:21:38Z
+updated_at: 2026-08-07T19:26:02Z
 links:
-  - ref: prob-20260802-1803dd18
-    type: based_on
-  - ref: sol-20260802-2618001e
-    type: based_on
   - ref: TS.environment-change.002
     type: governs
   - ref: TS.environment-change.003
     type: governs
+  - ref: prob-20260802-1803dd18
+    type: based_on
+  - ref: sol-20260802-2618001e
+    type: based_on
 ---
 
 # Publication-frontier Zettelkasten identity (base)
@@ -117,3 +117,18 @@ Blast radius: The exporter Prepare/resolution path, derived identity index, and 
 - The decision reaches its validity date.
 
 **Affected files:** exporter-java/src/main/java, exporter-java/src/test/java, obsidian-plugin/main.js, obsidian-plugin/bridge-client.js, tools/astro-export/scripts
+## Impact Measurement (2026-08-07)
+
+**Verdict:** partial
+
+**Findings:**
+The refresh-scan drift on this decision (obsidian-plugin/main.js, obsidian-plugin/tests/schema-conformance.test.cjs) is incidental, not material: those files were changed by S04/S05 bridge schema-v2/review-plan commits (750aeba, 8599549, 39d523d), which lie outside this decision's scope (semantic-link ID admission via S18/S19). None of the four predictions (admission blocking, ID stability across renames, cross-entry-point parity, discovery-friction threshold) can be measured yet because S18 (direct-target source-ID admission) and S19 (stable semantic occurrence map) have not started implementation — there is no Prepare-time ID admission code to exercise.
+
+**Criteria met:**
+- [x] Drift classified as incidental — safe to re-baseline without reopening
+
+**Criteria NOT met:**
+- [ ] All four predictions remain unverified — no runtime evidence exists until S18/S19 land
+
+**Measurements:**
+- File-level drift: 2 files, both outside decision scope (bridge schema/review-plan, not ID admission)
