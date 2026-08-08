@@ -1,6 +1,5 @@
 package dev.eugene.publicationexporter.note;
 
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,27 +38,26 @@ public final class Frontmatter {
         Objects.requireNonNull(key, "key");
         Objects.requireNonNull(value, "value");
 
-        List<String> lines = new ArrayList<>(originalSource.lines().toList());
+        List<String> lines = originalSource.lines().toList();
         int closingIndex = closingDelimiterLineIndex(lines);
-        List<String> updatedLines = setScalarLine(lines, key, value, closingIndex);
-        return rebuildSource(updatedLines);
+        String newLineText = key + ": " + value;
+        int existingIndex = existingKeyLineIndex(lines, key, closingIndex);
+        return existingIndex >= 0
+                ? spliceReplace(lines, existingIndex, newLineText)
+                : spliceInsertBefore(lines, closingIndex, newLineText);
     }
 
-    private String rebuildSource(List<String> lines) {
-        String lineEnding = lineEnding(originalSource);
-        String rebuilt = String.join(lineEnding, lines);
-        return originalSource.endsWith(lineEnding) ? rebuilt + lineEnding : rebuilt;
+    private String spliceReplace(List<String> lines, int lineIndex, String newLineText) {
+        int start = lineStartOffset(lineIndex);
+        int end = start + lines.get(lineIndex).length();
+        return originalSource.substring(0, start) + newLineText + originalSource.substring(end);
     }
 
-    private static List<String> setScalarLine(List<String> lines, String key, String value, int closingDelimiterLineIndex) {
-        String newLine = key + ": " + value;
-        int existingIndex = existingKeyLineIndex(lines, key, closingDelimiterLineIndex);
-        if (existingIndex >= 0) {
-            lines.set(existingIndex, newLine);
-        } else {
-            lines.add(closingDelimiterLineIndex, newLine);
-        }
-        return lines;
+    private String spliceInsertBefore(List<String> lines, int lineIndex, String newLineText) {
+        int insertionPoint = lineStartOffset(lineIndex);
+        String terminator = terminatorBefore(lines, lineIndex);
+        return originalSource.substring(0, insertionPoint) + newLineText + terminator
+                + originalSource.substring(insertionPoint);
     }
 
     private static int closingDelimiterLineIndex(List<String> lines) {
@@ -73,14 +71,14 @@ public final class Frontmatter {
         return header.closingDelimiterLineIndex();
     }
 
-    private static String lineEnding(String source) {
-        if (source.contains("\r\n")) {
-            return "\r\n";
-        }
-        if (source.contains("\r")) {
-            return "\r";
-        }
-        return "\n";
+    private int lineStartOffset(int lineIndex) {
+        return lineIndex == 0 ? 0 : offsetAfterLineTerminator(originalSource, lineIndex - 1);
+    }
+
+    private String terminatorBefore(List<String> lines, int lineIndex) {
+        int previousLineEnd = lineStartOffset(lineIndex - 1) + lines.get(lineIndex - 1).length();
+        int thisLineStart = lineStartOffset(lineIndex);
+        return originalSource.substring(previousLineEnd, thisLineStart);
     }
 
     private static int existingKeyLineIndex(List<String> lines, String key, int closingIndex) {

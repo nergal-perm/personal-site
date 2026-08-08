@@ -89,6 +89,16 @@ class FrontmatterTest {
     }
 
     @Test
+    void withScalarSetPreservesMixedLineEndingsOutsideTheTouchedLine() {
+        String source = "---\r\npublish: true\n---\r\nBody.\n";
+        Frontmatter frontmatter = Frontmatter.parse(source);
+
+        String updated = frontmatter.withScalarSet("workflowStatus", "stale");
+
+        assertEquals("---\r\npublish: true\nworkflowStatus: stale\n---\r\nBody.\n", updated);
+    }
+
+    @Test
     void parsesStringValue() {
         Frontmatter frontmatter = Frontmatter.parse("""
                 ---
