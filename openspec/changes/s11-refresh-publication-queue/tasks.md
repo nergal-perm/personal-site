@@ -64,7 +64,7 @@ used by `SchemaConformanceTest`) — no new dependency this slice.
 `grep -n "class Frontmatter" -A 5 publication-exporter/src/main/java/dev/eugene/publicationexporter/note/Frontmatter.java`
 first to confirm the current field layout before editing.
 
-- [ ] 1.1 **Write failing tests for `withScalarSet`** — three cases: key already present (replaced in place, all
+- [x] 1.1 **Write failing tests for `withScalarSet`** — three cases: key already present (replaced in place, all
   other lines byte-identical), key absent (inserted immediately before the closing `---`, all existing lines
   byte-identical), and body/spacing/comment-adjacent lines untouched either way.
 
@@ -129,12 +129,12 @@ void withScalarSetPreservesLineEndingsAndBodyExactly() {
 Read `FrontmatterTest.java` first and use whichever assertion imports/style it already has (`assertEquals` vs. a
 custom helper) — match it, do not invent a new style.
 
-- [ ] 1.2 **Run to confirm compilation failure** (`withScalarSet` does not exist yet)
+- [x] 1.2 **Run to confirm compilation failure** (`withScalarSet` does not exist yet)
 
 Run: `cd publication-exporter && mvn -q -Dtest=FrontmatterTest test`
 Expected: compilation FAILURE.
 
-- [ ] 1.3 **Retain the raw source and implement `withScalarSet`**
+- [x] 1.3 **Retain the raw source and implement `withScalarSet`**
 
 ```java
 // new field, set in the private constructor alongside frontmatterValues/body
@@ -203,18 +203,18 @@ block (every call site in this slice is downstream of a successful `NoteIntake.a
 one) — `closingDelimiterLineIndex` throwing `IllegalStateException` for a frontmatter-less note is intentional
 fail-fast, not a case any production call site should ever hit.
 
-- [ ] 1.4 **Run to confirm the tests pass**
+- [x] 1.4 **Run to confirm the tests pass**
 
 Run: `cd publication-exporter && mvn -q -Dtest=FrontmatterTest test`
 Expected: PASS.
 
-- [ ] 1.5 **Run the full suite** to confirm the new `originalSource` field and constructor signature change
+- [x] 1.5 **Run the full suite** to confirm the new `originalSource` field and constructor signature change
   didn't break any existing `Frontmatter` caller.
 
 Run: `cd publication-exporter && mvn -q test`
 Expected: BUILD SUCCESS.
 
-- [ ] 1.6 **Commit**
+- [x] 1.6 **Commit**
 
 ```bash
 cd publication-exporter
@@ -238,7 +238,7 @@ git commit -m "feat(note): add Frontmatter.withScalarSet for byte-preserving sca
   persistedWorkflowStatus)` returning `String` (used by Tasks 6 and 9).
 - Consumes: nothing — pure, no I/O, no ports.
 
-- [ ] 2.1 **Write `WorkflowState`**
+- [x] 2.1 **Write `WorkflowState`**
 
 ```java
 package dev.eugene.publicationexporter.workflow;
@@ -258,7 +258,7 @@ public final class WorkflowState {
 }
 ```
 
-- [ ] 2.2 **Write the failing `WorkflowStateClassifierTest`** — one case per branch:
+- [x] 2.2 **Write the failing `WorkflowStateClassifierTest`** — one case per branch:
 
 ```java
 package dev.eugene.publicationexporter.workflow;
@@ -309,12 +309,12 @@ class WorkflowStateClassifierTest {
 }
 ```
 
-- [ ] 2.3 **Run to confirm compilation failure** (`WorkflowStateClassifier` does not exist yet)
+- [x] 2.3 **Run to confirm compilation failure** (`WorkflowStateClassifier` does not exist yet)
 
 Run: `cd publication-exporter && mvn -q -Dtest=WorkflowStateClassifierTest test`
 Expected: compilation FAILURE.
 
-- [ ] 2.4 **Implement `WorkflowStateClassifier`**
+- [x] 2.4 **Implement `WorkflowStateClassifier`**
 
 ```java
 package dev.eugene.publicationexporter.workflow;
@@ -342,12 +342,12 @@ public final class WorkflowStateClassifier {
 }
 ```
 
-- [ ] 2.5 **Run to confirm the tests pass**
+- [x] 2.5 **Run to confirm the tests pass**
 
 Run: `cd publication-exporter && mvn -q -Dtest=WorkflowStateClassifierTest test`
 Expected: PASS.
 
-- [ ] 2.6 **Commit**
+- [x] 2.6 **Commit**
 
 ```bash
 cd publication-exporter
