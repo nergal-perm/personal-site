@@ -6,7 +6,7 @@ const COMMANDS = Object.freeze({
   prepare: { note: true, jobs: true },
   "inspect-publication": { note: true, jobs: false },
   "mark-reviewed": { note: true, jobs: true },
-  "refresh-publication-queue": { note: false, jobs: true },
+  "refresh-publication-queue": { note: false, jobs: false },
 });
 
 // GUI-launched hosts (Obsidian via Finder/Dock, not a terminal) inherit macOS's

@@ -21,7 +21,7 @@ const { createBridgeClient } = (() => {
     prepare: { note: true, jobs: true },
     "inspect-publication": { note: true, jobs: false },
     "mark-reviewed": { note: true, jobs: true },
-    "refresh-publication-queue": { note: false, jobs: true },
+    "refresh-publication-queue": { note: false, jobs: false },
   });
 
   // GUI-launched hosts (Obsidian via Finder/Dock, not a terminal) inherit macOS's
@@ -702,16 +702,11 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
         this.showBlocked(result, "Очередь обновлена не полностью");
         return;
       }
-      const summary = result.summary || {};
       new Notice(
         "Очередь обновлена: " +
-        `метаданные заблокированы: ${summary.metadata_blocked || 0}; ` +
-        `переводится: ${summary.translating || 0}; ` +
-        `готово к проверке: ${summary.ready_for_review || 0}; ` +
-        `готово к публикации: ${summary.ready_to_publish || 0}; ` +
-        `ошибка перевода: ${summary.translation_failed || 0}; ` +
-        `устарело: ${summary.stale || 0}; ` +
-        `обновлено: ${result.updated || 0}; без изменений: ${result.unchanged || 0}.`,
+        `обновлено: ${result.updatedCount}; ` +
+        `без изменений: ${result.unchangedCount}; ` +
+        `неопределённо: ${result.uncertainCount}.`,
       );
     } catch (error) {
       this.showBridgeError(error);

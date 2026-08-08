@@ -41,6 +41,20 @@ function response(command, overrides = {}) {
   };
 }
 
+function queueRefreshedResponse(updatedCount, unchangedCount, uncertainCount) {
+  return {
+    schemaVersion: 2,
+    command: "refresh-publication-queue",
+    ok: true,
+    status: "queue_refreshed",
+    diagnostics: [],
+    workspaceHealth: [],
+    updatedCount,
+    unchangedCount,
+    uncertainCount,
+  };
+}
+
 function fakeSpawnResult({ stdout = "", stderr = "", exitCode = 0, error = null } = {}) {
   const calls = [];
   const spawn = (executable, args, options) => {
@@ -214,27 +228,8 @@ test("PATH is left untouched on Windows hosts", async () => {
   assert.equal(fake.calls[0].options.env.PATH, "C:\\Windows\\System32");
 });
 
-test("refresh-publication-queue never sends a current-note path", async () => {
-  const payload = response("refresh-publication-queue", {
-    note: null,
-    collection: null,
-    publicId: null,
-    reviewDirectory: null,
-    pairFreshness: null,
-    translationStatus: null,
-    jobId: null,
-    status: "refreshed",
-    summary: {
-      metadata_blocked: 0,
-      translating: 0,
-      ready_for_review: 1,
-      translation_failed: 0,
-      stale: 0,
-    },
-    updated: 1,
-    unchanged: 0,
-    uncertain: 0,
-  });
+test("refresh-publication-queue sends no note or jobs path", async () => {
+  const payload = queueRefreshedResponse(1, 0, 0);
   const fake = fakeSpawnResult({ stdout: JSON.stringify(payload) });
   const client = clientWith(fake);
 
@@ -247,8 +242,6 @@ test("refresh-publication-queue never sends a current-note path", async () => {
     "/Users/example/Personal Wiki/knowledge-base",
     "--review",
     "/Users/example/Personal Wiki/tools/astro-export/review",
-    "--jobs",
-    "/Users/example/Personal Wiki/tools/astro-export/.publication-jobs",
     "--json",
   ]);
 });
@@ -1245,7 +1238,7 @@ test("published snapshot failure shows diagnostics without approval success", as
   );
 });
 
-test("refresh sends no note and reports the six-state summary", async () => {
+test("refresh sends no note and reports the schema-v2 reconciliation counts", async () => {
   const harness = loadPluginHarness();
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -1253,32 +1246,17 @@ test("refresh sends no note and reports the six-state summary", async () => {
   plugin.bridgeClient = {
     async run(...args) {
       bridgeCalls.push(args);
-      return response("refresh-publication-queue", {
-        note: null,
-        status: "refreshed",
-        summary: {
-          metadata_blocked: 2,
-          translating: 1,
-          ready_for_review: 3,
-          ready_to_publish: 4,
-          translation_failed: 5,
-          stale: 6,
-        },
-        updated: 7,
-        unchanged: 8,
-        uncertain: 0,
-      });
+      return queueRefreshedResponse(7, 8, 2);
     },
   };
 
   await command(plugin, "refresh-publication-queue").callback();
 
   assert.deepEqual(bridgeCalls, [["refresh-publication-queue"]]);
-  const finished = harness.notices.map(({ message }) => message).join("\n");
-  assert.match(finished, /готово к проверке: 3/);
-  assert.match(finished, /готово к публикации: 4/);
-  assert.match(finished, /устарело: 6/);
-  assert.match(finished, /обновлено: 7/);
+  assert.ok(harness.notices.some(
+    ({ message }) => message ===
+      "Очередь обновлена: обновлено: 7; без изменений: 8; неопределённо: 2.",
+  ));
 });
 
 test("community plugin enablement retains the live list and adds only this plugin", (t) => {
