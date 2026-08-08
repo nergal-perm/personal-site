@@ -3,8 +3,11 @@ package dev.eugene.publicationexporter.vault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.NoSuchElementException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -127,5 +130,21 @@ class FilesystemVaultReaderTest {
         FilesystemVaultReader reader = new FilesystemVaultReader(vaultRoot);
         assertThrows(NoSuchElementException.class,
                 () -> reader.readSource(VaultRelativePath.of("blog/link.md")));
+    }
+
+    @Test
+    void listPublishCandidatesWalksTheVaultAndFiltersByPublishFlag(@TempDir Path vaultRoot) throws Exception {
+        writeNote(vaultRoot, "blog/my-essay.md", "---\npublish: true\n---\nBody.");
+        writeNote(vaultRoot, "blog/draft.md", "---\npublish: false\n---\nBody.");
+        writeNote(vaultRoot, "scratch/todo.md", "No frontmatter here.");
+        VaultReader vaultReader = VaultReader.create(vaultRoot);
+
+        assertEquals(List.of(VaultRelativePath.of("blog/my-essay.md")), vaultReader.listPublishCandidates());
+    }
+
+    private void writeNote(Path vaultRoot, String relativePath, String source) throws IOException {
+        Path note = vaultRoot.resolve(relativePath);
+        Files.createDirectories(note.getParent());
+        Files.writeString(note, source, StandardCharsets.UTF_8);
     }
 }

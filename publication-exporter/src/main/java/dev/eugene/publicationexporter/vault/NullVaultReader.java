@@ -1,7 +1,10 @@
 package dev.eugene.publicationexporter.vault;
 
+import dev.eugene.publicationexporter.note.Frontmatter;
+
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -31,6 +34,14 @@ final class NullVaultReader implements VaultReader {
             throw new NoSuchElementException("Note not found: " + notePath.value());
         }
         return source;
+    }
+
+    @Override
+    public List<VaultRelativePath> listPublishCandidates() {
+        return sourceByPath.entrySet().stream()
+                .filter(entry -> Frontmatter.parse(entry.getValue()).flag("publish"))
+                .map(entry -> VaultRelativePath.of(entry.getKey()))
+                .toList();
     }
 
     private static Map<VaultRelativePath, String> defaultToEmptySource(VaultRelativePath... paths) {

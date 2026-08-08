@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.vault;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
 
@@ -53,5 +54,16 @@ class NullVaultReaderTest {
         VaultReader reader = VaultReader.createNull();
         assertThrows(NoSuchElementException.class,
                 () -> reader.readSource(VaultRelativePath.of("blog/missing.md")));
+    }
+
+    @Test
+    void listPublishCandidatesReturnsOnlyNotesWithPublishTrue() {
+        VaultRelativePath published = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath draft = VaultRelativePath.of("blog/draft.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                published, "---\npublish: true\n---\nBody.",
+                draft, "---\npublish: false\n---\nBody."));
+
+        assertEquals(List.of(published), vaultReader.listPublishCandidates());
     }
 }

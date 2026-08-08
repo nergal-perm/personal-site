@@ -8,6 +8,10 @@ public interface VaultReader {
 
     String readSource(VaultRelativePath notePath);
 
+    default java.util.List<VaultRelativePath> listPublishCandidates() {
+        return java.util.List.of();
+    }
+
     static VaultReader create(java.nio.file.Path vaultRoot) {
         return new FilesystemVaultReader(vaultRoot);
     }
