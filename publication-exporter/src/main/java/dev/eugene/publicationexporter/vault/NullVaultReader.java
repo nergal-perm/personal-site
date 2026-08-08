@@ -39,6 +39,7 @@ final class NullVaultReader implements VaultReader {
     @Override
     public List<VaultRelativePath> listPublishCandidates() {
         return sourceByPath.entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith(".md"))
                 .filter(entry -> Frontmatter.parse(entry.getValue()).flag("publish"))
                 .map(entry -> VaultRelativePath.of(entry.getKey()))
                 .toList();

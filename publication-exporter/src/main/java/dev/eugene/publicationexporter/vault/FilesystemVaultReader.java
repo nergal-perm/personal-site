@@ -43,6 +43,7 @@ final class FilesystemVaultReader implements VaultReader {
         try (var paths = Files.walk(canonicalVaultRoot)) {
             return paths.filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString().endsWith(".md"))
+                    .filter(path -> realPathOf(path).filter(this::isInsideVault).isPresent())
                     .filter(this::hasPublishTrueFlag)
                     .map(this::toVaultRelativePath)
                     .toList();

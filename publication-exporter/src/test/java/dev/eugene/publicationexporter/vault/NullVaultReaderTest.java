@@ -66,4 +66,15 @@ class NullVaultReaderTest {
 
         assertEquals(List.of(published), vaultReader.listPublishCandidates());
     }
+
+    @Test
+    void listPublishCandidatesExcludesPublishedNonMarkdownPaths() {
+        VaultRelativePath published = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath nonMarkdown = VaultRelativePath.of("blog/note.txt");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                published, "---\npublish: true\n---\nBody.",
+                nonMarkdown, "---\npublish: true\n---\nNot a note."));
+
+        assertEquals(List.of(published), vaultReader.listPublishCandidates());
+    }
 }

@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.vault;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
@@ -142,9 +143,26 @@ class FilesystemVaultReaderTest {
         assertEquals(List.of(VaultRelativePath.of("blog/my-essay.md")), vaultReader.listPublishCandidates());
     }
 
-    private void writeNote(Path vaultRoot, String relativePath, String source) throws IOException {
+    @Test
+    void listPublishCandidatesExcludesSymlinkEscapingTheVaultRoot() throws Exception {
+        Path externalPublishedNote = writeNote(
+                outsideVaultRoot, "published.md", "---\npublish: true\n---\nOutside body.");
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        try {
+            Files.createSymbolicLink(vaultRoot.resolve("blog/linked.md"), externalPublishedNote);
+        } catch (IOException | UnsupportedOperationException unsupported) {
+            Assumptions.abort("Symbolic links are unavailable: " + unsupported.getMessage());
+        }
+
+        VaultReader vaultReader = VaultReader.create(vaultRoot);
+
+        assertEquals(List.of(), vaultReader.listPublishCandidates());
+    }
+
+    private Path writeNote(Path vaultRoot, String relativePath, String source) throws IOException {
         Path note = vaultRoot.resolve(relativePath);
         Files.createDirectories(note.getParent());
         Files.writeString(note, source, StandardCharsets.UTF_8);
+        return note;
     }
 }
