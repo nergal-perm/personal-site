@@ -18,6 +18,8 @@ import dev.eugene.publicationexporter.translation.TranslationResult;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
+import dev.eugene.publicationexporter.workflow.WorkflowState;
+import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
 import java.io.UncheckedIOException;
 import java.util.List;
@@ -36,13 +38,15 @@ public final class PrepareHandler {
     private final TranslationWorker translationWorker;
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
+    private final WorkflowStatusEditor workflowStatusEditor;
 
     public PrepareHandler(TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
-            ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
+            ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
         this.translationWorker = Objects.requireNonNull(translationWorker, "translationWorker");
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
         this.approvedSnapshotWorkspace =
                 Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
+        this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
     }
 
     public BridgeResponse prepare(VaultRelativePath notePath, VaultReader vaultReader) {
@@ -87,9 +91,11 @@ public final class PrepareHandler {
     private BridgeResponse prepareAdmittedEssay(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String ruBody, String ruTitle, String ruDescription) {
+        String sourceHash = ContentHash.sha256Hex(vaultReader.readSource(notePath));
         TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
         TranslationResult translation = translateCandidate(job, ruBody, ruTitle, ruDescription);
         if (!translation.succeeded()) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return translationFailure(translation);
         }
         String enBody = translation.enBody();
@@ -99,16 +105,26 @@ public final class PrepareHandler {
         EnglishCandidateValidator.Result validation = validateEnglishCandidate(
                 ruBody, enBody, enTitle, enDescription);
         if (!validation.valid()) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
         if (!sourceStillMatches(notePath, vaultReader, identity, job)) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.STALE);
             return BridgeResponse.stale(COMMAND,
                     Diagnostic.blocking("candidate", "Source note changed while translation was in progress."));
         }
         ReferenceMap referenceMap = buildReferenceMap(
                 identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
-        return installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
+        BridgeResponse response = installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
                 ruDescription, enDescription, referenceMap);
+        if (response.ok()) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.READY_FOR_REVIEW);
+        }
+        return response;
+    }
+
+    private void recordWorkflowStatus(VaultRelativePath notePath, String sourceHash, String status) {
+        workflowStatusEditor.write(notePath, sourceHash, status);
     }
 
     private TranslationResult translateCandidate(

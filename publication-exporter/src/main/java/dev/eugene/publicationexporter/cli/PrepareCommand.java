@@ -10,6 +10,7 @@ import dev.eugene.publicationexporter.translation.ProcessTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
+import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -61,8 +62,10 @@ public final class PrepareCommand implements Callable<Integer> {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
+        WorkflowStatusEditor workflowStatusEditor = WorkflowStatusEditor.create(vaultRoot);
         TranslationWorker translationWorker = translationWorkerForJobRoot.apply(jobsDirectory);
-        BridgeResponse response = new PrepareHandler(translationWorker, candidateWorkspace, approvedSnapshotWorkspace)
+        BridgeResponse response = new PrepareHandler(
+                translationWorker, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor)
                 .prepare(VaultRelativePath.of(notePath), vaultReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));
