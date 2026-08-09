@@ -1,0 +1,170 @@
+[
+  {
+    "name": "dev.eugene.publicationexporter.cli.Main",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.cli.InspectPublicationCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.cli.PrepareCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.cli.MarkReviewedCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.cli.BuildFromReviewCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.cli.InstallToSiteCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.cli.RefreshPublicationQueueCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.bridge.BridgeResponse",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "schemaVersion", "parameterTypes": []},
+      {"name": "command", "parameterTypes": []},
+      {"name": "ok", "parameterTypes": []},
+      {"name": "status", "parameterTypes": []},
+      {"name": "diagnostics", "parameterTypes": []},
+      {"name": "workspaceHealth", "parameterTypes": []},
+      {"name": "identity", "parameterTypes": []},
+      {"name": "candidateState", "parameterTypes": []},
+      {"name": "approvedSnapshotState", "parameterTypes": []},
+      {"name": "semanticReferenceState", "parameterTypes": []},
+      {"name": "releaseState", "parameterTypes": []},
+      {"name": "reviewPlan", "parameterTypes": []},
+      {"name": "updatedCount", "parameterTypes": []},
+      {"name": "unchangedCount", "parameterTypes": []},
+      {"name": "uncertainCount", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.bridge.Diagnostic",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "field", "parameterTypes": []},
+      {"name": "message", "parameterTypes": []},
+      {"name": "blocking", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.bridge.PublicationIdentity",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "publicCollection", "parameterTypes": []},
+      {"name": "publicContentType", "parameterTypes": []},
+      {"name": "publicId", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.bridge.ReviewPlan",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "baselineState", "parameterTypes": []},
+      {"name": "targets", "parameterTypes": []},
+      {"name": "ruTitle", "parameterTypes": []},
+      {"name": "enTitle", "parameterTypes": []},
+      {"name": "ruDescription", "parameterTypes": []},
+      {"name": "enDescription", "parameterTypes": []},
+      {"name": "diff", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.bridge.ReviewTarget",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "language", "parameterTypes": []},
+      {"name": "proposedPath", "parameterTypes": []},
+      {"name": "publishedPath", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.prepare.RussianDiff$Line",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "kind", "parameterTypes": []},
+      {"name": "text", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.reference.ReferenceMap",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "schemaVersion", "parameterTypes": []},
+      {"name": "identity", "parameterTypes": []},
+      {"name": "ruHash", "parameterTypes": []},
+      {"name": "enHash", "parameterTypes": []},
+      {"name": "ruTitleHash", "parameterTypes": []},
+      {"name": "enTitleHash", "parameterTypes": []},
+      {"name": "ruDescriptionHash", "parameterTypes": []},
+      {"name": "enDescriptionHash", "parameterTypes": []},
+      {"name": "occurrences", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.buildfromreview.ReleaseResult",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "ok", "parameterTypes": []},
+      {"name": "identity", "parameterTypes": []},
+      {"name": "provenance", "parameterTypes": []},
+      {"name": "message", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.release.ReleaseProvenance",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "contractEdition", "parameterTypes": []},
+      {"name": "identity", "parameterTypes": []},
+      {"name": "approvedRuHash", "parameterTypes": []},
+      {"name": "approvedEnHash", "parameterTypes": []},
+      {"name": "outputRuHash", "parameterTypes": []},
+      {"name": "outputEnHash", "parameterTypes": []},
+      {"name": "activationCount", "parameterTypes": []},
+      {"name": "deactivationCount", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.installtosite.InstallToSiteResult",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "ok", "parameterTypes": []},
+      {"name": "identity", "parameterTypes": []},
+      {"name": "message", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
+    "methods": [
+      {
+        "name": "<init>",
+        "parameterTypes": []
+      }
+    ]
+  }
+]

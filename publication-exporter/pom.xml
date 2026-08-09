@@ -15,6 +15,7 @@
     <json-schema-validator.version>1.5.1</json-schema-validator.version>
     <junit.version>6.1.0</junit.version>
     <slf4j.version>2.0.13</slf4j.version>
+    <native.maven.plugin.version>1.1.4</native.maven.plugin.version>
   </properties>
 
   <dependencies>
@@ -65,4 +66,31 @@
       </plugin>
     </plugins>
   </build>
+
+  <profiles>
+    <profile>
+      <id>native</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.graalvm.buildtools</groupId>
+            <artifactId>native-maven-plugin</artifactId>
+            <version>${native.maven.plugin.version}</version>
+            <extensions>true</extensions>
+            <configuration>
+              <imageName>publication-exporter</imageName>
+              <mainClass>dev.eugene.publicationexporter.cli.Main</mainClass>
+              <metadataRepository>
+                <enabled>false</enabled>
+              </metadataRepository>
+              <buildArgs>
+                <buildArg>--no-fallback</buildArg>
+                <buildArg>-H:+ReportExceptionStackTraces</buildArg>
+              </buildArgs>
+            </configuration>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
 </project>
