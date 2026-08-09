@@ -7,6 +7,7 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
+import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
@@ -36,7 +37,9 @@ public final class MarkReviewedCommand implements Callable<Integer> {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
-        BridgeResponse response = new MarkReviewedHandler(candidateWorkspace, approvedSnapshotWorkspace)
+        WorkflowStatusEditor workflowStatusEditor = WorkflowStatusEditor.create(vaultRoot);
+        BridgeResponse response = new MarkReviewedHandler(
+                candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor)
                 .markReviewed(VaultRelativePath.of(notePath), vaultReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));

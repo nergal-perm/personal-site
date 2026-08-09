@@ -17,6 +17,8 @@ import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
+import dev.eugene.publicationexporter.workflow.WorkflowState;
+import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
 import java.io.UncheckedIOException;
 import java.util.List;
@@ -35,10 +37,13 @@ public final class MarkReviewedHandler {
 
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
+    private final WorkflowStatusEditor workflowStatusEditor;
 
-    public MarkReviewedHandler(CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
+    public MarkReviewedHandler(CandidateWorkspace candidateWorkspace,
+            ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
         this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
+        this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
     }
 
     public BridgeResponse markReviewed(VaultRelativePath notePath, VaultReader vaultReader) {
@@ -85,11 +90,12 @@ public final class MarkReviewedHandler {
                     Diagnostic.blocking("candidate", "Source publication identity changed while approval waited."));
         }
         return markReviewedUnderLock(
-                lockedIdentity, current.body(), current.title(), current.description());
+                notePath, lockedIdentity, current.sourceHash(), current.body(), current.title(), current.description());
     }
 
     private BridgeResponse markReviewedUnderLock(
-            PublicationIdentity identity, String sourceBody, String sourceTitle, String sourceDescription) {
+            VaultRelativePath notePath, PublicationIdentity identity, String sourceHash,
+            String sourceBody, String sourceTitle, String sourceDescription) {
         Optional<CandidateSnapshot> candidate;
         try {
             candidate = readCandidate(identity);
@@ -104,7 +110,7 @@ public final class MarkReviewedHandler {
         if (!staleness.isEmpty()) {
             return BridgeResponse.stale(COMMAND, staleness);
         }
-        return installApprovedSnapshot(identity, candidate.get());
+        return installApprovedSnapshot(notePath, sourceHash, identity, candidate.get());
     }
 
     private Optional<CandidateSnapshot> readCandidate(PublicationIdentity identity) {
@@ -220,7 +226,8 @@ public final class MarkReviewedHandler {
                 "Candidate English description has changed since it was prepared."));
     }
 
-    private BridgeResponse installApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot candidate) {
+    private BridgeResponse installApprovedSnapshot(
+            VaultRelativePath notePath, String sourceHash, PublicationIdentity identity, CandidateSnapshot candidate) {
         try {
             approvedSnapshotWorkspace.install(
                     identity, candidate.ruBody(), candidate.enBody(),
@@ -235,6 +242,18 @@ public final class MarkReviewedHandler {
         } catch (ApprovedSnapshotWorkspaceConfinementException | ApprovedSnapshotWorkspaceStateException failure) {
             return BridgeResponse.blocked(COMMAND,
                     Diagnostic.blocking("approved-snapshot", "Approved installation failed: " + failure.getMessage()));
+        }
+        try {
+            WorkflowStatusEditor.Result result = workflowStatusEditor.write(
+                    notePath, sourceHash, WorkflowState.READY_TO_PUBLISH);
+            if (!result.isWritten()) {
+                return BridgeResponse.blocked(COMMAND,
+                        Diagnostic.blocking("workflowStatus", result.blockedReason()));
+            }
+        } catch (UncheckedIOException failure) {
+            return BridgeResponse.blocked(COMMAND,
+                    Diagnostic.blocking("workflowStatus",
+                            IoFailureMessages.describe("Workflow status update failed", failure)));
         }
         return BridgeResponse.approved(COMMAND, identity);
     }

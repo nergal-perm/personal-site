@@ -68,6 +68,11 @@ class RefreshPublicationQueueHandlerTest {
         // and already match its persisted scalar. An approved snapshot makes ready_to_publish the decisive
         // current classification, so the stale not_prepared scalar must be updated.
         PublicationIdentity staleScalarIdentity = PublicationIdentity.of("blog", "essay", "stale-scalar");
+        candidateWorkspace.install(staleScalarIdentity, "RU", "EN", "RU title", "EN title",
+                "RU description.", "EN description.", ReferenceMap.empty(staleScalarIdentity,
+                        ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN"),
+                        ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("RU description."), ContentHash.sha256Hex("EN description.")));
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.createNull();
         approvedSnapshotWorkspace.install(staleScalarIdentity, "RU", "EN", "RU title", "EN title",
                 "RU description.", "EN description.", ReferenceMap.empty(staleScalarIdentity,

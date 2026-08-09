@@ -68,15 +68,17 @@ public final class RefreshPublicationQueueHandler {
         if (candidatePaths.isPresent() && candidateSnapshot.isEmpty()) {
             return ReconcileOutcome.UNCERTAIN;
         }
-        boolean candidatePresent = candidatePaths.isPresent() && candidateSnapshot.isPresent();
-        boolean approvedPresent;
+        Optional<CandidateSnapshot> approvedSnapshot;
         try {
-            approvedPresent = approvedSnapshotWorkspace.read(intake.identity()).isPresent();
+            approvedSnapshot = approvedSnapshotWorkspace.read(intake.identity());
         } catch (RuntimeException failure) {
             return ReconcileOutcome.UNCERTAIN;
         }
+        boolean candidateRequiresReview = candidatePaths.isPresent() && candidateSnapshot.isPresent()
+                && approvedSnapshot.map(approved -> !candidateSnapshot.get().equals(approved)).orElse(true);
+        boolean approvedPresent = approvedSnapshot.isPresent();
         Optional<String> persisted = intake.frontmatterString(WORKFLOW_STATUS_KEY);
-        String classified = classifier.classify(candidatePresent, approvedPresent, persisted);
+        String classified = classifier.classify(candidateRequiresReview, approvedPresent, persisted);
         if (persisted.isPresent() && persisted.get().equals(classified)) {
             return ReconcileOutcome.UNCHANGED;
         }

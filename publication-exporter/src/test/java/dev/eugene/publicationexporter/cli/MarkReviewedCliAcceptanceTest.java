@@ -7,6 +7,7 @@ import com.networknt.schema.JsonSchema;
 import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
+import dev.eugene.publicationexporter.note.Frontmatter;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -92,6 +93,9 @@ class MarkReviewedCliAcceptanceTest {
         assertEquals("ready_to_publish", response.get("status").asText());
         assertEquals("my-essay", response.get("identity").get("publicId").asText());
         assertTrue(Files.exists(reviewDirectory.resolve("blog/my-essay/approved/ru.md")));
+        assertEquals("ready_to_publish", Frontmatter.parse(
+                Files.readString(vaultRoot.resolve("blog/my-essay.md")))
+                .string("workflowStatus").orElse(null));
     }
 
     @Test

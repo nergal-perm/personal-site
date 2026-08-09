@@ -59,7 +59,14 @@ public final class InspectPublicationHandler {
         }
         if (candidatePaths.isPresent() && candidateSnapshot.isPresent()) {
             try {
-                return readyForReviewResponse(intake.identity(), candidatePaths.get(), candidateSnapshot.get());
+                Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(intake.identity());
+                if (approved.isPresent() && candidateSnapshot.get().equals(approved.get())) {
+                    return BridgeResponse.essayInspected(
+                            COMMAND, "ready_to_publish", intake.identity(),
+                            READY, READY, ABSENT, ABSENT, null);
+                }
+                return readyForReviewResponse(
+                        intake.identity(), candidatePaths.get(), candidateSnapshot.get(), approved);
             } catch (UncheckedIOException failure) {
                 return approvedLookupFailure(
                         IoFailureMessages.describe("Approved snapshot lookup failed", failure));
@@ -82,17 +89,18 @@ public final class InspectPublicationHandler {
     }
 
     private BridgeResponse readyForReviewResponse(
-            PublicationIdentity identity, CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot) {
-        ReviewPlan reviewPlan = reviewPlanFor(identity, candidatePaths, candidateSnapshot);
-        String approvedSnapshotState = reviewPlan.baselineState().equals("changed") ? READY : ABSENT;
+            PublicationIdentity identity, CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot,
+            Optional<CandidateSnapshot> approved) {
+        ReviewPlan reviewPlan = reviewPlanFor(candidatePaths, candidateSnapshot, approved);
+        String approvedSnapshotState = approved.isPresent() ? READY : ABSENT;
         return BridgeResponse.essayInspected(
                 COMMAND, READY_FOR_REVIEW, identity,
                 READY, approvedSnapshotState, ABSENT, ABSENT, reviewPlan);
     }
 
     private ReviewPlan reviewPlanFor(
-            PublicationIdentity identity, CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot) {
-        Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
+            CandidatePaths candidatePaths, CandidateSnapshot candidateSnapshot,
+            Optional<CandidateSnapshot> approved) {
         if (approved.isEmpty()) {
             return ReviewPlan.firstPublication(
                     candidatePaths,
