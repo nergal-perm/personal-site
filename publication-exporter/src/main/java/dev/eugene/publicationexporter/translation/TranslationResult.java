@@ -7,12 +7,16 @@ public final class TranslationResult {
     private final String enBody;
     private final String enTitle;
     private final String enDescription;
+    private final String failureDiagnosticField;
     private final String failureReason;
 
-    private TranslationResult(String enBody, String enTitle, String enDescription, String failureReason) {
+    private TranslationResult(
+            String enBody, String enTitle, String enDescription,
+            String failureDiagnosticField, String failureReason) {
         this.enBody = enBody;
         this.enTitle = enTitle;
         this.enDescription = enDescription;
+        this.failureDiagnosticField = failureDiagnosticField;
         this.failureReason = failureReason;
     }
 
@@ -21,11 +25,18 @@ public final class TranslationResult {
                 Objects.requireNonNull(enBody, "enBody"),
                 Objects.requireNonNull(enTitle, "enTitle"),
                 Objects.requireNonNull(enDescription, "enDescription"),
+                null,
                 null);
     }
 
     public static TranslationResult failure(String reason) {
-        return new TranslationResult(null, null, null, Objects.requireNonNull(reason, "reason"));
+        return failure("candidate", reason);
+    }
+
+    public static TranslationResult failure(String diagnosticField, String reason) {
+        return new TranslationResult(null, null, null,
+                Objects.requireNonNull(diagnosticField, "diagnosticField"),
+                Objects.requireNonNull(reason, "reason"));
     }
 
     public static TranslationResult stale() {
@@ -56,9 +67,15 @@ public final class TranslationResult {
         return failureReason;
     }
 
+    /** Only meaningful when {@link #succeeded()} is {@code false}. */
+    public String failureDiagnosticField() {
+        return failureDiagnosticField;
+    }
+
     @Override
     public String toString() {
         return "TranslationResult[enBody=" + enBody + ", enTitle=" + enTitle
-                + ", enDescription=" + enDescription + ", failureReason=" + failureReason + "]";
+                + ", enDescription=" + enDescription + ", failureDiagnosticField=" + failureDiagnosticField
+                + ", failureReason=" + failureReason + "]";
     }
 }

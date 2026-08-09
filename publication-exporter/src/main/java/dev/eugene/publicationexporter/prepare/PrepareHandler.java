@@ -193,7 +193,7 @@ public final class PrepareHandler {
 
     private BridgeResponse translationFailure(TranslationResult translation) {
         return BridgeResponse.translationFailed(COMMAND,
-                Diagnostic.blocking("candidate", translation.failureReason()));
+                Diagnostic.blocking(translation.failureDiagnosticField(), translation.failureReason()));
     }
 
     private static Diagnostic blockingDiagnostics(List<String> diagnostics) {

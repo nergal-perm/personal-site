@@ -27,6 +27,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -177,6 +178,32 @@ class PrepareCliAcceptanceTest {
         JsonNode response = soleJsonValueOnStdout();
         assertEquals("prepare", response.get("command").asText());
         assertEquals("ready_for_review", response.get("status").asText());
+    }
+
+    @Test
+    void unsupportedConfiguredEngineProducesTranslationFailedSchemaV2Response() throws Exception {
+        writeEssay("# My Essay");
+        Path exporterRoot = Files.createDirectories(vaultRoot.resolve("exporter-root"));
+        Files.writeString(exporterRoot.resolve("publication-exporter.toml"), """
+                [translation]
+                engine = "unsupported-agent"
+                """);
+
+        int exitCode = prepare("blog/my-essay.md", new PrepareCommand(exporterRoot, Map.of()));
+
+        assertEquals(1, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertEquals("prepare", response.get("command").asText());
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("translation_failed", response.get("status").asText());
+        assertEquals("translation-engine", response.get("diagnostics").get(0).get("field").asText());
+        assertTrue(response.get("diagnostics").get(0).get("message").asText()
+                .contains("unsupported-agent"));
+        assertTrue(response.get("diagnostics").get(0).get("message").asText()
+                .contains("publication-exporter.toml"));
+        assertFalse(Files.exists(vaultRoot.resolve("review/blog/essay/my-essay")));
+        assertFalse(Files.exists(vaultRoot.resolve(".publication-jobs")));
     }
 
     @Test
@@ -348,6 +375,10 @@ class PrepareCliAcceptanceTest {
 
     private int prepare(String notePath, TranslationWorker translationWorker) {
         PrepareCommand prepareCommand = new PrepareCommand(translationWorker);
+        return prepare(notePath, prepareCommand);
+    }
+
+    private int prepare(String notePath, PrepareCommand prepareCommand) {
         CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
             @Override
             public <K> K create(Class<K> cls) throws Exception {

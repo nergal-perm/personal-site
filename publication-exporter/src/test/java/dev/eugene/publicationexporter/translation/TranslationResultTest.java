@@ -25,6 +25,16 @@ class TranslationResultTest {
 
         assertFalse(result.succeeded());
         assertEquals("boom", result.failureReason());
+        assertEquals("candidate", result.failureDiagnosticField());
+    }
+
+    @Test
+    void explicitFailureExposesItsDiagnosticField() {
+        TranslationResult result = TranslationResult.failure("translation-engine", "unsupported agent");
+
+        assertFalse(result.succeeded());
+        assertEquals("translation-engine", result.failureDiagnosticField());
+        assertEquals("unsupported agent", result.failureReason());
     }
 
     @Test

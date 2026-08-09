@@ -5,8 +5,8 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.prepare.PrepareHandler;
-import dev.eugene.publicationexporter.translation.CodexTranslationCommand;
 import dev.eugene.publicationexporter.translation.ProcessTranslationWorker;
+import dev.eugene.publicationexporter.translation.TranslationEngineConfiguration;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -16,6 +16,7 @@ import picocli.CommandLine.Option;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 import java.util.function.Function;
@@ -28,8 +29,11 @@ public final class PrepareCommand implements Callable<Integer> {
     private final Function<Path, TranslationWorker> translationWorkerForJobRoot;
 
     public PrepareCommand() {
-        this(jobRoot -> new ProcessTranslationWorker(
-                new CodexTranslationCommand(), TRANSLATION_TIMEOUT, jobRoot));
+        this(Path.of(System.getProperty("user.dir")), System.getenv());
+    }
+
+    PrepareCommand(Path exporterRoot, Map<String, String> environment) {
+        this(jobRoot -> configuredWorker(jobRoot, exporterRoot, environment));
     }
 
     PrepareCommand(TranslationWorker translationWorker) {
@@ -40,6 +44,17 @@ public final class PrepareCommand implements Callable<Integer> {
     private PrepareCommand(Function<Path, TranslationWorker> translationWorkerForJobRoot) {
         this.translationWorkerForJobRoot = Objects.requireNonNull(
                 translationWorkerForJobRoot, "translationWorkerForJobRoot");
+    }
+
+    private static TranslationWorker configuredWorker(
+            Path jobRoot, Path exporterRoot, Map<String, String> environment) {
+        try {
+            return new ProcessTranslationWorker(
+                    TranslationEngineConfiguration.commandFor(exporterRoot, environment),
+                    TRANSLATION_TIMEOUT, jobRoot);
+        } catch (IllegalArgumentException failure) {
+            return TranslationWorker.createNullFailing("translation-engine", failure.getMessage());
+        }
     }
 
     @Option(names = "--vault", required = true)

@@ -12,6 +12,10 @@ public interface TranslationWorker {
         return new NullTranslationWorker(TranslationResult.failure(reason));
     }
 
+    static TranslationWorker createNullFailing(String diagnosticField, String reason) {
+        return new NullTranslationWorker(TranslationResult.failure(diagnosticField, reason));
+    }
+
     static TranslationWorker createNullStale() {
         return new NullTranslationWorker(TranslationResult.stale());
     }
