@@ -6,15 +6,15 @@ import java.util.Objects;
 
 public final class NullTranslationWorker implements TranslationWorker {
 
-    private final TranslationResult result;
+    private final TranslationOutcome result;
     private final List<RequestedTranslation> requested = new ArrayList<>();
 
-    public NullTranslationWorker(TranslationResult result) {
+    public NullTranslationWorker(TranslationOutcome result) {
         this.result = Objects.requireNonNull(result, "result");
     }
 
     @Override
-    public TranslationResult translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
+    public TranslationOutcome translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
         Objects.requireNonNull(job, "job");
         requested.add(RequestedTranslation.of(ruBody, ruTitle, ruDescription));
         return result;

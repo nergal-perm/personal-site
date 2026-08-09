@@ -27,7 +27,7 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     @Override
-    public TranslationResult translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
+    public TranslationOutcome translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
         Objects.requireNonNull(job, "job");
         JobWorkspace workspace = JobWorkspace.createAt(jobRoot, job);
         try {
@@ -38,7 +38,7 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         }
     }
 
-    private TranslationResult runAndCollect(JobWorkspace workspace, TranslationJob job, String prompt) {
+    private TranslationOutcome runAndCollect(JobWorkspace workspace, TranslationJob job, String prompt) {
         try {
             Process process = new ProcessBuilder(command.argsFor(workspace.path(), prompt))
                     .directory(workspace.path().toFile())
@@ -49,23 +49,23 @@ public final class ProcessTranslationWorker implements TranslationWorker {
                     () -> drainOutput(process));
             return awaitResult(process, workspace, job, outputDrainer);
         } catch (IOException error) {
-            return TranslationResult.failure("Translation worker failed to start: " + error.getMessage());
+            return TranslationOutcome.failure("Translation worker failed to start: " + error.getMessage());
         }
     }
 
-    private TranslationResult awaitResult(
+    private TranslationOutcome awaitResult(
             Process process, JobWorkspace workspace, TranslationJob job,
             CompletableFuture<Void> outputDrainer) {
-        TranslationResult processResult;
+        TranslationOutcome processResult;
         try {
             boolean completed = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!completed) {
                 process.destroyForcibly();
                 process.waitFor();
-                processResult = TranslationResult.failure(
+                processResult = TranslationOutcome.failure(
                         "Translation worker timed out after " + timeout.getSeconds() + "s.");
             } else if (process.exitValue() != 0) {
-                processResult = TranslationResult.failure(
+                processResult = TranslationOutcome.failure(
                         "Translation worker exited with code " + process.exitValue() + ".");
             } else {
                 processResult = collectResult(workspace, job);
@@ -73,29 +73,29 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         } catch (InterruptedException interrupted) {
             process.destroyForcibly();
             Thread.currentThread().interrupt();
-            processResult = TranslationResult.failure("Translation worker was interrupted.");
+            processResult = TranslationOutcome.failure("Translation worker was interrupted.");
         }
         return afterBoundedOutputDrain(process, outputDrainer, processResult);
     }
 
-    private static TranslationResult afterBoundedOutputDrain(
-            Process process, CompletableFuture<Void> outputDrainer, TranslationResult processResult) {
+    private static TranslationOutcome afterBoundedOutputDrain(
+            Process process, CompletableFuture<Void> outputDrainer, TranslationOutcome processResult) {
         try {
             outputDrainer.get(OUTPUT_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS);
             return processResult;
         } catch (TimeoutException timeout) {
             closeProcessOutput(process);
             outputDrainer.cancel(true);
-            return TranslationResult.failure(
+            return TranslationOutcome.failure(
                     "Translation worker output stream did not close within "
                             + OUTPUT_DRAIN_TIMEOUT_SECONDS + "s after process completion.");
         } catch (InterruptedException interrupted) {
             closeProcessOutput(process);
             outputDrainer.cancel(true);
             Thread.currentThread().interrupt();
-            return TranslationResult.failure("Translation worker output drain was interrupted.");
+            return TranslationOutcome.failure("Translation worker output drain was interrupted.");
         } catch (ExecutionException failure) {
-            return TranslationResult.failure(
+            return TranslationOutcome.failure(
                     "Translation worker output could not be drained: " + failure.getCause().getMessage());
         }
     }
@@ -116,12 +116,12 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         }
     }
 
-    private TranslationResult collectResult(JobWorkspace workspace, TranslationJob job) {
+    private TranslationOutcome collectResult(JobWorkspace workspace, TranslationJob job) {
         try {
             workspace.requireMatchingFingerprint(job.sourceFingerprint());
             return validatedResultFrom(workspace);
         } catch (JobWorkspace.FingerprintMismatchException mismatch) {
-            return TranslationResult.failure("Translation worker job fingerprint did not match the request.");
+            return TranslationOutcome.failure("Translation worker job fingerprint did not match the request.");
         } catch (JobWorkspace.MissingFileException missing) {
             return missingFileFailure(missing.fileName());
         } catch (JobWorkspace.UnreadableFileException unreadable) {
@@ -129,20 +129,20 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         }
     }
 
-    private TranslationResult validatedResultFrom(JobWorkspace workspace)
+    private TranslationOutcome validatedResultFrom(JobWorkspace workspace)
             throws JobWorkspace.MissingFileException, JobWorkspace.UnreadableFileException {
-        return TranslationResult.success(
+        return TranslationOutcome.success(
                 workspace.readRequiredResult(BODY_FILE_NAME),
                 workspace.readRequiredResult(TITLE_FILE_NAME),
                 workspace.readRequiredResult(DESCRIPTION_FILE_NAME));
     }
 
-    private static TranslationResult missingFileFailure(String fileName) {
-        return TranslationResult.failure("Translation worker completed without writing " + fileName + ".");
+    private static TranslationOutcome missingFileFailure(String fileName) {
+        return TranslationOutcome.failure("Translation worker completed without writing " + fileName + ".");
     }
 
-    private static TranslationResult readFailure(String fileName, IOException error) {
-        return TranslationResult.failure("Could not read " + fileName + ": " + error.getMessage());
+    private static TranslationOutcome readFailure(String fileName, IOException error) {
+        return TranslationOutcome.failure("Could not read " + fileName + ": " + error.getMessage());
     }
 
     private static String prompt(String ruBody, String ruTitle, String ruDescription) {

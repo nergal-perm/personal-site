@@ -11,7 +11,7 @@ import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationJob;
-import dev.eugene.publicationexporter.translation.TranslationResult;
+import dev.eugene.publicationexporter.translation.TranslationOutcome;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -313,7 +313,7 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, essayWithoutSourceId));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationResult.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", "EN title", "EN description."));
         PrepareHandler handler = new PrepareHandler(
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -331,7 +331,7 @@ class PrepareHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationResult.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", "EN title", "EN description."));
         PrepareHandler handler = new PrepareHandler(worker, CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -508,10 +508,10 @@ class PrepareHandlerTest {
             if (currentInvocation == 1) {
                 firstTranslationStarted.countDown();
                 await(releaseFirstTranslation);
-                return TranslationResult.success("Stale English", "Stale title", "Stale description");
+                return TranslationOutcome.success("Stale English", "Stale title", "Stale description");
             }
             await(releaseSecondTranslation);
-            return TranslationResult.success("Fresh English", "Fresh title", "Fresh description");
+            return TranslationOutcome.success("Fresh English", "Fresh title", "Fresh description");
         };
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler firstHandler = new PrepareHandler(

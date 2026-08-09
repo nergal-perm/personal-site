@@ -14,7 +14,7 @@ import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationJob;
-import dev.eugene.publicationexporter.translation.TranslationResult;
+import dev.eugene.publicationexporter.translation.TranslationOutcome;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -232,7 +232,7 @@ class PrepareCliAcceptanceTest {
         installApproved(reviewRoot, "# My Essay\n\nApproved body.", "Prior English candidate");
         installCandidate(reviewRoot, "# My Essay\n\nApproved body.", "Prior English candidate");
         NullTranslationWorker worker = new NullTranslationWorker(
-                dev.eugene.publicationexporter.translation.TranslationResult.success(
+                TranslationOutcome.success(
                         "Must not be installed", "Must not be installed", "Must not be installed"));
 
         int exitCode = prepare("blog/my-essay.md", worker);
@@ -292,7 +292,7 @@ class PrepareCliAcceptanceTest {
         installApproved(reviewRoot, "Approved body.", "Prior English candidate");
         installCandidate(reviewRoot, "Approved body.", "Prior English candidate");
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationResult.success("Fresh English", "Fresh English title", "Fresh English description"));
+                TranslationOutcome.success("Fresh English", "Fresh English title", "Fresh English description"));
 
         int exitCode = prepare("blog/my-essay.md", worker);
 
@@ -309,7 +309,7 @@ class PrepareCliAcceptanceTest {
         installApproved(reviewRoot, "Approved body.", "Prior English candidate");
         installCandidate(reviewRoot, "Approved body.", "Prior English candidate");
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationResult.success("Fresh English", "Fresh English title", "Fresh English description"));
+                TranslationOutcome.success("Fresh English", "Fresh English title", "Fresh English description"));
 
         int exitCode = prepare("blog/my-essay.md", worker);
 
@@ -332,10 +332,10 @@ class PrepareCliAcceptanceTest {
             if (invocation.incrementAndGet() == 1) {
                 firstTranslationStarted.countDown();
                 await(releaseFirstTranslation);
-                return TranslationResult.success("Stale English", "Stale title", "Stale description");
+                return TranslationOutcome.success("Stale English", "Stale title", "Stale description");
             }
             await(releaseSecondTranslation);
-            return TranslationResult.success("Fresh English", "Fresh title", "Fresh description");
+            return TranslationOutcome.success("Fresh English", "Fresh title", "Fresh description");
         };
         PrepareCommand first = configuredCommand(controlledWorker);
         PrepareCommand second = configuredCommand(controlledWorker);

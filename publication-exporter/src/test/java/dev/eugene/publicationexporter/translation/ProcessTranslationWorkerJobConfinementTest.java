@@ -30,13 +30,12 @@ class ProcessTranslationWorkerJobConfinementTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 command, Duration.ofSeconds(5), jobRoot);
 
-        TranslationResult result = worker.translate(
+        TranslationOutcome result = worker.translate(
                 job, "ru body", "ru title", "ru description");
 
-        assertTrue(result.succeeded());
-        assertEquals("translated body", result.enBody());
-        assertEquals("translated title", result.enTitle());
-        assertEquals("translated description", result.enDescription());
+        assertEquals("translated body", TranslationResults.translated(result).body());
+        assertEquals("translated title", TranslationResults.translated(result).title());
+        assertEquals("translated description", TranslationResults.translated(result).description());
     }
 
     @Test
@@ -49,12 +48,11 @@ class ProcessTranslationWorkerJobConfinementTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 command, Duration.ofSeconds(5), jobRoot);
 
-        TranslationResult result = worker.translate(
+        TranslationOutcome result = worker.translate(
                 TranslationJob.forSource("ru body", "ru title", "ru description"),
                 "ru body", "ru title", "ru description");
 
-        assertFalse(result.succeeded());
-        assertTrue(result.failureReason().contains("candidate.en.md"));
+        assertTrue(TranslationResults.failed(result).reason().contains("candidate.en.md"));
         assertEquals("escaped content", Files.readString(escapeTarget));
     }
 
@@ -68,12 +66,11 @@ class ProcessTranslationWorkerJobConfinementTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 command, Duration.ofSeconds(5), jobRoot);
 
-        TranslationResult result = worker.translate(
+        TranslationOutcome result = worker.translate(
                 TranslationJob.forSource("ru body", "ru title", "ru description"),
                 "ru body", "ru title", "ru description");
 
-        assertFalse(result.succeeded());
-        assertTrue(result.failureReason().contains("fingerprint"));
+        assertTrue(TranslationResults.failed(result).reason().contains("fingerprint"));
     }
 
     @Test
@@ -88,12 +85,11 @@ class ProcessTranslationWorkerJobConfinementTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 command, Duration.ofSeconds(5), jobRoot);
 
-        TranslationResult result = worker.translate(
+        TranslationOutcome result = worker.translate(
                 TranslationJob.forSource("ru body", "ru title", "ru description"),
                 "ru body", "ru title", "ru description");
 
-        assertFalse(result.succeeded());
-        assertTrue(result.failureReason().contains("candidate.en.md"));
+        assertTrue(TranslationResults.failed(result).reason().contains("candidate.en.md"));
     }
 
     @Test
@@ -108,12 +104,11 @@ class ProcessTranslationWorkerJobConfinementTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 command, Duration.ofSeconds(5), jobRoot);
 
-        TranslationResult result = worker.translate(
+        TranslationOutcome result = worker.translate(
                 TranslationJob.forSource("ru body", "ru title", "ru description"),
                 "ru body", "ru title", "ru description");
 
-        assertFalse(result.succeeded());
-        assertTrue(result.failureReason().contains("candidate.en.md"));
+        assertTrue(TranslationResults.failed(result).reason().contains("candidate.en.md"));
     }
 
     @Test
@@ -129,10 +124,10 @@ class ProcessTranslationWorkerJobConfinementTest {
         ProcessTranslationWorker worker = new ProcessTranslationWorker(
                 command, Duration.ofSeconds(5), jobRoot);
 
-        TranslationResult result = worker.translate(
+        TranslationOutcome result = worker.translate(
                 job, "ru body", "ru title", "ru description");
 
-        assertFalse(result.succeeded());
+        TranslationResults.failed(result);
         assertTrue(Files.exists(replacementSentinel));
     }
 

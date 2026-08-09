@@ -13,8 +13,10 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementExc
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
+import dev.eugene.publicationexporter.translation.EnglishTranslation;
+import dev.eugene.publicationexporter.translation.TranslationFailure;
 import dev.eugene.publicationexporter.translation.TranslationJob;
-import dev.eugene.publicationexporter.translation.TranslationResult;
+import dev.eugene.publicationexporter.translation.TranslationOutcome;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -94,14 +96,25 @@ public final class PrepareHandler {
             PublicationIdentity identity, String sourceHash,
             String ruBody, String ruTitle, String ruDescription) {
         TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
-        TranslationResult translation = translateCandidate(job, ruBody, ruTitle, ruDescription);
-        if (!translation.succeeded()) {
-            recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
-            return translationFailure(translation);
-        }
-        String enBody = translation.enBody();
-        String enTitle = translation.enTitle();
-        String enDescription = translation.enDescription();
+        return translateCandidate(job, ruBody, ruTitle, ruDescription).resolve(
+                translation -> prepareTranslatedEssay(
+                        notePath, vaultReader, identity, sourceHash,
+                        ruBody, ruTitle, ruDescription, job, translation),
+                failure -> {
+                    recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
+                    return translationFailure(failure);
+                });
+    }
+
+    private BridgeResponse prepareTranslatedEssay(
+            VaultRelativePath notePath, VaultReader vaultReader,
+            PublicationIdentity identity, String sourceHash,
+            String ruBody, String ruTitle, String ruDescription,
+            TranslationJob job,
+            EnglishTranslation translation) {
+        String enBody = translation.body();
+        String enTitle = translation.title();
+        String enDescription = translation.description();
 
         EnglishCandidateValidator.Result validation = validateEnglishCandidate(
                 ruBody, enBody, enTitle, enDescription);
@@ -140,12 +153,12 @@ public final class PrepareHandler {
         }
     }
 
-    private TranslationResult translateCandidate(
+    private TranslationOutcome translateCandidate(
             TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
         try {
             return translationWorker.translate(job, ruBody, ruTitle, ruDescription);
         } catch (UncheckedIOException failure) {
-            return TranslationResult.failure(IoFailureMessages.describe("Translation worker I/O failed", failure));
+            return TranslationOutcome.failure(IoFailureMessages.describe("Translation worker I/O failed", failure));
         }
     }
 
@@ -191,9 +204,9 @@ public final class PrepareHandler {
         return BridgeResponse.prepared(COMMAND, identity);
     }
 
-    private BridgeResponse translationFailure(TranslationResult translation) {
+    private BridgeResponse translationFailure(TranslationFailure failure) {
         return BridgeResponse.translationFailed(COMMAND,
-                Diagnostic.blocking(translation.failureDiagnosticField(), translation.failureReason()));
+                Diagnostic.blocking(failure.diagnosticField(), failure.reason()));
     }
 
     private static Diagnostic blockingDiagnostics(List<String> diagnostics) {
