@@ -66,16 +66,15 @@ exporter (`mvn -Pnative native:compile` in `exporter-java/`) at a different
 location, update that path via the plugin's settings tab or by editing
 `data.json` directly.
 
-## Zed review windows
+## Zed review window
 
 The plugin setting **Zed CLI** defaults to:
 
 `/Applications/Zed.app/Contents/MacOS/cli`
 
-The review action opens two new Zed workspace windows. With no approved
-baseline, they contain proposed RU and EN files. With an approved pair, they
-contain published-to-proposed RU and EN diffs. The plugin does not tile or
-position the windows.
+The review action opens one new Zed workspace containing both RU and EN files.
+With no approved baseline, it contains the proposed files. With an approved
+pair, it contains the published-to-proposed RU and EN diffs.
 
 The exporter and plugin now share bridge schema version 2. Rebuild the native
 exporter first, then reload the Obsidian plugin. A schema mismatch is

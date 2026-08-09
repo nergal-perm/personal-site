@@ -360,13 +360,19 @@ function zedCliDiagnostic(zedCli) {
   }
 }
 
-function zedArgs(baselineState, target) {
-  return baselineState === "complete"
-    ? ["-n", "--diff", target.publishedPath, target.proposedPath]
-    : ["-n", target.proposedPath];
+function zedArgs(baselineState, targets) {
+  const args = ["-n"];
+  for (const target of targets) {
+    if (baselineState === "complete") {
+      args.push("--diff", target.publishedPath, target.proposedPath);
+    } else {
+      args.push(target.proposedPath);
+    }
+  }
+  return args;
 }
 
-function runZedTarget(zedCli, baselineState, target) {
+function runZedReview(zedCli, baselineState, targets) {
   return new Promise((resolve) => {
     let settled = false;
     let timer = null;
@@ -378,15 +384,15 @@ function runZedTarget(zedCli, baselineState, target) {
     };
     let child;
     try {
-      child = spawnProcess(zedCli, zedArgs(baselineState, target), {
+      child = spawnProcess(zedCli, zedArgs(baselineState, targets), {
         shell: false,
         windowsHide: true,
         stdio: ["ignore", "ignore", "pipe"],
       });
     } catch (_error) {
       settle(localDiagnostic(
-        `Не удалось запустить окно Zed для ${target.language.toUpperCase()}.`,
-        `zed-${target.language}`,
+        "Не удалось запустить окно проверки в Zed.",
+        "zed",
       ));
       return;
     }
@@ -399,8 +405,8 @@ function runZedTarget(zedCli, baselineState, target) {
     });
     child.on("error", () => {
       settle(localDiagnostic(
-        `Не удалось запустить окно Zed для ${target.language.toUpperCase()}.`,
-        `zed-${target.language}`,
+        "Не удалось запустить окно проверки в Zed.",
+        "zed",
       ));
     });
     child.on("close", (exitCode, signal) => {
@@ -410,18 +416,17 @@ function runZedTarget(zedCli, baselineState, target) {
       }
       const detail = stderr.trim();
       settle(localDiagnostic(
-        `Zed не принял ${target.language.toUpperCase()} review` +
+        "Zed не принял проверку" +
           `${signal ? `; signal ${signal}` : `; exit ${exitCode}`}` +
           `${detail ? `: ${detail}` : "."}`,
-        `zed-${target.language}`,
+        "zed",
       ));
     });
     timer = scheduleTimeout(() => {
       if (settled) return;
       settle(localDiagnostic(
-        `Zed превысил время ожидания запуска окна для ` +
-          `${target.language.toUpperCase()} review.`,
-        `zed-${target.language}`,
+        "Zed превысил время ожидания запуска окна проверки.",
+        "zed",
       ));
       try {
         child.kill();
@@ -469,7 +474,7 @@ class ReviewReadyModal extends Modal {
     this.contentEl.addClass("astro-publication-workflow-ready");
     this.contentEl.createEl("h2", { text: "Английский черновик готов" });
     this.contentEl.createEl("p", {
-      text: "Откройте русскую и английскую версии для проверки в двух окнах Zed.",
+      text: "Откройте русскую и английскую версии для проверки в одном окне Zed.",
     });
     const button = this.contentEl.createEl("button", {
       text: "Открыть проверку",
@@ -516,7 +521,7 @@ class PublicationWorkflowSettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Zed CLI")
-      .setDesc("Абсолютный путь к CLI внутри Zed.app; каждая языковая версия открывается в новом окне.")
+      .setDesc("Абсолютный путь к CLI внутри Zed.app; русская и английская версии открываются в одном новом окне.")
       .addText((text) => text
         .setPlaceholder(DEFAULT_ZED_CLI)
         .setValue(this.plugin.settings.zedCli)
@@ -589,19 +594,17 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
     if (cliFailure) {
       return { ok: false, diagnostics: [cliFailure] };
     }
-    const diagnostics = [];
-    for (const target of targets) {
-      const diagnostic = await runZedTarget(
-        this.settings.zedCli,
-        plan.baselineState,
-        target,
-      );
-      if (diagnostic) diagnostics.push(diagnostic);
-    }
-    if (diagnostics.length === 0 && plan.baselineState === "changed") {
+    const diagnostic = await runZedReview(
+      this.settings.zedCli,
+      plan.baselineState,
+      targets,
+    );
+    if (!diagnostic && plan.baselineState === "changed") {
       new Notice(changedDiffNotice(plan.diff));
     }
-    return { ok: diagnostics.length === 0, diagnostics };
+    return diagnostic
+      ? { ok: false, diagnostics: [diagnostic] }
+      : { ok: true, diagnostics: [] };
   }
 
   showBlocked(result, title = "Подготовка публикации заблокирована") {
@@ -660,7 +663,7 @@ module.exports = class AstroPublicationWorkflowPlugin extends Plugin {
         );
         return false;
       }
-      new Notice("Проверка перевода открыта в двух окнах Zed.");
+      new Notice("Проверка перевода открыта в одном окне Zed.");
       return true;
     } catch (error) {
       this.showBridgeError(error);

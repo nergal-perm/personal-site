@@ -735,8 +735,8 @@ test("Zed CLI setting has a macOS app default and preserves an explicit value", 
   );
 });
 
-test("absent baseline launches proposed RU and EN in separate new workspaces", async () => {
-  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+test("absent baseline launches proposed RU and EN in one new workspace", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -749,16 +749,7 @@ test("absent baseline launches proposed RU and EN in separate new workspaces", a
   })), [
     {
       executable: "/Applications/Zed.app/Contents/MacOS/cli",
-      args: ["-n", "/review/blog/essay/ru.md"],
-      options: {
-        shell: false,
-        windowsHide: true,
-        stdio: ["ignore", "ignore", "pipe"],
-      },
-    },
-    {
-      executable: "/Applications/Zed.app/Contents/MacOS/cli",
-      args: ["-n", "/review/blog/essay/en.md"],
+      args: ["-n", "/review/blog/essay/ru.md", "/review/blog/essay/en.md"],
       options: {
         shell: false,
         windowsHide: true,
@@ -768,8 +759,8 @@ test("absent baseline launches proposed RU and EN in separate new workspaces", a
   ]);
 });
 
-test("complete baseline launches published-to-proposed RU and EN diffs", async () => {
-  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+test("complete baseline launches both published-to-proposed diffs in one workspace", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -777,24 +768,19 @@ test("complete baseline launches published-to-proposed RU and EN diffs", async (
   const result = await plugin.launchReviewPlan(reviewPlan("complete"));
 
   assert.equal(result.ok, true);
-  assert.deepEqual(process.calls.map(({ args }) => args), [
-    [
+  assert.deepEqual(process.calls.map(({ args }) => args), [[
       "-n",
       "--diff",
       "/review/blog/essay/published/ru.md",
       "/review/blog/essay/ru.md",
-    ],
-    [
-      "-n",
       "--diff",
       "/review/blog/essay/published/en.md",
       "/review/blog/essay/en.md",
-    ],
-  ]);
+    ]]);
 });
 
-test("changed baseline launches both candidate files and surfaces the Russian diff", async () => {
-  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+test("changed baseline launches both candidate files in one workspace and surfaces the Russian diff", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -802,10 +788,9 @@ test("changed baseline launches both candidate files and surfaces the Russian di
   const result = await plugin.launchReviewPlan(reviewPlan("changed"));
 
   assert.deepEqual(result, { ok: true, diagnostics: [] });
-  assert.deepEqual(process.calls.map(({ args }) => args), [
-    ["-n", "/review/blog/essay/ru.md"],
-    ["-n", "/review/blog/essay/en.md"],
-  ]);
+  assert.deepEqual(process.calls.map(({ args }) => args), [[
+    "-n", "/review/blog/essay/ru.md", "/review/blog/essay/en.md",
+  ]]);
   const messages = harness.notices.map(({ message }) => message).join("\n");
   assert.match(messages, /- title: Old title/);
   assert.match(messages, /\+ title: New title/);
@@ -868,11 +853,8 @@ test("malformed review plan blocks before Zed preflight", async () => {
   assert.equal(process.calls.length, 0);
 });
 
-test("one failed language still attempts the other and returns no success", async () => {
-  const process = sequenceSpawn([
-    { exitCode: 1, stderr: "RU failed" },
-    { exitCode: 0 },
-  ]);
+test("a failed combined review launch returns no success", async () => {
+  const process = sequenceSpawn([{ exitCode: 1, stderr: "Zed failed" }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -880,18 +862,15 @@ test("one failed language still attempts the other and returns no success", asyn
   const result = await plugin.launchReviewPlan(reviewPlan("complete"));
 
   assert.equal(result.ok, false);
-  assert.equal(process.calls.length, 2);
-  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed-ru"]);
-  assert.match(result.diagnostics[0].message, /RU failed/);
+  assert.equal(process.calls.length, 1);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed"]);
+  assert.match(result.diagnostics[0].message, /Zed failed/);
 });
 
-test("a no-event Zed process times out, is terminated, and does not block EN", {
+test("a no-event combined Zed process times out and is terminated", {
   timeout: 200,
 }, async () => {
-  const process = sequenceSpawn([
-    { noEvents: true },
-    { exitCode: 0 },
-  ]);
+  const process = sequenceSpawn([{ noEvents: true }]);
   const harness = loadPluginHarness({
     spawn: process.spawn,
     setTimeoutFn(callback) {
@@ -907,17 +886,14 @@ test("a no-event Zed process times out, is terminated, and does not block EN", {
   const result = await plugin.launchReviewPlan(reviewPlan("absent"));
 
   assert.equal(result.ok, false);
-  assert.equal(process.calls.length, 2);
+  assert.equal(process.calls.length, 1);
   assert.deepEqual(process.children[0].killCalls, [undefined]);
-  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed-ru"]);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed"]);
   assert.match(result.diagnostics[0].message, /время ожидания/i);
 });
 
-test("an error followed by close settles once and clears each launch timer", async () => {
-  const process = sequenceSpawn([
-    { error: new Error("spawn failed"), exitCode: 1 },
-    { exitCode: 0 },
-  ]);
+test("an error followed by close settles the combined launch once and clears its timer", async () => {
+  const process = sequenceSpawn([{ error: new Error("spawn failed"), exitCode: 1 }]);
   const scheduled = [];
   const cleared = [];
   const harness = loadPluginHarness({
@@ -937,17 +913,16 @@ test("an error followed by close settles once and clears each launch timer", asy
   const result = await plugin.launchReviewPlan(reviewPlan("absent"));
 
   assert.equal(result.ok, false);
-  assert.equal(process.calls.length, 2);
-  assert.equal(scheduled.length, 2);
+  assert.equal(process.calls.length, 1);
+  assert.equal(scheduled.length, 1);
   assert.deepEqual(cleared, scheduled);
-  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed-ru"]);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed"]);
   assert.equal(process.children[0].killCalls.length, 0);
 });
 
-test("both Zed language failures are reported and stderr capture stays bounded", async () => {
+test("a combined Zed launch failure keeps stderr capture bounded", async () => {
   const process = sequenceSpawn([
     { exitCode: 1, stderr: `${"R".repeat(10_000)}UNBOUNDED_TAIL` },
-    { exitCode: 2, stderr: "EN failed" },
   ]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
@@ -956,14 +931,10 @@ test("both Zed language failures are reported and stderr capture stays bounded",
   const result = await plugin.launchReviewPlan(reviewPlan("complete"));
 
   assert.equal(result.ok, false);
-  assert.equal(process.calls.length, 2);
-  assert.deepEqual(result.diagnostics.map(({ field }) => field), [
-    "zed-ru",
-    "zed-en",
-  ]);
+  assert.equal(process.calls.length, 1);
+  assert.deepEqual(result.diagnostics.map(({ field }) => field), ["zed"]);
   assert.ok(result.diagnostics[0].message.length < 5_000);
   assert.doesNotMatch(result.diagnostics[0].message, /UNBOUNDED_TAIL/);
-  assert.match(result.diagnostics[1].message, /EN failed/);
 });
 
 test("every malformed plan is rejected before process launch", async () => {
@@ -1022,8 +993,8 @@ test("note commands accept only the active Markdown TFile", async () => {
   assert.ok(harness.notices.some(({ message }) => /готов/.test(message)));
 });
 
-test("open review inspects the active note and launches the exporter plan", async () => {
-  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+test("open review inspects the active note and launches the exporter plan in one Zed workspace", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -1043,14 +1014,14 @@ test("open review inspects the active note and launches the exporter plan", asyn
   assert.deepEqual(bridgeCalls, [
     ["inspect-publication", "concepts/Current.md"],
   ]);
-  assert.equal(process.calls.length, 2);
+  assert.equal(process.calls.length, 1);
   assert.ok(harness.notices.some(
-    ({ message }) => message === "Проверка перевода открыта в двух окнах Zed.",
+    ({ message }) => message === "Проверка перевода открыта в одном окне Zed.",
   ));
 });
 
-test("post-prepare review button keeps the immutable prepared note path", async () => {
-  const process = sequenceSpawn([{ exitCode: 0 }, { exitCode: 0 }]);
+test("post-prepare review button keeps the immutable prepared note path in one Zed workspace", async () => {
+  const process = sequenceSpawn([{ exitCode: 0 }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -1087,10 +1058,9 @@ test("post-prepare review button keeps the immutable prepared note path", async 
     ["prepare", "concepts/Prepared.md"],
     ["inspect-publication", "concepts/Prepared.md"],
   ]);
-  assert.deepEqual(process.calls.map(({ args }) => args), [
-    ["-n", "/review/blog/essay/ru.md"],
-    ["-n", "/review/blog/essay/en.md"],
-  ]);
+  assert.deepEqual(process.calls.map(({ args }) => args), [[
+    "-n", "/review/blog/essay/ru.md", "/review/blog/essay/en.md",
+  ]]);
 });
 
 test("blocked inspection launches no Zed window and shows exporter diagnostics", async () => {
@@ -1119,16 +1089,13 @@ test("blocked inspection launches no Zed window and shows exporter diagnostics",
   assert.equal(process.calls.length, 0);
   assert.match(harness.modals.at(-1).contentEl.text(), /published-snapshot/);
   assert.equal(
-    harness.notices.some(({ message }) => /двух окнах Zed/.test(message)),
+    harness.notices.some(({ message }) => /одном окне Zed/.test(message)),
     false,
   );
 });
 
-test("partial Zed launch shows language diagnostics without success", async () => {
-  const process = sequenceSpawn([
-    { exitCode: 0 },
-    { exitCode: 1, stderr: "EN rejected" },
-  ]);
+test("failed combined Zed launch shows diagnostics without success", async () => {
+  const process = sequenceSpawn([{ exitCode: 1, stderr: "Zed rejected" }]);
   const harness = loadPluginHarness({ spawn: process.spawn });
   const plugin = new harness.PluginClass(harness.app);
   await plugin.onload();
@@ -1143,10 +1110,10 @@ test("partial Zed launch shows language diagnostics without success", async () =
 
   await command(plugin, "open-current-translation-review").callback();
 
-  assert.equal(process.calls.length, 2);
-  assert.match(harness.modals.at(-1).contentEl.text(), /zed-en/);
+  assert.equal(process.calls.length, 1);
+  assert.match(harness.modals.at(-1).contentEl.text(), /zed/);
   assert.equal(
-    harness.notices.some(({ message }) => /двух окнах Zed/.test(message)),
+    harness.notices.some(({ message }) => /одном окне Zed/.test(message)),
     false,
   );
 });
