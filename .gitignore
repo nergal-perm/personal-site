@@ -4,3 +4,4 @@ e2e/.review/
 .DS_Store
 
 **/.idea/
+publication-exporter.toml
