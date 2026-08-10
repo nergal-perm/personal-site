@@ -924,6 +924,146 @@ class PrepareHandlerTest {
         assertEquals("EN body", candidate.enBody());
     }
 
+    @Test
+    void publicLinkResolvesToRouteWhilePrivateLinkBecomesASafeLabel() {
+        String publicTarget = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: notes-on-time
+                id: 91aa-notes-on-time
+                title: Заметка о времени
+                description: A valid description.
+                ---
+                # Заметка о времени
+
+                Public prose.""";
+        String privateTarget = """
+                ---
+                publish: false
+                publicCollection: blog
+                publicContentType: essay
+                publicId: draft
+                id: 4c1b-draft
+                title: Черновик
+                description: A valid description.
+                ---
+                # Черновик
+
+                Not yet public.""";
+        String referrer = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Смотрите также [[Заметка о времени]] и [[Черновик]].""";
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath publicTargetPath = VaultRelativePath.of("blog/Заметка о времени.md");
+        VaultRelativePath privateTargetPath = VaultRelativePath.of("blog/Черновик.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, referrer,
+                publicTargetPath, publicTarget,
+                privateTargetPath, privateTarget));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals(
+                "# My Essay\n\nСмотрите также [Заметка о времени](/essays/notes-on-time/) и Черновик.",
+                workspace.installed().get(0).ruBody());
+    }
+
+    @Test
+    void privateTransclusionBlocksPreparationWithoutInstallingACandidate() {
+        String privateTarget = """
+                ---
+                publish: false
+                publicCollection: blog
+                publicContentType: essay
+                publicId: draft
+                id: 4c1b-draft
+                title: Черновик
+                description: A valid description.
+                ---
+                # Черновик
+
+                Not yet public.""";
+        String referrer = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                ![[Черновик]]""";
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath privateTargetPath = VaultRelativePath.of("blog/Черновик.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, referrer, privateTargetPath, privateTarget));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(referrerPath, referrer));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", "EN title", "EN description."));
+        PrepareHandler handler = new PrepareHandler(
+                worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(worker.requested().isEmpty());
+        assertTrue(workspace.installed().isEmpty());
+        assertEquals(null, editor.currentValue(referrerPath, "workflowStatus"));
+    }
+
+    @Test
+    void assetEmbedIsLeftUntouchedByLinkResolution() {
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                ![[diagram.png]]
+
+                More prose.""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("# My Essay\n\n![[diagram.png]]\n\nMore prose.", workspace.installed().get(0).ruBody());
+    }
+
     private VaultReader failingReader(RuntimeException failure) {
         return new VaultReader() {
             @Override

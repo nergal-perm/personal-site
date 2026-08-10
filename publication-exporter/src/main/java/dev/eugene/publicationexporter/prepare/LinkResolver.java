@@ -1,0 +1,87 @@
+package dev.eugene.publicationexporter.prepare;
+
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+public final class LinkResolver {
+
+    private static final Pattern WIKILINK =
+            Pattern.compile("(!?)\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?]]");
+    private static final Set<String> ASSET_EXTENSIONS =
+            Set.of(".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".mp3", ".mp4");
+
+    private LinkResolver() {
+    }
+
+    public static LinkResolutionOutcome resolve(String body, PublicNoteIndex knownNotes) {
+        StringBuilder output = new StringBuilder(body.length());
+        int cursor = 0;
+        while (cursor < body.length()) {
+            ProtectedRegionScanner.ProtectedSpan protectedSpan = ProtectedRegionScanner.nextProtectedSpan(body, cursor);
+            Matcher link = nextLink(body, cursor);
+            if (protectedSpanBeforeLink(protectedSpan, link)) {
+                cursor = copyProtectedSpan(body, output, cursor, protectedSpan);
+            } else if (link != null) {
+                Optional<String> blockedTarget = appendLink(body, output, cursor, link, knownNotes);
+                if (blockedTarget.isPresent()) {
+                    return LinkResolutionOutcome.blockedTransclusion(blockedTarget.get());
+                }
+                cursor = link.end();
+            } else {
+                break;
+            }
+        }
+        output.append(body, cursor, body.length());
+        return LinkResolutionOutcome.resolved(output.toString());
+    }
+
+    private static Matcher nextLink(String body, int cursor) {
+        Matcher matcher = WIKILINK.matcher(body);
+        return matcher.find(cursor) ? matcher : null;
+    }
+
+    private static boolean protectedSpanBeforeLink(ProtectedRegionScanner.ProtectedSpan protectedSpan, Matcher link) {
+        return protectedSpan != null && (link == null || protectedSpan.start() <= link.start());
+    }
+
+    private static int copyProtectedSpan(
+            String body, StringBuilder output, int cursor, ProtectedRegionScanner.ProtectedSpan protectedSpan) {
+        output.append(body, cursor, protectedSpan.end());
+        return protectedSpan.end();
+    }
+
+    private static Optional<String> appendLink(
+            String body, StringBuilder output, int cursor, Matcher link, PublicNoteIndex knownNotes) {
+        output.append(body, cursor, link.start());
+        boolean isEmbed = !link.group(1).isEmpty();
+        String target = link.group(2).strip();
+        String label = labelFor(link, target);
+        if (isEmbed && isAssetTarget(target)) {
+            output.append(link.group());
+            return Optional.empty();
+        }
+        Optional<String> route = knownNotes.routeFor(target);
+        if (route.isPresent()) {
+            output.append('[').append(label).append("](").append(route.get()).append(')');
+            return Optional.empty();
+        }
+        if (isEmbed) {
+            return Optional.of(target);
+        }
+        output.append(label);
+        return Optional.empty();
+    }
+
+    private static String labelFor(Matcher link, String target) {
+        String alias = link.group(3);
+        return alias != null ? alias.strip() : target;
+    }
+
+    private static boolean isAssetTarget(String target) {
+        String lowercaseTarget = target.toLowerCase(Locale.ROOT);
+        return ASSET_EXTENSIONS.stream().anyMatch(lowercaseTarget::endsWith);
+    }
+}

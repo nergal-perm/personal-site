@@ -57,13 +57,17 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
+        PublicNoteIndex knownNotes = PublicNoteIndex.from(vaultReader);
         return MarkdownNormalizer.normalize(intake.body()).resolve(
-                normalizedBody -> prepareNormalizedEssay(notePath, vaultReader, intake, normalizedBody),
+                normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
+                        resolvedBody -> prepareNormalizedEssay(notePath, vaultReader, intake, resolvedBody, knownNotes),
+                        PrepareHandler::transclusionBlockedFailure),
                 position -> unclosedCommentFailure(position));
     }
 
     private BridgeResponse prepareNormalizedEssay(
-            VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake, String normalizedBody) {
+            VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
+            String normalizedBody, PublicNoteIndex knownNotes) {
         ApprovedBaselineLookup approved = lookupApprovedBaseline(intake, normalizedBody);
         if (approved.failed()) {
             return approved.failureResponse();
@@ -71,7 +75,7 @@ public final class PrepareHandler {
         if (approved.snapshot().isPresent()) {
             return mirrorApprovedCandidate(intake.identity(), approved.snapshot().get());
         }
-        return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody);
+        return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody, knownNotes);
     }
 
     private ApprovedBaselineLookup lookupApprovedBaseline(NoteIntake.Result intake, String normalizedBody) {
@@ -104,12 +108,12 @@ public final class PrepareHandler {
 
     private BridgeResponse prepareWithInstallLock(
             VaultRelativePath notePath, VaultReader vaultReader,
-            NoteIntake.Result intake, String normalizedBody) {
+            NoteIntake.Result intake, String normalizedBody, PublicNoteIndex knownNotes) {
         ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());
         installLock.lock();
         try {
             return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
-                    intake.sourceHash(), normalizedBody, intake.title(), intake.description());
+                    intake.sourceHash(), normalizedBody, intake.title(), intake.description(), knownNotes);
         } finally {
             installLock.unlock();
         }
@@ -140,12 +144,12 @@ public final class PrepareHandler {
     private BridgeResponse prepareAdmittedEssay(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String sourceHash,
-            String ruBody, String ruTitle, String ruDescription) {
+            String ruBody, String ruTitle, String ruDescription, PublicNoteIndex knownNotes) {
         TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
         return translateCandidate(job, ruBody, ruTitle, ruDescription).resolve(
                 translation -> prepareTranslatedEssay(
                         notePath, vaultReader, identity, sourceHash,
-                        ruBody, ruTitle, ruDescription, job, translation),
+                        ruBody, ruTitle, ruDescription, job, translation, knownNotes),
                 failure -> {
                     recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
                     return translationFailure(failure);
@@ -157,7 +161,7 @@ public final class PrepareHandler {
             PublicationIdentity identity, String sourceHash,
             String ruBody, String ruTitle, String ruDescription,
             TranslationJob job,
-            EnglishTranslation translation) {
+            EnglishTranslation translation, PublicNoteIndex knownNotes) {
         String enBody = translation.body();
         String enTitle = translation.title();
         String enDescription = translation.description();
@@ -168,7 +172,7 @@ public final class PrepareHandler {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
-        return sourceFreshness(notePath, vaultReader, identity, job).resolve(
+        return sourceFreshness(notePath, vaultReader, identity, job, knownNotes).resolve(
                 currentSourceHash -> {
                     ReferenceMap referenceMap = buildReferenceMap(
                             identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
@@ -185,7 +189,8 @@ public final class PrepareHandler {
                             Diagnostic.blocking(
                                     "candidate", "Source note changed while translation was in progress."));
                 },
-                PrepareHandler::unclosedCommentFailure);
+                PrepareHandler::unclosedCommentFailure,
+                PrepareHandler::transclusionBlockedFailure);
     }
 
     private void recordWorkflowStatus(VaultRelativePath notePath, String sourceHash, String status) {
@@ -215,15 +220,17 @@ public final class PrepareHandler {
 
     private static SourceFreshnessOutcome sourceFreshness(
             VaultRelativePath notePath, VaultReader vaultReader,
-            PublicationIdentity expectedIdentity, TranslationJob job) {
+            PublicationIdentity expectedIdentity, TranslationJob job, PublicNoteIndex knownNotes) {
         NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
             return SourceFreshnessOutcome.stale();
         }
         return MarkdownNormalizer.normalize(current.body()).resolve(
-                normalizedBody -> sourceFingerprintMatches(job, normalizedBody, current.title(), current.description())
-                        ? SourceFreshnessOutcome.matches(current.sourceHash())
-                        : SourceFreshnessOutcome.stale(),
+                normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
+                        resolvedBody -> sourceFingerprintMatches(job, resolvedBody, current.title(), current.description())
+                                ? SourceFreshnessOutcome.matches(current.sourceHash())
+                                : SourceFreshnessOutcome.stale(),
+                        SourceFreshnessOutcome::blockedTransclusion),
                 SourceFreshnessOutcome::unclosedComment);
     }
 
@@ -285,6 +292,11 @@ public final class PrepareHandler {
     private static BridgeResponse unclosedCommentFailure(int position) {
         return BridgeResponse.translationFailed(COMMAND,
                 Diagnostic.blocking("candidate", "Obsidian comment starting at position " + position + " is never closed."));
+    }
+
+    private static BridgeResponse transclusionBlockedFailure(String target) {
+        return BridgeResponse.translationFailed(COMMAND,
+                Diagnostic.blocking("candidate", "Transclusion target \"" + target + "\" is not a public note."));
     }
 
     private record ApprovedBaselineLookup(

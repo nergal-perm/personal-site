@@ -4,7 +4,8 @@ import java.util.Objects;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
-sealed interface SourceFreshnessOutcome permits MatchingSource, StaleSource, UnclosedSourceComment {
+sealed interface SourceFreshnessOutcome
+        permits MatchingSource, StaleSource, UnclosedSourceComment, BlockedTransclusionSource {
 
     static SourceFreshnessOutcome matches(String sourceHash) {
         return new MatchingSource(sourceHash);
@@ -18,10 +19,15 @@ sealed interface SourceFreshnessOutcome permits MatchingSource, StaleSource, Unc
         return new UnclosedSourceComment(position);
     }
 
+    static SourceFreshnessOutcome blockedTransclusion(String target) {
+        return new BlockedTransclusionSource(target);
+    }
+
     <T> T resolve(
             Function<String, T> onMatches,
             Supplier<T> onStale,
-            Function<Integer, T> onUnclosedComment);
+            Function<Integer, T> onUnclosedComment,
+            Function<String, T> onBlockedTransclusion);
 }
 
 final class MatchingSource implements SourceFreshnessOutcome {
@@ -36,10 +42,12 @@ final class MatchingSource implements SourceFreshnessOutcome {
     public <T> T resolve(
             Function<String, T> onMatches,
             Supplier<T> onStale,
-            Function<Integer, T> onUnclosedComment) {
+            Function<Integer, T> onUnclosedComment,
+            Function<String, T> onBlockedTransclusion) {
         Objects.requireNonNull(onMatches, "onMatches");
         Objects.requireNonNull(onStale, "onStale");
         Objects.requireNonNull(onUnclosedComment, "onUnclosedComment");
+        Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
         return onMatches.apply(sourceHash);
     }
 }
@@ -50,10 +58,12 @@ final class StaleSource implements SourceFreshnessOutcome {
     public <T> T resolve(
             Function<String, T> onMatches,
             Supplier<T> onStale,
-            Function<Integer, T> onUnclosedComment) {
+            Function<Integer, T> onUnclosedComment,
+            Function<String, T> onBlockedTransclusion) {
         Objects.requireNonNull(onMatches, "onMatches");
         Objects.requireNonNull(onStale, "onStale");
         Objects.requireNonNull(onUnclosedComment, "onUnclosedComment");
+        Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
         return onStale.get();
     }
 }
@@ -70,10 +80,34 @@ final class UnclosedSourceComment implements SourceFreshnessOutcome {
     public <T> T resolve(
             Function<String, T> onMatches,
             Supplier<T> onStale,
-            Function<Integer, T> onUnclosedComment) {
+            Function<Integer, T> onUnclosedComment,
+            Function<String, T> onBlockedTransclusion) {
         Objects.requireNonNull(onMatches, "onMatches");
         Objects.requireNonNull(onStale, "onStale");
         Objects.requireNonNull(onUnclosedComment, "onUnclosedComment");
+        Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
         return onUnclosedComment.apply(position);
+    }
+}
+
+final class BlockedTransclusionSource implements SourceFreshnessOutcome {
+
+    private final String target;
+
+    BlockedTransclusionSource(String target) {
+        this.target = Objects.requireNonNull(target, "target");
+    }
+
+    @Override
+    public <T> T resolve(
+            Function<String, T> onMatches,
+            Supplier<T> onStale,
+            Function<Integer, T> onUnclosedComment,
+            Function<String, T> onBlockedTransclusion) {
+        Objects.requireNonNull(onMatches, "onMatches");
+        Objects.requireNonNull(onStale, "onStale");
+        Objects.requireNonNull(onUnclosedComment, "onUnclosedComment");
+        Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
+        return onBlockedTransclusion.apply(target);
     }
 }
