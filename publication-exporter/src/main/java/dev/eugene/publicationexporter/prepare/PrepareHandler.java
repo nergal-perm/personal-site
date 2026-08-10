@@ -168,20 +168,24 @@ public final class PrepareHandler {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
-        Optional<String> currentSourceHash = sourceHashIfStillMatches(notePath, vaultReader, identity, job);
-        if (currentSourceHash.isEmpty()) {
-            recordStaleWorkflowStatus(notePath, vaultReader);
-            return BridgeResponse.stale(COMMAND,
-                    Diagnostic.blocking("candidate", "Source note changed while translation was in progress."));
-        }
-        ReferenceMap referenceMap = buildReferenceMap(
-                identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
-        BridgeResponse response = installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
-                ruDescription, enDescription, referenceMap);
-        if (response.ok()) {
-            recordWorkflowStatus(notePath, currentSourceHash.get(), WorkflowState.READY_FOR_REVIEW);
-        }
-        return response;
+        return sourceFreshness(notePath, vaultReader, identity, job).resolve(
+                currentSourceHash -> {
+                    ReferenceMap referenceMap = buildReferenceMap(
+                            identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
+                    BridgeResponse response = installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
+                            ruDescription, enDescription, referenceMap);
+                    if (response.ok()) {
+                        recordWorkflowStatus(notePath, currentSourceHash, WorkflowState.READY_FOR_REVIEW);
+                    }
+                    return response;
+                },
+                () -> {
+                    recordStaleWorkflowStatus(notePath, vaultReader);
+                    return BridgeResponse.stale(COMMAND,
+                            Diagnostic.blocking(
+                                    "candidate", "Source note changed while translation was in progress."));
+                },
+                PrepareHandler::unclosedCommentFailure);
     }
 
     private void recordWorkflowStatus(VaultRelativePath notePath, String sourceHash, String status) {
@@ -209,17 +213,18 @@ public final class PrepareHandler {
         }
     }
 
-    private static Optional<String> sourceHashIfStillMatches(
+    private static SourceFreshnessOutcome sourceFreshness(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity expectedIdentity, TranslationJob job) {
         NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
-            return Optional.empty();
+            return SourceFreshnessOutcome.stale();
         }
         return MarkdownNormalizer.normalize(current.body()).resolve(
                 normalizedBody -> sourceFingerprintMatches(job, normalizedBody, current.title(), current.description())
-                        ? Optional.of(current.sourceHash()) : Optional.empty(),
-                ignored -> Optional.empty());
+                        ? SourceFreshnessOutcome.matches(current.sourceHash())
+                        : SourceFreshnessOutcome.stale(),
+                SourceFreshnessOutcome::unclosedComment);
     }
 
     private static boolean sourceFingerprintMatches(

@@ -8,7 +8,7 @@ public final class MarkdownNormalizer {
 
     private static final Pattern FENCE_OPEN = Pattern.compile("(?m)^ {0,3}(`{3,}|~{3,})([^\\r\\n]*)$");
     private static final Pattern FENCE_CLOSE = Pattern.compile("(?m)^ {0,3}(`{3,}|~{3,})[ \\t]*$");
-    private static final Pattern INLINE_CODE = Pattern.compile("(?s)(?<!\\\\)(`+)(?!`).*?(?<!`)\\1(?!`)");
+    private static final Pattern INLINE_CODE = Pattern.compile("(?s)(?<!\\\\)(?<!`)(`+)(?!`).*?(?<!`)\\1(?!`)");
     private static final String COMMENT_MARKER = "%%";
 
     private MarkdownNormalizer() {

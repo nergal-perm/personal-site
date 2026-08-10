@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Timeout;
 import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class MarkdownNormalizerTest {
@@ -22,6 +23,16 @@ class MarkdownNormalizerTest {
         String body = "before `` %% private %% ``` after";
 
         assertEquals("before ``  ``` after", normalizedBodyOrFail(body));
+    }
+
+    @Test
+    void stripsCommentWhenOpeningBacktickRunIsLongerThanClosingRun() {
+        String body = "before ``` %% private %% `` after";
+
+        String normalized = normalizedBodyOrFail(body);
+
+        assertFalse(normalized.contains("%%"));
+        assertFalse(normalized.contains("private"));
     }
 
     @Test

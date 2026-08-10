@@ -156,6 +156,43 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void unclosedCommentDuringFreshnessRecheckWritesNoWorkflowStatus() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        String essayWithUnclosedComment = essayWithBody("Public prose.\n\n%% private note is never closed");
+        AtomicInteger reads = new AtomicInteger();
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return reads.incrementAndGet() == 1 ? VALID_ESSAY : essayWithUnclosedComment;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
+            }
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, essayWithUnclosedComment));
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("never closed"));
+        assertTrue(workspace.installed().isEmpty());
+        assertEquals(null, editor.currentValue(path, "workflowStatus"));
+    }
+
+    @Test
     void blockedWorkflowStatusWriteDoesNotChangePrepareResponse() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
@@ -513,6 +550,7 @@ class PrepareHandlerTest {
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
         assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("never closed"));
         assertTrue(worker.requested().isEmpty());
         assertTrue(workspace.installed().isEmpty());
         assertEquals(null, editor.currentValue(path, "workflowStatus"));
