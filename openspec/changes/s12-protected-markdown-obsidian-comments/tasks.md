@@ -23,7 +23,7 @@ All tests in this group go into the existing file
 methods (`installApproved(Path reviewRoot)`, `essayWithBody(String body)`) these tests reuse — read the
 existing file fully before adding to it; do not duplicate an import or helper that's already there.
 
-- [ ] 1.1 Write a failing test: an Obsidian comment in the source body is absent from the installed
+- [x] 1.1 Write a failing test: an Obsidian comment in the source body is absent from the installed
       candidate's RU body.
 
 ```java
@@ -69,7 +69,7 @@ void obsidianCommentIsStrippedFromInstalledCandidate() {
   untouched — this is what "copy everything before the span, skip the span itself, resume after it"
   produces for a comment that sits alone on its own line between two blank-line-separated paragraphs.
 
-- [ ] 1.2 Write a failing test: link-like text inside an inline code span survives normalization
+- [x] 1.2 Write a failing test: link-like text inside an inline code span survives normalization
       byte-for-byte.
 
 ```java
@@ -103,7 +103,7 @@ void linkLikeTextInsideInlineCodeSurvivesNormalization() {
 }
 ```
 
-- [ ] 1.3 Write a failing test: link-like and comment-like text inside a fenced code block survives
+- [x] 1.3 Write a failing test: link-like and comment-like text inside a fenced code block survives
       normalization byte-for-byte, including a `%%...%%` sequence that would otherwise be stripped as a
       comment.
 
@@ -147,7 +147,7 @@ void commentAndLinkLikeTextInsideFencedCodeSurviveNormalization() {
 }
 ```
 
-- [ ] 1.4 Write a failing test: an unclosed Obsidian comment blocks preparation with a diagnostic, installs
+- [x] 1.4 Write a failing test: an unclosed Obsidian comment blocks preparation with a diagnostic, installs
       no candidate, and writes no workflow status.
 
 ```java
@@ -190,7 +190,7 @@ void unclosedObsidianCommentBlocksPreparationWithoutInstallingACandidate() {
 }
 ```
 
-- [ ] 1.5 Write a failing test: an edit that touches only an Obsidian comment (surrounding prose
+- [x] 1.5 Write a failing test: an edit that touches only an Obsidian comment (surrounding prose
       unchanged) still counts as "unchanged" against the approved baseline — the skip-optimization fires,
       the translation worker is never invoked, and the mirrored candidate has the comment already stripped.
 
@@ -251,7 +251,7 @@ void commentOnlyEditStillCountsAsUnchangedAgainstApprovedBaseline() throws Excep
   against this exact fixture before being written into this task — if your implementation produces a
   different result, the implementation has a bug; do not change this expected value to make a test pass.
 
-- [ ] 1.6 Run the new tests and confirm they fail for the expected reason (missing/incorrect behavior, not
+- [x] 1.6 Run the new tests and confirm they fail for the expected reason (missing/incorrect behavior, not
       a compile error or an unrelated failure).
 
 Run: `cd publication-exporter && mvn -q -o test -Dtest=PrepareHandlerTest 2>&1 | tail -100`
@@ -277,7 +277,7 @@ each new test fails.
   `BridgeResponse.blocked(String, List<Diagnostic>)`, `BridgeResponse.translationFailed(String, Diagnostic)`,
   `Diagnostic.blocking(String, String)`.
 
-- [ ] 2.1 Create `MarkdownNormalizationOutcome.java` — exactly this content:
+- [x] 2.1 Create `MarkdownNormalizationOutcome.java` — exactly this content:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -337,7 +337,7 @@ final class UnclosedObsidianComment implements MarkdownNormalizationOutcome {
   codebase (sealed interface + `resolve(onSuccess, onFailure)`, package-visible variant classes) — read
   that file first if anything above is unclear.
 
-- [ ] 2.2 Create `MarkdownNormalizer.java` — exactly this content:
+- [x] 2.2 Create `MarkdownNormalizer.java` — exactly this content:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -441,7 +441,7 @@ public final class MarkdownNormalizer {
   copy verbatim), and the Obsidian comment case is handled entirely separately in `normalize(...)`'s main
   loop since it is the only span kind that gets dropped rather than copied through.
 
-- [ ] 2.3 Wire `MarkdownNormalizer` into `PrepareHandler.prepare(...)`. Read the current file first — it
+- [x] 2.3 Wire `MarkdownNormalizer` into `PrepareHandler.prepare(...)`. Read the current file first — it
       was modified earlier today by a different change (`dec-20260810-43c363ff`, the approved-snapshot
       mirroring fix), so match against the actual current content, not an assumption of what it looks
       like. Apply this transformation:
@@ -513,7 +513,7 @@ public final class MarkdownNormalizer {
   and `PrepareHandler` are both in package `dev.eugene.publicationexporter.prepare`, so no new import is
   needed for it. Do not add an import that isn't required.
 
-- [ ] 2.4 Run the full `PrepareHandlerTest` class and confirm all tests pass, including the five written in
+- [x] 2.4 Run the full `PrepareHandlerTest` class and confirm all tests pass, including the five written in
       section 1.
 
 Run: `cd publication-exporter && mvn -q -o test -Dtest=PrepareHandlerTest 2>&1 | tail -100`
@@ -522,7 +522,7 @@ Expected: no output (quiet-mode success) or, if there is output, zero failures/e
 `target/surefire-reports/dev.eugene.publicationexporter.prepare.PrepareHandlerTest.txt` for the exact
 pass count if unsure.
 
-- [ ] 2.5 Commit.
+- [x] 2.5 Commit.
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/MarkdownNormalizationOutcome.java \
@@ -547,7 +547,7 @@ narrow unit tests against `MarkdownNormalizer` directly, instead of only through
 **Interfaces:**
 - Consumes: `MarkdownNormalizer.normalize(String)` returning `MarkdownNormalizationOutcome` (from section 2).
 
-- [ ] 3.1 Write and verify a test proving a too-short closing fence is skipped in favor of the real
+- [x] 3.1 Write and verify a test proving a too-short closing fence is skipped in favor of the real
       closer (a 3-backtick line inside a 4-backtick-fenced block does not close it).
 
 ```java
@@ -583,7 +583,7 @@ final class MarkdownNormalizerTest {
   `@Timeout` guards against a pathological backtracking scan if this regex/loop combination is ever
   changed to something with exponential worst-case behavior.
 
-- [ ] 3.2 Write and verify a test proving backtick-run-length matching for inline code: a single backtick
+- [x] 3.2 Write and verify a test proving backtick-run-length matching for inline code: a single backtick
       inside a double-backtick-delimited span does not close it.
 
 ```java
@@ -595,7 +595,7 @@ final class MarkdownNormalizerTest {
     }
 ```
 
-- [ ] 3.3 Write and verify a test proving CRLF line endings are recognized correctly for fenced code (the
+- [x] 3.3 Write and verify a test proving CRLF line endings are recognized correctly for fenced code (the
       legacy oracle's evidence flagged this as a real correctness hazard, not a hypothetical one).
 
 ```java
@@ -607,7 +607,7 @@ final class MarkdownNormalizerTest {
     }
 ```
 
-- [ ] 3.4 Write and verify a test proving an unclosed fence protects through to end-of-body without
+- [x] 3.4 Write and verify a test proving an unclosed fence protects through to end-of-body without
       blocking (contrast this with the unclosed-*comment* case, which does block — see task 1.4). No
       content is lost either way: an unclosed fence just means everything after it is treated as code, a
       self-evident and immediately visible formatting artifact, not silent data loss.
@@ -635,7 +635,7 @@ final class MarkdownNormalizerTest {
 
   (The closing `}` above ends the `MarkdownNormalizerTest` class — this is the last test in the file.)
 
-- [ ] 3.5 Run the new test class and the full `PrepareHandlerTest` class together, confirm both green.
+- [x] 3.5 Run the new test class and the full `PrepareHandlerTest` class together, confirm both green.
 
 Run: `cd publication-exporter && mvn -q -o test -Dtest=MarkdownNormalizerTest,PrepareHandlerTest 2>&1 | tail -150`
 
@@ -643,7 +643,7 @@ Expected: no failures. If `tooShortClosingFenceIsSkippedInFavorOfTheRealCloser` 
 loop in `MarkdownNormalizer.fencedSpan` is not advancing `closingSearchFrom` correctly on a non-matching
 candidate line — re-check that branch against task 2.2's exact code before changing anything else.
 
-- [ ] 3.6 Commit.
+- [x] 3.6 Commit.
 
 ```bash
 git add publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/MarkdownNormalizerTest.java
@@ -652,22 +652,24 @@ git commit -m "test(exporter): add narrow MarkdownNormalizer coverage for fence 
 
 ## 4. Full-suite verification
 
-- [ ] 4.1 Run the complete `publication-exporter` test suite and confirm every test passes (the baseline
-      before this change was 484 tests, 0 failures — this slice adds 5 acceptance tests plus 6 unit tests,
-      so expect 495 tests, 0 failures, 0 errors, 0 skipped).
+- [x] 4.1 Run the complete `publication-exporter` test suite and confirm every test passes. Final count:
+      498 tests, 0 failures, 0 errors, 0 skipped (baseline 484, +5 Task A acceptance tests, +6 Task B unit
+      tests, +3 tests added across the two review-driven fix rounds that followed — one for the
+      closing-side backtick-run bug, one for the workflow-status hash desync, one for the opening-side
+      backtick-run bug the final whole-branch review caught).
 
 ```bash
 cd publication-exporter && mvn -q -o test 2>&1 | tail -150
 grep -h "Tests run" target/surefire-reports/*.txt | awk -F'[ ,]+' '{tests+=$3; fail+=$5; err+=$7; skip+=$9} END {print "Tests run:", tests, "Failures:", fail, "Errors:", err, "Skipped:", skip}'
 ```
 
-- [ ] 4.2 Run the OpenSpec strict validation for this change and confirm it passes.
+- [x] 4.2 Run the OpenSpec strict validation for this change and confirm it passes.
 
 ```bash
 cd /Users/eugene/Dev/personal-site && openspec validate "s12-protected-markdown-obsidian-comments" --strict
 ```
 
-- [ ] 4.3 Refresh the graphify code graph (project convention after any code change).
+- [x] 4.3 Refresh the graphify code graph (project convention after any code change).
 
 ```bash
 graphify update .
