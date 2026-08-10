@@ -156,12 +156,6 @@ public final class MarkdownNote {
         return headerState;
     }
 
-    @Override
-    public String toString() {
-        return "MarkdownNote[frontmatterValues=" + frontmatterValues + ", body=" + body
-                + ", originalSource=" + originalSource + "]";
-    }
-
     private static boolean startsWithFrontmatterDelimiter(List<String> lines) {
         return !lines.isEmpty() && DELIMITER.equals(lines.get(0).strip());
     }
