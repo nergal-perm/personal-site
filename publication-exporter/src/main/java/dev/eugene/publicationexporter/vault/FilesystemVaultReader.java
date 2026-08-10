@@ -1,6 +1,6 @@
 package dev.eugene.publicationexporter.vault;
 
-import dev.eugene.publicationexporter.note.Frontmatter;
+import dev.eugene.publicationexporter.note.MarkdownNote;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -21,11 +21,6 @@ final class FilesystemVaultReader implements VaultReader {
         this.canonicalVaultRoot = canonicalize(Objects.requireNonNull(vaultRoot, "vaultRoot"));
     }
 
-    /**
-     * Reports whether the note really exists <em>inside</em> the vault. A path that resolves —
-     * through symbolic links — to a location outside the canonical vault root is reported as
-     * absent, so a link planted in the vault cannot expose an external file.
-     */
     @Override
     public boolean exists(VaultRelativePath notePath) {
         return resolveWithinVault(notePath).isPresent();
@@ -54,7 +49,7 @@ final class FilesystemVaultReader implements VaultReader {
 
     private boolean hasPublishTrueFlag(Path file) {
         try {
-            return Frontmatter.parse(readUtf8(file)).flag("publish");
+            return MarkdownNote.parse(readUtf8(file)).flag("publish");
         } catch (UncheckedIOException unreadable) {
             return false;
         }

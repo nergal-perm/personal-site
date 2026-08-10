@@ -2,7 +2,7 @@ package dev.eugene.publicationexporter.admission;
 
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
-import dev.eugene.publicationexporter.note.Frontmatter;
+import dev.eugene.publicationexporter.note.MarkdownNote;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -15,7 +15,7 @@ public final class EssayAdmission {
     private static final String REQUIRED_COLLECTION = "blog";
     private static final String REQUIRED_CONTENT_TYPE = "essay";
 
-    public Result admit(Frontmatter frontmatter) {
+    public Result admit(MarkdownNote frontmatter) {
         if (!isPublished(frontmatter)) {
             return Result.blocked(List.of(publishDiagnostic()));
         }
@@ -34,7 +34,7 @@ public final class EssayAdmission {
         return Result.accepted(PublicationIdentity.of(collection, contentType, publicId), sourceId, title, description);
     }
 
-    private boolean isPublished(Frontmatter frontmatter) {
+    private boolean isPublished(MarkdownNote frontmatter) {
         return frontmatter.flag("publish");
     }
 
@@ -42,7 +42,7 @@ public final class EssayAdmission {
         return Diagnostic.blocking("publish", "must be true; allowed value: true");
     }
 
-    private String requireValidPublicId(Frontmatter frontmatter, List<Diagnostic> diagnostics) {
+    private String requireValidPublicId(MarkdownNote frontmatter, List<Diagnostic> diagnostics) {
         String publicId = frontmatter.string("publicId").filter(this::isSlug).orElse(null);
         if (publicId == null) {
             diagnostics.add(Diagnostic.blocking("publicId", "must be a lowercase route slug"));
@@ -54,7 +54,7 @@ public final class EssayAdmission {
         return PUBLIC_ID_SLUG.matcher(candidate).matches();
     }
 
-    private String requireCollection(Frontmatter frontmatter, List<Diagnostic> diagnostics) {
+    private String requireCollection(MarkdownNote frontmatter, List<Diagnostic> diagnostics) {
         String collection = frontmatter.string("publicCollection").orElse(null);
         if (!REQUIRED_COLLECTION.equals(collection)) {
             diagnostics.add(Diagnostic.blocking("publicCollection",
@@ -63,7 +63,7 @@ public final class EssayAdmission {
         return collection;
     }
 
-    private String requireContentType(Frontmatter frontmatter, String collection, List<Diagnostic> diagnostics) {
+    private String requireContentType(MarkdownNote frontmatter, String collection, List<Diagnostic> diagnostics) {
         String contentType = frontmatter.string("publicContentType").orElse(null);
         if (!REQUIRED_COLLECTION.equals(collection)) {
             diagnostics.add(Diagnostic.blocking("publicContentType",
@@ -75,7 +75,7 @@ public final class EssayAdmission {
         return contentType;
     }
 
-    private String requireSourceId(Frontmatter frontmatter, List<Diagnostic> diagnostics) {
+    private String requireSourceId(MarkdownNote frontmatter, List<Diagnostic> diagnostics) {
         String sourceId = frontmatter.string("id").filter(value -> !value.isBlank()).orElse(null);
         if (sourceId == null) {
             diagnostics.add(Diagnostic.blocking("id", "Note has no source ID."));
@@ -83,7 +83,7 @@ public final class EssayAdmission {
         return sourceId;
     }
 
-    private String requireNonBlank(Frontmatter frontmatter, String key, List<Diagnostic> diagnostics) {
+    private String requireNonBlank(MarkdownNote frontmatter, String key, List<Diagnostic> diagnostics) {
         String value = frontmatter.string(key).filter(candidate -> !candidate.isBlank()).orElse(null);
         if (value == null) {
             diagnostics.add(Diagnostic.blocking(key, "Essay note has no " + key + "."));
@@ -128,22 +128,18 @@ public final class EssayAdmission {
             return diagnostics.isEmpty();
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public PublicationIdentity identity() {
             return identity;
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String sourceId() {
             return sourceId;
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String title() {
             return title;
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String description() {
             return description;
         }

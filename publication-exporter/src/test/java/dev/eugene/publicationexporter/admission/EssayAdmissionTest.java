@@ -1,7 +1,7 @@
 package dev.eugene.publicationexporter.admission;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
-import dev.eugene.publicationexporter.note.Frontmatter;
+import dev.eugene.publicationexporter.note.MarkdownNote;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,7 +13,7 @@ class EssayAdmissionTest {
 
     @Test
     void validEssayIsAccepted() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -36,7 +36,7 @@ class EssayAdmissionTest {
 
     @Test
     void missingTitleIsBlocked() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -55,7 +55,7 @@ class EssayAdmissionTest {
 
     @Test
     void blankDescriptionIsBlocked() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -75,7 +75,7 @@ class EssayAdmissionTest {
 
     @Test
     void unpublishedNoteIsBlockedOnPublishAlone() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicCollection: blog
                 publicContentType: essay
@@ -93,7 +93,7 @@ class EssayAdmissionTest {
 
     @Test
     void invalidPublicIdIsBlocked() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -113,7 +113,7 @@ class EssayAdmissionTest {
 
     @Test
     void wrongCollectionBlocksBothCollectionAndContentType() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: bibliography
@@ -135,7 +135,7 @@ class EssayAdmissionTest {
 
     @Test
     void wrongContentTypeAloneBlocksOnlyContentType() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -156,7 +156,7 @@ class EssayAdmissionTest {
 
     @Test
     void missingSourceIdIsBlocked() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -175,7 +175,7 @@ class EssayAdmissionTest {
 
     @Test
     void blankSourceIdIsBlocked() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -195,7 +195,7 @@ class EssayAdmissionTest {
 
     @Test
     void nullSourceIdIsBlocked() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog
@@ -215,7 +215,7 @@ class EssayAdmissionTest {
 
     @Test
     void multipleFailuresAreAllReported() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicCollection: blog

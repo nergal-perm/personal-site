@@ -1,6 +1,6 @@
 package dev.eugene.publicationexporter.vault;
 
-import dev.eugene.publicationexporter.note.Frontmatter;
+import dev.eugene.publicationexporter.note.MarkdownNote;
 
 import java.util.Arrays;
 import java.util.LinkedHashMap;
@@ -40,7 +40,7 @@ final class NullVaultReader implements VaultReader {
     public List<VaultRelativePath> listPublishCandidates() {
         return sourceByPath.entrySet().stream()
                 .filter(entry -> entry.getKey().endsWith(".md"))
-                .filter(entry -> Frontmatter.parse(entry.getValue()).flag("publish"))
+                .filter(entry -> MarkdownNote.parse(entry.getValue()).flag("publish"))
                 .map(entry -> VaultRelativePath.of(entry.getKey()))
                 .toList();
     }

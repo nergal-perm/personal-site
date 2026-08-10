@@ -1,7 +1,7 @@
 package dev.eugene.publicationexporter.workflow;
 
 import dev.eugene.publicationexporter.hash.ContentHash;
-import dev.eugene.publicationexporter.note.Frontmatter;
+import dev.eugene.publicationexporter.note.MarkdownNote;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
 import java.io.IOException;
@@ -38,7 +38,11 @@ final class FilesystemWorkflowStatusEditor implements WorkflowStatusEditor {
         if (!matchesExpectedSource(currentSource, expectedSourceHash)) {
             return Result.blocked("Source changed since it was validated.");
         }
-        String updatedSource = updateWorkflowStatus(currentSource, newValue);
+        MarkdownNote note = MarkdownNote.parse(currentSource);
+        if (note.headerState() != MarkdownNote.HeaderState.PRESENT) {
+            return Result.blocked("Source has no valid frontmatter.");
+        }
+        String updatedSource = note.sourceWithScalar(WORKFLOW_STATUS_KEY, newValue);
         atomicReplace(target, updatedSource);
         return Result.written();
     }
@@ -52,10 +56,6 @@ final class FilesystemWorkflowStatusEditor implements WorkflowStatusEditor {
 
     private static boolean matchesExpectedSource(String source, String expectedSourceHash) {
         return ContentHash.sha256Hex(source).equals(expectedSourceHash);
-    }
-
-    private static String updateWorkflowStatus(String source, String newValue) {
-        return Frontmatter.parse(source).withScalarSet(WORKFLOW_STATUS_KEY, newValue);
     }
 
     private static String readSource(Path file) {
@@ -89,7 +89,6 @@ final class FilesystemWorkflowStatusEditor implements WorkflowStatusEditor {
         try {
             Files.deleteIfExists(path);
         } catch (IOException ignored) {
-            // best-effort cleanup of the temp file after a failed write; the ATOMIC_MOVE never ran
         }
     }
 

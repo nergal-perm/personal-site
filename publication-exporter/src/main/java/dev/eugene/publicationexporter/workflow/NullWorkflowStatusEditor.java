@@ -1,7 +1,7 @@
 package dev.eugene.publicationexporter.workflow;
 
 import dev.eugene.publicationexporter.hash.ContentHash;
-import dev.eugene.publicationexporter.note.Frontmatter;
+import dev.eugene.publicationexporter.note.MarkdownNote;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
 import java.util.LinkedHashMap;
@@ -31,13 +31,17 @@ public final class NullWorkflowStatusEditor implements WorkflowStatusEditor {
         if (current == null || !ContentHash.sha256Hex(current).equals(expectedSourceHash)) {
             return Result.blocked("Source changed since it was validated.");
         }
-        String updated = Frontmatter.parse(current).withScalarSet("workflowStatus", newValue);
+        MarkdownNote note = MarkdownNote.parse(current);
+        if (note.headerState() != MarkdownNote.HeaderState.PRESENT) {
+            return Result.blocked("Source has no valid frontmatter.");
+        }
+        String updated = note.sourceWithScalar("workflowStatus", newValue);
         sourceByPath.put(notePath.value(), updated);
         return Result.written();
     }
 
     public String currentValue(VaultRelativePath notePath, String key) {
         String current = sourceByPath.get(notePath.value());
-        return current == null ? null : Frontmatter.parse(current).string(key).orElse(null);
+        return current == null ? null : MarkdownNote.parse(current).string(key).orElse(null);
     }
 }

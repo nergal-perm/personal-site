@@ -9,11 +9,11 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class FrontmatterTest {
+class MarkdownNoteTest {
 
     @Test
-    void withScalarSetReplacesAnExistingKeyInPlace() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+    void sourceWithScalarReplacesAnExistingKeyInPlace() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 workflowStatus: ready_for_review
@@ -23,7 +23,7 @@ class FrontmatterTest {
 
                 Text.""");
 
-        String updated = frontmatter.withScalarSet("workflowStatus", "ready_to_publish");
+        String updated = frontmatter.sourceWithScalar("workflowStatus", "ready_to_publish");
 
         assertEquals("""
                 ---
@@ -37,11 +37,11 @@ class FrontmatterTest {
     }
 
     @Test
-    void withScalarSetReplacesOnlyTheExistingValueBytes() {
+    void sourceWithScalarReplacesOnlyTheExistingValueBytes() {
         String source = "---\nworkflowStatus:    stale   # keep\npublicId: my-essay\n---\nBody.";
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
-        String updated = frontmatter.withScalarSet("workflowStatus", "ready_for_review");
+        String updated = frontmatter.sourceWithScalar("workflowStatus", "ready_for_review");
 
         assertEquals(
                 "---\nworkflowStatus:    ready_for_review   # keep\npublicId: my-essay\n---\nBody.",
@@ -49,15 +49,15 @@ class FrontmatterTest {
     }
 
     @Test
-    void withScalarSetInsertsAnAbsentKeyBeforeTheClosingDelimiter() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+    void sourceWithScalarInsertsAnAbsentKeyBeforeTheClosingDelimiter() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 publicId: my-essay
                 ---
                 Body.""");
 
-        String updated = frontmatter.withScalarSet("workflowStatus", "not_prepared");
+        String updated = frontmatter.sourceWithScalar("workflowStatus", "not_prepared");
 
         assertEquals("""
                 ---
@@ -69,50 +69,50 @@ class FrontmatterTest {
     }
 
     @Test
-    void withScalarSetPreservesLineEndingsAndBodyExactly() {
+    void sourceWithScalarPreservesLineEndingsAndBodyExactly() {
         String source = "---\r\npublish: true\r\n---\r\nBody with trailing space \r\n";
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
-        String updated = frontmatter.withScalarSet("workflowStatus", "stale");
+        String updated = frontmatter.sourceWithScalar("workflowStatus", "stale");
 
         assertTrue(updated.startsWith("---\r\npublish: true\r\nworkflowStatus: stale\r\n---\r\n"));
         assertTrue(updated.endsWith("Body with trailing space \r\n"));
     }
 
     @Test
-    void withScalarSetThrowsOnNoFrontmatterWhenBodyContainsDelimiter() {
-        Frontmatter frontmatter = Frontmatter.parse("Text\n---\nMore");
+    void sourceWithScalarThrowsOnNoFrontmatterWhenBodyContainsDelimiter() {
+        MarkdownNote frontmatter = MarkdownNote.parse("Text\n---\nMore");
 
         IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> frontmatter.withScalarSet("workflowStatus", "ready"));
+                () -> frontmatter.sourceWithScalar("workflowStatus", "ready"));
 
-        assertEquals("withScalarSet requires a note with frontmatter already present.", exception.getMessage());
+        assertEquals("sourceWithScalar requires a note with frontmatter already present.", exception.getMessage());
     }
 
     @Test
-    void withScalarSetPreservesLoneCrLineEndingsAndBodyExactly() {
+    void sourceWithScalarPreservesLoneCrLineEndingsAndBodyExactly() {
         String source = "---\rpublicId: my-essay\r---\r# My Essay\rPlain prose.\r";
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
-        String updated = frontmatter.withScalarSet("workflowStatus", "stale");
+        String updated = frontmatter.sourceWithScalar("workflowStatus", "stale");
 
         assertEquals("---\rpublicId: my-essay\rworkflowStatus: stale\r---\r# My Essay\rPlain prose.\r",
                 updated);
     }
 
     @Test
-    void withScalarSetPreservesMixedLineEndingsOutsideTheTouchedLine() {
+    void sourceWithScalarPreservesMixedLineEndingsOutsideTheTouchedLine() {
         String source = "---\r\npublish: true\n---\r\nBody.\n";
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
-        String updated = frontmatter.withScalarSet("workflowStatus", "stale");
+        String updated = frontmatter.sourceWithScalar("workflowStatus", "stale");
 
         assertEquals("---\r\npublish: true\nworkflowStatus: stale\n---\r\nBody.\n", updated);
     }
 
     @Test
     void parsesStringValue() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: my-essay
                 ---
@@ -123,7 +123,7 @@ class FrontmatterTest {
 
     @Test
     void parsesBooleanTrueFlag() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
                 ---
@@ -134,7 +134,7 @@ class FrontmatterTest {
 
     @Test
     void missingKeyReturnsEmptyOptional() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: my-essay
                 ---
@@ -145,7 +145,7 @@ class FrontmatterTest {
 
     @Test
     void missingFlagReturnsFalse() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: my-essay
                 ---
@@ -156,7 +156,7 @@ class FrontmatterTest {
 
     @Test
     void noOpeningDelimiterYieldsAllValuesAbsent() {
-        Frontmatter frontmatter = Frontmatter.parse("# Just a body, no frontmatter block");
+        MarkdownNote frontmatter = MarkdownNote.parse("# Just a body, no frontmatter block");
 
         assertEquals(Optional.empty(), frontmatter.string("publicId"));
         assertFalse(frontmatter.flag("publish"));
@@ -164,7 +164,7 @@ class FrontmatterTest {
 
     @Test
     void quotedValueIsUnquoted() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: "my-essay"
                 ---
@@ -175,7 +175,7 @@ class FrontmatterTest {
 
     @Test
     void quotedTrueIsNotABooleanFlag() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: "true"
                 ---
@@ -186,7 +186,7 @@ class FrontmatterTest {
 
     @Test
     void bareNullIsNotAString() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 sourceId: null
                 ---
@@ -197,7 +197,7 @@ class FrontmatterTest {
 
     @Test
     void bareBooleanIsNotAString() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 sourceId: true
                 ---
@@ -208,7 +208,7 @@ class FrontmatterTest {
 
     @Test
     void quotedNullIsAString() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 sourceId: "null"
                 ---
@@ -219,7 +219,7 @@ class FrontmatterTest {
 
     @Test
     void duplicateKeyMakesTheWholeBlockUnparseable() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: first
                 sourceId: source
@@ -233,7 +233,7 @@ class FrontmatterTest {
 
     @Test
     void contentAfterClosingDelimiterIsNotParsedAsFrontmatter() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: my-essay
                 ---
@@ -245,13 +245,13 @@ class FrontmatterTest {
     @Test
     void nullSourceIsRejectedAtParseTime() {
         NullPointerException exception = assertThrows(NullPointerException.class,
-                () -> Frontmatter.parse(null));
+                () -> MarkdownNote.parse(null));
         assertEquals("noteSource", exception.getMessage());
     }
 
     @Test
     void unterminatedFrontmatterBlockDoesNotParseBodyAsMetadata() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: my-essay
                 # Body starts here
@@ -263,7 +263,7 @@ class FrontmatterTest {
 
     @Test
     void bodyReturnsTextAfterTheClosingDelimiter() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: my-essay
                 ---
@@ -276,14 +276,14 @@ class FrontmatterTest {
 
     @Test
     void bodyIsTheWholeSourceWhenNoFrontmatterBlockExists() {
-        Frontmatter frontmatter = Frontmatter.parse("# Just a body, no frontmatter block");
+        MarkdownNote frontmatter = MarkdownNote.parse("# Just a body, no frontmatter block");
 
         assertEquals("# Just a body, no frontmatter block", frontmatter.body());
     }
 
     @Test
     void bodyIsTheWholeSourceWhenAFrontmatterLineIsMalformed() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 : missing-key
                 ---
@@ -299,7 +299,7 @@ class FrontmatterTest {
 
     @Test
     void bodyIsEmptyWhenNothingFollowsTheClosingDelimiter() {
-        Frontmatter frontmatter = Frontmatter.parse("""
+        MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publicId: my-essay
                 ---""");
@@ -311,7 +311,7 @@ class FrontmatterTest {
     void bodyPreservesCrLfLineEndingsByteForByte() {
         String source = "---\r\npublicId: my-essay\r\n---\r\n# My Essay\r\nPlain prose.\r\n";
 
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
         assertEquals("# My Essay\r\nPlain prose.\r\n", frontmatter.body());
     }
@@ -320,7 +320,7 @@ class FrontmatterTest {
     void bodyPreservesLoneCrLineEndingsByteForByte() {
         String source = "---\rpublicId: my-essay\r---\r# My Essay\rPlain prose.\r";
 
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
         assertEquals("# My Essay\rPlain prose.\r", frontmatter.body());
     }
@@ -329,7 +329,7 @@ class FrontmatterTest {
     void bodyPreservesAbsenceOfTrailingNewline() {
         String source = "---\npublicId: my-essay\n---\n# My Essay\nPlain prose.";
 
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
         assertEquals("# My Essay\nPlain prose.", frontmatter.body());
     }
@@ -338,7 +338,7 @@ class FrontmatterTest {
     void bodyPreservesMultipleTrailingNewlines() {
         String source = "---\npublicId: my-essay\n---\n# My Essay\n\n\n";
 
-        Frontmatter frontmatter = Frontmatter.parse(source);
+        MarkdownNote frontmatter = MarkdownNote.parse(source);
 
         assertEquals("# My Essay\n\n\n", frontmatter.body());
     }

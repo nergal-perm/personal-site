@@ -4,7 +4,7 @@ import dev.eugene.publicationexporter.admission.EssayAdmission;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.hash.ContentHash;
-import dev.eugene.publicationexporter.note.Frontmatter;
+import dev.eugene.publicationexporter.note.MarkdownNote;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
@@ -35,7 +35,7 @@ public final class NoteIntake {
     private Result admitExistingNote(VaultRelativePath notePath, VaultReader vaultReader) {
         try {
             String source = vaultReader.readSource(notePath);
-            Frontmatter frontmatter = Frontmatter.parse(source);
+            MarkdownNote frontmatter = MarkdownNote.parse(source);
             String sourceHash = ContentHash.sha256Hex(source);
             EssayAdmission.Result admission = new EssayAdmission().admit(frontmatter);
             if (!admission.accepted()) {
@@ -51,11 +51,11 @@ public final class NoteIntake {
     public static final class Result {
 
         private final EssayAdmission.Result admission;
-        private final Frontmatter frontmatter;
+        private final MarkdownNote frontmatter;
         private final String sourceHash;
         private final List<Diagnostic> diagnostics;
 
-        private Result(EssayAdmission.Result admission, Frontmatter frontmatter,
+        private Result(EssayAdmission.Result admission, MarkdownNote frontmatter,
                 String sourceHash, List<Diagnostic> diagnostics) {
             this.admission = admission;
             this.frontmatter = frontmatter;
@@ -63,7 +63,7 @@ public final class NoteIntake {
             this.diagnostics = List.copyOf(diagnostics);
         }
 
-        static Result accepted(EssayAdmission.Result admission, Frontmatter frontmatter, String sourceHash) {
+        static Result accepted(EssayAdmission.Result admission, MarkdownNote frontmatter, String sourceHash) {
             return new Result(
                     Objects.requireNonNull(admission, "admission"),
                     Objects.requireNonNull(frontmatter, "frontmatter"),
@@ -82,32 +82,26 @@ public final class NoteIntake {
             return diagnostics.isEmpty();
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public PublicationIdentity identity() {
             return admission.identity();
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String body() {
             return frontmatter.body();
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String sourceHash() {
             return sourceHash;
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public Optional<String> frontmatterString(String key) {
             return frontmatter.string(Objects.requireNonNull(key, "key"));
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String title() {
             return admission.title();
         }
 
-        /** Only meaningful when {@link #accepted()} is {@code true}. */
         public String description() {
             return admission.description();
         }

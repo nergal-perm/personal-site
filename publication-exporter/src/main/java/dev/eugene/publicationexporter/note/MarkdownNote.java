@@ -109,12 +109,12 @@ public final class MarkdownNote {
 
     private static int closingDelimiterLineIndex(List<String> lines) {
         if (lines.isEmpty() || !lines.get(0).strip().equals(DELIMITER)) {
-            throw new IllegalStateException("withScalarSet requires a note with frontmatter already present.");
+            throw new IllegalStateException("sourceWithScalar requires a note with frontmatter already present.");
         }
         return parseHeader(lines)
                 .map(ParsedHeader::closingDelimiterLineIndex)
                 .orElseThrow(() -> new IllegalStateException(
-                        "withScalarSet requires a note with frontmatter already present."));
+                        "sourceWithScalar requires a note with frontmatter already present."));
     }
 
     private int lineStartOffset(int lineIndex) {
