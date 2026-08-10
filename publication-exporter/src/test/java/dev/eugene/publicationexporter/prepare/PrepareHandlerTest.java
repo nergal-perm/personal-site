@@ -1035,6 +1035,24 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void blockedTransclusionDiagnosticUsesOnlyTheLastPathSegment() {
+        String referrer = essayWithBody("![[private-area/Черновик]]");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(referrerPath, referrer));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", "EN title", "EN description."));
+        PrepareHandler handler = new PrepareHandler(
+                worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader);
+
+        assertEquals("Transclusion target \"Черновик\" is not a public note.",
+                response.diagnostics().get(0).message());
+        assertFalse(response.diagnostics().get(0).message().contains("private-area/"));
+    }
+
+    @Test
     void assetEmbedIsLeftUntouchedByLinkResolution() {
         String essay = """
                 ---

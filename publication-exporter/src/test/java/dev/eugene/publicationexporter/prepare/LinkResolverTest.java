@@ -28,6 +28,12 @@ final class LinkResolverTest {
     }
 
     @Test
+    void unresolvedLinkWithAPathUsesOnlyTheLastSegmentAsItsSafeLabel() {
+        assertEquals("See Secret Draft.",
+                resolvedBodyOrFail("See [[private-area/Secret Draft]].", new PublicNoteIndex(Map.of())));
+    }
+
+    @Test
     void aliasWinsOverTargetTextAsLabelEvenWithAHeadingFragment() {
         String body = "See [[Заметка о времени#Some Heading|a great essay]].";
 

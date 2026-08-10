@@ -69,7 +69,7 @@ public final class LinkResolver {
             return Optional.empty();
         }
         if (isEmbed) {
-            return Optional.of(target);
+            return Optional.of(lastPathSegment(target));
         }
         output.append(label);
         return Optional.empty();
@@ -77,7 +77,12 @@ public final class LinkResolver {
 
     private static String labelFor(Matcher link, String target) {
         String alias = link.group(3);
-        return alias != null ? alias.strip() : target;
+        return alias != null ? alias.strip() : lastPathSegment(target);
+    }
+
+    private static String lastPathSegment(String target) {
+        int lastSlash = target.lastIndexOf('/');
+        return lastSlash >= 0 ? target.substring(lastSlash + 1) : target;
     }
 
     private static boolean isAssetTarget(String target) {
