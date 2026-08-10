@@ -344,6 +344,193 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void obsidianCommentIsStrippedFromInstalledCandidate() {
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Public prose.
+
+                %% private note to self %%
+
+                More public prose.""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals(1, workspace.installed().size());
+        String installedRuBody = workspace.installed().get(0).ruBody();
+        assertFalse(installedRuBody.contains("%%"));
+        assertFalse(installedRuBody.contains("private note to self"));
+        assertEquals("# My Essay\n\nPublic prose.\n\n\n\nMore public prose.", installedRuBody);
+    }
+
+    @Test
+    void linkLikeTextInsideInlineCodeSurvivesNormalization() {
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Example syntax: `[[Some Note]]` is a wiki-link.""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("# My Essay\n\nExample syntax: `[[Some Note]]` is a wiki-link.",
+                workspace.installed().get(0).ruBody());
+    }
+
+    @Test
+    void commentAndLinkLikeTextInsideFencedCodeSurviveNormalization() {
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Public prose.
+
+                ```markdown
+                %% this looks like a comment but is inside a fence %%
+                [[This looks like a link]]
+                ```
+
+                More public prose.""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("# My Essay\n\nPublic prose.\n\n```markdown\n"
+                + "%% this looks like a comment but is inside a fence %%\n"
+                + "[[This looks like a link]]\n```\n\nMore public prose.",
+                workspace.installed().get(0).ruBody());
+    }
+
+    @Test
+    void unclosedObsidianCommentBlocksPreparationWithoutInstallingACandidate() {
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Public prose.
+
+                %% this comment is never closed
+
+                This text is lost if we don't block.""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, essay));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", "EN title", "EN description."));
+        PrepareHandler handler = new PrepareHandler(
+                worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(worker.requested().isEmpty());
+        assertTrue(workspace.installed().isEmpty());
+        assertEquals(null, editor.currentValue(path, "workflowStatus"));
+    }
+
+    @Test
+    void commentOnlyEditStillCountsAsUnchangedAgainstApprovedBaseline() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("comment-only-edit-review");
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ApprovedSnapshotWorkspace.create(reviewRoot).install(
+                identity, "# My Essay\n\nPublic prose.\n\n\n\nMore prose.", "EN body",
+                "My Essay", "EN title", "A valid description.", "EN description",
+                ReferenceMap.empty(identity,
+                        ContentHash.sha256Hex("# My Essay\n\nPublic prose.\n\n\n\nMore prose."),
+                        ContentHash.sha256Hex("EN body"),
+                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                        ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description")));
+        String essayWithComment = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Public prose.
+
+                %% this note was added after approval but changes nothing public %%
+
+                More prose.""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
+        TranslationWorker refusingWorker = (job, ruBody, ruTitle, ruDescription) ->
+                fail("Prepare must not invoke the translation worker for a comment-only edit.");
+        PrepareHandler handler = new PrepareHandler(
+                refusingWorker, candidateWorkspace, ApprovedSnapshotWorkspace.create(reviewRoot),
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path, VaultReader.createNull(Map.of(path, essayWithComment)));
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        CandidateSnapshot candidate = candidateWorkspace.read(identity).orElseThrow();
+        assertEquals("# My Essay\n\nPublic prose.\n\n\n\nMore prose.", candidate.ruBody());
+    }
+
+    @Test
     void sameInputsBuiltTwiceProduceIdenticalCandidateBytes() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));

@@ -57,10 +57,17 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
+        return MarkdownNormalizer.normalize(intake.body()).resolve(
+                normalizedBody -> prepareNormalizedEssay(notePath, vaultReader, intake, normalizedBody),
+                position -> unclosedCommentFailure(position));
+    }
+
+    private BridgeResponse prepareNormalizedEssay(
+            VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake, String normalizedBody) {
         Optional<CandidateSnapshot> unchangedApproved;
         try {
             unchangedApproved = matchingApprovedBaseline(
-                    intake.identity(), intake.body(), intake.title(), intake.description());
+                    intake.identity(), normalizedBody, intake.title(), intake.description());
         } catch (UncheckedIOException failure) {
             return approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
@@ -83,7 +90,7 @@ public final class PrepareHandler {
         installLock.lock();
         try {
             return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
-                    intake.sourceHash(), intake.body(), intake.title(), intake.description());
+                    intake.sourceHash(), normalizedBody, intake.title(), intake.description());
         } finally {
             installLock.unlock();
         }
@@ -189,8 +196,15 @@ public final class PrepareHandler {
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
             return false;
         }
-        TranslationJob currentSource = TranslationJob.forSource(
-                current.body(), current.title(), current.description());
+        return MarkdownNormalizer.normalize(current.body()).resolve(
+                normalizedBody -> sourceFingerprintMatches(
+                        job, normalizedBody, current.title(), current.description()),
+                ignored -> false);
+    }
+
+    private static boolean sourceFingerprintMatches(
+            TranslationJob job, String body, String title, String description) {
+        TranslationJob currentSource = TranslationJob.forSource(body, title, description);
         return job.sourceFingerprint().equals(currentSource.sourceFingerprint());
     }
 
@@ -241,6 +255,11 @@ public final class PrepareHandler {
     private static BridgeResponse approvedLookupFailure(String message) {
         return BridgeResponse.blocked(COMMAND,
                 Diagnostic.blocking("approved-snapshot", message));
+    }
+
+    private static BridgeResponse unclosedCommentFailure(int position) {
+        return BridgeResponse.translationFailed(COMMAND,
+                Diagnostic.blocking("candidate", "Obsidian comment starting at position " + position + " is never closed."));
     }
 
 }
