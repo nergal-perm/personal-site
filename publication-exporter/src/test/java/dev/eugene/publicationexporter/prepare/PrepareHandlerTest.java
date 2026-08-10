@@ -227,6 +227,39 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void knownNotesEnumerationIoFailureReturnsBlockedResponseWithoutInstallingCandidate() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return VALID_ESSAY;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                throw new UncheckedIOException(new IOException("vault enumeration unavailable"));
+            }
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("known-notes", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("vault enumeration unavailable"));
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void validEssayInstallsOneCandidateAndReturnsReadyForReview() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));

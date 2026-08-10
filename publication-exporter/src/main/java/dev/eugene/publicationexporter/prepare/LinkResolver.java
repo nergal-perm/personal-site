@@ -9,7 +9,7 @@ import java.util.regex.Pattern;
 public final class LinkResolver {
 
     private static final Pattern WIKILINK =
-            Pattern.compile("(!?)\\[\\[([^\\]|#]+)(?:#[^\\]|]*)?(?:\\|([^\\]]+))?]]");
+            Pattern.compile("(!?)\\[\\[([^\\[\\]|#]+)(?:#[^\\[\\]|]*)?(?:\\|([^\\[\\]]+))?]]");
     private static final Set<String> ASSET_EXTENSIONS =
             Set.of(".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".mp3", ".mp4");
 

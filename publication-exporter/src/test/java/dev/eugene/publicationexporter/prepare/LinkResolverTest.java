@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.fail;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import java.util.Map;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 final class LinkResolverTest {
 
@@ -61,6 +63,14 @@ final class LinkResolverTest {
         String body = "Example: `[[Заметка о времени]]` is wiki-link syntax.";
 
         assertEquals(body, resolvedBodyOrFail(body, ONE_PUBLIC_NOTE));
+    }
+
+    @Test
+    @Timeout(value = 2, unit = TimeUnit.SECONDS)
+    void unclosedRepeatedWikilinksResolveWithinTheTimeout() {
+        String body = "[[a".repeat(16000);
+
+        resolvedBodyOrFail(body, new PublicNoteIndex(Map.of()));
     }
 
     @Test

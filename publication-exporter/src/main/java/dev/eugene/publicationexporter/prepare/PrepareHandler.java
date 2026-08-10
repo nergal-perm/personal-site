@@ -57,7 +57,12 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
-        PublicNoteIndex knownNotes = PublicNoteIndex.from(vaultReader);
+        PublicNoteIndex knownNotes;
+        try {
+            knownNotes = PublicNoteIndex.from(vaultReader);
+        } catch (UncheckedIOException failure) {
+            return knownNotesLookupFailure(failure);
+        }
         return MarkdownNormalizer.normalize(intake.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
                         resolvedBody -> prepareNormalizedEssay(notePath, vaultReader, intake, resolvedBody, knownNotes),
@@ -287,6 +292,12 @@ public final class PrepareHandler {
     private static BridgeResponse approvedLookupFailure(String message) {
         return BridgeResponse.blocked(COMMAND,
                 Diagnostic.blocking("approved-snapshot", message));
+    }
+
+    private static BridgeResponse knownNotesLookupFailure(UncheckedIOException failure) {
+        return BridgeResponse.blocked(COMMAND,
+                Diagnostic.blocking(
+                        "known-notes", IoFailureMessages.describe("Known note lookup failed", failure)));
     }
 
     private static BridgeResponse unclosedCommentFailure(int position) {
