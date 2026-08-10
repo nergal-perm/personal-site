@@ -26,14 +26,14 @@ class MarkdownNormalizerTest {
 
     @Test
     void tooShortClosingFenceIsSkippedInFavorOfTheRealCloser() {
-        String body = "Visible.\n\n````\nStill hidden.\n```\n````\n\nAfter.";
+        String body = "Visible.\n\n````\nStill hidden.\n```\n%% not stripped if fence closes correctly %%\n````\n\nAfter.";
 
         assertEquals(body, normalizedBodyOrFail(body));
     }
 
     @Test
     void shorterBacktickRunInsideDoesNotFalselyCloseInlineCode() {
-        String body = "``code with a lone ` backtick inside``  after.";
+        String body = "``code with a lone ` %% not stripped if span closes correctly %% backtick inside``  after.";
 
         assertEquals(body, normalizedBodyOrFail(body));
     }
@@ -46,6 +46,7 @@ class MarkdownNormalizerTest {
     }
 
     @Test
+    @Timeout(value = 1, unit = TimeUnit.SECONDS)
     void unclosedFenceProtectsThroughEndOfBodyWithoutBlocking() {
         String body = "Visible.\n\n```\n%% not a comment, this is unclosed code %%";
 
