@@ -1,12 +1,12 @@
 ---
 id: dec-20260805-s04-inspect-open-review-4cd400de
 kind: DecisionRecord
-version: 1
+version: 3
 status: active
 title: Extend CandidateWorkspace with find(...), report candidate-ready state and a first-publication reviewPlan through inspect-publication
 mode: standard
 created_at: 2026-08-05T08:34:01Z
-updated_at: 2026-08-05T08:34:01Z
+updated_at: 2026-08-10T06:09:37Z
 links:
   - ref: prob-20260805-d9f3aef2
     type: based_on
@@ -84,3 +84,18 @@ Blast radius: publication-exporter candidate package only; no schema-v2 contract
 - S11 (BRG-05/BRG-06 six-state vocabulary) lands and status/candidateState need to be reconciled with the formal vocabulary
 
 **Affected files:** publication-exporter/src/main/java/dev/eugene/publicationexporter/inspect/InspectPublicationHandler.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/cli/InspectPublicationCommand.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/BridgeResponse.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/ReviewPlan.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/ReviewTarget.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/CandidateWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/CandidatePaths.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/FilesystemCandidateWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/NullCandidateWorkspace.java, bridge-contract/schema-v2.json
+
+## Impact Measurement (2026-08-10)
+
+**Verdict:** accepted
+
+**Findings:**
+S04's flagged drift (8 modified, 6 added since baseline) is accounted for by S05-S11 landing on top of the same files; none of it contradicts S04's invariants (first-publication reviewPlan shape, absent-only baselineState/semanticReferenceState, unchanged not_prepared shape). Both declared evidence requirements still hold on a live re-run.
+
+**Criteria met:**
+- [x] publication-exporter test suite stays green
+- [x] obsidian-plugin conformance suite stays green aside from the pre-existing unrelated gap
+
+**Measurements:**
+- publication-exporter suite: 482/482 (baseline 181)
+- obsidian-plugin conformance: 73/74, 1 pre-existing skip (baseline 69/70 ratio at S05, same skip)

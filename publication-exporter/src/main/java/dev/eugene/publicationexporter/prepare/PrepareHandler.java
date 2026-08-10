@@ -57,17 +57,27 @@ public final class PrepareHandler {
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
+        Optional<CandidateSnapshot> unchangedApproved;
         try {
-            if (approvedRussianSourceIsUnchanged(
-                    intake.identity(), intake.body(), intake.title(), intake.description())) {
-                return BridgeResponse.prepared(COMMAND, intake.identity());
-            }
+            unchangedApproved = matchingApprovedBaseline(
+                    intake.identity(), intake.body(), intake.title(), intake.description());
         } catch (UncheckedIOException failure) {
             return approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
             return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
         } catch (ApprovedSnapshotWorkspaceStateException failure) {
             return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+        }
+        if (unchangedApproved.isPresent()) {
+            try {
+                ensureCandidateMirrorsApproved(intake.identity(), unchangedApproved.get());
+            } catch (UncheckedIOException failure) {
+                return candidateFailure(
+                        IoFailureMessages.describe("Candidate mirror of approved snapshot failed", failure));
+            } catch (CandidateWorkspaceConfinementException failure) {
+                return candidateFailure("Candidate mirror of approved snapshot failed: " + failure.getMessage());
+            }
+            return BridgeResponse.prepared(COMMAND, intake.identity());
         }
         ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());
         installLock.lock();
@@ -79,16 +89,26 @@ public final class PrepareHandler {
         }
     }
 
-    private boolean approvedRussianSourceIsUnchanged(
+    private Optional<CandidateSnapshot> matchingApprovedBaseline(
             PublicationIdentity identity, String currentBody, String currentTitle, String currentDescription) {
         Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
         if (approved.isEmpty()) {
-            return false;
+            return Optional.empty();
         }
         CandidateSnapshot baseline = approved.get();
-        return RussianDiff.between(
+        boolean unchanged = RussianDiff.between(
                 baseline.ruBody(), baseline.ruTitle(), baseline.ruDescription(),
                 currentBody, currentTitle, currentDescription).isEmpty();
+        return unchanged ? approved : Optional.empty();
+    }
+
+    private void ensureCandidateMirrorsApproved(PublicationIdentity identity, CandidateSnapshot approved) {
+        if (candidateWorkspace.find(identity).isPresent()) {
+            return;
+        }
+        candidateWorkspace.install(identity, approved.ruBody(), approved.enBody(),
+                approved.ruTitle(), approved.enTitle(), approved.ruDescription(), approved.enDescription(),
+                approved.referenceMap());
     }
 
     private BridgeResponse prepareAdmittedEssay(

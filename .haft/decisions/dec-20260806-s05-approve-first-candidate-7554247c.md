@@ -1,12 +1,12 @@
 ---
 id: dec-20260806-s05-approve-first-candidate-7554247c
 kind: DecisionRecord
-version: 1
+version: 3
 status: active
 title: New ApprovedSnapshotWorkspace port + CandidateWorkspace#read + MarkReviewedHandler for the first approved snapshot
 mode: standard
 created_at: 2026-08-06T03:18:56Z
-updated_at: 2026-08-06T03:18:56Z
+updated_at: 2026-08-10T06:09:41Z
 links:
   - ref: prob-20260805-3d747bed
     type: based_on
@@ -90,3 +90,20 @@ Blast radius: publication-exporter candidate and approved packages; openspec/spe
 - S11 (BRG-05/BRG-06 six-state vocabulary) lands and ready_to_publish/stale need reconciling with the formal vocabulary
 
 **Affected files:** publication-exporter/src/main/java/dev/eugene/publicationexporter/reference/ReferenceMapCodec.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/CandidateSnapshot.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/CandidateWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/NullCandidateWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/FilesystemCandidateWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/hash/ContentHash.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/PrepareHandler.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/approved/ApprovedSnapshotWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/approved/NullApprovedSnapshotWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/approved/FilesystemApprovedSnapshotWorkspace.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/approved/ApprovedSnapshotAlreadyExistsException.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/approved/ApprovedSnapshotWorkspaceConfinementException.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/BridgeResponse.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/markreviewed/MarkReviewedHandler.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/cli/MarkReviewedCommand.java, bridge-contract/schema-v2.json, openspec/specs/review-and-approval/spec.md
+
+## Impact Measurement (2026-08-10)
+
+**Verdict:** accepted
+
+**Findings:**
+S05's flagged drift (15 modified, 11 added) is downstream S06-S11 work landing on the same approved/candidate packages; the create-only install invariant and the explicitly-scoped non-durability rollback trigger are both still intact — S09 and S06 landed without tripping the fsync escalation this decision predicted as its own weakest link.
+
+**Criteria met:**
+- [x] publication-exporter test suite stays green
+- [x] obsidian-plugin conformance suite stays green
+- [x] openspec validate --strict clean
+
+**Measurements:**
+- publication-exporter suite: 482/482 (baseline 227)
+- obsidian-plugin conformance: 73/74 (baseline 69/70)
+- openspec validate --all --strict: 8/8 passed

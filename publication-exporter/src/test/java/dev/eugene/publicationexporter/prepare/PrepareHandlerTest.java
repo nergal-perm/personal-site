@@ -641,6 +641,30 @@ class PrepareHandlerTest {
         assertTrue(response.diagnostics().get(0).message().contains("escapes review root"));
     }
 
+    @Test
+    void approvedSourceUnchangedButCandidateMissingInstallsCandidateFromApproved() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("self-heal-review");
+        installApproved(reviewRoot);
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
+        TranslationWorker refusingWorker = (job, ruBody, ruTitle, ruDescription) ->
+                fail("Prepare must not invoke the translation worker when the approved RU baseline is unchanged.");
+        PrepareHandler handler = new PrepareHandler(
+                refusingWorker, candidateWorkspace, ApprovedSnapshotWorkspace.create(reviewRoot),
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path, VaultReader.createNull(Map.of(path, VALID_ESSAY)));
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertTrue(candidateWorkspace.find(PublicationIdentity.of("blog", "essay", "my-essay")).isPresent(),
+                "prepare must not report ready_for_review without a candidate the plugin can actually open");
+        CandidateSnapshot candidate = candidateWorkspace.read(PublicationIdentity.of("blog", "essay", "my-essay"))
+                .orElseThrow();
+        assertEquals("EN body", candidate.enBody());
+    }
+
     private VaultReader failingReader(RuntimeException failure) {
         return new VaultReader() {
             @Override

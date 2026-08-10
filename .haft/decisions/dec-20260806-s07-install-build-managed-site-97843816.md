@@ -1,12 +1,12 @@
 ---
 id: dec-20260806-s07-install-build-managed-site-97843816
 kind: DecisionRecord
-version: 1
+version: 3
 status: active
 title: install-to-site: ManagedSiteInstaller port + FilesystemManagedSiteInstaller adapter reading ApprovedSnapshotWorkspace directly
 mode: standard
 created_at: 2026-08-06T14:15:03Z
-updated_at: 2026-08-06T14:15:03Z
+updated_at: 2026-08-10T06:09:45Z
 links:
   - ref: prob-20260806-e95236b1
     type: based_on
@@ -85,3 +85,24 @@ Blast radius: publication-exporter module plus openspec/haft documentation; no s
 - The deferred Obsidian plugin review-UI slice is scoped, closing the known title/description review-visibility gap
 
 **Affected files:** publication-exporter/src/main/java/dev/eugene/publicationexporter/site/FilesystemManagedSiteInstaller.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/site/ManagedSiteInstaller.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/site/SiteReleaseManifest.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/site/UnsafeManagedSiteEntryException.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/installtosite/InstallToSiteHandler.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/EssayAdmission.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/candidate/CandidateSnapshot.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/reference/ReferenceMap.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/markreviewed/MarkReviewedHandler.java, publication-exporter/src/main/java/dev/eugene/publicationexporter/bridge/ReviewPlan.java
+
+## Impact Measurement (2026-08-10)
+
+**Verdict:** accepted
+
+**Findings:**
+S07's own post-conditions checklist was left unchecked in the record; live re-run closes all five items with real evidence, including the real (non-mocked) Astro build smoke test which is excluded from default `mvn test` by its @Tag("slow") and had to be run explicitly. S10's later replace-generation design (one of this decision's own refresh triggers) landed without invalidating the direct-approved-snapshot-read architecture or the site-wide install lock.
+
+**Criteria met:**
+- [x] publication-exporter test suite green
+- [x] real check-content.mjs gate green
+- [x] real Astro build smoke test green
+- [x] obsidian-plugin conformance suite green
+- [x] openspec validate --strict passes
+
+**Measurements:**
+- publication-exporter suite: 482/482 (checklist target 324)
+- CheckContentGateContractTest: 6/6 (checklist target 2/2)
+- AstroBuildSmokeIT: 1/1 (checklist target 1/1, run explicitly via -Dtest since excluded from default surefire run)
+- obsidian-plugin conformance: 73/74 (checklist target 69/70)
+- openspec validate --all --strict: 8/8 passed
