@@ -64,28 +64,47 @@ public final class PrepareHandler {
 
     private BridgeResponse prepareNormalizedEssay(
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake, String normalizedBody) {
-        Optional<CandidateSnapshot> unchangedApproved;
+        ApprovedBaselineLookup approved = lookupApprovedBaseline(intake, normalizedBody);
+        if (approved.failed()) {
+            return approved.failureResponse();
+        }
+        if (approved.snapshot().isPresent()) {
+            return mirrorApprovedCandidate(intake.identity(), approved.snapshot().get());
+        }
+        return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody);
+    }
+
+    private ApprovedBaselineLookup lookupApprovedBaseline(NoteIntake.Result intake, String normalizedBody) {
         try {
-            unchangedApproved = matchingApprovedBaseline(
-                    intake.identity(), normalizedBody, intake.title(), intake.description());
+            return ApprovedBaselineLookup.found(matchingApprovedBaseline(
+                    intake.identity(), normalizedBody, intake.title(), intake.description()));
         } catch (UncheckedIOException failure) {
-            return approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure));
+            return ApprovedBaselineLookup.failed(
+                    approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure)));
         } catch (ApprovedSnapshotWorkspaceConfinementException failure) {
-            return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+            return ApprovedBaselineLookup.failed(
+                    approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage()));
         } catch (ApprovedSnapshotWorkspaceStateException failure) {
-            return approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage());
+            return ApprovedBaselineLookup.failed(
+                    approvedLookupFailure("Approved snapshot lookup failed: " + failure.getMessage()));
         }
-        if (unchangedApproved.isPresent()) {
-            try {
-                ensureCandidateMirrorsApproved(intake.identity(), unchangedApproved.get());
-            } catch (UncheckedIOException failure) {
-                return candidateFailure(
-                        IoFailureMessages.describe("Candidate mirror of approved snapshot failed", failure));
-            } catch (CandidateWorkspaceConfinementException failure) {
-                return candidateFailure("Candidate mirror of approved snapshot failed: " + failure.getMessage());
-            }
-            return BridgeResponse.prepared(COMMAND, intake.identity());
+    }
+
+    private BridgeResponse mirrorApprovedCandidate(PublicationIdentity identity, CandidateSnapshot approved) {
+        try {
+            ensureCandidateMirrorsApproved(identity, approved);
+        } catch (UncheckedIOException failure) {
+            return candidateFailure(
+                    IoFailureMessages.describe("Candidate mirror of approved snapshot failed", failure));
+        } catch (CandidateWorkspaceConfinementException failure) {
+            return candidateFailure("Candidate mirror of approved snapshot failed: " + failure.getMessage());
         }
+        return BridgeResponse.prepared(COMMAND, identity);
+    }
+
+    private BridgeResponse prepareWithInstallLock(
+            VaultRelativePath notePath, VaultReader vaultReader,
+            NoteIntake.Result intake, String normalizedBody) {
         ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());
         installLock.lock();
         try {
@@ -149,7 +168,8 @@ public final class PrepareHandler {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
-        if (!sourceStillMatches(notePath, vaultReader, identity, job)) {
+        Optional<String> currentSourceHash = sourceHashIfStillMatches(notePath, vaultReader, identity, job);
+        if (currentSourceHash.isEmpty()) {
             recordStaleWorkflowStatus(notePath, vaultReader);
             return BridgeResponse.stale(COMMAND,
                     Diagnostic.blocking("candidate", "Source note changed while translation was in progress."));
@@ -159,7 +179,7 @@ public final class PrepareHandler {
         BridgeResponse response = installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
                 ruDescription, enDescription, referenceMap);
         if (response.ok()) {
-            recordWorkflowStatus(notePath, sourceHash, WorkflowState.READY_FOR_REVIEW);
+            recordWorkflowStatus(notePath, currentSourceHash.get(), WorkflowState.READY_FOR_REVIEW);
         }
         return response;
     }
@@ -189,17 +209,17 @@ public final class PrepareHandler {
         }
     }
 
-    private static boolean sourceStillMatches(
+    private static Optional<String> sourceHashIfStillMatches(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity expectedIdentity, TranslationJob job) {
         NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
-            return false;
+            return Optional.empty();
         }
         return MarkdownNormalizer.normalize(current.body()).resolve(
-                normalizedBody -> sourceFingerprintMatches(
-                        job, normalizedBody, current.title(), current.description()),
-                ignored -> false);
+                normalizedBody -> sourceFingerprintMatches(job, normalizedBody, current.title(), current.description())
+                        ? Optional.of(current.sourceHash()) : Optional.empty(),
+                ignored -> Optional.empty());
     }
 
     private static boolean sourceFingerprintMatches(
@@ -260,6 +280,26 @@ public final class PrepareHandler {
     private static BridgeResponse unclosedCommentFailure(int position) {
         return BridgeResponse.translationFailed(COMMAND,
                 Diagnostic.blocking("candidate", "Obsidian comment starting at position " + position + " is never closed."));
+    }
+
+    private record ApprovedBaselineLookup(
+            Optional<CandidateSnapshot> snapshot, Optional<BridgeResponse> failure) {
+
+        private static ApprovedBaselineLookup found(Optional<CandidateSnapshot> snapshot) {
+            return new ApprovedBaselineLookup(snapshot, Optional.empty());
+        }
+
+        private static ApprovedBaselineLookup failed(BridgeResponse failure) {
+            return new ApprovedBaselineLookup(Optional.empty(), Optional.of(failure));
+        }
+
+        private boolean failed() {
+            return failure.isPresent();
+        }
+
+        private BridgeResponse failureResponse() {
+            return failure.orElseThrow();
+        }
     }
 
 }

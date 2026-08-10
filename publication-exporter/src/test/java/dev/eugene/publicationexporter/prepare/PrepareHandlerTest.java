@@ -75,6 +75,40 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void commentOnlyEditDuringTranslationWritesReadyForReviewForCurrentSource() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        String originalEssay = essayWithBody("# My Essay\n\nPlain prose body.\n\n\n\nMore prose.");
+        String editedEssay = essayWithBody(
+                "# My Essay\n\nPlain prose body.\n\n%% added while translating %%\n\nMore prose.");
+        AtomicInteger reads = new AtomicInteger();
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return reads.incrementAndGet() == 1 ? originalEssay : editedEssay;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
+            }
+        };
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, editedEssay));
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(path, vaultReader);
+
+        assertEquals("ready_for_review", response.status());
+        assertEquals("ready_for_review", editor.currentValue(path, "workflowStatus"));
+    }
+
+    @Test
     void translationFailureWritesTranslationFailedWorkflowStatus() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
