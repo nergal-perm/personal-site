@@ -13,6 +13,7 @@ import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationJob;
 import dev.eugene.publicationexporter.translation.TranslationOutcome;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
+import dev.eugene.publicationexporter.vault.VaultAssetReader;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import dev.eugene.publicationexporter.workflow.NullWorkflowStatusEditor;
