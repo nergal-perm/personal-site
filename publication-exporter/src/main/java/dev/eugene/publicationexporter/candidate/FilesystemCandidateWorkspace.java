@@ -12,6 +12,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -32,21 +33,16 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
     }
 
     @Override
-    public void install(PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
+    public void install(PublicationIdentity identity, CandidateSnapshot content, List<CandidateAsset> assets) {
         Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(ruBody, "ruBody");
-        Objects.requireNonNull(enBody, "enBody");
-        Objects.requireNonNull(ruTitle, "ruTitle");
-        Objects.requireNonNull(enTitle, "enTitle");
-        Objects.requireNonNull(ruDescription, "ruDescription");
-        Objects.requireNonNull(enDescription, "enDescription");
-        Objects.requireNonNull(referenceMap, "referenceMap");
+        Objects.requireNonNull(content, "content");
+        Objects.requireNonNull(assets, "assets");
 
         Path destination = candidateDirectory(identity);
         Path staging = createStagingDirectory();
         try {
-            writeSnapshot(staging, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap);
+            writeSnapshot(staging, content);
+            writeAssets(staging, assets);
             requireWithinReviewRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinReviewRoot(destination);
@@ -193,17 +189,23 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         return file;
     }
 
-    private void writeSnapshot(Path staging, String ruBody, String enBody, String ruTitle, String enTitle,
-            String ruDescription, String enDescription, ReferenceMap referenceMap)
-            throws IOException {
-        Files.writeString(candidateFile(staging, "ru.md"), ruBody, StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "en.md"), enBody, StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "ru.title"), ruTitle, StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "en.title"), enTitle, StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "ru.description"), ruDescription, StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "en.description"), enDescription, StandardCharsets.UTF_8);
+    private void writeSnapshot(Path staging, CandidateSnapshot content) throws IOException {
+        Files.writeString(candidateFile(staging, "ru.md"), content.ruBody(), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "en.md"), content.enBody(), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "ru.title"), content.ruTitle(), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "en.title"), content.enTitle(), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "ru.description"), content.ruDescription(), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "en.description"), content.enDescription(), StandardCharsets.UTF_8);
         Files.writeString(candidateFile(staging, "references.json"),
-                ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
+                ReferenceMapCodec.write(content.referenceMap()), StandardCharsets.UTF_8);
+    }
+
+    private void writeAssets(Path staging, List<CandidateAsset> assets) throws IOException {
+        for (CandidateAsset asset : assets) {
+            Path assetFile = candidateFile(staging, "assets/" + asset.publicName());
+            Files.createDirectories(assetFile.getParent());
+            Files.write(assetFile, asset.content());
+        }
     }
 
     @FunctionalInterface
