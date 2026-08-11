@@ -26,4 +26,25 @@ public final class EnglishTranslation {
     public List<PublicField> fields() {
         return fields;
     }
+
+    @Override
+    public boolean equals(Object other) {
+        if (this == other) {
+            return true;
+        }
+        if (!(other instanceof EnglishTranslation that)) {
+            return false;
+        }
+        return Objects.equals(body, that.body) && Objects.equals(fields, that.fields);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(body, fields);
+    }
+
+    @Override
+    public String toString() {
+        return "EnglishTranslation[body=" + body + ", fields=" + fields + "]";
+    }
 }

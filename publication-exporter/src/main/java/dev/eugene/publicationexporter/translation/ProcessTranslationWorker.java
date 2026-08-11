@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
@@ -16,8 +17,6 @@ import java.util.concurrent.TimeoutException;
 public final class ProcessTranslationWorker implements TranslationWorker {
 
     private static final String BODY_FILE_NAME = "candidate.en.md";
-    private static final String TITLE_FILE_NAME = "candidate.en.title.txt";
-    private static final String DESCRIPTION_FILE_NAME = "candidate.en.description.txt";
     private static final long OUTPUT_DRAIN_TIMEOUT_SECONDS = 1;
     private final TranslationCommand command;
     private final Duration timeout;
@@ -32,17 +31,18 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     @Override
     public TranslationOutcome translate(TranslationJob job, String ruBody, List<PublicField> ruFields) {
         Objects.requireNonNull(job, "job");
+        Objects.requireNonNull(ruFields, "ruFields");
         JobWorkspace workspace = JobWorkspace.createAt(jobRoot, job);
         try {
             workspace.writeFingerprint(job.sourceFingerprint());
-            return runAndCollect(workspace, job, prompt(
-                    ruBody, ruFields.get(0).value(), ruFields.get(1).value()));
+            return runAndCollect(workspace, job, prompt(ruBody, ruFields), ruFields);
         } finally {
             workspace.cleanup();
         }
     }
 
-    private TranslationOutcome runAndCollect(JobWorkspace workspace, TranslationJob job, String prompt) {
+    private TranslationOutcome runAndCollect(
+            JobWorkspace workspace, TranslationJob job, String prompt, List<PublicField> ruFields) {
         try {
             Process process = new ProcessBuilder(command.argsFor(workspace.path(), prompt))
                     .directory(workspace.path().toFile())
@@ -51,7 +51,7 @@ public final class ProcessTranslationWorker implements TranslationWorker {
                     .start();
             CompletableFuture<Void> outputDrainer = CompletableFuture.runAsync(
                     () -> drainOutput(process));
-            return awaitResult(process, workspace, job, outputDrainer);
+            return awaitResult(process, workspace, job, ruFields, outputDrainer);
         } catch (IOException error) {
             return TranslationOutcome.failure("Translation worker failed to start: " + error.getMessage());
         }
@@ -59,7 +59,7 @@ public final class ProcessTranslationWorker implements TranslationWorker {
 
     private TranslationOutcome awaitResult(
             Process process, JobWorkspace workspace, TranslationJob job,
-            CompletableFuture<Void> outputDrainer) {
+            List<PublicField> ruFields, CompletableFuture<Void> outputDrainer) {
         TranslationOutcome processResult;
         try {
             boolean completed = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
@@ -72,7 +72,7 @@ public final class ProcessTranslationWorker implements TranslationWorker {
                 processResult = TranslationOutcome.failure(
                         "Translation worker exited with code " + process.exitValue() + ".");
             } else {
-                processResult = collectResult(workspace, job);
+                processResult = collectResult(workspace, job, ruFields);
             }
         } catch (InterruptedException interrupted) {
             process.destroyForcibly();
@@ -120,10 +120,11 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         }
     }
 
-    private TranslationOutcome collectResult(JobWorkspace workspace, TranslationJob job) {
+    private TranslationOutcome collectResult(
+            JobWorkspace workspace, TranslationJob job, List<PublicField> ruFields) {
         try {
             workspace.requireMatchingFingerprint(job.sourceFingerprint());
-            return validatedResultFrom(workspace);
+            return validatedResultFrom(workspace, ruFields);
         } catch (JobWorkspace.FingerprintMismatchException mismatch) {
             return TranslationOutcome.failure("Translation worker job fingerprint did not match the request.");
         } catch (JobWorkspace.MissingFileException missing) {
@@ -133,13 +134,15 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         }
     }
 
-    private TranslationOutcome validatedResultFrom(JobWorkspace workspace)
+    private TranslationOutcome validatedResultFrom(JobWorkspace workspace, List<PublicField> ruFields)
             throws JobWorkspace.MissingFileException, JobWorkspace.UnreadableFileException {
-        return TranslationOutcome.success(
-                workspace.readRequiredResult(BODY_FILE_NAME),
-                List.of(
-                        PublicField.of("title", workspace.readRequiredResult(TITLE_FILE_NAME)),
-                        PublicField.of("description", workspace.readRequiredResult(DESCRIPTION_FILE_NAME))));
+        String translatedBody = workspace.readRequiredResult(BODY_FILE_NAME);
+        List<PublicField> translatedFields = new ArrayList<>();
+        for (PublicField ruField : ruFields) {
+            translatedFields.add(PublicField.of(
+                    ruField.key(), workspace.readRequiredResult(translatedFieldFileName(ruField.key()))));
+        }
+        return TranslationOutcome.success(translatedBody, translatedFields);
     }
 
     private static TranslationOutcome missingFileFailure(String fileName) {
@@ -150,27 +153,38 @@ public final class ProcessTranslationWorker implements TranslationWorker {
         return TranslationOutcome.failure("Could not read " + fileName + ": " + error.getMessage());
     }
 
-    private static String prompt(String ruBody, String ruTitle, String ruDescription) {
-        return """
+    private static String prompt(String ruBody, List<PublicField> ruFields) {
+        StringBuilder prompt = new StringBuilder("""
                 # Bounded Russian-to-English publication translation
 
-                Work only inside the current directory. Translate the Russian title, description,
-                and body below to English prose of equivalent meaning and structure. Write:
-                - the translated title, and only the title, to candidate.en.title.txt
-                - the translated description, and only the description, to candidate.en.description.txt
-                - the translated body, and only the body, to candidate.en.md
-                Do not return commentary or a patch in place of those files.
+                Work only inside the current directory. Translate every labeled field and the body
+                below to English prose of equivalent meaning and structure. Write:
+                """);
+        for (PublicField ruField : ruFields) {
+            prompt.append("- the translated ")
+                    .append(ruField.key())
+                    .append(", and only that field, to ")
+                    .append(translatedFieldFileName(ruField.key()))
+                    .append('\n');
+        }
+        prompt.append("- the translated body, and only the body, to ")
+                .append(BODY_FILE_NAME)
+                .append("\n")
+                .append("Do not return commentary or a patch in place of those files.\n");
+        for (PublicField ruField : ruFields) {
+            prompt.append('\n')
+                    .append('<').append(ruField.key()).append(">\n")
+                    .append(ruField.value())
+                    .append("\n</").append(ruField.key()).append(">\n");
+        }
+        return prompt.append("\n<body>\n")
+                .append(ruBody)
+                .append("\n</body>\n")
+                .toString();
+    }
 
-                <title>
-                %s
-                </title>
-                <description>
-                %s
-                </description>
-                <body>
-                %s
-                </body>
-                """.formatted(ruTitle, ruDescription, ruBody);
+    private static String translatedFieldFileName(String key) {
+        return "candidate.en." + key + ".txt";
     }
 
     private static Duration requirePositive(Duration timeout) {

@@ -34,6 +34,7 @@ public final class RussianDiff {
         Objects.requireNonNull(approvedFields, "approvedFields");
         Objects.requireNonNull(currentBody, "currentBody");
         Objects.requireNonNull(currentFields, "currentFields");
+        requireAlignedFields(approvedFields, currentFields);
         List<Line> completeDiff = new ArrayList<>();
         for (int i = 0; i < approvedFields.size(); i++) {
             completeDiff.addAll(labeledFieldDiff(
@@ -41,6 +42,24 @@ public final class RussianDiff {
         }
         completeDiff.addAll(lcsDiff(normalize(approvedBody), normalize(currentBody)));
         return new RussianDiff(completeDiff);
+    }
+
+    private static void requireAlignedFields(
+            List<PublicField> approvedFields, List<PublicField> currentFields) {
+        if (approvedFields.size() != currentFields.size()) {
+            throw new IllegalArgumentException(
+                    "RussianDiff.between: field count mismatch: expected "
+                            + approvedFields.size() + ", got " + currentFields.size());
+        }
+        for (int i = 0; i < approvedFields.size(); i++) {
+            String expectedKey = approvedFields.get(i).key();
+            String actualKey = currentFields.get(i).key();
+            if (!Objects.equals(expectedKey, actualKey)) {
+                throw new IllegalArgumentException(
+                        "RussianDiff.between: field key mismatch at index " + i
+                                + ": expected '" + expectedKey + "', got '" + actualKey + "'");
+            }
+        }
     }
 
     public boolean isEmpty() {

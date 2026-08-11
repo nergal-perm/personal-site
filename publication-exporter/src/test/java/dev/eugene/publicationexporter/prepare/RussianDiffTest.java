@@ -7,6 +7,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class RussianDiffTest {
@@ -122,5 +123,25 @@ class RussianDiffTest {
                 new RussianDiff.Line(RussianDiff.LineKind.REMOVED, "description: Old description"),
                 new RussianDiff.Line(RussianDiff.LineKind.ADDED, "description: New description"),
                 new RussianDiff.Line(RussianDiff.LineKind.UNCHANGED, "same body")), diff.lines());
+    }
+
+    @Test
+    void differentFieldCountsAreRejectedClearly() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> RussianDiff.between(
+                "same body", List.of(PublicField.of("title", "same title")),
+                "same body", List.of()));
+
+        assertEquals("RussianDiff.between: field count mismatch: expected 1, got 0", error.getMessage());
+    }
+
+    @Test
+    void differentFieldKeysAreRejectedWithTheirPosition() {
+        IllegalArgumentException error = assertThrows(IllegalArgumentException.class, () -> RussianDiff.between(
+                "same body", List.of(PublicField.of("title", "same title")),
+                "same body", List.of(PublicField.of("description", "same description"))));
+
+        assertEquals(
+                "RussianDiff.between: field key mismatch at index 0: expected 'title', got 'description'",
+                error.getMessage());
     }
 }

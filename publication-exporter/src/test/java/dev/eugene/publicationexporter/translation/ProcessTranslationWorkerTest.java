@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -10,6 +11,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -20,6 +22,36 @@ class ProcessTranslationWorkerTest {
 
     @TempDir
     Path externalRoot;
+
+    @Test
+    void threePublicFieldsRoundTripThroughProcessWorker() {
+        AtomicReference<String> receivedPrompt = new AtomicReference<>();
+        List<PublicField> russianFields = List.of(
+                PublicField.of("title", "Russian title"),
+                PublicField.of("description", "Russian description"),
+                PublicField.of("statement", "Russian statement"));
+        TranslationCommand writesThreeFieldResult = (workdir, prompt) -> {
+            receivedPrompt.set(prompt);
+            writeString(workdir.resolve("candidate.en.md"), "English body");
+            writeString(workdir.resolve("candidate.en.title.txt"), "English title");
+            writeString(workdir.resolve("candidate.en.description.txt"), "English description");
+            writeString(workdir.resolve("candidate.en.statement.txt"), "English statement");
+            return List.of("sh", "-c", "true");
+        };
+
+        ProcessTranslationWorker worker = processWorker(writesThreeFieldResult, Duration.ofSeconds(5));
+
+        TranslationOutcome result = worker.translate(
+                TranslationJob.forSource("Russian body", russianFields), "Russian body", russianFields);
+
+        assertEquals("English body", TranslationResults.translated(result).body());
+        assertEquals(List.of(
+                PublicField.of("title", "English title"),
+                PublicField.of("description", "English description"),
+                PublicField.of("statement", "English statement")),
+                TranslationResults.translated(result).fields());
+        assertTrue(receivedPrompt.get().contains("<statement>\nRussian statement\n</statement>"));
+    }
 
     @Test
     void resultFileWrittenByTheProcessIsReturnedAsSuccess() {
