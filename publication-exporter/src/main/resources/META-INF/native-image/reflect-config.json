@@ -159,6 +159,46 @@
     ]
   },
   {
+    "name": "dev.eugene.publicationexporter.cli.WritePublicationContractCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.contract.PublicationContract",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "contractVersion", "parameterTypes": []},
+      {"name": "kinds", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.contract.KindContract",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "collection", "parameterTypes": []},
+      {"name": "contentType", "parameterTypes": []},
+      {"name": "requiredFields", "parameterTypes": []},
+      {"name": "structuredBody", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.contract.FieldContract",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "name", "parameterTypes": []},
+      {"name": "type", "parameterTypes": []},
+      {"name": "allowedValues", "parameterTypes": []},
+      {"name": "pattern", "parameterTypes": []},
+      {"name": "nonBlank", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.contract.FieldContract$Type",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
     "name": "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
     "methods": [
       {
