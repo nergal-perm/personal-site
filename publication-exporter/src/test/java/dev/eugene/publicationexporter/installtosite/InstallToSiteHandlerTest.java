@@ -56,7 +56,7 @@ class InstallToSiteHandlerTest {
 
         assertTrue(result.ok());
         assertEquals(IDENTITY, result.identity());
-        assertEquals("EN title", siteInstaller.installed().get(IDENTITY).enTitle());
+        assertEquals("EN title", dev.eugene.publicationexporter.reference.PublicField.value(siteInstaller.installed().get(IDENTITY).enFields(), "title").orElseThrow());
     }
 
     @Test
@@ -71,7 +71,7 @@ class InstallToSiteHandlerTest {
         InstallToSiteResult firstResult = handler.installToSite(IDENTITY);
 
         assertTrue(firstResult.ok());
-        assertEquals("Old EN title", siteInstaller.installed().get(IDENTITY).enTitle());
+        assertEquals("Old EN title", dev.eugene.publicationexporter.reference.PublicField.value(siteInstaller.installed().get(IDENTITY).enFields(), "title").orElseThrow());
 
         approvedSnapshotWorkspace.install(IDENTITY, "New RU body", "New EN body", "New RU title", "New EN title",
                 "New RU description.", "New EN description.",
@@ -80,7 +80,7 @@ class InstallToSiteHandlerTest {
         InstallToSiteResult result = handler.installToSite(IDENTITY);
 
         assertTrue(result.ok());
-        assertEquals("New EN title", siteInstaller.installed().get(IDENTITY).enTitle());
+        assertEquals("New EN title", dev.eugene.publicationexporter.reference.PublicField.value(siteInstaller.installed().get(IDENTITY).enFields(), "title").orElseThrow());
     }
 
     @Test
@@ -126,8 +126,8 @@ class InstallToSiteHandlerTest {
         assertTrue(result.ok());
         assertTrue(replacementFailure.get() instanceof ApprovedSnapshotApprovalInProgressException,
                 () -> "expected concurrent approval replacement to be rejected, got " + replacementFailure.get());
-        assertEquals("Old EN title", installed.installed().get(IDENTITY).enTitle());
-        assertEquals("Old EN title", approvedSnapshotWorkspace.read(IDENTITY).orElseThrow().enTitle());
+        assertEquals("Old EN title", dev.eugene.publicationexporter.reference.PublicField.value(installed.installed().get(IDENTITY).enFields(), "title").orElseThrow());
+        assertEquals("Old EN title", dev.eugene.publicationexporter.reference.PublicField.value(approvedSnapshotWorkspace.read(IDENTITY).orElseThrow().enFields(), "title").orElseThrow());
     }
 
     @Test

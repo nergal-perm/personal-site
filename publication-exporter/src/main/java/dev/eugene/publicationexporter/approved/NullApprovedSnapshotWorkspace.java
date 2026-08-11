@@ -28,6 +28,13 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
                 "", referenceMap));
     }
 
+    @Override
+    public void install(PublicationIdentity identity, CandidateSnapshot content) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(content, "content");
+        installed.put(identity, content);
+    }
+
     private void validateInstallArguments(
             PublicationIdentity identity, String ruBody, String enBody, String ruTitle, String enTitle,
             String ruDescription, String enDescription, ReferenceMap referenceMap) {

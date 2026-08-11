@@ -244,6 +244,17 @@ class RefreshPublicationQueueHandlerTest {
     private CandidateWorkspace incompleteCandidateWorkspace() {
         return new CandidateWorkspace() {
             @Override
+            public void install(PublicationIdentity identity, CandidateSnapshot content,
+                    List<dev.eugene.publicationexporter.candidate.CandidateAsset> assets) {
+                install(identity, content.ruBody(), content.enBody(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "description").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "description").orElseThrow(),
+                        content.referenceMap());
+            }
+
+            @Override
             public void install(PublicationIdentity identity, String ruBody, String enBody,
                     String ruTitle, String enTitle, String ruDescription, String enDescription,
                     ReferenceMap referenceMap) {
@@ -267,6 +278,17 @@ class RefreshPublicationQueueHandlerTest {
 
     private CandidateWorkspace candidateWorkspaceFailingFor(String failingPublicId) {
         return new CandidateWorkspace() {
+            @Override
+            public void install(PublicationIdentity identity, CandidateSnapshot content,
+                    List<dev.eugene.publicationexporter.candidate.CandidateAsset> assets) {
+                install(identity, content.ruBody(), content.enBody(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "description").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "description").orElseThrow(),
+                        content.referenceMap());
+            }
+
             @Override
             public void install(PublicationIdentity identity, String ruBody, String enBody,
                     String ruTitle, String enTitle, String ruDescription, String enDescription,

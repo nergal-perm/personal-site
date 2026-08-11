@@ -14,6 +14,8 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -92,12 +94,14 @@ public final class MarkReviewedHandler {
                     Diagnostic.blocking("candidate", "Source publication identity changed while approval waited."));
         }
         return markReviewedUnderLock(
-                notePath, lockedIdentity, current.sourceHash(), current.body(), current.title(), current.description());
+                notePath, lockedIdentity, current.sourceHash(), current.body(),
+                fieldsOf(current), current.structuredData());
     }
 
     private BridgeResponse markReviewedUnderLock(
             VaultRelativePath notePath, PublicationIdentity identity, String sourceHash,
-            String sourceBody, String sourceTitle, String sourceDescription) {
+            String sourceBody, List<PublicField> sourceFields,
+            String sourceStructuredData) {
         Optional<CandidateSnapshot> candidate;
         try {
             candidate = readCandidate(identity);
@@ -108,7 +112,7 @@ public final class MarkReviewedHandler {
             return candidateLookupFailure(failure.getMessage());
         }
         List<Diagnostic> staleness = stalenessDiagnostics(
-                sourceBody, sourceTitle, sourceDescription, candidate.get());
+                sourceBody, sourceFields, sourceStructuredData, candidate.get());
         if (!staleness.isEmpty()) {
             return BridgeResponse.stale(COMMAND, staleness);
         }
@@ -132,18 +136,18 @@ public final class MarkReviewedHandler {
     }
 
     private List<Diagnostic> stalenessDiagnostics(
-            String sourceBody, String sourceTitle, String sourceDescription, CandidateSnapshot candidate) {
+            String sourceBody, List<PublicField> sourceFields,
+            String sourceStructuredData, CandidateSnapshot candidate) {
         ReferenceMap referenceMap = candidate.referenceMap();
         return Stream.of(
                         sourceChangedDiagnostic(sourceBody, referenceMap),
-                        sourceTitleChangedDiagnostic(sourceTitle, referenceMap),
-                        sourceDescriptionChangedDiagnostic(sourceDescription, referenceMap),
+                        sourceFieldsChangedDiagnostic(sourceFields, referenceMap),
+                        sourceStructuredDataChangedDiagnostic(sourceStructuredData, referenceMap),
                         candidateRuBodyChangedDiagnostic(candidate, referenceMap),
-                        candidateRuTitleChangedDiagnostic(candidate, referenceMap),
-                        candidateRuDescriptionChangedDiagnostic(candidate, referenceMap),
+                        candidateRuFieldsChangedDiagnostic(candidate, referenceMap),
+                        candidateStructuredDataChangedDiagnostic(candidate, referenceMap),
                         candidateEnBodyChangedDiagnostic(candidate, referenceMap),
-                        candidateEnTitleChangedDiagnostic(candidate, referenceMap),
-                        candidateEnDescriptionChangedDiagnostic(candidate, referenceMap))
+                        candidateEnFieldsChangedDiagnostic(candidate, referenceMap))
                 .flatMap(Optional::stream)
                 .toList();
     }
@@ -156,22 +160,22 @@ public final class MarkReviewedHandler {
                 "Source note has changed since the candidate was prepared."));
     }
 
-    private static Optional<Diagnostic> sourceTitleChangedDiagnostic(
-            String sourceTitle, ReferenceMap referenceMap) {
-        if (ContentHash.sha256Hex(sourceTitle).equals(referenceMap.ruTitleHash())) {
+    private static Optional<Diagnostic> sourceFieldsChangedDiagnostic(
+            List<PublicField> sourceFields, ReferenceMap referenceMap) {
+        if (ContentHash.sha256Hex(PublicFieldsCodec.write(sourceFields)).equals(referenceMap.ruFieldsHash())) {
             return Optional.empty();
         }
         return Optional.of(Diagnostic.blocking("candidate",
-                "Source note title has changed since the candidate was prepared."));
+                "Source note public fields have changed since the candidate was prepared."));
     }
 
-    private static Optional<Diagnostic> sourceDescriptionChangedDiagnostic(
-            String sourceDescription, ReferenceMap referenceMap) {
-        if (ContentHash.sha256Hex(sourceDescription).equals(referenceMap.ruDescriptionHash())) {
+    private static Optional<Diagnostic> sourceStructuredDataChangedDiagnostic(
+            String sourceStructuredData, ReferenceMap referenceMap) {
+        if (ContentHash.sha256Hex(sourceStructuredData).equals(referenceMap.structuredDataHash())) {
             return Optional.empty();
         }
         return Optional.of(Diagnostic.blocking("candidate",
-                "Source note description has changed since the candidate was prepared."));
+                "Source note structured data has changed since the candidate was prepared."));
     }
 
     private static Optional<Diagnostic> candidateRuBodyChangedDiagnostic(
@@ -183,22 +187,22 @@ public final class MarkReviewedHandler {
                 "Candidate Russian body has changed since it was prepared."));
     }
 
-    private static Optional<Diagnostic> candidateRuTitleChangedDiagnostic(
+    private static Optional<Diagnostic> candidateRuFieldsChangedDiagnostic(
             CandidateSnapshot candidate, ReferenceMap referenceMap) {
-        if (ContentHash.sha256Hex(candidate.ruTitle()).equals(referenceMap.ruTitleHash())) {
+        if (ContentHash.sha256Hex(PublicFieldsCodec.write(candidate.ruFields())).equals(referenceMap.ruFieldsHash())) {
             return Optional.empty();
         }
         return Optional.of(Diagnostic.blocking("candidate",
-                "Candidate Russian title has changed since it was prepared."));
+                "Candidate Russian public fields have changed since it was prepared."));
     }
 
-    private static Optional<Diagnostic> candidateRuDescriptionChangedDiagnostic(
+    private static Optional<Diagnostic> candidateStructuredDataChangedDiagnostic(
             CandidateSnapshot candidate, ReferenceMap referenceMap) {
-        if (ContentHash.sha256Hex(candidate.ruDescription()).equals(referenceMap.ruDescriptionHash())) {
+        if (ContentHash.sha256Hex(candidate.structuredData()).equals(referenceMap.structuredDataHash())) {
             return Optional.empty();
         }
         return Optional.of(Diagnostic.blocking("candidate",
-                "Candidate Russian description has changed since it was prepared."));
+                "Candidate structured data has changed since it was prepared."));
     }
 
     private static Optional<Diagnostic> candidateEnBodyChangedDiagnostic(
@@ -210,32 +214,19 @@ public final class MarkReviewedHandler {
                 "Candidate English body has changed since it was prepared."));
     }
 
-    private static Optional<Diagnostic> candidateEnTitleChangedDiagnostic(
+    private static Optional<Diagnostic> candidateEnFieldsChangedDiagnostic(
             CandidateSnapshot candidate, ReferenceMap referenceMap) {
-        if (ContentHash.sha256Hex(candidate.enTitle()).equals(referenceMap.enTitleHash())) {
+        if (ContentHash.sha256Hex(PublicFieldsCodec.write(candidate.enFields())).equals(referenceMap.enFieldsHash())) {
             return Optional.empty();
         }
         return Optional.of(Diagnostic.blocking("candidate",
-                "Candidate English title has changed since it was prepared."));
-    }
-
-    private static Optional<Diagnostic> candidateEnDescriptionChangedDiagnostic(
-            CandidateSnapshot candidate, ReferenceMap referenceMap) {
-        if (ContentHash.sha256Hex(candidate.enDescription()).equals(referenceMap.enDescriptionHash())) {
-            return Optional.empty();
-        }
-        return Optional.of(Diagnostic.blocking("candidate",
-                "Candidate English description has changed since it was prepared."));
+                "Candidate English public fields have changed since it was prepared."));
     }
 
     private BridgeResponse installApprovedSnapshot(
             VaultRelativePath notePath, String sourceHash, PublicationIdentity identity, CandidateSnapshot candidate) {
         try {
-            approvedSnapshotWorkspace.install(
-                    identity, candidate.ruBody(), candidate.enBody(),
-                    candidate.ruTitle(), candidate.enTitle(),
-                    candidate.ruDescription(), candidate.enDescription(),
-                    candidate.referenceMap());
+            approvedSnapshotWorkspace.install(identity, candidate);
         } catch (ApprovedSnapshotAlreadyExistsException raceLoser) {
             return alreadyApprovedResponse();
         } catch (UncheckedIOException failure) {
@@ -258,6 +249,11 @@ public final class MarkReviewedHandler {
                             IoFailureMessages.describe("Workflow status update failed", failure)));
         }
         return BridgeResponse.approved(COMMAND, identity);
+    }
+
+    private static List<PublicField> fieldsOf(NoteIntake.Result intake) {
+        return List.of(PublicField.of("title", intake.title()),
+                PublicField.of("description", intake.description()));
     }
 
     private static BridgeResponse candidateLookupFailure(String message) {

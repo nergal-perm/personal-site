@@ -133,6 +133,10 @@ public final class NoteIntake {
             return admission.description();
         }
 
+        public String structuredData() {
+            return admission.structuredData();
+        }
+
         public List<Diagnostic> diagnostics() {
             return diagnostics;
         }

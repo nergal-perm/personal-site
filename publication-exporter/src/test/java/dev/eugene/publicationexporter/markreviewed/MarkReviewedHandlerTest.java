@@ -94,11 +94,9 @@ class MarkReviewedHandlerTest {
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String enHash = ContentHash.sha256Hex("EN body");
         candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
-                "A valid description.", "EN description.", ReferenceMap.empty(
-                        identity, ruHash, enHash,
-                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
-                        ContentHash.sha256Hex("A valid description."),
-                        ContentHash.sha256Hex("EN description.")));
+                "A valid description.", "EN description.", matchingReferenceMap(
+                        ESSAY_BODY, "EN body", "My Essay", "EN title",
+                        "A valid description.", "EN description."));
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
         NullWorkflowStatusEditor workflowStatusEditor = new NullWorkflowStatusEditor(Map.of(path, VALID_ESSAY));
         MarkReviewedHandler handler = new MarkReviewedHandler(
@@ -111,10 +109,10 @@ class MarkReviewedHandlerTest {
         assertEquals("ready_to_publish", response.status());
         assertEquals("my-essay", response.identity().publicId());
         CandidateSnapshot approved = approvedSnapshotWorkspace.read(identity).orElseThrow();
-        assertEquals("My Essay", approved.ruTitle());
-        assertEquals("EN title", approved.enTitle());
-        assertEquals("A valid description.", approved.ruDescription());
-        assertEquals("EN description.", approved.enDescription());
+        assertEquals("My Essay", dev.eugene.publicationexporter.reference.PublicField.value(approved.ruFields(), "title").orElseThrow());
+        assertEquals("EN title", dev.eugene.publicationexporter.reference.PublicField.value(approved.enFields(), "title").orElseThrow());
+        assertEquals("A valid description.", dev.eugene.publicationexporter.reference.PublicField.value(approved.ruFields(), "description").orElseThrow());
+        assertEquals("EN description.", dev.eugene.publicationexporter.reference.PublicField.value(approved.enFields(), "description").orElseThrow());
         assertEquals("ready_to_publish", workflowStatusEditor.currentValue(path, "workflowStatus"));
     }
 
@@ -128,8 +126,13 @@ class MarkReviewedHandlerTest {
         String enHash = ContentHash.sha256Hex("EN body");
         ReferenceMap referenceMap = ReferenceMap.empty(
                 identity, ruHash, enHash,
-                ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
-                ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description."));
+                ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
+                        dev.eugene.publicationexporter.reference.PublicField.of("title", "My Essay"),
+                        dev.eugene.publicationexporter.reference.PublicField.of("description", "A valid description.")))),
+                ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
+                        dev.eugene.publicationexporter.reference.PublicField.of("title", "EN title"),
+                        dev.eugene.publicationexporter.reference.PublicField.of("description", "EN description.")))),
+                ContentHash.sha256Hex(""));
         candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
                 "A valid description.", "EN description.", referenceMap);
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
@@ -147,8 +150,8 @@ class MarkReviewedHandlerTest {
         CandidateSnapshot approved = approvedSnapshotWorkspace.read(identity).orElseThrow();
         assertEquals(ESSAY_BODY, approved.ruBody());
         assertEquals("EN body", approved.enBody());
-        assertEquals("My Essay", approved.ruTitle());
-        assertEquals("EN title", approved.enTitle());
+        assertEquals("My Essay", dev.eugene.publicationexporter.reference.PublicField.value(approved.ruFields(), "title").orElseThrow());
+        assertEquals("EN title", dev.eugene.publicationexporter.reference.PublicField.value(approved.enFields(), "title").orElseThrow());
         assertEquals("ready_to_publish", workflowStatusEditor.currentValue(path, "workflowStatus"));
     }
 
@@ -211,7 +214,7 @@ class MarkReviewedHandlerTest {
                 ESSAY_BODY, "EN body", "An old title", "EN title",
                 "A valid description.", "EN description.", referenceMap);
 
-        assertStale(response, "Source note title has changed since the candidate was prepared.");
+        assertStale(response, "Source note public fields have changed since the candidate was prepared.");
     }
 
     @Test
@@ -224,7 +227,7 @@ class MarkReviewedHandlerTest {
                 ESSAY_BODY, "EN body", "My Essay", "EN title",
                 "An old description.", "EN description.", referenceMap);
 
-        assertStale(response, "Source note description has changed since the candidate was prepared.");
+        assertStale(response, "Source note public fields have changed since the candidate was prepared.");
     }
 
     @Test
@@ -250,7 +253,7 @@ class MarkReviewedHandlerTest {
                 ESSAY_BODY, "EN body", "Tampered Russian title", "EN title",
                 "A valid description.", "EN description.", referenceMap);
 
-        assertStale(response, "Candidate Russian title has changed since it was prepared.");
+        assertStale(response, "Candidate Russian public fields have changed since it was prepared.");
     }
 
     @Test
@@ -263,7 +266,7 @@ class MarkReviewedHandlerTest {
                 ESSAY_BODY, "EN body", "My Essay", "Tampered English title",
                 "A valid description.", "EN description.", referenceMap);
 
-        assertStale(response, "Candidate English title has changed since it was prepared.");
+        assertStale(response, "Candidate English public fields have changed since it was prepared.");
     }
 
     @Test
@@ -276,7 +279,7 @@ class MarkReviewedHandlerTest {
                 ESSAY_BODY, "EN body", "My Essay", "EN title",
                 "Tampered Russian description.", "EN description.", referenceMap);
 
-        assertStale(response, "Candidate Russian description has changed since it was prepared.");
+        assertStale(response, "Candidate Russian public fields have changed since it was prepared.");
     }
 
     @Test
@@ -289,7 +292,7 @@ class MarkReviewedHandlerTest {
                 ESSAY_BODY, "EN body", "My Essay", "EN title",
                 "A valid description.", "Tampered English description.", referenceMap);
 
-        assertStale(response, "Candidate English description has changed since it was prepared.");
+        assertStale(response, "Candidate English public fields have changed since it was prepared.");
     }
 
     @Test
@@ -413,10 +416,9 @@ class MarkReviewedHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         workspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
-                "A valid description.", "EN description", ReferenceMap.empty(
-                        identity, ContentHash.sha256Hex(ESSAY_BODY), ContentHash.sha256Hex("EN body"),
-                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
-                        ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description")));
+                "A valid description.", "EN description", matchingReferenceMap(
+                        ESSAY_BODY, "EN body", "My Essay", "EN title",
+                        "A valid description.", "EN description"));
         return workspace;
     }
 
@@ -430,8 +432,13 @@ class MarkReviewedHandlerTest {
         return ReferenceMap.empty(
                 PublicationIdentity.of("blog", "essay", "my-essay"),
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
-                ContentHash.sha256Hex(ruTitle), ContentHash.sha256Hex(enTitle),
-                ContentHash.sha256Hex(ruDescription), ContentHash.sha256Hex(enDescription));
+                ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
+                        dev.eugene.publicationexporter.reference.PublicField.of("title", ruTitle),
+                        dev.eugene.publicationexporter.reference.PublicField.of("description", ruDescription)))),
+                ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
+                        dev.eugene.publicationexporter.reference.PublicField.of("title", enTitle),
+                        dev.eugene.publicationexporter.reference.PublicField.of("description", enDescription)))),
+                ContentHash.sha256Hex(""));
     }
 
     private static BridgeResponse markReviewedCandidate(
@@ -461,6 +468,17 @@ class MarkReviewedHandlerTest {
     private static CandidateWorkspace candidateWorkspaceThrowing(RuntimeException failure) {
         return new CandidateWorkspace() {
             @Override
+            public void install(PublicationIdentity identity, CandidateSnapshot content,
+                    List<dev.eugene.publicationexporter.candidate.CandidateAsset> assets) {
+                install(identity, content.ruBody(), content.enBody(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "description").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "description").orElseThrow(),
+                        content.referenceMap());
+            }
+
+            @Override
             public void install(
                     PublicationIdentity identity,
                     String ruBody,
@@ -489,6 +507,12 @@ class MarkReviewedHandlerTest {
             CandidateWorkspace delegate, CountDownLatch entered, CountDownLatch release) {
         AtomicBoolean firstRead = new AtomicBoolean(true);
         return new CandidateWorkspace() {
+            @Override
+            public void install(PublicationIdentity identity, CandidateSnapshot content,
+                    List<dev.eugene.publicationexporter.candidate.CandidateAsset> assets) {
+                delegate.install(identity, content, assets);
+            }
+
             @Override
             public void install(
                     PublicationIdentity identity, String ruBody, String enBody,

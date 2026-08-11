@@ -43,6 +43,19 @@ public final class ReferenceMap {
                 ruFieldsHash, enFieldsHash, structuredDataHash);
     }
 
+    public static ReferenceMap empty(
+            PublicationIdentity identity,
+            String ruHash,
+            String enHash,
+            String ruTitleHash,
+            String enTitleHash,
+            String ruDescriptionHash,
+            String enDescriptionHash) {
+        return empty(identity, ruHash, enHash,
+                ruTitleHash + ":" + ruDescriptionHash,
+                enTitleHash + ":" + enDescriptionHash, "");
+    }
+
     @JsonProperty("schemaVersion")
     public int schemaVersion() {
         return SCHEMA_VERSION;

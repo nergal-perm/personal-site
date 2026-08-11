@@ -9,6 +9,7 @@ import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import dev.eugene.publicationexporter.note.MarkdownNote;
 import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -134,8 +135,10 @@ class MarkReviewedCliAcceptanceTest {
         assertEquals(0, exitCode);
         assertEquals("# New Essay\n\nNew body.", Files.readString(approvedDirectory.resolve("ru.md")));
         assertEquals("# My Essay in English", Files.readString(approvedDirectory.resolve("en.md")));
-        assertEquals("New Essay", Files.readString(approvedDirectory.resolve("ru.title")));
-        assertEquals("A new description.", Files.readString(approvedDirectory.resolve("ru.description")));
+        assertEquals(List.of(
+                        PublicField.of("title", "New Essay"),
+                        PublicField.of("description", "A new description.")),
+                PublicFieldsCodec.read(Files.readString(approvedDirectory.resolve("ru.fields.json"))));
     }
 
     @Test

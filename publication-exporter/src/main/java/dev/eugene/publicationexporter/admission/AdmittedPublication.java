@@ -13,26 +13,35 @@ public final class AdmittedPublication {
     private final String sourceId;
     private final String title;
     private final String description;
+    private final String structuredData;
     private final List<Diagnostic> diagnostics;
 
     private AdmittedPublication(PublicationKind kind, PublicationIdentity identity, String sourceId,
-            String title, String description, List<Diagnostic> diagnostics) {
+            String title, String description, String structuredData, List<Diagnostic> diagnostics) {
         this.kind = kind;
         this.identity = identity;
         this.sourceId = sourceId;
         this.title = title;
         this.description = description;
+        this.structuredData = structuredData;
         this.diagnostics = List.copyOf(diagnostics);
     }
 
     public static AdmittedPublication accepted(
             PublicationKind kind, PublicationIdentity identity, String sourceId, String title, String description) {
+        return accepted(kind, identity, sourceId, title, description, "");
+    }
+
+    public static AdmittedPublication accepted(
+            PublicationKind kind, PublicationIdentity identity, String sourceId, String title, String description,
+            String structuredData) {
         return new AdmittedPublication(
                 Objects.requireNonNull(kind, "kind"),
                 Objects.requireNonNull(identity, "identity"),
                 Objects.requireNonNull(sourceId, "sourceId"),
                 Objects.requireNonNull(title, "title"),
                 Objects.requireNonNull(description, "description"),
+                Objects.requireNonNull(structuredData, "structuredData"),
                 List.of());
     }
 
@@ -40,7 +49,7 @@ public final class AdmittedPublication {
         if (diagnostics.isEmpty()) {
             throw new IllegalArgumentException("blocked() requires at least one diagnostic");
         }
-        return new AdmittedPublication(null, null, null, null, null, diagnostics);
+        return new AdmittedPublication(null, null, null, null, null, null, diagnostics);
     }
 
     public boolean accepted() {
@@ -67,6 +76,10 @@ public final class AdmittedPublication {
         return description;
     }
 
+    public String structuredData() {
+        return structuredData;
+    }
+
     public List<Diagnostic> diagnostics() {
         return diagnostics;
     }
@@ -81,17 +94,19 @@ public final class AdmittedPublication {
         }
         return Objects.equals(kind, that.kind) && Objects.equals(identity, that.identity)
                 && Objects.equals(sourceId, that.sourceId) && Objects.equals(title, that.title)
-                && Objects.equals(description, that.description) && diagnostics.equals(that.diagnostics);
+                && Objects.equals(description, that.description)
+                && Objects.equals(structuredData, that.structuredData) && diagnostics.equals(that.diagnostics);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(kind, identity, sourceId, title, description, diagnostics);
+        return Objects.hash(kind, identity, sourceId, title, description, structuredData, diagnostics);
     }
 
     @Override
     public String toString() {
         return "AdmittedPublication[kind=" + kind + ", identity=" + identity + ", sourceId=" + sourceId
-                + ", title=" + title + ", description=" + description + ", diagnostics=" + diagnostics + "]";
+                + ", title=" + title + ", description=" + description + ", structuredData=" + structuredData
+                + ", diagnostics=" + diagnostics + "]";
     }
 }

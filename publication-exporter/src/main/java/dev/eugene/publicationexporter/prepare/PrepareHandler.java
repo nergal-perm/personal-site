@@ -13,6 +13,8 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.EnglishTranslation;
 import dev.eugene.publicationexporter.translation.TranslationFailure;
@@ -109,7 +111,7 @@ public final class PrepareHandler {
     private ApprovedBaselineLookup lookupApprovedBaseline(NoteIntake.Result intake, String normalizedBody) {
         try {
             return ApprovedBaselineLookup.found(matchingApprovedBaseline(
-                    intake.identity(), normalizedBody, intake.title(), intake.description()));
+                    intake.identity(), normalizedBody, fieldsOf(intake)));
         } catch (UncheckedIOException failure) {
             return ApprovedBaselineLookup.failed(
                     approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure)));
@@ -143,7 +145,7 @@ public final class PrepareHandler {
         installLock.lock();
         try {
             return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
-                    intake.sourceHash(), normalizedBody, intake.title(), intake.description(), assets,
+                    intake.sourceHash(), normalizedBody, fieldsOf(intake), intake.structuredData(), assets,
                     knownNotes, vaultAssetReader);
         } finally {
             installLock.unlock();
@@ -151,15 +153,14 @@ public final class PrepareHandler {
     }
 
     private Optional<CandidateSnapshot> matchingApprovedBaseline(
-            PublicationIdentity identity, String currentBody, String currentTitle, String currentDescription) {
+            PublicationIdentity identity, String currentBody, List<PublicField> currentFields) {
         Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
         if (approved.isEmpty()) {
             return Optional.empty();
         }
         CandidateSnapshot baseline = approved.get();
         boolean unchanged = RussianDiff.between(
-                baseline.ruBody(), baseline.ruTitle(), baseline.ruDescription(),
-                currentBody, currentTitle, currentDescription).isEmpty();
+                baseline.ruBody(), baseline.ruFields(), currentBody, currentFields).isEmpty();
         return unchanged ? approved : Optional.empty();
     }
 
@@ -174,13 +175,13 @@ public final class PrepareHandler {
     private BridgeResponse prepareAdmittedEssay(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String sourceHash,
-            String ruBody, String ruTitle, String ruDescription, List<CandidateAsset> assets,
+            String ruBody, List<PublicField> ruFields, String structuredData, List<CandidateAsset> assets,
             PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
-        TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
-        return translateCandidate(job, ruBody, ruTitle, ruDescription).resolve(
+        TranslationJob job = TranslationJob.forSource(ruBody, ruFields);
+        return translateCandidate(job, ruBody, ruFields).resolve(
                 translation -> prepareTranslatedEssay(
                         notePath, vaultReader, identity, sourceHash,
-                        ruBody, ruTitle, ruDescription, assets, job, translation, knownNotes, vaultAssetReader),
+                        ruBody, ruFields, structuredData, assets, job, translation, knownNotes, vaultAssetReader),
                 failure -> {
                     recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
                     return translationFailure(failure);
@@ -190,15 +191,14 @@ public final class PrepareHandler {
     private BridgeResponse prepareTranslatedEssay(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String sourceHash,
-            String ruBody, String ruTitle, String ruDescription,
+            String ruBody, List<PublicField> ruFields, String structuredData,
             List<CandidateAsset> assets, TranslationJob job,
             EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
         String enBody = translation.body();
-        String enTitle = translation.title();
-        String enDescription = translation.description();
+        List<PublicField> enFields = translation.fields();
 
         EnglishCandidateValidator.Result validation = validateEnglishCandidate(
-                ruBody, enBody, enTitle, enDescription);
+                ruBody, enBody, enFields);
         if (!validation.valid()) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
@@ -212,9 +212,9 @@ public final class PrepareHandler {
         return freshness.resolve(
                 currentSourceHash -> {
                     ReferenceMap referenceMap = buildReferenceMap(
-                            identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
-                    BridgeResponse response = installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
-                            ruDescription, enDescription, referenceMap, assets);
+                            identity, ruBody, enBody, ruFields, enFields, structuredData);
+                    BridgeResponse response = installCandidate(identity, ruBody, enBody, ruFields, enFields,
+                            structuredData, referenceMap, assets);
                     if (response.ok()) {
                         recordWorkflowStatus(notePath, currentSourceHash, WorkflowState.READY_FOR_REVIEW);
                     }
@@ -248,9 +248,9 @@ public final class PrepareHandler {
     }
 
     private TranslationOutcome translateCandidate(
-            TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
+            TranslationJob job, String ruBody, List<PublicField> ruFields) {
         try {
-            return translationWorker.translate(job, ruBody, ruTitle, ruDescription);
+            return translationWorker.translate(job, ruBody, ruFields);
         } catch (UncheckedIOException failure) {
             return TranslationOutcome.failure(IoFailureMessages.describe("Translation worker I/O failed", failure));
         }
@@ -268,7 +268,7 @@ public final class PrepareHandler {
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
                         resolvedBody -> AssetResolver.resolve(resolvedBody, vaultAssetReader).resolve(
                                 (assetResolvedBody, ignoredAssets) ->
-                                        sourceFingerprintMatches(job, assetResolvedBody, current.title(), current.description())
+                                        sourceFingerprintMatches(job, assetResolvedBody, fieldsOf(current))
                                                 ? SourceFreshnessOutcome.matches(current.sourceHash())
                                                 : SourceFreshnessOutcome.stale(),
                                 SourceFreshnessOutcome::assetBlocked),
@@ -277,33 +277,34 @@ public final class PrepareHandler {
     }
 
     private static boolean sourceFingerprintMatches(
-            TranslationJob job, String body, String title, String description) {
-        TranslationJob currentSource = TranslationJob.forSource(body, title, description);
+            TranslationJob job, String body, List<PublicField> fields) {
+        TranslationJob currentSource = TranslationJob.forSource(body, fields);
         return job.sourceFingerprint().equals(currentSource.sourceFingerprint());
     }
 
     private static EnglishCandidateValidator.Result validateEnglishCandidate(
-            String ruBody, String enBody, String enTitle, String enDescription) {
-        return EnglishCandidateValidator.validate(ruBody, enBody, enTitle, enDescription);
+            String ruBody, String enBody, List<PublicField> enFields) {
+        return EnglishCandidateValidator.validate(ruBody, enBody, enFields);
     }
 
     private static ReferenceMap buildReferenceMap(
             PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription) {
+            List<PublicField> ruFields, List<PublicField> enFields, String structuredData) {
         return ReferenceMap.empty(
                 identity,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
-                ContentHash.sha256Hex(ruTitle), ContentHash.sha256Hex(enTitle),
-                ContentHash.sha256Hex(ruDescription), ContentHash.sha256Hex(enDescription));
+                ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                ContentHash.sha256Hex(structuredData));
     }
 
     private BridgeResponse installCandidate(
             PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription,
+            List<PublicField> ruFields, List<PublicField> enFields, String structuredData,
             ReferenceMap referenceMap, List<CandidateAsset> assets) {
         try {
             candidateWorkspace.install(identity,
-                    CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap),
+                    CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, structuredData, referenceMap),
                     assets);
         } catch (UncheckedIOException failure) {
             return candidateFailure(IoFailureMessages.describe("Candidate installation failed", failure));
@@ -313,6 +314,12 @@ public final class PrepareHandler {
             return candidateFailure("Candidate installation failed: " + failure.getMessage());
         }
         return BridgeResponse.prepared(COMMAND, identity);
+    }
+
+    private static List<PublicField> fieldsOf(NoteIntake.Result intake) {
+        return List.of(
+                PublicField.of("title", intake.title()),
+                PublicField.of("description", intake.description()));
     }
 
     private BridgeResponse translationFailure(TranslationFailure failure) {

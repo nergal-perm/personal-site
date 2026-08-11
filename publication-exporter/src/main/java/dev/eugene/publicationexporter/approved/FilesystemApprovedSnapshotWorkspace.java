@@ -81,7 +81,8 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         });
     }
 
-    void install(PublicationIdentity identity, CandidateSnapshot content) {
+    @Override
+    public void install(PublicationIdentity identity, CandidateSnapshot content) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(content, "content");
 
@@ -97,7 +98,22 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         installUnderLock(identity, CandidateSnapshot.of(ruBody, enBody,
                 List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
                 List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
-                "", referenceMap));
+                "", canonicalReferenceMap(identity, ruBody, enBody, ruTitle, enTitle,
+                        ruDescription, enDescription, referenceMap)));
+    }
+
+    private static ReferenceMap canonicalReferenceMap(
+            PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription,
+            ReferenceMap referenceMap) {
+        List<PublicField> ruFields = List.of(
+                PublicField.of("title", ruTitle), PublicField.of("description", ruDescription));
+        List<PublicField> enFields = List.of(
+                PublicField.of("title", enTitle), PublicField.of("description", enDescription));
+        return ReferenceMap.empty(identity, referenceMap.ruHash(), referenceMap.enHash(),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                ContentHash.sha256Hex(""));
     }
 
     private void installUnderLock(PublicationIdentity identity, CandidateSnapshot content) {

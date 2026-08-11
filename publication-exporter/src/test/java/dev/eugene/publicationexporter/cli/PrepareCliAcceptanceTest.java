@@ -302,8 +302,8 @@ class PrepareCliAcceptanceTest {
 
         assertEquals(0, exitCode);
         assertEquals(1, worker.requested().size());
-        assertEquals("Changed title", CandidateWorkspace.create(reviewRoot)
-                .read(IDENTITY).orElseThrow().ruTitle());
+        assertEquals("Changed title", dev.eugene.publicationexporter.reference.PublicField.value(
+                CandidateWorkspace.create(reviewRoot).read(IDENTITY).orElseThrow().ruFields(), "title").orElseThrow());
     }
 
     @Test
@@ -320,8 +320,8 @@ class PrepareCliAcceptanceTest {
 
         assertEquals(0, exitCode);
         assertEquals(1, worker.requested().size());
-        assertEquals("Changed description.", CandidateWorkspace.create(reviewRoot)
-                .read(IDENTITY).orElseThrow().ruDescription());
+        assertEquals("Changed description.", dev.eugene.publicationexporter.reference.PublicField.value(
+                CandidateWorkspace.create(reviewRoot).read(IDENTITY).orElseThrow().ruFields(), "description").orElseThrow());
     }
 
     @Test

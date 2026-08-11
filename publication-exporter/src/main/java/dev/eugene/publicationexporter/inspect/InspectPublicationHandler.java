@@ -108,21 +108,24 @@ public final class InspectPublicationHandler {
         if (approved.isEmpty()) {
             return ReviewPlan.firstPublication(
                     candidatePaths,
-                    candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
-                    candidateSnapshot.ruDescription(), candidateSnapshot.enDescription());
+                    fieldValue(candidateSnapshot.ruFields(), "title"),
+                    fieldValue(candidateSnapshot.enFields(), "title"),
+                    fieldValue(candidateSnapshot.ruFields(), "description"),
+                    fieldValue(candidateSnapshot.enFields(), "description"));
         }
         CandidateSnapshot baseline = approved.get();
         RussianDiff diff = RussianDiff.between(
-                baseline.ruBody(), fields(baseline.ruTitle(), baseline.ruDescription()),
-                candidateSnapshot.ruBody(), fields(candidateSnapshot.ruTitle(), candidateSnapshot.ruDescription()));
+                baseline.ruBody(), baseline.ruFields(), candidateSnapshot.ruBody(), candidateSnapshot.ruFields());
         return ReviewPlan.changedPublication(
                 candidatePaths,
-                candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
-                candidateSnapshot.ruDescription(), candidateSnapshot.enDescription(), diff);
+                fieldValue(candidateSnapshot.ruFields(), "title"),
+                fieldValue(candidateSnapshot.enFields(), "title"),
+                fieldValue(candidateSnapshot.ruFields(), "description"),
+                fieldValue(candidateSnapshot.enFields(), "description"), diff);
     }
 
-    private static List<PublicField> fields(String title, String description) {
-        return List.of(PublicField.of("title", title), PublicField.of("description", description));
+    private static String fieldValue(List<PublicField> fields, String key) {
+        return PublicField.value(fields, key).orElseThrow();
     }
 
     private BridgeResponse notPreparedOrReadyToPublishResponse(

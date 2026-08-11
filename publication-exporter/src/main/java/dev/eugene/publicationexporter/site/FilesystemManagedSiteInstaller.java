@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.site;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 
 import java.io.IOException;
@@ -466,8 +467,8 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         boolean isRu = "ru".equals(locale);
         StringBuilder yaml = new StringBuilder("---\n");
         appendYamlString(yaml, "id", identity.publicId());
-        appendYamlString(yaml, "title", isRu ? approved.ruTitle() : approved.enTitle());
-        appendYamlString(yaml, "description", isRu ? approved.ruDescription() : approved.enDescription());
+        List<PublicField> fields = isRu ? approved.ruFields() : approved.enFields();
+        fields.forEach(field -> appendYamlString(yaml, field.key(), field.value()));
         yaml.append("publish: true\n");
         appendYamlString(yaml, "contentType", identity.publicContentType());
         appendYamlString(yaml, "language", locale);
@@ -476,6 +477,9 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         appendYamlString(yaml, "translationStatus", isRu ? "source" : "generated");
         if (!isRu) {
             appendYamlString(yaml, "translationOf", identity.publicId());
+        }
+        if (!approved.structuredData().isBlank()) {
+            yaml.append(approved.structuredData());
         }
         return yaml.append("---\n").toString();
     }

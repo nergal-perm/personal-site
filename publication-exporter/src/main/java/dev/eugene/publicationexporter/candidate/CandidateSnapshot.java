@@ -30,6 +30,15 @@ public final class CandidateSnapshot {
         return new CandidateSnapshot(ruBody, enBody, ruFields, enFields, structuredData, referenceMap);
     }
 
+    public static CandidateSnapshot of(String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription,
+            ReferenceMap referenceMap) {
+        return of(ruBody, enBody,
+                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
+                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
+                "", referenceMap);
+    }
+
     public String ruBody() {
         return ruBody;
     }

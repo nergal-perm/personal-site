@@ -73,7 +73,7 @@ class PrepareHandlerTest {
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, VALID_ESSAY));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
         handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -107,7 +107,7 @@ class PrepareHandlerTest {
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, editedEssay));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -155,7 +155,7 @@ class PrepareHandlerTest {
                 Map.of(path, essayWithBody("Changed while translating.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -190,7 +190,7 @@ class PrepareHandlerTest {
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, essayWithUnclosedComment));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -211,7 +211,7 @@ class PrepareHandlerTest {
                 Map.of(path, essayWithBody("A different source.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -230,7 +230,7 @@ class PrepareHandlerTest {
         };
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -261,7 +261,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -284,7 +284,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, failingAssetReader);
@@ -315,7 +315,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull(resolvedBody, "Translated title", "Translated description."),
+                TranslationWorker.createNull(resolvedBody, fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, intermittentlyFailingAssetReader);
@@ -334,7 +334,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -347,19 +347,20 @@ class PrepareHandlerTest {
         NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
         assertEquals("# My Essay\n\nPlain prose body.", installed.ruBody());
         assertEquals("Translated body", installed.enBody());
-        assertEquals("Translated title", installed.enTitle());
-        assertEquals("Translated description.", installed.enDescription());
-        assertEquals("My Essay", installed.ruTitle());
-        assertEquals("A valid description.", installed.ruDescription());
+        assertEquals("Translated title", dev.eugene.publicationexporter.reference.PublicField.value(installed.enFields(), "title").orElseThrow());
+        assertEquals("Translated description.", dev.eugene.publicationexporter.reference.PublicField.value(installed.enFields(), "description").orElseThrow());
+        assertEquals("My Essay", dev.eugene.publicationexporter.reference.PublicField.value(installed.ruFields(), "title").orElseThrow());
+        assertEquals("A valid description.", dev.eugene.publicationexporter.reference.PublicField.value(installed.ruFields(), "description").orElseThrow());
         assertEquals(ContentHash.sha256Hex("# My Essay\n\nPlain prose body."),
                 installed.referenceMap().ruHash());
         assertEquals(ContentHash.sha256Hex("Translated body"), installed.referenceMap().enHash());
-        assertEquals(ContentHash.sha256Hex("My Essay"), installed.referenceMap().ruTitleHash());
-        assertEquals(ContentHash.sha256Hex("Translated title"), installed.referenceMap().enTitleHash());
-        assertEquals(ContentHash.sha256Hex("A valid description."),
-                installed.referenceMap().ruDescriptionHash());
-        assertEquals(ContentHash.sha256Hex("Translated description."),
-                installed.referenceMap().enDescriptionHash());
+        assertEquals(ContentHash.sha256Hex(
+                dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(
+                        fields("My Essay", "A valid description."))), installed.referenceMap().ruFieldsHash());
+        assertEquals(ContentHash.sha256Hex(
+                dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(
+                        fields("Translated title", "Translated description."))), installed.referenceMap().enFieldsHash());
+        assertEquals(ContentHash.sha256Hex(""), installed.referenceMap().structuredDataHash());
         assertTrue(installed.referenceMap().occurrences().isEmpty());
     }
 
@@ -393,7 +394,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(validPath, vaultReader, VaultAssetReader.createNull());
@@ -428,7 +429,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull(" \n\t", "Translated title", "Translated description."), workspace,
+                TranslationWorker.createNull(" \n\t", fields("Translated title", "Translated description.")), workspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -446,7 +447,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", " \n\t", "Translated description."), workspace,
+                TranslationWorker.createNull("Translated body", fields(" \n\t", "Translated description.")), workspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -464,7 +465,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", " \n\t"), workspace,
+                TranslationWorker.createNull("Translated body", fields("Translated title", " \n\t")), workspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -491,7 +492,7 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, essayWithoutSourceId));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
@@ -510,7 +511,7 @@ class PrepareHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),worker, CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
@@ -519,8 +520,8 @@ class PrepareHandlerTest {
 
         assertEquals(1, worker.requested().size());
         assertEquals("# My Essay\n\nPlain prose body.", worker.requested().get(0).ruBody());
-        assertEquals("My Essay", worker.requested().get(0).ruTitle());
-        assertEquals("A valid description.", worker.requested().get(0).ruDescription());
+        assertEquals("My Essay", dev.eugene.publicationexporter.reference.PublicField.value(worker.requested().get(0).ruFields(), "title").orElseThrow());
+        assertEquals("A valid description.", dev.eugene.publicationexporter.reference.PublicField.value(worker.requested().get(0).ruFields(), "description").orElseThrow());
     }
 
     @Test
@@ -547,7 +548,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -580,7 +581,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -617,7 +618,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -653,7 +654,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, essay));
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
@@ -700,7 +701,7 @@ class PrepareHandlerTest {
                 More prose.""";
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
-        TranslationWorker refusingWorker = (job, ruBody, ruTitle, ruDescription) ->
+        TranslationWorker refusingWorker = (job, ruBody, ruFields) ->
                 fail("Prepare must not invoke the translation worker for a comment-only edit.");
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
@@ -725,12 +726,12 @@ class PrepareHandlerTest {
 
         new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),TranslationWorker.createNull(
-                "Translated body", "Translated title", "Translated description."), firstWorkspace,
+                "Translated body", fields("Translated title", "Translated description.")), firstWorkspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull())
                 .prepare(path, vaultReader, VaultAssetReader.createNull());
         new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),TranslationWorker.createNull(
-                "Translated body", "Translated title", "Translated description."), secondWorkspace,
+                "Translated body", fields("Translated title", "Translated description.")), secondWorkspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull())
                 .prepare(path, vaultReader, VaultAssetReader.createNull());
 
@@ -738,10 +739,10 @@ class PrepareHandlerTest {
         NullCandidateWorkspace.InstalledCandidate second = secondWorkspace.installed().get(0);
         assertEquals(first.ruBody(), second.ruBody());
         assertEquals(first.enBody(), second.enBody());
-        assertEquals(first.ruTitle(), second.ruTitle());
-        assertEquals(first.enTitle(), second.enTitle());
-        assertEquals(first.ruDescription(), second.ruDescription());
-        assertEquals(first.enDescription(), second.enDescription());
+        assertEquals(first.ruFields(), second.ruFields());
+        assertEquals(first.enFields(), second.enFields());
+        assertEquals(first.structuredData(), second.structuredData());
+        assertEquals(first.referenceMap(), second.referenceMap());
         assertEquals(first.referenceMap().ruHash(), second.referenceMap().ruHash());
         assertEquals(first.referenceMap().enHash(), second.referenceMap().enHash());
     }
@@ -751,7 +752,7 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
+                TranslationWorker.createNull("EN", fields("EN title", "EN description.")), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(
@@ -767,7 +768,7 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
+                TranslationWorker.createNull("EN", fields("EN title", "EN description.")), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(
@@ -799,7 +800,7 @@ class PrepareHandlerTest {
         };
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
+                TranslationWorker.createNull("EN", fields("EN title", "EN description.")), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -812,7 +813,7 @@ class PrepareHandlerTest {
     void vanishedNoteDuringReadIsReportedAsMissing() {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
+                TranslationWorker.createNull("EN", fields("EN title", "EN description.")), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
 
@@ -828,7 +829,7 @@ class PrepareHandlerTest {
     void unreadableNoteDuringReadIsReportedAsMissing() {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
+                TranslationWorker.createNull("EN", fields("EN title", "EN description.")), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
 
@@ -845,7 +846,7 @@ class PrepareHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        TranslationWorker failingWorker = (job, ruBody, ruTitle, ruDescription) -> {
+        TranslationWorker failingWorker = (job, ruBody, ruFields) -> {
             throw new UncheckedIOException(new IOException("scratch directory unavailable"));
         };
         PrepareHandler handler = new PrepareHandler(
@@ -885,16 +886,16 @@ class PrepareHandlerTest {
         CountDownLatch releaseSecondTranslation = new CountDownLatch(1);
         AtomicInteger invocation = new AtomicInteger();
         java.util.List<TranslationJob> jobs = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-        TranslationWorker controlledWorker = (job, ruBody, ruTitle, ruDescription) -> {
+        TranslationWorker controlledWorker = (job, ruBody, ruFields) -> {
             jobs.add(job);
             int currentInvocation = invocation.incrementAndGet();
             if (currentInvocation == 1) {
                 firstTranslationStarted.countDown();
                 await(releaseFirstTranslation);
-                return TranslationOutcome.success("Stale English", "Stale title", "Stale description");
+                return TranslationOutcome.success("Stale English", fields("Stale title", "Stale description"));
             }
             await(releaseSecondTranslation);
-            return TranslationOutcome.success("Fresh English", "Fresh title", "Fresh description");
+            return TranslationOutcome.success("Fresh English", fields("Fresh title", "Fresh description"));
         };
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler firstHandler = new PrepareHandler(
@@ -934,6 +935,17 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         CandidateWorkspace failingWorkspace = new CandidateWorkspace() {
             @Override
+            public void install(PublicationIdentity identity, CandidateSnapshot content,
+                    List<dev.eugene.publicationexporter.candidate.CandidateAsset> assets) {
+                install(identity, content.ruBody(), content.enBody(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "title").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.ruFields(), "description").orElseThrow(),
+                        dev.eugene.publicationexporter.reference.PublicField.value(content.enFields(), "description").orElseThrow(),
+                        content.referenceMap());
+            }
+
+            @Override
             public void install(PublicationIdentity identity, String ruBody, String enBody,
                     String ruTitle, String enTitle, String ruDescription, String enDescription,
                     ReferenceMap referenceMap) {
@@ -953,7 +965,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "Translated body", "Translated title", "Translated description."), failingWorkspace,
+                        "Translated body", fields("Translated title", "Translated description.")), failingWorkspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
@@ -975,7 +987,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "Translated body", "Translated title", "Translated description."),
+                        "Translated body", fields("Translated title", "Translated description.")),
                 CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.createNull(),
                 WorkflowStatusEditor.createNull());
 
@@ -994,7 +1006,7 @@ class PrepareHandlerTest {
         Files.writeString(reviewRoot.resolve("blog/my-essay/approved/references.json"), "not-json");
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN", "EN title", "EN description"),
+                TranslationWorker.createNull("EN", fields("EN title", "EN description")),
                 CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.create(reviewRoot),
                 WorkflowStatusEditor.createNull());
 
@@ -1019,7 +1031,7 @@ class PrepareHandlerTest {
         Files.createSymbolicLink(ruPath, outside);
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN", "EN title", "EN description"),
+                TranslationWorker.createNull("EN", fields("EN title", "EN description")),
                 CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.create(reviewRoot),
                 WorkflowStatusEditor.createNull());
 
@@ -1040,7 +1052,7 @@ class PrepareHandlerTest {
         installApproved(reviewRoot);
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
-        TranslationWorker refusingWorker = (job, ruBody, ruTitle, ruDescription) ->
+        TranslationWorker refusingWorker = (job, ruBody, ruFields) ->
                 fail("Prepare must not invoke the translation worker when the approved RU baseline is unchanged.");
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
@@ -1075,7 +1087,7 @@ class PrepareHandlerTest {
         approved.install(identity, resolvedBody, englishBody, "My Essay", "EN title",
                 "A valid description.", "EN description", referenceMap);
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
-        TranslationWorker refusingWorker = (job, ruBody, ruTitle, ruDescription) ->
+        TranslationWorker refusingWorker = (job, ruBody, ruFields) ->
                 fail("Prepare must not translate a source that matches its approved baseline.");
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
@@ -1145,7 +1157,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
@@ -1180,7 +1192,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(essayPath, vaultReader, VaultAssetReader.createNull());
@@ -1225,7 +1237,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(referrerPath, referrer));
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
@@ -1247,7 +1259,7 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(referrerPath, referrer));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
@@ -1286,8 +1298,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.",
-                        "Translated title", "Translated description."),
+                        "# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
@@ -1326,8 +1337,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.",
-                        "Translated title", "Translated description."),
+                        "# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
@@ -1364,7 +1374,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, essay));
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("EN", "EN title", "EN description."));
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
@@ -1405,8 +1415,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "# My Essay\n\n![cover](" + expectedReference + ") and ![cover](" + expectedReference + ")",
-                        "Translated title", "Translated description."),
+                        "# My Essay\n\n![cover](" + expectedReference + ") and ![cover](" + expectedReference + ")", fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
@@ -1462,6 +1471,13 @@ class PrepareHandlerTest {
                 description: A valid description.
                 ---
                 """ + body;
+    }
+
+    private static List<dev.eugene.publicationexporter.reference.PublicField> fields(
+            String title, String description) {
+        return List.of(
+                dev.eugene.publicationexporter.reference.PublicField.of("title", title),
+                dev.eugene.publicationexporter.reference.PublicField.of("description", description));
     }
 
     private void installApproved(Path reviewRoot) {
