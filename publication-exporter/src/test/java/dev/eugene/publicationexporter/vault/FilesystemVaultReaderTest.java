@@ -171,6 +171,19 @@ class FilesystemVaultReaderTest {
     }
 
     @Test
+    void listPublishCandidatesDiscoversASelectedNoteReachedThroughASymlinkInsideTheVault() throws Exception {
+        Files.createDirectories(vaultRoot.resolve("notes"));
+        Path target = writeNote(vaultRoot, "notes/target.md", "---\npublish: true\n---\nBody.");
+        Files.createDirectories(vaultRoot.resolve("blog"));
+        Files.createSymbolicLink(vaultRoot.resolve("blog/alias.md"), target);
+        VaultReader vaultReader = VaultReader.create(vaultRoot);
+
+        assertEquals(
+                List.of(VaultRelativePath.of("blog/alias.md"), VaultRelativePath.of("notes/target.md")),
+                vaultReader.listPublishCandidates());
+    }
+
+    @Test
     void listPublishCandidatesReturnsResultsInDeterministicSortedOrder() throws Exception {
         writeNote(vaultRoot, "blog/zebra.md", "---\npublish: true\n---\nBody.");
         writeNote(vaultRoot, "blog/apple.md", "---\npublish: true\n---\nBody.");

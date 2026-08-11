@@ -14,6 +14,12 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
 
+/**
+ * Defends against structural path traversal and stable symlinks that escape the vault, but not against an adversary
+ * with concurrent write access racing path validation against the subsequent read; path-based filesystem APIs cannot
+ * portably provide descriptor-anchored opening, so a TOCTOU window remains. This matches the project's threat model of
+ * a single local user exporting their own vault, not multi-tenant or concurrently adversarial writes.
+ */
 final class FilesystemVaultReader implements VaultReader {
 
     private final Path canonicalVaultRoot;
@@ -39,8 +45,10 @@ final class FilesystemVaultReader implements VaultReader {
         try (var paths = Files.walk(canonicalVaultRoot)) {
             return paths.filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString().endsWith(".md"))
-                    .filter(path -> realPathOf(path).filter(this::isInsideVault).isPresent())
+                    .map(this::confinedCandidate)
+                    .flatMap(Optional::stream)
                     .filter(this::hasPublishTrueFlag)
+                    .map(ConfinedCandidate::originalPath)
                     .map(this::toVaultRelativePath)
                     .sorted(Comparator.comparing(VaultRelativePath::value))
                     .toList();
@@ -49,9 +57,15 @@ final class FilesystemVaultReader implements VaultReader {
         }
     }
 
-    private boolean hasPublishTrueFlag(Path file) {
+    private Optional<ConfinedCandidate> confinedCandidate(Path originalPath) {
+        return realPathOf(originalPath)
+                .filter(this::isInsideVault)
+                .map(realPath -> new ConfinedCandidate(originalPath, realPath));
+    }
+
+    private boolean hasPublishTrueFlag(ConfinedCandidate candidate) {
         try {
-            return MarkdownNote.parse(readUtf8(file)).flag("publish");
+            return MarkdownNote.parse(readUtf8(candidate.realPath())).flag("publish");
         } catch (UncheckedIOException unreadable) {
             return false;
         }
@@ -98,5 +112,8 @@ final class FilesystemVaultReader implements VaultReader {
         } catch (IOException | SecurityException unresolvable) {
             return Optional.empty();
         }
+    }
+
+    private record ConfinedCandidate(Path originalPath, Path realPath) {
     }
 }
