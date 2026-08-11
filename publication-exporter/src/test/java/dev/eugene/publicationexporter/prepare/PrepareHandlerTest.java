@@ -1137,7 +1137,9 @@ class PrepareHandlerTest {
                 More prose.""";
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
-        VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of("diagram.png", imageBytes));
+        VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of(
+                "diagram.png", imageBytes,
+                "other/diagram.png", "different-bytes".getBytes(StandardCharsets.UTF_8)));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
