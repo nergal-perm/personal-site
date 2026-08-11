@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
@@ -41,6 +42,7 @@ final class FilesystemVaultReader implements VaultReader {
                     .filter(path -> realPathOf(path).filter(this::isInsideVault).isPresent())
                     .filter(this::hasPublishTrueFlag)
                     .map(this::toVaultRelativePath)
+                    .sorted(Comparator.comparing(VaultRelativePath::value))
                     .toList();
         } catch (IOException error) {
             throw new UncheckedIOException(error);

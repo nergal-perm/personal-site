@@ -3,6 +3,7 @@ package dev.eugene.publicationexporter.vault;
 import dev.eugene.publicationexporter.note.MarkdownNote;
 
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -42,6 +43,7 @@ final class NullVaultReader implements VaultReader {
                 .filter(entry -> entry.getKey().endsWith(".md"))
                 .filter(entry -> MarkdownNote.parse(entry.getValue()).flag("publish"))
                 .map(entry -> VaultRelativePath.of(entry.getKey()))
+                .sorted(Comparator.comparing(VaultRelativePath::value))
                 .toList();
     }
 
