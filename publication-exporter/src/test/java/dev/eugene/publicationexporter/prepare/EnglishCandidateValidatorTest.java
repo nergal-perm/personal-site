@@ -139,6 +139,19 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void replacedAssetReferenceHostWithNonAsciiDomainIsReportedAsDropped() {
+        String ruBody = "See ![cover](/assets/vault/abc123.png).";
+        String enBody = "See ![cover](https://cdn.пример/assets/vault/abc123.png).";
+
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                ruBody, enBody, "Title", "Description.");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(
+                diagnostic -> diagnostic.contains("/assets/vault/abc123.png")));
+    }
+
+    @Test
     void preservedAssetReferenceIsValid() {
         String ruBody = "See ![cover](/assets/vault/abc123.png).";
         String enBody = "See ![cover](/assets/vault/abc123.png).";
