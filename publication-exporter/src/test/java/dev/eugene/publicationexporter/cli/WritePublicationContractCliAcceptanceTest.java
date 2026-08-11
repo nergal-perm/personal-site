@@ -38,7 +38,7 @@ class WritePublicationContractCliAcceptanceTest {
     }
 
     @Test
-    void contractDescribesTheEssayKind() throws Exception {
+    void contractDescribesTheEssayAndNoteKinds() throws Exception {
         int exitCode = new CommandLine(new Main()).execute("write-publication-contract");
 
         assertEquals(0, exitCode);
@@ -46,7 +46,7 @@ class WritePublicationContractCliAcceptanceTest {
         assertEquals(1, contract.get("contractVersion").asInt());
 
         JsonNode kinds = contract.get("kinds");
-        assertEquals(1, kinds.size());
+        assertEquals(2, kinds.size());
         JsonNode essayKind = kinds.get(0);
         assertEquals("blog", essayKind.get("collection").asText());
         assertEquals("essay", essayKind.get("contentType").asText());
@@ -67,6 +67,27 @@ class WritePublicationContractCliAcceptanceTest {
         assertFieldNamed(requiredFields, "id", field -> assertTrue(field.get("nonBlank").asBoolean()));
         assertFieldNamed(requiredFields, "title", field -> assertTrue(field.get("nonBlank").asBoolean()));
         assertFieldNamed(requiredFields, "description", field -> assertTrue(field.get("nonBlank").asBoolean()));
+
+        JsonNode noteKind = kinds.get(1);
+        assertEquals("blog", noteKind.get("collection").asText());
+        assertEquals("note", noteKind.get("contentType").asText());
+        assertTrue(noteKind.get("structuredBody").isEmpty());
+
+        JsonNode requiredNoteFields = noteKind.get("requiredFields");
+        assertEquals(7, requiredNoteFields.size());
+        assertFieldNamed(requiredNoteFields, "publish", field -> {
+            assertEquals("BOOLEAN", field.get("type").asText());
+            assertEquals("true", field.get("allowedValues").get(0).asText());
+        });
+        assertFieldNamed(requiredNoteFields, "publicCollection", field ->
+                assertEquals("blog", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredNoteFields, "publicContentType", field ->
+                assertEquals("note", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredNoteFields, "publicId", field ->
+                assertTrue(field.get("pattern").asText().length() > 0));
+        assertFieldNamed(requiredNoteFields, "id", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredNoteFields, "title", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredNoteFields, "description", field -> assertTrue(field.get("nonBlank").asBoolean()));
     }
 
     @Test

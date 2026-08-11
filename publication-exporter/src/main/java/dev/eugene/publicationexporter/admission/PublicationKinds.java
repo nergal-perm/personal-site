@@ -15,7 +15,7 @@ public final class PublicationKinds {
     }
 
     public static PublicationKinds installed() {
-        return new PublicationKinds(List.of(new EssayPublicationKind()));
+        return new PublicationKinds(List.of(new EssayPublicationKind(), new NotePublicationKind()));
     }
 
     public Optional<PublicationKind> forIdentity(String collection, String contentType) {
