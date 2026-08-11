@@ -50,6 +50,9 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         } catch (IOException error) {
             StagedDirectoryInstall.deleteRecursively(staging);
             throw new UncheckedIOException(error);
+        } catch (CandidateWorkspaceConfinementException error) {
+            StagedDirectoryInstall.deleteRecursively(staging);
+            throw error;
         }
     }
 
@@ -201,10 +204,18 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
     }
 
     private void writeAssets(Path staging, List<CandidateAsset> assets) throws IOException {
+        Path assetsDirectory = candidateFile(staging, "assets");
         for (CandidateAsset asset : assets) {
-            Path assetFile = candidateFile(staging, "assets/" + asset.publicName());
+            Path assetFile = candidateFile(assetsDirectory, asset.publicName());
+            requireDirectChild(assetFile, assetsDirectory);
             Files.createDirectories(assetFile.getParent());
             Files.write(assetFile, asset.content());
+        }
+    }
+
+    private static void requireDirectChild(Path assetFile, Path assetsDirectory) {
+        if (!assetFile.getParent().equals(assetsDirectory)) {
+            throw new CandidateWorkspaceConfinementException(assetFile, assetFile, assetsDirectory);
         }
     }
 

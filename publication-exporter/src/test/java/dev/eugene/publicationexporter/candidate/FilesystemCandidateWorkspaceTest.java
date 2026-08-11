@@ -113,6 +113,46 @@ class FilesystemCandidateWorkspaceTest {
     }
 
     @Test
+    void assetTraversalIsRejectedWithoutReplacingTheExistingCandidate() throws Exception {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        workspace.install(IDENTITY,
+                CandidateSnapshot.of("Old RU", "Old EN", "Old RU title", "Old EN title",
+                        "Old RU description", "Old EN description", referenceMap("old")),
+                List.of());
+        CandidateAsset escapingAsset = CandidateAsset.of(
+                "../escape.txt", "escaped content".getBytes(StandardCharsets.UTF_8));
+
+        assertThrows(CandidateWorkspaceConfinementException.class,
+                () -> workspace.install(IDENTITY,
+                        CandidateSnapshot.of("New RU", "New EN", "New RU title", "New EN title",
+                                "New RU description", "New EN description", referenceMap("new")),
+                        List.of(escapingAsset)));
+
+        CandidateSnapshot installed = workspace.read(IDENTITY).orElseThrow();
+        assertEquals("Old RU", installed.ruBody());
+        assertEquals("Old EN", installed.enBody());
+        assertTrue(Files.notExists(reviewRoot.resolve("blog/my-essay/candidate/escape.txt")));
+    }
+
+    @Test
+    void assetConfinementFailureRemovesTheStagingDirectory() throws Exception {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        CandidateAsset escapingAsset = CandidateAsset.of(
+                "../escape.txt", "escaped content".getBytes(StandardCharsets.UTF_8));
+
+        assertThrows(CandidateWorkspaceConfinementException.class,
+                () -> workspace.install(IDENTITY,
+                        CandidateSnapshot.of("RU", "EN", "RU title", "EN title",
+                                "RU description", "EN description", referenceMap("rejected")),
+                        List.of(escapingAsset)));
+
+        try (var entries = Files.list(reviewRoot)) {
+            assertFalse(entries.anyMatch(
+                    path -> path.getFileName().toString().startsWith("candidate-staging-")));
+        }
+    }
+
+    @Test
     void failedNewMoveRestoresFullyReadableOldCandidate() throws Exception {
         new FilesystemCandidateWorkspace(reviewRoot).install(IDENTITY,
                 CandidateSnapshot.of("Old RU", "Old EN", "Old RU title", "Old EN title",
