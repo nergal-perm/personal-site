@@ -1,6 +1,9 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -9,10 +12,12 @@ class TranslationOutcomeTest {
 
     @Test
     void successMapsEnglishTranslationToItsConsumer() {
-        TranslationOutcome result = TranslationOutcome.success("Hello", "Hi there", "A description.");
+        TranslationOutcome result = TranslationOutcome.success("Hello", List.of(
+                PublicField.of("title", "Hi there"), PublicField.of("description", "A description.")));
 
         String observed = result.resolve(
-                translation -> translation.body() + "|" + translation.title() + "|" + translation.description(),
+                translation -> translation.body() + "|" + translation.fields().get(0).value()
+                        + "|" + translation.fields().get(1).value(),
                 failure -> "failed:" + failure.diagnosticField() + ":" + failure.reason());
 
         assertEquals("Hello|Hi there|A description.", observed);
@@ -34,7 +39,7 @@ class TranslationOutcomeTest {
         TranslationOutcome result = TranslationOutcome.failure("translation-engine", "unsupported agent");
 
         String observed = result.resolve(
-                translation -> "translated:" + translation.title(),
+                translation -> "translated:" + translation.fields().get(0).value(),
                 failure -> failure.diagnosticField() + ":" + failure.reason());
 
         assertEquals("translation-engine:unsupported agent", observed);
@@ -45,25 +50,27 @@ class TranslationOutcomeTest {
         TranslationOutcome result = TranslationOutcome.stale();
 
         String observed = result.resolve(
-                translation -> "translated:" + translation.description(),
+                translation -> "translated:" + translation.fields().get(1).value(),
                 failure -> failure.reason());
 
         assertEquals("Translation result is stale.", observed);
     }
 
     @Test
-    void successRejectsNullTitle() {
-        assertThrows(NullPointerException.class, () -> TranslationOutcome.success("Hello", null, "d"));
+    void successRejectsNullFields() {
+        assertThrows(NullPointerException.class, () -> TranslationOutcome.success("Hello", null));
     }
 
     @Test
     void successRejectsNullBody() {
-        assertThrows(NullPointerException.class, () -> TranslationOutcome.success(null, "t", "d"));
+        assertThrows(NullPointerException.class, () -> TranslationOutcome.success(null, List.of(
+                PublicField.of("title", "t"), PublicField.of("description", "d"))));
     }
 
     @Test
     void successRejectsNullDescription() {
-        assertThrows(NullPointerException.class, () -> TranslationOutcome.success("Hello", "t", null));
+        assertThrows(NullPointerException.class, () -> TranslationOutcome.success("Hello", List.of(
+                PublicField.of("title", "t"), null)));
     }
 
     @Test

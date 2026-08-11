@@ -1,7 +1,9 @@
 package dev.eugene.publicationexporter.translation;
 
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
 
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -15,23 +17,27 @@ public final class TranslationJob {
         this.sourceFingerprint = Objects.requireNonNull(sourceFingerprint, "sourceFingerprint");
     }
 
-    public static TranslationJob forSource(String ruBody, String ruTitle, String ruDescription) {
-        requireSourceFields(ruBody, ruTitle, ruDescription);
-        String fingerprint = fingerprintFor(ruBody, ruTitle, ruDescription);
+    public static TranslationJob forSource(String ruBody, List<PublicField> ruFields) {
+        List<PublicField> sourceFields = List.copyOf(Objects.requireNonNull(ruFields, "ruFields"));
+        requireSourceFields(ruBody, sourceFields);
+        String fingerprint = fingerprintFor(ruBody, sourceFields);
         return new TranslationJob(UUID.randomUUID().toString(), fingerprint);
     }
 
-    private static void requireSourceFields(String ruBody, String ruTitle, String ruDescription) {
+    private static void requireSourceFields(String ruBody, List<PublicField> ruFields) {
         Objects.requireNonNull(ruBody, "ruBody");
-        Objects.requireNonNull(ruTitle, "ruTitle");
-        Objects.requireNonNull(ruDescription, "ruDescription");
+        for (PublicField field : ruFields) {
+            Objects.requireNonNull(field.value(), "field.value");
+        }
     }
 
-    private static String fingerprintFor(String ruBody, String ruTitle, String ruDescription) {
-        String canonicalSourceFingerprint = ruBody.length() + ":" + ruBody
-                + ruTitle.length() + ":" + ruTitle
-                + ruDescription.length() + ":" + ruDescription;
-        return ContentHash.sha256Hex(canonicalSourceFingerprint);
+    private static String fingerprintFor(String ruBody, List<PublicField> ruFields) {
+        StringBuilder canonical = new StringBuilder();
+        canonical.append(ruBody.length()).append(':').append(ruBody);
+        for (PublicField field : ruFields) {
+            canonical.append(field.value().length()).append(':').append(field.value());
+        }
+        return ContentHash.sha256Hex(canonical.toString());
     }
 
     public String id() {

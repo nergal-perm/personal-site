@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -14,9 +16,9 @@ public final class NullTranslationWorker implements TranslationWorker {
     }
 
     @Override
-    public TranslationOutcome translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
+    public TranslationOutcome translate(TranslationJob job, String ruBody, List<PublicField> ruFields) {
         Objects.requireNonNull(job, "job");
-        requested.add(RequestedTranslation.of(ruBody, ruTitle, ruDescription));
+        requested.add(RequestedTranslation.of(ruBody, ruFields));
         return result;
     }
 
@@ -24,9 +26,13 @@ public final class NullTranslationWorker implements TranslationWorker {
         return List.copyOf(requested);
     }
 
-    public record RequestedTranslation(String ruBody, String ruTitle, String ruDescription) {
-        public static RequestedTranslation of(String ruBody, String ruTitle, String ruDescription) {
-            return new RequestedTranslation(ruBody, ruTitle, ruDescription);
+    public record RequestedTranslation(String ruBody, List<PublicField> ruFields) {
+        public RequestedTranslation {
+            ruFields = List.copyOf(ruFields);
+        }
+
+        public static RequestedTranslation of(String ruBody, List<PublicField> ruFields) {
+            return new RequestedTranslation(ruBody, ruFields);
         }
     }
 }

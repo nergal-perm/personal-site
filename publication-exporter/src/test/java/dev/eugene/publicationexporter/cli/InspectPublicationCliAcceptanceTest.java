@@ -8,6 +8,7 @@ import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import dev.eugene.publicationexporter.prepare.RussianDiff;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -298,7 +299,8 @@ class InspectPublicationCliAcceptanceTest {
 
     private void prepare() throws Exception {
         PrepareCommand prepareCommand = new PrepareCommand(
-                TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));
+                TranslationWorker.createNull("# My Essay in English", List.of(
+                        PublicField.of("title", "EN title"), PublicField.of("description", "EN description"))));
         CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
             @Override
             public <K> K create(Class<K> cls) throws Exception {

@@ -1,5 +1,8 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
+import java.util.List;
 import java.util.function.Function;
 
 final class TranslationResults {
@@ -21,5 +24,9 @@ final class TranslationResults {
                     throw new AssertionError("Expected a failed result but got: " + translation.body());
                 },
                 Function.identity());
+    }
+
+    static List<PublicField> fields(String title, String description) {
+        return List.of(PublicField.of("title", title), PublicField.of("description", description));
     }
 }

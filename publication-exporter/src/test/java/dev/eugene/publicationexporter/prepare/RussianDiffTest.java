@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.reference.PublicField;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -96,8 +97,10 @@ class RussianDiffTest {
     @Test
     void titleOnlyChangeMakesCompleteDiffNonEmpty() {
         RussianDiff diff = RussianDiff.between(
-                "same body", "Old title", "same description",
-                "same body", "New title", "same description");
+                "same body", List.of(PublicField.of("title", "Old title"),
+                        PublicField.of("description", "same description")),
+                "same body", List.of(PublicField.of("title", "New title"),
+                        PublicField.of("description", "same description")));
 
         assertFalse(diff.isEmpty());
         assertEquals(List.of(
@@ -109,8 +112,10 @@ class RussianDiffTest {
     @Test
     void descriptionOnlyChangeMakesCompleteDiffNonEmpty() {
         RussianDiff diff = RussianDiff.between(
-                "same body", "same title", "Old description",
-                "same body", "same title", "New description");
+                "same body", List.of(PublicField.of("title", "same title"),
+                        PublicField.of("description", "Old description")),
+                "same body", List.of(PublicField.of("title", "same title"),
+                        PublicField.of("description", "New description")));
 
         assertFalse(diff.isEmpty());
         assertEquals(List.of(

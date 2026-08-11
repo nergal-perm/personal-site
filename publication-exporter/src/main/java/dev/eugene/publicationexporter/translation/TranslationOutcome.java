@@ -1,12 +1,15 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Function;
 
 public sealed interface TranslationOutcome permits SuccessfulTranslation, FailedTranslation {
 
-    static TranslationOutcome success(String enBody, String enTitle, String enDescription) {
-        return new SuccessfulTranslation(EnglishTranslation.of(enBody, enTitle, enDescription));
+    static TranslationOutcome success(String enBody, List<PublicField> enFields) {
+        return new SuccessfulTranslation(EnglishTranslation.of(enBody, enFields));
     }
 
     static TranslationOutcome failure(String reason) {

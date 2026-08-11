@@ -14,10 +14,12 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.prepare.RussianDiff;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import dev.eugene.publicationexporter.workflow.WorkflowStateClassifier;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -111,12 +113,16 @@ public final class InspectPublicationHandler {
         }
         CandidateSnapshot baseline = approved.get();
         RussianDiff diff = RussianDiff.between(
-                baseline.ruBody(), baseline.ruTitle(), baseline.ruDescription(),
-                candidateSnapshot.ruBody(), candidateSnapshot.ruTitle(), candidateSnapshot.ruDescription());
+                baseline.ruBody(), fields(baseline.ruTitle(), baseline.ruDescription()),
+                candidateSnapshot.ruBody(), fields(candidateSnapshot.ruTitle(), candidateSnapshot.ruDescription()));
         return ReviewPlan.changedPublication(
                 candidatePaths,
                 candidateSnapshot.ruTitle(), candidateSnapshot.enTitle(),
                 candidateSnapshot.ruDescription(), candidateSnapshot.enDescription(), diff);
+    }
+
+    private static List<PublicField> fields(String title, String description) {
+        return List.of(PublicField.of("title", title), PublicField.of("description", description));
     }
 
     private BridgeResponse notPreparedOrReadyToPublishResponse(

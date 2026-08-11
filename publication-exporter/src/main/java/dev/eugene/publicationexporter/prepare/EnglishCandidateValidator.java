@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,37 +22,36 @@ public final class EnglishCandidateValidator {
     private EnglishCandidateValidator() {
     }
 
-    public static Result validate(String ruBody, String enBody, String enTitle, String enDescription) {
+    public static Result validate(String ruBody, String enBody, List<PublicField> enFields) {
         Objects.requireNonNull(ruBody, "ruBody");
         Objects.requireNonNull(enBody, "enBody");
-        Objects.requireNonNull(enTitle, "enTitle");
-        Objects.requireNonNull(enDescription, "enDescription");
+        Objects.requireNonNull(enFields, "enFields");
 
         List<String> diagnostics = new ArrayList<>();
-        diagnostics.addAll(blankFieldDiagnostics(enBody, enTitle, enDescription));
-        diagnostics.addAll(internalRouteDiagnostics(enBody, enTitle, enDescription));
+        diagnostics.addAll(blankFieldDiagnostics(enBody, enFields));
+        diagnostics.addAll(internalRouteDiagnostics(enBody, enFields));
         diagnostics.addAll(droppedUrlDiagnostics(ruBody, enBody));
         diagnostics.addAll(droppedAssetReferenceDiagnostics(ruBody, enBody));
         return diagnostics.isEmpty() ? Result.ok() : Result.invalid(diagnostics);
     }
 
-    private static List<String> blankFieldDiagnostics(String enBody, String enTitle, String enDescription) {
+    private static List<String> blankFieldDiagnostics(String enBody, List<PublicField> enFields) {
         List<String> diagnostics = new ArrayList<>();
         if (enBody.isBlank()) {
             diagnostics.add("Translation worker produced a blank body.");
         }
-        if (enTitle.isBlank()) {
-            diagnostics.add("Translation worker produced a blank title.");
-        }
-        if (enDescription.isBlank()) {
-            diagnostics.add("Translation worker produced a blank description.");
+        for (PublicField field : enFields) {
+            if (field.value().isBlank()) {
+                diagnostics.add("Translation worker produced a blank " + field.key() + ".");
+            }
         }
         return diagnostics;
     }
 
-    private static List<String> internalRouteDiagnostics(
-            String enBody, String enTitle, String enDescription) {
-        boolean internalRoutePresent = List.of(enBody, enTitle, enDescription).stream()
+    private static List<String> internalRouteDiagnostics(String enBody, List<PublicField> enFields) {
+        boolean internalRoutePresent = java.util.stream.Stream.concat(
+                        java.util.stream.Stream.of(enBody),
+                        enFields.stream().map(PublicField::value))
                 .anyMatch(EnglishCandidateValidator::containsInternalRuRoute);
         return internalRoutePresent
                 ? List.of("English candidate contains an internal /ru/ route.")

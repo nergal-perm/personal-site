@@ -8,6 +8,7 @@ import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import dev.eugene.publicationexporter.note.MarkdownNote;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -21,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -159,7 +161,8 @@ class MarkReviewedCliAcceptanceTest {
 
     private void prepare() throws Exception {
         PrepareCommand prepareCommand = new PrepareCommand(
-                TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));
+                TranslationWorker.createNull("# My Essay in English", List.of(
+                        PublicField.of("title", "EN title"), PublicField.of("description", "EN description"))));
         CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
             @Override
             public <K> K create(Class<K> cls) throws Exception {

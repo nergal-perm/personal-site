@@ -1,9 +1,12 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
@@ -27,12 +30,13 @@ public final class ProcessTranslationWorker implements TranslationWorker {
     }
 
     @Override
-    public TranslationOutcome translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription) {
+    public TranslationOutcome translate(TranslationJob job, String ruBody, List<PublicField> ruFields) {
         Objects.requireNonNull(job, "job");
         JobWorkspace workspace = JobWorkspace.createAt(jobRoot, job);
         try {
             workspace.writeFingerprint(job.sourceFingerprint());
-            return runAndCollect(workspace, job, prompt(ruBody, ruTitle, ruDescription));
+            return runAndCollect(workspace, job, prompt(
+                    ruBody, ruFields.get(0).value(), ruFields.get(1).value()));
         } finally {
             workspace.cleanup();
         }
@@ -133,8 +137,9 @@ public final class ProcessTranslationWorker implements TranslationWorker {
             throws JobWorkspace.MissingFileException, JobWorkspace.UnreadableFileException {
         return TranslationOutcome.success(
                 workspace.readRequiredResult(BODY_FILE_NAME),
-                workspace.readRequiredResult(TITLE_FILE_NAME),
-                workspace.readRequiredResult(DESCRIPTION_FILE_NAME));
+                List.of(
+                        PublicField.of("title", workspace.readRequiredResult(TITLE_FILE_NAME)),
+                        PublicField.of("description", workspace.readRequiredResult(DESCRIPTION_FILE_NAME))));
     }
 
     private static TranslationOutcome missingFileFailure(String fileName) {

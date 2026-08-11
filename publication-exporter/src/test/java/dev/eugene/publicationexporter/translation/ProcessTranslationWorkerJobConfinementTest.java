@@ -20,7 +20,7 @@ class ProcessTranslationWorkerJobConfinementTest {
 
     @Test
     void matchingJobAndFingerprintSucceeds(@TempDir Path jobRoot) throws Exception {
-        TranslationJob job = TranslationJob.forSource("ru body", "ru title", "ru description");
+        TranslationJob job = TranslationJob.forSource("ru body", TranslationResults.fields("ru title", "ru description"));
         TranslationCommand command = (workdir, prompt) -> {
             assertEquals(realPath(jobRoot), workdir.getParent());
             assertEquals(job.id(), workdir.getFileName().toString());
@@ -31,11 +31,11 @@ class ProcessTranslationWorkerJobConfinementTest {
                 command, Duration.ofSeconds(5), jobRoot);
 
         TranslationOutcome result = worker.translate(
-                job, "ru body", "ru title", "ru description");
+                job, "ru body", TranslationResults.fields("ru title", "ru description"));
 
         assertEquals("translated body", TranslationResults.translated(result).body());
-        assertEquals("translated title", TranslationResults.translated(result).title());
-        assertEquals("translated description", TranslationResults.translated(result).description());
+        assertEquals("translated title", TranslationResults.translated(result).fields().get(0).value());
+        assertEquals("translated description", TranslationResults.translated(result).fields().get(1).value());
     }
 
     @Test
@@ -49,8 +49,8 @@ class ProcessTranslationWorkerJobConfinementTest {
                 command, Duration.ofSeconds(5), jobRoot);
 
         TranslationOutcome result = worker.translate(
-                TranslationJob.forSource("ru body", "ru title", "ru description"),
-                "ru body", "ru title", "ru description");
+                TranslationJob.forSource("ru body", TranslationResults.fields("ru title", "ru description")),
+                "ru body", TranslationResults.fields("ru title", "ru description"));
 
         assertTrue(TranslationResults.failed(result).reason().contains("candidate.en.md"));
         assertEquals("escaped content", Files.readString(escapeTarget));
@@ -67,8 +67,8 @@ class ProcessTranslationWorkerJobConfinementTest {
                 command, Duration.ofSeconds(5), jobRoot);
 
         TranslationOutcome result = worker.translate(
-                TranslationJob.forSource("ru body", "ru title", "ru description"),
-                "ru body", "ru title", "ru description");
+                TranslationJob.forSource("ru body", TranslationResults.fields("ru title", "ru description")),
+                "ru body", TranslationResults.fields("ru title", "ru description"));
 
         assertTrue(TranslationResults.failed(result).reason().contains("fingerprint"));
     }
@@ -86,8 +86,8 @@ class ProcessTranslationWorkerJobConfinementTest {
                 command, Duration.ofSeconds(5), jobRoot);
 
         TranslationOutcome result = worker.translate(
-                TranslationJob.forSource("ru body", "ru title", "ru description"),
-                "ru body", "ru title", "ru description");
+                TranslationJob.forSource("ru body", TranslationResults.fields("ru title", "ru description")),
+                "ru body", TranslationResults.fields("ru title", "ru description"));
 
         assertTrue(TranslationResults.failed(result).reason().contains("candidate.en.md"));
     }
@@ -105,15 +105,15 @@ class ProcessTranslationWorkerJobConfinementTest {
                 command, Duration.ofSeconds(5), jobRoot);
 
         TranslationOutcome result = worker.translate(
-                TranslationJob.forSource("ru body", "ru title", "ru description"),
-                "ru body", "ru title", "ru description");
+                TranslationJob.forSource("ru body", TranslationResults.fields("ru title", "ru description")),
+                "ru body", TranslationResults.fields("ru title", "ru description"));
 
         assertTrue(TranslationResults.failed(result).reason().contains("candidate.en.md"));
     }
 
     @Test
     void substitutedJobDirectoryIsRejectedWithoutDeletingReplacement(@TempDir Path jobRoot) throws Exception {
-        TranslationJob job = TranslationJob.forSource("ru body", "ru title", "ru description");
+        TranslationJob job = TranslationJob.forSource("ru body", TranslationResults.fields("ru title", "ru description"));
         Path replacementSentinel = jobRoot.resolve(job.id()).resolve("keep.txt");
         TranslationCommand command = (workdir, prompt) -> {
             move(workdir, jobRoot.resolve("moved-original"));
@@ -125,7 +125,7 @@ class ProcessTranslationWorkerJobConfinementTest {
                 command, Duration.ofSeconds(5), jobRoot);
 
         TranslationOutcome result = worker.translate(
-                job, "ru body", "ru title", "ru description");
+                job, "ru body", TranslationResults.fields("ru title", "ru description"));
 
         TranslationResults.failed(result);
         assertTrue(Files.exists(replacementSentinel));
@@ -133,8 +133,8 @@ class ProcessTranslationWorkerJobConfinementTest {
 
     @Test
     void workspacesForDifferentJobIdsDoNotShareResults(@TempDir Path jobRoot) throws Exception {
-        TranslationJob jobA = TranslationJob.forSource("job A body", "job A title", "job A description");
-        TranslationJob jobB = TranslationJob.forSource("job B body", "job B title", "job B description");
+        TranslationJob jobA = TranslationJob.forSource("job A body", TranslationResults.fields("job A title", "job A description"));
+        TranslationJob jobB = TranslationJob.forSource("job B body", TranslationResults.fields("job B title", "job B description"));
         JobWorkspace workspaceA = JobWorkspace.createAt(jobRoot, jobA);
         JobWorkspace workspaceB = JobWorkspace.createAt(jobRoot, jobB);
         try {

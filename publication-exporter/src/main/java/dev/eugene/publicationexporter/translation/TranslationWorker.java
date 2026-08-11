@@ -1,11 +1,15 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
+import java.util.List;
+
 public interface TranslationWorker {
 
-    TranslationOutcome translate(TranslationJob job, String ruBody, String ruTitle, String ruDescription);
+    TranslationOutcome translate(TranslationJob job, String ruBody, List<PublicField> ruFields);
 
-    static TranslationWorker createNull(String enBody, String enTitle, String enDescription) {
-        return new NullTranslationWorker(TranslationOutcome.success(enBody, enTitle, enDescription));
+    static TranslationWorker createNull(String enBody, List<PublicField> enFields) {
+        return new NullTranslationWorker(TranslationOutcome.success(enBody, enFields));
     }
 
     static TranslationWorker createNullFailing(String reason) {

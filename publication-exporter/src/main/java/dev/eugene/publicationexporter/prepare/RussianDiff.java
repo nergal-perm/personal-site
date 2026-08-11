@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
@@ -22,21 +24,21 @@ public final class RussianDiff {
     }
 
     public static RussianDiff betweenBodies(String approvedBody, String currentBody) {
-        return between(approvedBody, "", "", currentBody, "", "");
+        return between(approvedBody, List.of(), currentBody, List.of());
     }
 
     public static RussianDiff between(
-            String approvedBody, String approvedTitle, String approvedDescription,
-            String currentBody, String currentTitle, String currentDescription) {
+            String approvedBody, List<PublicField> approvedFields,
+            String currentBody, List<PublicField> currentFields) {
         Objects.requireNonNull(approvedBody, "approvedBody");
-        Objects.requireNonNull(approvedTitle, "approvedTitle");
-        Objects.requireNonNull(approvedDescription, "approvedDescription");
+        Objects.requireNonNull(approvedFields, "approvedFields");
         Objects.requireNonNull(currentBody, "currentBody");
-        Objects.requireNonNull(currentTitle, "currentTitle");
-        Objects.requireNonNull(currentDescription, "currentDescription");
+        Objects.requireNonNull(currentFields, "currentFields");
         List<Line> completeDiff = new ArrayList<>();
-        completeDiff.addAll(labeledFieldDiff("title", approvedTitle, currentTitle));
-        completeDiff.addAll(labeledFieldDiff("description", approvedDescription, currentDescription));
+        for (int i = 0; i < approvedFields.size(); i++) {
+            completeDiff.addAll(labeledFieldDiff(
+                    approvedFields.get(i).key(), approvedFields.get(i).value(), currentFields.get(i).value()));
+        }
         completeDiff.addAll(lcsDiff(normalize(approvedBody), normalize(currentBody)));
         return new RussianDiff(completeDiff);
     }

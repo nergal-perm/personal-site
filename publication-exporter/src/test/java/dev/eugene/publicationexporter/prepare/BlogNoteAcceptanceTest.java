@@ -10,6 +10,7 @@ import dev.eugene.publicationexporter.buildfromreview.ReleaseResult;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultAssetReader;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -19,6 +20,7 @@ import dev.eugene.publicationexporter.workflow.NullWorkflowStatusEditor;
 import org.junit.jupiter.api.Test;
 
 import java.util.Map;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -46,7 +48,9 @@ class BlogNoteAcceptanceTest {
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.createNull();
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.createNull();
         TranslationWorker translationWorker =
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description.");
+                TranslationWorker.createNull("Translated body", List.of(
+                        PublicField.of("title", "Translated title"),
+                        PublicField.of("description", "Translated description.")));
         PrepareHandler prepareHandler = new PrepareHandler(
                 noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace, WorkflowStatusEditor.createNull());
 

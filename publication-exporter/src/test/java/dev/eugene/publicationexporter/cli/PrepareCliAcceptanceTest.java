@@ -11,6 +11,7 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationJob;
@@ -28,6 +29,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -155,7 +157,7 @@ class PrepareCliAcceptanceTest {
                 ---
                 # My Essay""");
         PrepareCommand prepareCommand = new PrepareCommand(
-                TranslationWorker.createNull("# My Essay in English", "EN title", "EN description"));
+                TranslationWorker.createNull("# My Essay in English", fields("EN title", "EN description")));
         CommandLine commandLine = new CommandLine(new Main(), new CommandLine.IFactory() {
             @Override
             public <K> K create(Class<K> cls) throws Exception {
@@ -214,7 +216,7 @@ class PrepareCliAcceptanceTest {
         installCandidate(reviewRoot, "# My Essay\n\nChanged body.", "Old English candidate");
 
         int exitCode = prepare("blog/my-essay.md",
-                TranslationWorker.createNull("New translated candidate", "New EN title", "New EN description."));
+                TranslationWorker.createNull("New translated candidate", fields("New EN title", "New EN description.")));
 
         assertEquals(0, exitCode);
         JsonNode response = soleJsonValueOnStdout();
@@ -233,7 +235,7 @@ class PrepareCliAcceptanceTest {
         installCandidate(reviewRoot, "# My Essay\n\nApproved body.", "Prior English candidate");
         NullTranslationWorker worker = new NullTranslationWorker(
                 TranslationOutcome.success(
-                        "Must not be installed", "Must not be installed", "Must not be installed"));
+                        "Must not be installed", fields("Must not be installed", "Must not be installed")));
 
         int exitCode = prepare("blog/my-essay.md", worker);
 
@@ -273,7 +275,8 @@ class PrepareCliAcceptanceTest {
         installCandidate(reviewRoot, "# My Essay\n\nChanged body.", "Prior English candidate");
 
         int exitCode = prepare("blog/my-essay.md",
-                TranslationWorker.createNull("New English [route](/ru/route)", "New EN title", "New EN description."));
+                TranslationWorker.createNull(
+                        "New English [route](/ru/route)", fields("New EN title", "New EN description.")));
 
         assertNotEquals(0, exitCode);
         JsonNode response = soleJsonValueOnStdout();
@@ -292,7 +295,8 @@ class PrepareCliAcceptanceTest {
         installApproved(reviewRoot, "Approved body.", "Prior English candidate");
         installCandidate(reviewRoot, "Approved body.", "Prior English candidate");
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("Fresh English", "Fresh English title", "Fresh English description"));
+                TranslationOutcome.success(
+                        "Fresh English", fields("Fresh English title", "Fresh English description")));
 
         int exitCode = prepare("blog/my-essay.md", worker);
 
@@ -309,7 +313,8 @@ class PrepareCliAcceptanceTest {
         installApproved(reviewRoot, "Approved body.", "Prior English candidate");
         installCandidate(reviewRoot, "Approved body.", "Prior English candidate");
         NullTranslationWorker worker = new NullTranslationWorker(
-                TranslationOutcome.success("Fresh English", "Fresh English title", "Fresh English description"));
+                TranslationOutcome.success(
+                        "Fresh English", fields("Fresh English title", "Fresh English description")));
 
         int exitCode = prepare("blog/my-essay.md", worker);
 
@@ -327,15 +332,15 @@ class PrepareCliAcceptanceTest {
         CountDownLatch releaseSecondTranslation = new CountDownLatch(1);
         AtomicInteger invocation = new AtomicInteger();
         java.util.List<TranslationJob> jobs = java.util.Collections.synchronizedList(new java.util.ArrayList<>());
-        TranslationWorker controlledWorker = (job, ruBody, ruTitle, ruDescription) -> {
+        TranslationWorker controlledWorker = (job, ruBody, ruFields) -> {
             jobs.add(job);
             if (invocation.incrementAndGet() == 1) {
                 firstTranslationStarted.countDown();
                 await(releaseFirstTranslation);
-                return TranslationOutcome.success("Stale English", "Stale title", "Stale description");
+                return TranslationOutcome.success("Stale English", fields("Stale title", "Stale description"));
             }
             await(releaseSecondTranslation);
-            return TranslationOutcome.success("Fresh English", "Fresh title", "Fresh description");
+            return TranslationOutcome.success("Fresh English", fields("Fresh title", "Fresh description"));
         };
         PrepareCommand first = configuredCommand(controlledWorker);
         PrepareCommand second = configuredCommand(controlledWorker);
@@ -361,6 +366,10 @@ class PrepareCliAcceptanceTest {
                 .read(IDENTITY).orElseThrow().ruBody());
         assertEquals("Fresh English", CandidateWorkspace.create(vaultRoot.resolve("review"))
                 .read(IDENTITY).orElseThrow().enBody());
+    }
+
+    private static List<PublicField> fields(String title, String description) {
+        return List.of(PublicField.of("title", title), PublicField.of("description", description));
     }
 
     private int prepare(String notePath) {

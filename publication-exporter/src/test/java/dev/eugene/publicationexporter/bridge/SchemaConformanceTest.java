@@ -16,6 +16,7 @@ import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.prepare.RussianDiff;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
@@ -23,6 +24,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -209,8 +211,10 @@ class SchemaConformanceTest {
                 Path.of("/review/blog/my-essay/candidate/ru.md"),
                 Path.of("/review/blog/my-essay/candidate/en.md"));
         RussianDiff diff = RussianDiff.between(
-                "RU body", "Old RU title", "RU description.",
-                "RU body", "New RU title", "RU description.");
+                "RU body", List.of(PublicField.of("title", "Old RU title"),
+                        PublicField.of("description", "RU description.")),
+                "RU body", List.of(PublicField.of("title", "New RU title"),
+                        PublicField.of("description", "RU description.")));
         return BridgeResponse.essayInspected(
                 "inspect-publication", "ready_for_review", identity,
                 "ready", "ready", "absent", "absent", ReviewPlan.changedPublication(

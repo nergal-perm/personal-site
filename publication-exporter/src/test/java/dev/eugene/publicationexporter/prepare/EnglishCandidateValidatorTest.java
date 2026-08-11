@@ -1,6 +1,9 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.reference.PublicField;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -12,7 +15,7 @@ class EnglishCandidateValidatorTest {
     void acceptsStructurallyCompleteCandidate() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
                 "Смотрите https://example.com/x для деталей.",
-                "See https://example.com/x for details.", "Title", "Description");
+                "See https://example.com/x for details.", fields("Title", "Description"));
 
         assertTrue(result.valid());
         assertTrue(result.diagnostics().isEmpty());
@@ -23,8 +26,7 @@ class EnglishCandidateValidatorTest {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
                 "Смотрите https://example.com/ru/docs для деталей.",
                 "See https://example.com/ru/docs for details.",
-                "Read https://example.com/ru/docs",
-                "Details at https://example.com/ru/docs");
+                fields("Read https://example.com/ru/docs", "Details at https://example.com/ru/docs"));
 
         assertTrue(result.valid());
         assertTrue(result.diagnostics().isEmpty());
@@ -33,7 +35,7 @@ class EnglishCandidateValidatorTest {
     @Test
     void rejectsBlankBody() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                "Текст", "   ", "Title", "Description");
+                "Текст", "   ", fields("Title", "Description"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("body")));
@@ -42,7 +44,7 @@ class EnglishCandidateValidatorTest {
     @Test
     void rejectsBlankTitle() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                "Текст", "Body", "  ", "Description");
+                "Текст", "Body", fields("  ", "Description"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("title")));
@@ -51,7 +53,7 @@ class EnglishCandidateValidatorTest {
     @Test
     void rejectsBlankDescription() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                "Текст", "Body", "Title", "  ");
+                "Текст", "Body", fields("Title", "  "));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("description")));
@@ -61,7 +63,7 @@ class EnglishCandidateValidatorTest {
     void rejectsInternalRuRoute() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
                 "Смотрите [другую статью](/ru/blog/other) для деталей.",
-                "See [another essay](/ru/blog/other) for details.", "Title", "Description");
+                "See [another essay](/ru/blog/other) for details.", fields("Title", "Description"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
@@ -70,7 +72,7 @@ class EnglishCandidateValidatorTest {
     @Test
     void rejectsReferenceStyleInternalRuRoute() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                "Текст", "See [another essay][ru].\n\n[ru]: /ru/blog/other", "Title", "Description");
+                "Текст", "See [another essay][ru].\n\n[ru]: /ru/blog/other", fields("Title", "Description"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
@@ -79,7 +81,7 @@ class EnglishCandidateValidatorTest {
     @Test
     void rejectsHtmlInternalRuRoute() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                "Текст", "See <a href=\"/ru/blog/other\">another essay</a>.", "Title", "Description");
+                "Текст", "See <a href=\"/ru/blog/other\">another essay</a>.", fields("Title", "Description"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
@@ -88,7 +90,7 @@ class EnglishCandidateValidatorTest {
     @Test
     void rejectsInternalRuRouteInTitle() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                "Текст", "Body", "Read /ru/blog/other", "Description");
+                "Текст", "Body", fields("Read /ru/blog/other", "Description"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
@@ -97,7 +99,7 @@ class EnglishCandidateValidatorTest {
     @Test
     void rejectsInternalRuRouteInDescription() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                "Текст", "Body", "Title", "Read /ru/blog/other");
+                "Текст", "Body", fields("Title", "Read /ru/blog/other"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("/ru/")));
@@ -107,7 +109,7 @@ class EnglishCandidateValidatorTest {
     void rejectsDroppedExternalUrl() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
                 "Смотрите https://example.com/x для деталей.",
-                "See the details.", "Title", "Description");
+                "See the details.", fields("Title", "Description"));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(d -> d.contains("https://example.com/x")));
@@ -119,7 +121,7 @@ class EnglishCandidateValidatorTest {
         String enBody = "See the cover image.";
 
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                ruBody, enBody, "Title", "Description.");
+                ruBody, enBody, fields("Title", "Description."));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("dropped asset reference")));
@@ -131,7 +133,7 @@ class EnglishCandidateValidatorTest {
         String enBody = "See ![cover](https://cdn.example/assets/vault/abc123.png).";
 
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                ruBody, enBody, "Title", "Description.");
+                ruBody, enBody, fields("Title", "Description."));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(
@@ -144,7 +146,7 @@ class EnglishCandidateValidatorTest {
         String enBody = "See ![cover](https://cdn.пример/assets/vault/abc123.png).";
 
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                ruBody, enBody, "Title", "Description.");
+                ruBody, enBody, fields("Title", "Description."));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(
@@ -157,7 +159,7 @@ class EnglishCandidateValidatorTest {
         String enBody = "See ![cover](//assets/vault/abc123.png).";
 
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                ruBody, enBody, "Title", "Description.");
+                ruBody, enBody, fields("Title", "Description."));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(
@@ -170,7 +172,7 @@ class EnglishCandidateValidatorTest {
         String enBody = "See https://cdn.example/?next=/assets/vault/abc123.png";
 
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                ruBody, enBody, "Title", "Description.");
+                ruBody, enBody, fields("Title", "Description."));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(
@@ -183,7 +185,7 @@ class EnglishCandidateValidatorTest {
         String enBody = "See https://cdn.example/#/assets/vault/abc123.png";
 
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                ruBody, enBody, "Title", "Description.");
+                ruBody, enBody, fields("Title", "Description."));
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(
@@ -196,7 +198,7 @@ class EnglishCandidateValidatorTest {
         String enBody = "See ![cover](/assets/vault/abc123.png).";
 
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
-                ruBody, enBody, "Title", "Description.");
+                ruBody, enBody, fields("Title", "Description."));
 
         assertTrue(result.valid());
     }
@@ -204,11 +206,15 @@ class EnglishCandidateValidatorTest {
     @Test
     void resultSupportsValueEqualityAndHashing() {
         EnglishCandidateValidator.Result first = EnglishCandidateValidator.validate(
-                "Текст", "See https://example.com/x", "Title", "Description");
+                "Текст", "See https://example.com/x", fields("Title", "Description"));
         EnglishCandidateValidator.Result second = EnglishCandidateValidator.validate(
-                "Текст", "See https://example.com/x", "Title", "Description");
+                "Текст", "See https://example.com/x", fields("Title", "Description"));
 
         assertEquals(first, second);
         assertEquals(first.hashCode(), second.hashCode());
+    }
+
+    private static List<PublicField> fields(String title, String description) {
+        return List.of(PublicField.of("title", title), PublicField.of("description", description));
     }
 }

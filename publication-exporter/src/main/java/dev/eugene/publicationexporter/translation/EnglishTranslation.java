@@ -1,32 +1,29 @@
 package dev.eugene.publicationexporter.translation;
 
+import dev.eugene.publicationexporter.reference.PublicField;
+
+import java.util.List;
 import java.util.Objects;
 
 public final class EnglishTranslation {
 
     private final String body;
-    private final String title;
-    private final String description;
+    private final List<PublicField> fields;
 
-    private EnglishTranslation(String body, String title, String description) {
+    private EnglishTranslation(String body, List<PublicField> fields) {
         this.body = Objects.requireNonNull(body, "body");
-        this.title = Objects.requireNonNull(title, "title");
-        this.description = Objects.requireNonNull(description, "description");
+        this.fields = List.copyOf(Objects.requireNonNull(fields, "fields"));
     }
 
-    public static EnglishTranslation of(String body, String title, String description) {
-        return new EnglishTranslation(body, title, description);
+    public static EnglishTranslation of(String body, List<PublicField> fields) {
+        return new EnglishTranslation(body, fields);
     }
 
     public String body() {
         return body;
     }
 
-    public String title() {
-        return title;
-    }
-
-    public String description() {
-        return description;
+    public List<PublicField> fields() {
+        return fields;
     }
 }
