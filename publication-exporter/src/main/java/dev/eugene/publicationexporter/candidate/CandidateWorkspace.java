@@ -14,6 +14,11 @@ public interface CandidateWorkspace {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(content, "content");
         Objects.requireNonNull(assets, "assets");
+        if (!assets.isEmpty()) {
+            throw new UnsupportedOperationException(
+                    "This CandidateWorkspace implementation (" + getClass()
+                            + ") does not support installing assets yet.");
+        }
         install(identity, content.ruBody(), content.enBody(), content.ruTitle(), content.enTitle(),
                 content.ruDescription(), content.enDescription(), content.referenceMap());
     }
