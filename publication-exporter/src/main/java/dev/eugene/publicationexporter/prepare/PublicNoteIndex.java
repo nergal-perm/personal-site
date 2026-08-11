@@ -1,6 +1,5 @@
 package dev.eugene.publicationexporter.prepare;
 
-import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -48,11 +47,7 @@ final class PublicNoteIndex {
             ambiguousStems.add(stem);
             return;
         }
-        routes.put(stem, routeFor(intake.identity()));
-    }
-
-    private static String routeFor(PublicationIdentity identity) {
-        return "/essays/" + identity.publicId() + "/";
+        routes.put(stem, "/" + intake.kind().routePrefix() + "/" + intake.identity().publicId() + "/");
     }
 
     private static String filenameStem(VaultRelativePath path) {
