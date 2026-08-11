@@ -1157,6 +1157,40 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void publicLinkToBlogNoteResolvesToTheNoteRoute() {
+        String note = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: note
+                publicId: my-note
+                id: 91aa-my-note
+                title: My Note
+                description: A valid description.
+                ---
+                # My Note
+
+                Public note prose.""";
+        String essay = essayWithBody("See [[my-note]].");
+        VaultRelativePath essayPath = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath notePath = VaultRelativePath.of("blog/my-note.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                essayPath, essay,
+                notePath, note));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(essayPath, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("See [my-note](/notes/my-note/).",
+                workspace.installed().get(0).ruBody());
+    }
+
+    @Test
     void privateTransclusionBlocksPreparationWithoutInstallingACandidate() {
         String privateTarget = """
                 ---

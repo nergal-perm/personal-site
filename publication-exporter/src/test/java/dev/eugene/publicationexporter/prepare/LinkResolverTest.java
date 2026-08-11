@@ -33,6 +33,17 @@ final class LinkResolverTest {
     }
 
     @Test
+    void linkToBlogNoteTargetResolvesToNotesRoute() {
+        PublicNoteIndex index = new PublicNoteIndex(Map.of("My Note", "/notes/my-note/"));
+
+        LinkResolutionOutcome outcome = LinkResolver.resolve("See [[My Note]].", index);
+
+        assertEquals("See [My Note](/notes/my-note/).", outcome.resolve(
+                resolved -> resolved,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+    }
+
+    @Test
     void unresolvedLinkWithAPathUsesOnlyTheLastSegmentAsItsSafeLabel() {
         assertEquals("See Secret Draft.",
                 resolvedBodyOrFail("See [[private-area/Secret Draft]].", new PublicNoteIndex(Map.of())));

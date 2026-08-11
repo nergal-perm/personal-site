@@ -31,11 +31,18 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class FilesystemManagedSiteInstallerTest {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
+    private static final PublicationIdentity NOTE_IDENTITY = PublicationIdentity.of("blog", "note", "my-note");
     private static final PublicationIdentity OTHER_IDENTITY =
             PublicationIdentity.of("blog", "essay", "another-essay");
     private static final CandidateSnapshot SNAPSHOT = CandidateSnapshot.of(
             "# RU body", "# EN body", "RU title", "EN title", "RU description.", "EN description.",
             ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+    private static final CandidateSnapshot NOTE_SNAPSHOT = CandidateSnapshot.of(
+            "# RU note body", "# EN note body", "RU note title", "EN note title",
+            "RU note description.", "EN note description.",
+            ReferenceMap.empty(NOTE_IDENTITY, "note-ru-hash", "note-en-hash",
+                    "note-ru-title-hash", "note-en-title-hash",
+                    "note-ru-description-hash", "note-en-description-hash"));
     private static final CandidateSnapshot REPLACEMENT_SNAPSHOT = CandidateSnapshot.of(
             "# Replacement RU body", "# Replacement EN body",
             "Replacement RU title", "Replacement EN title",
@@ -96,6 +103,27 @@ class FilesystemManagedSiteInstallerTest {
                 + "---\n"
                 + "# EN body", Files.readString(enFile, StandardCharsets.UTF_8));
         assertTrue(Files.exists(siteRoot.resolve(".astro-export/release-provenance.json")));
+    }
+
+    @Test
+    void installProjectsBlogNoteContentTypeWithTheSameSharedFieldSetAsEssay() throws Exception {
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+
+        installer.install(NOTE_IDENTITY, NOTE_SNAPSHOT);
+
+        Path ruFile = siteRoot.resolve("src/content/blog/ru/my-note.md");
+        assertEquals("---\n"
+                + "id: \"my-note\"\n"
+                + "title: \"RU note title\"\n"
+                + "description: \"RU note description.\"\n"
+                + "publish: true\n"
+                + "contentType: \"note\"\n"
+                + "language: \"ru\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"note-ru-hash\"\n"
+                + "translationStatus: \"source\"\n"
+                + "---\n"
+                + "# RU note body", Files.readString(ruFile, StandardCharsets.UTF_8));
     }
 
     @Test

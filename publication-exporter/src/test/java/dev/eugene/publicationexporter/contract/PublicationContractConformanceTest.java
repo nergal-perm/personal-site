@@ -2,6 +2,8 @@ package dev.eugene.publicationexporter.contract;
 
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures;
+import dev.eugene.publicationexporter.admission.NotePublicationKindFixture;
+import dev.eugene.publicationexporter.admission.NotePublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.note.MarkdownNote;
@@ -35,6 +37,29 @@ class PublicationContractConformanceTest {
         assertEquals(fixture.expectedAccepted(), contractAccepts, "contract verdict for " + fixture.name());
         assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
         assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
+    }
+
+    @ParameterizedTest(name = "blog/note {0}")
+    @MethodSource("allNoteAdmissionFixtures")
+    void noteContractVerdictAgreesWithFixtureAndRuntimeValidator(NotePublicationKindFixture fixture) {
+        MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
+        KindContract noteKind = new PublicationContractWriter().write().kinds().stream()
+                .filter(kind -> kind.collection().equals("blog") && kind.contentType().equals("note"))
+                .findFirst()
+                .orElseThrow();
+
+        boolean contractAccepts = contractAccepts(noteKind, note);
+        VaultRelativePath path = VaultRelativePath.of("blog/" + fixture.name() + ".md");
+        boolean runtimeAccepts = intake.admit(path, VaultReader.createNull(Map.of(path, fixture.noteSource())))
+                .accepted();
+
+        assertEquals(fixture.expectedAccepted(), contractAccepts, "contract verdict for " + fixture.name());
+        assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
+        assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
+    }
+
+    private static Stream<NotePublicationKindFixture> allNoteAdmissionFixtures() {
+        return NotePublicationKindFixtures.all().stream();
     }
 
     private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {
