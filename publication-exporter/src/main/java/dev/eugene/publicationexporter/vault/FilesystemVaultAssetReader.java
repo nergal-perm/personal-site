@@ -10,6 +10,12 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
+/**
+ * Defends against structural path traversal and stable symlinks that escape the vault, but not against an adversary
+ * with concurrent write access racing path validation against the subsequent read; path-based filesystem APIs cannot
+ * portably provide descriptor-anchored opening, so a TOCTOU window remains. This matches the project's threat model of
+ * a single local user exporting their own vault, not multi-tenant or concurrently adversarial writes.
+ */
 final class FilesystemVaultAssetReader implements VaultAssetReader {
 
     private final Path canonicalVaultRoot;
@@ -45,9 +51,11 @@ final class FilesystemVaultAssetReader implements VaultAssetReader {
     private List<Path> visibleBasenameMatches(String basename) {
         try (var paths = Files.walk(canonicalVaultRoot)) {
             List<Path> matches = new ArrayList<>();
-            paths.filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().equals(basename))
-                    .filter(path -> realPathOf(path).filter(this::isInsideVault).isPresent())
+            paths.filter(path -> path.getFileName().toString().equals(basename))
+                    .map(FilesystemVaultAssetReader::realPathOf)
+                    .flatMap(Optional::stream)
+                    .filter(this::isInsideVault)
+                    .filter(Files::isRegularFile)
                     .forEach(matches::add);
             return matches;
         } catch (IOException error) {
