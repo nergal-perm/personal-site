@@ -217,6 +217,14 @@ No implementation slice should quietly decide one of these through incidental co
 
 Each entry below is a separate slice and separate commit. Its visible result is that one fixture of the new kind can complete the already-working prepare → approve → release path, and `write-publication-contract` includes exactly that kind's rules.
 
+**Extension direction:** the first essay path deliberately proved one concrete shape. It is not yet an extensible content-kind model: admission, contract publication, link routing, localized content, translation, snapshots, diffs, and site projection must not accumulate collection/content-type switches as the ladder proceeds. Preserve the existing kind-neutral identity and filesystem addressing; make kind policy explicit only where a second real kind demonstrates shared behaviour.
+
+**Shared refactoring rule:** do not create a standalone framework slice. In the red-green-refactor cycle of the first slice that proves each seam, extract a small immutable compiled-edition `PublicationKinds` collection and a `PublicationKind` role. A kind owns its `(collection, contentType)` key, admission rules, published `KindContract`, and public route policy; `PublicationKinds` owns deterministic lookup, unsupported-kind diagnostics, and sorted contract enumeration. The runtime kind objects derive the external contract; the JSON contract is not an internal schema engine. The S17a migration may move the existing essay policy into that seam. Afterward, adding a kind may change only the explicit composition list, its acceptance fixture, and genuinely new site presentation code; it must not require edits to old kinds or new collection/type conditionals in generic orchestration.
+
+**Kind-neutral lifecycle rule:** `NoteIntake` returns an `AdmittedPublication`, not a concrete kind result, and receives the same `PublicationKinds` instance used by contract writing and public-link indexing. Stop constructing intake or kind dependencies inside handlers. When a second fixture demonstrates heterogeneous public metadata, replace the fixed body/title/description parameter trains with immutable localized-publication values containing canonical body and validated ordered public fields. Translation, candidate/approved snapshots, freshness hashes, and diffs then operate on those whole values. Do not generalize fields or body rules before a real kind requires the new behaviour.
+
+**Release rule:** kinds own their projection to managed content. Keep filesystem installation responsible only for confinement, atomic installation, and provenance. Extract a generic safe-artifact projection only when a kind actually needs a different managed artifact shape; do not pre-emptively redesign ordinary Markdown release for editorial content before S17f and G7.
+
 | Slice | Kind added | Requirements increment |
 | --- | --- | --- |
 | S17a | `blog/note` | ADM-03, ADM-04, PCM-02, PCM-06 for note |
@@ -226,7 +234,14 @@ Each entry below is a separate slice and separate commit. Its visible result is 
 | S17e | `music/album` | ADM-03, ADM-04, PCM-02, PCM-06 for album |
 | S17f | `editorial/curated_page` | ADM-03, ADM-04, PCM-02, PCM-06 for editorial page; gated by G7 |
 
-**Explicitly excluded from every kind slice:** changes to another kind, generic schema-framework extraction, and speculative cross-kind inheritance. Refactor common objects only after two real kinds exhibit the same behaviour.
+**Per-slice refactoring triggers:**
+
+- **S17a:** make `blog/note` pass the full boundary acceptance path first. Once essay and note are both proven, extract only the shared kind-selection seam: `PublicationKind`, `PublicationKinds`, `AdmittedPublication`, shared contract enumeration, and kind-owned routing. This is the first justified refactor, not a separate milestone.
+- **S17b:** let the claim fixture decide whether the essay-shaped localized-content, translation, snapshot, hash, and diff carriers must become whole publication values. If it does, migrate every dependent carrier as one coherent behaviour-preserving refactor; do not leave dual essay/generic paths.
+- **S17c–S17e:** let book, concept, and album requirements drive only the specific field or structured-body policies they need. Extract a reusable rule object only after at least two implemented kinds share that exact validation or projection behaviour; prefer kind polymorphism and composition over enums, type switches, or cross-kind inheritance.
+- **S17f:** after G7 freezes or versions editorial grammar, give the editorial kind its own validated projection. Generalize release artifacts only if that projection proves the ordinary Markdown artifact insufficient.
+
+**Explicitly excluded from every kind slice:** a generic schema-framework, reflective/plugin discovery, speculative cross-kind inheritance, and refactoring not justified by the new kind's acceptance behaviour. After the S17a migration, the practical extension check is that the next kind needs its own kind object, fixtures, one explicit composition registration, and any genuinely new site schema/view—not edits to intake, generic preparation, contract aggregation, snapshot persistence, or filesystem installation.
 
 ### S18 — Direct-target source-ID admission
 
