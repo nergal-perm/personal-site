@@ -21,10 +21,9 @@ class ReferenceMapTest {
         assertEquals(IDENTITY, map.identity());
         assertEquals("ru-hash", map.ruHash());
         assertEquals("en-hash", map.enHash());
-        assertEquals("ru-title-hash", map.ruTitleHash());
-        assertEquals("en-title-hash", map.enTitleHash());
-        assertEquals("ru-description-hash", map.ruDescriptionHash());
-        assertEquals("en-description-hash", map.enDescriptionHash());
+        assertEquals("ru-fields-hash", map.ruFieldsHash());
+        assertEquals("en-fields-hash", map.enFieldsHash());
+        assertEquals("structured-data-hash", map.structuredDataHash());
     }
 
     @Test
@@ -44,15 +43,14 @@ class ReferenceMapTest {
 
     @Test
     void metadataHashesParticipateInValueSemantics() {
-        ReferenceMap changedEnglishDescription = ReferenceMap.empty(
+        ReferenceMap changedStructuredData = ReferenceMap.empty(
                 IDENTITY, "ru-hash", "en-hash",
-                "ru-title-hash", "en-title-hash",
-                "ru-description-hash", "changed-en-description-hash");
+                "ru-fields-hash", "en-fields-hash", "changed-structured-data-hash");
 
-        assertNotEquals(referenceMap(), changedEnglishDescription);
-        assertNotEquals(referenceMap().hashCode(), changedEnglishDescription.hashCode());
-        assertTrue(referenceMap().toString().contains("ruTitleHash=ru-title-hash"));
-        assertTrue(referenceMap().toString().contains("enDescriptionHash=en-description-hash"));
+        assertNotEquals(referenceMap(), changedStructuredData);
+        assertNotEquals(referenceMap().hashCode(), changedStructuredData.hashCode());
+        assertTrue(referenceMap().toString().contains("ruFieldsHash=ru-fields-hash"));
+        assertTrue(referenceMap().toString().contains("structuredDataHash=structured-data-hash"));
     }
 
     @Test
@@ -60,12 +58,10 @@ class ReferenceMapTest {
         ReferenceMap sameContent = ReferenceMap.empty(
                 PublicationIdentity.of("other", "essay", "other-essay"),
                 "ru-hash", "en-hash",
-                "ru-title-hash", "en-title-hash",
-                "ru-description-hash", "en-description-hash");
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash");
         ReferenceMap changedContent = ReferenceMap.empty(
                 IDENTITY, "ru-hash", "en-hash",
-                "ru-title-hash", "en-title-hash",
-                "ru-description-hash", "changed-en-description-hash");
+                "ru-fields-hash", "en-fields-hash", "changed-structured-data-hash");
 
         assertTrue(referenceMap().sameContentAs(sameContent));
         assertFalse(referenceMap().sameContentAs(changedContent));
@@ -84,8 +80,7 @@ class ReferenceMapTest {
         NullPointerException exception = assertThrows(NullPointerException.class,
                 () -> ReferenceMap.empty(
                         IDENTITY, null, "en-hash",
-                        "ru-title-hash", "en-title-hash",
-                        "ru-description-hash", "en-description-hash"));
+                        "ru-fields-hash", "en-fields-hash", "structured-data-hash"));
         assertEquals("ruHash", exception.getMessage());
     }
 
@@ -94,16 +89,14 @@ class ReferenceMapTest {
         NullPointerException exception = assertThrows(NullPointerException.class,
                 () -> ReferenceMap.empty(
                         IDENTITY, "ru-hash", "en-hash",
-                        "ru-title-hash", "en-title-hash",
-                        "ru-description-hash", null));
+                        "ru-fields-hash", "en-fields-hash", null));
 
-        assertEquals("enDescriptionHash", exception.getMessage());
+        assertEquals("structuredDataHash", exception.getMessage());
     }
 
     private static ReferenceMap referenceMap() {
         return ReferenceMap.empty(
                 IDENTITY, "ru-hash", "en-hash",
-                "ru-title-hash", "en-title-hash",
-                "ru-description-hash", "en-description-hash");
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash");
     }
 }

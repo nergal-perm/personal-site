@@ -37,10 +37,9 @@ public final class ReferenceMapCodec {
                 identity,
                 root.get("ruHash").asText(),
                 root.get("enHash").asText(),
-                root.get("ruTitleHash").asText(),
-                root.get("enTitleHash").asText(),
-                root.get("ruDescriptionHash").asText(),
-                root.get("enDescriptionHash").asText());
+                root.get("ruFieldsHash").asText(),
+                root.get("enFieldsHash").asText(),
+                root.get("structuredDataHash").asText());
     }
 
     private static PublicationIdentity identityFrom(JsonNode identityNode) {

@@ -13,38 +13,34 @@ public final class ReferenceMap {
     private final PublicationIdentity identity;
     private final String ruHash;
     private final String enHash;
-    private final String ruTitleHash;
-    private final String enTitleHash;
-    private final String ruDescriptionHash;
-    private final String enDescriptionHash;
+    private final String ruFieldsHash;
+    private final String enFieldsHash;
+    private final String structuredDataHash;
 
     private ReferenceMap(
             PublicationIdentity identity,
             String ruHash,
             String enHash,
-            String ruTitleHash,
-            String enTitleHash,
-            String ruDescriptionHash,
-            String enDescriptionHash) {
+            String ruFieldsHash,
+            String enFieldsHash,
+            String structuredDataHash) {
         this.identity = Objects.requireNonNull(identity, "identity");
         this.ruHash = Objects.requireNonNull(ruHash, "ruHash");
         this.enHash = Objects.requireNonNull(enHash, "enHash");
-        this.ruTitleHash = Objects.requireNonNull(ruTitleHash, "ruTitleHash");
-        this.enTitleHash = Objects.requireNonNull(enTitleHash, "enTitleHash");
-        this.ruDescriptionHash = Objects.requireNonNull(ruDescriptionHash, "ruDescriptionHash");
-        this.enDescriptionHash = Objects.requireNonNull(enDescriptionHash, "enDescriptionHash");
+        this.ruFieldsHash = Objects.requireNonNull(ruFieldsHash, "ruFieldsHash");
+        this.enFieldsHash = Objects.requireNonNull(enFieldsHash, "enFieldsHash");
+        this.structuredDataHash = Objects.requireNonNull(structuredDataHash, "structuredDataHash");
     }
 
     public static ReferenceMap empty(
             PublicationIdentity identity,
             String ruHash,
             String enHash,
-            String ruTitleHash,
-            String enTitleHash,
-            String ruDescriptionHash,
-            String enDescriptionHash) {
+            String ruFieldsHash,
+            String enFieldsHash,
+            String structuredDataHash) {
         return new ReferenceMap(identity, ruHash, enHash,
-                ruTitleHash, enTitleHash, ruDescriptionHash, enDescriptionHash);
+                ruFieldsHash, enFieldsHash, structuredDataHash);
     }
 
     @JsonProperty("schemaVersion")
@@ -67,34 +63,28 @@ public final class ReferenceMap {
         return enHash;
     }
 
-    @JsonProperty("ruTitleHash")
-    public String ruTitleHash() {
-        return ruTitleHash;
+    @JsonProperty("ruFieldsHash")
+    public String ruFieldsHash() {
+        return ruFieldsHash;
     }
 
-    @JsonProperty("enTitleHash")
-    public String enTitleHash() {
-        return enTitleHash;
+    @JsonProperty("enFieldsHash")
+    public String enFieldsHash() {
+        return enFieldsHash;
     }
 
-    @JsonProperty("ruDescriptionHash")
-    public String ruDescriptionHash() {
-        return ruDescriptionHash;
-    }
-
-    @JsonProperty("enDescriptionHash")
-    public String enDescriptionHash() {
-        return enDescriptionHash;
+    @JsonProperty("structuredDataHash")
+    public String structuredDataHash() {
+        return structuredDataHash;
     }
 
     public boolean sameContentAs(ReferenceMap other) {
         Objects.requireNonNull(other, "other");
         return ruHash.equals(other.ruHash)
                 && enHash.equals(other.enHash)
-                && ruTitleHash.equals(other.ruTitleHash)
-                && enTitleHash.equals(other.enTitleHash)
-                && ruDescriptionHash.equals(other.ruDescriptionHash)
-                && enDescriptionHash.equals(other.enDescriptionHash);
+                && ruFieldsHash.equals(other.ruFieldsHash)
+                && enFieldsHash.equals(other.enFieldsHash)
+                && structuredDataHash.equals(other.structuredDataHash);
     }
 
     @JsonProperty("occurrences")
@@ -113,16 +103,15 @@ public final class ReferenceMap {
         return identity.equals(that.identity)
                 && ruHash.equals(that.ruHash)
                 && enHash.equals(that.enHash)
-                && ruTitleHash.equals(that.ruTitleHash)
-                && enTitleHash.equals(that.enTitleHash)
-                && ruDescriptionHash.equals(that.ruDescriptionHash)
-                && enDescriptionHash.equals(that.enDescriptionHash);
+                && ruFieldsHash.equals(that.ruFieldsHash)
+                && enFieldsHash.equals(that.enFieldsHash)
+                && structuredDataHash.equals(that.structuredDataHash);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(identity, ruHash, enHash,
-                ruTitleHash, enTitleHash, ruDescriptionHash, enDescriptionHash);
+                ruFieldsHash, enFieldsHash, structuredDataHash);
     }
 
     @Override
@@ -130,9 +119,8 @@ public final class ReferenceMap {
         return "ReferenceMap[identity=" + identity
                 + ", ruHash=" + ruHash
                 + ", enHash=" + enHash
-                + ", ruTitleHash=" + ruTitleHash
-                + ", enTitleHash=" + enTitleHash
-                + ", ruDescriptionHash=" + ruDescriptionHash
-                + ", enDescriptionHash=" + enDescriptionHash + "]";
+                + ", ruFieldsHash=" + ruFieldsHash
+                + ", enFieldsHash=" + enFieldsHash
+                + ", structuredDataHash=" + structuredDataHash + "]";
     }
 }

@@ -23,10 +23,9 @@ class ReferenceMapCodecTest {
         assertEquals("my-essay", parsed.get("publicationIdentity").get("publicId").asText());
         assertEquals("ru-hash", parsed.get("ruHash").asText());
         assertEquals("en-hash", parsed.get("enHash").asText());
-        assertEquals("ru-title-hash", parsed.get("ruTitleHash").asText());
-        assertEquals("en-title-hash", parsed.get("enTitleHash").asText());
-        assertEquals("ru-description-hash", parsed.get("ruDescriptionHash").asText());
-        assertEquals("en-description-hash", parsed.get("enDescriptionHash").asText());
+        assertEquals("ru-fields-hash", parsed.get("ruFieldsHash").asText());
+        assertEquals("en-fields-hash", parsed.get("enFieldsHash").asText());
+        assertEquals("structured-data-hash", parsed.get("structuredDataHash").asText());
         assertTrue(parsed.get("occurrences").isArray());
         assertEquals(0, parsed.get("occurrences").size());
     }
@@ -41,10 +40,9 @@ class ReferenceMapCodecTest {
         assertEquals(identity, parsed.identity());
         assertEquals("ru-hash", parsed.ruHash());
         assertEquals("en-hash", parsed.enHash());
-        assertEquals("ru-title-hash", parsed.ruTitleHash());
-        assertEquals("en-title-hash", parsed.enTitleHash());
-        assertEquals("ru-description-hash", parsed.ruDescriptionHash());
-        assertEquals("en-description-hash", parsed.enDescriptionHash());
+        assertEquals("ru-fields-hash", parsed.ruFieldsHash());
+        assertEquals("en-fields-hash", parsed.enFieldsHash());
+        assertEquals("structured-data-hash", parsed.structuredDataHash());
         assertTrue(parsed.occurrences().isEmpty());
     }
 
@@ -61,7 +59,6 @@ class ReferenceMapCodecTest {
     private static ReferenceMap referenceMap(PublicationIdentity identity) {
         return ReferenceMap.empty(
                 identity, "ru-hash", "en-hash",
-                "ru-title-hash", "en-title-hash",
-                "ru-description-hash", "en-description-hash");
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash");
     }
 }

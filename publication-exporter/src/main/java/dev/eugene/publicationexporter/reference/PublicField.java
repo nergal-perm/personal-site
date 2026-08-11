@@ -2,7 +2,9 @@ package dev.eugene.publicationexporter.reference;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 
+import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class PublicField {
 
@@ -16,6 +18,15 @@ public final class PublicField {
 
     public static PublicField of(String key, String value) {
         return new PublicField(key, value);
+    }
+
+    public static Optional<String> value(List<PublicField> fields, String key) {
+        Objects.requireNonNull(fields, "fields");
+        Objects.requireNonNull(key, "key");
+        return fields.stream()
+                .filter(field -> field.key().equals(key))
+                .map(PublicField::value)
+                .findFirst();
     }
 
     @JsonProperty("key")

@@ -1,33 +1,33 @@
 package dev.eugene.publicationexporter.candidate;
 
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
+import java.util.List;
 import java.util.Objects;
 
 public final class CandidateSnapshot {
 
     private final String ruBody;
     private final String enBody;
-    private final String ruTitle;
-    private final String enTitle;
-    private final String ruDescription;
-    private final String enDescription;
+    private final List<PublicField> ruFields;
+    private final List<PublicField> enFields;
+    private final String structuredData;
     private final ReferenceMap referenceMap;
 
-    private CandidateSnapshot(String ruBody, String enBody, String ruTitle, String enTitle,
-            String ruDescription, String enDescription, ReferenceMap referenceMap) {
+    private CandidateSnapshot(String ruBody, String enBody, List<PublicField> ruFields,
+            List<PublicField> enFields, String structuredData, ReferenceMap referenceMap) {
         this.ruBody = Objects.requireNonNull(ruBody, "ruBody");
         this.enBody = Objects.requireNonNull(enBody, "enBody");
-        this.ruTitle = Objects.requireNonNull(ruTitle, "ruTitle");
-        this.enTitle = Objects.requireNonNull(enTitle, "enTitle");
-        this.ruDescription = Objects.requireNonNull(ruDescription, "ruDescription");
-        this.enDescription = Objects.requireNonNull(enDescription, "enDescription");
+        this.ruFields = List.copyOf(Objects.requireNonNull(ruFields, "ruFields"));
+        this.enFields = List.copyOf(Objects.requireNonNull(enFields, "enFields"));
+        this.structuredData = Objects.requireNonNull(structuredData, "structuredData");
         this.referenceMap = Objects.requireNonNull(referenceMap, "referenceMap");
     }
 
-    public static CandidateSnapshot of(String ruBody, String enBody, String ruTitle, String enTitle,
-            String ruDescription, String enDescription, ReferenceMap referenceMap) {
-        return new CandidateSnapshot(ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap);
+    public static CandidateSnapshot of(String ruBody, String enBody, List<PublicField> ruFields,
+            List<PublicField> enFields, String structuredData, ReferenceMap referenceMap) {
+        return new CandidateSnapshot(ruBody, enBody, ruFields, enFields, structuredData, referenceMap);
     }
 
     public String ruBody() {
@@ -38,20 +38,16 @@ public final class CandidateSnapshot {
         return enBody;
     }
 
-    public String ruTitle() {
-        return ruTitle;
+    public List<PublicField> ruFields() {
+        return ruFields;
     }
 
-    public String enTitle() {
-        return enTitle;
+    public List<PublicField> enFields() {
+        return enFields;
     }
 
-    public String ruDescription() {
-        return ruDescription;
-    }
-
-    public String enDescription() {
-        return enDescription;
+    public String structuredData() {
+        return structuredData;
     }
 
     public ReferenceMap referenceMap() {
@@ -67,21 +63,21 @@ public final class CandidateSnapshot {
             return false;
         }
         return ruBody.equals(that.ruBody) && enBody.equals(that.enBody)
-                && ruTitle.equals(that.ruTitle) && enTitle.equals(that.enTitle)
-                && ruDescription.equals(that.ruDescription) && enDescription.equals(that.enDescription)
+                && ruFields.equals(that.ruFields) && enFields.equals(that.enFields)
+                && structuredData.equals(that.structuredData)
                 && referenceMap.equals(that.referenceMap);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap);
+        return Objects.hash(ruBody, enBody, ruFields, enFields, structuredData, referenceMap);
     }
 
     @Override
     public String toString() {
         return "CandidateSnapshot[ruBody=" + ruBody + ", enBody=" + enBody
-                + ", ruTitle=" + ruTitle + ", enTitle=" + enTitle
-                + ", ruDescription=" + ruDescription + ", enDescription=" + enDescription
+                + ", ruFields=" + ruFields + ", enFields=" + enFields
+                + ", structuredData=" + structuredData
                 + ", referenceMap=" + referenceMap + "]";
     }
 }

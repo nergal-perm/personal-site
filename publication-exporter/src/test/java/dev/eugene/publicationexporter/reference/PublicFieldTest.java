@@ -2,8 +2,12 @@ package dev.eugene.publicationexporter.reference;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Optional;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublicFieldTest {
 
@@ -41,5 +45,16 @@ class PublicFieldTest {
                 NullPointerException.class,
                 () -> PublicField.of("key", null));
         assertEquals("value", valueMissing.getMessage());
+    }
+
+    @Test
+    void valueFindsAFieldByKey() {
+        assertEquals(
+                Optional.of("RU description"),
+                PublicField.value(
+                        List.of(PublicField.of("title", "RU title"),
+                                PublicField.of("description", "RU description")),
+                        "description"));
+        assertTrue(PublicField.value(List.of(PublicField.of("title", "RU title")), "missing").isEmpty());
     }
 }
