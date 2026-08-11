@@ -1,8 +1,13 @@
 package dev.eugene.publicationexporter.admission;
 
+import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.note.MarkdownNote;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -11,8 +16,21 @@ class EssayAdmissionTest {
 
     private final EssayAdmission admission = new EssayAdmission();
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dev.eugene.publicationexporter.admission.EssayAdmissionFixtures#all")
+    void admitsOrBlocksPerFixture(EssayAdmissionFixture fixture) {
+        MarkdownNote frontmatter = MarkdownNote.parse(fixture.noteSource());
+
+        EssayAdmission.Result result = admission.admit(frontmatter);
+
+        assertEquals(fixture.expectedAccepted(), result.accepted(), fixture.name());
+        if (!fixture.expectedAccepted()) {
+            assertEquals(fixture.expectedBlockedFields(), blockedFields(result), fixture.name());
+        }
+    }
+
     @Test
-    void validEssayIsAccepted() {
+    void validEssayResultCarriesIdentityAndFields() {
         MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---
                 publish: true
@@ -34,204 +52,7 @@ class EssayAdmissionTest {
         assertEquals("A valid description.", result.description());
     }
 
-    @Test
-    void missingTitleIsBlocked() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                publicId: my-essay
-                id: 8f2c-my-essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals("title", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void blankDescriptionIsBlocked() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                publicId: my-essay
-                id: 8f2c-my-essay
-                title: My Essay
-                description: "   "
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals("description", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void unpublishedNoteIsBlockedOnPublishAlone() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publicCollection: blog
-                publicContentType: essay
-                publicId: my-essay
-                id: 8f2c-my-essay
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals(1, result.diagnostics().size());
-        assertEquals("publish", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void invalidPublicIdIsBlocked() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                publicId: My_Essay
-                id: 8f2c-my-essay
-                title: My Essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals("publicId", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void wrongCollectionBlocksBothCollectionAndContentType() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: bibliography
-                publicContentType: essay
-                publicId: my-essay
-                id: 8f2c-my-essay
-                title: My Essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals(2, result.diagnostics().size());
-        assertEquals("publicCollection", result.diagnostics().get(0).field());
-        assertEquals("publicContentType", result.diagnostics().get(1).field());
-    }
-
-    @Test
-    void wrongContentTypeAloneBlocksOnlyContentType() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: claim
-                publicId: my-essay
-                id: 8f2c-my-essay
-                title: My Essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals(1, result.diagnostics().size());
-        assertEquals("publicContentType", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void missingSourceIdIsBlocked() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                publicId: my-essay
-                title: My Essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals("id", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void blankSourceIdIsBlocked() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                publicId: my-essay
-                id: "   "
-                title: My Essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals("id", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void nullSourceIdIsBlocked() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                publicId: my-essay
-                id: null
-                title: My Essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals("id", result.diagnostics().get(0).field());
-    }
-
-    @Test
-    void multipleFailuresAreAllReported() {
-        MarkdownNote frontmatter = MarkdownNote.parse("""
-                ---
-                publish: true
-                publicCollection: blog
-                publicContentType: essay
-                title: My Essay
-                description: A valid description.
-                ---
-                """);
-
-        EssayAdmission.Result result = admission.admit(frontmatter);
-
-        assertFalseAccepted(result);
-        assertEquals(2, result.diagnostics().size());
-    }
-
-    private void assertFalseAccepted(EssayAdmission.Result result) {
-        org.junit.jupiter.api.Assertions.assertFalse(result.accepted());
+    private List<String> blockedFields(EssayAdmission.Result result) {
+        return result.diagnostics().stream().map(Diagnostic::field).toList();
     }
 }
