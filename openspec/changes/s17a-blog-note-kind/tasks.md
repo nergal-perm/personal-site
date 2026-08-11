@@ -50,7 +50,7 @@ kind-independent checks — `publish` must be true, and resolving which kind a `
 pair names — move to `NoteIntake`, matching the plan's own text: "`PublicationKinds` owns deterministic lookup,
 unsupported-kind diagnostics, and sorted contract enumeration."
 
-- [ ] 1.1 Create `PublicationKind`:
+- [x] 1.1 Create `PublicationKind`:
 
 ```java
 package dev.eugene.publicationexporter.admission;
@@ -72,7 +72,7 @@ public interface PublicationKind {
 }
 ```
 
-- [ ] 1.2 Create `AdmittedPublication` (same accepted/blocked shape as today's `EssayAdmission.Result`, plus a `kind()` accessor):
+- [x] 1.2 Create `AdmittedPublication` (same accepted/blocked shape as today's `EssayAdmission.Result`, plus a `kind()` accessor):
 
 ```java
 package dev.eugene.publicationexporter.admission;
@@ -174,7 +174,7 @@ public final class AdmittedPublication {
 }
 ```
 
-- [ ] 1.3 Create `EssayPublicationKind` — behaviour-preserving move of `EssayAdmission`'s field-level rules only
+- [x] 1.3 Create `EssayPublicationKind` — behaviour-preserving move of `EssayAdmission`'s field-level rules only
       (publish/collection/contentType checks move to `NoteIntake` in task 2, so they are NOT here):
 
 ```java
@@ -275,7 +275,7 @@ public final class EssayPublicationKind implements PublicationKind {
 Note: `FieldRule` (admission/FieldRule.java) is unchanged and reused as-is — it is already kind-neutral (field
 name + rule kind + literal/pattern), not essay-specific. Do not modify it.
 
-- [ ] 1.4 Create `PublicationKinds` (still composing only `EssayPublicationKind` in this task — `NotePublicationKind`
+- [x] 1.4 Create `PublicationKinds` (still composing only `EssayPublicationKind` in this task — `NotePublicationKind`
       is added in task 4):
 
 ```java
@@ -314,9 +314,9 @@ public final class PublicationKinds {
 }
 ```
 
-- [ ] 1.5 Delete `EssayAdmission.java` and `EssayPublicationContract.java`.
+- [x] 1.5 Delete `EssayAdmission.java` and `EssayPublicationContract.java`.
 
-- [ ] 1.6 Update `PublicationContractWriter` to compose `PublicationKinds` instead of the hardcoded single-kind list:
+- [x] 1.6 Update `PublicationContractWriter` to compose `PublicationKinds` instead of the hardcoded single-kind list:
 
 ```java
 package dev.eugene.publicationexporter.contract;
@@ -331,7 +331,7 @@ public final class PublicationContractWriter {
 }
 ```
 
-- [ ] 1.7 Update `NoteIntake` to own the shared `publish` check and kind dispatch, delegating field-level
+- [x] 1.7 Update `NoteIntake` to own the shared `publish` check and kind dispatch, delegating field-level
       validation to the resolved kind, and take `PublicationKinds` as a constructor argument (design.md D3):
 
 ```java
@@ -477,7 +477,7 @@ public final class NoteIntake {
 }
 ```
 
-- [ ] 1.8 Split the old `EssayAdmissionTest`/`EssayAdmissionFixtures` by which layer now owns each case:
+- [x] 1.8 Split the old `EssayAdmissionTest`/`EssayAdmissionFixtures` by which layer now owns each case:
 
   **Dispatch-level cases move to `NoteIntakeTest`** (unpublished, wrong collection, wrong content type — these no
   longer reach a specific kind's `admit()`, `NoteIntake` blocks them before dispatch). Update
@@ -538,11 +538,11 @@ public final class NoteIntake {
     from `EssayAdmission.Result` to `AdmittedPublication` unchanged — `validEssayResultCarriesIdentityAndFields`
     needs no assertion changes beyond the type rename.
 
-- [ ] 1.9 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS, full suite green (this is a
+- [x] 1.9 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS, full suite green (this is a
       behaviour-preserving refactor — no acceptance test changed its expected outcome, only which class produces
       which diagnostic for the three moved cases).
 
-- [ ] 1.10 Commit:
+- [x] 1.10 Commit:
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/admission publication-exporter/src/main/java/dev/eugene/publicationexporter/contract publication-exporter/src/main/java/dev/eugene/publicationexporter/intake/NoteIntake.java publication-exporter/src/test/java/dev/eugene/publicationexporter/admission publication-exporter/src/test/java/dev/eugene/publicationexporter/intake/NoteIntakeTest.java
@@ -574,7 +574,7 @@ the one collaborator not already constructor-injected, unlike `TranslationWorker
 the composition root: it constructs one `PublicationKinds.installed()` → `new NoteIntake(kinds)` per run and
 passes it to whichever handler(s) it uses.
 
-- [ ] 2.1 `PrepareHandler`: add `NoteIntake noteIntake` as the **first** constructor parameter (mirroring the
+- [x] 2.1 `PrepareHandler`: add `NoteIntake noteIntake` as the **first** constructor parameter (mirroring the
       existing collaborator order), store it, and replace both internal `new NoteIntake().admit(...)` call sites
       (the `intake` field-name is fine to keep as a local variable name):
 
@@ -609,7 +609,7 @@ passes it to whichever handler(s) it uses.
   `NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);` to
   `NoteIntake.Result current = noteIntake.admit(notePath, vaultReader);`.
 
-- [ ] 2.2 `PublicNoteIndex`: take `NoteIntake` instead of constructing its own, full replacement:
+- [x] 2.2 `PublicNoteIndex`: take `NoteIntake` instead of constructing its own, full replacement:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -678,13 +678,13 @@ final class PublicNoteIndex {
   `intake.kind().routePrefix()`, which is where design.md D6 plugs in (`EssayPublicationKind.routePrefix()` returns
   `"essays"`, so existing essay-to-essay link tests keep resolving to `/essays/...` unchanged).
 
-- [ ] 2.3 `InspectPublicationHandler`: add `NoteIntake noteIntake` as the first constructor parameter, store it,
+- [x] 2.3 `InspectPublicationHandler`: add `NoteIntake noteIntake` as the first constructor parameter, store it,
       replace `new NoteIntake().admit(...)` (was line 44) with `noteIntake.admit(...)`.
 
-- [ ] 2.4 `RefreshPublicationQueueHandler`: add `NoteIntake noteIntake` as the first constructor parameter, store
+- [x] 2.4 `RefreshPublicationQueueHandler`: add `NoteIntake noteIntake` as the first constructor parameter, store
       it, replace `new NoteIntake().admit(...)` (was line 54) with `noteIntake.admit(...)`.
 
-- [ ] 2.5 `PublicationManifestHandler`: add a constructor taking `NoteIntake noteIntake` (this class previously had
+- [x] 2.5 `PublicationManifestHandler`: add a constructor taking `NoteIntake noteIntake` (this class previously had
       no constructor at all — it only had the default one), store it, replace `new NoteIntake().admit(...)` (was
       line 23) with `noteIntake.admit(...)`:
 
@@ -725,10 +725,10 @@ public final class PublicationManifestHandler {
 }
 ```
 
-- [ ] 2.6 `MarkReviewedHandler`: add `NoteIntake noteIntake` as the first constructor parameter, store it, replace
+- [x] 2.6 `MarkReviewedHandler`: add `NoteIntake noteIntake` as the first constructor parameter, store it, replace
       both `new NoteIntake().admit(...)` call sites (was lines 50 and 84) with `noteIntake.admit(...)`.
 
-- [ ] 2.7 Update each `*Command`'s `call()` to construct `PublicationKinds.installed()` and `new NoteIntake(kinds)`
+- [x] 2.7 Update each `*Command`'s `call()` to construct `PublicationKinds.installed()` and `new NoteIntake(kinds)`
       once, passing it into its handler(s):
 
   `PrepareCommand.java` (add imports `dev.eugene.publicationexporter.admission.PublicationKinds` and
@@ -780,7 +780,7 @@ public final class PublicationManifestHandler {
   `WritePublicationContractCommand.java`: **no change** — `PublicationContractWriter` already builds its own
   `PublicationKinds.installed()` internally (task 1.6).
 
-- [ ] 2.8 Update every test that constructs one of the 6 touched handlers (or `PublicNoteIndex`) directly to pass
+- [x] 2.8 Update every test that constructs one of the 6 touched handlers (or `PublicNoteIndex`) directly to pass
       `new NoteIntake(PublicationKinds.installed())` (or, for tests using `VaultReader.createNull(...)` fixtures
       exclusively, the same real `PublicationKinds.installed()` — there is no fake `PublicationKinds` needed since
       it is a pure in-memory value object, not an I/O boundary). This includes at minimum: `PrepareHandlerTest`,
@@ -791,10 +791,10 @@ public final class PublicationManifestHandler {
       InspectPublicationHandler(`, `new RefreshPublicationQueueHandler(`, `new PublicationManifestHandler(`, `new
       MarkReviewedHandler(`, `PublicNoteIndex.from(` across `src/test/java` to find every site.
 
-- [ ] 2.9 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS, full suite green — this task is
+- [x] 2.9 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS, full suite green — this task is
       wiring-only, no behaviour changed for essay.
 
-- [ ] 2.10 Commit:
+- [x] 2.10 Commit:
 
 ```bash
 git add publication-exporter/src
@@ -816,7 +816,7 @@ against a `PublicationKinds` that only knows essay — that is the expected RED 
 already silently blocks unknown kinds gracefully, the test fails at the assertion, not at compile time; either is
 an acceptable RED).
 
-- [ ] 3.1 Write the failing test:
+- [x] 3.1 Write the failing test:
 
 ```java
     private static final String VALID_NOTE = """
@@ -869,7 +869,7 @@ an acceptable RED).
   documented null-translation behaviour (check `TranslationWorker.java`'s `createNull()` factory) rather than
   assuming an identity translation.
 
-- [ ] 3.2 Run `mvn -q -o test -Dtest=PrepareHandlerTest` (or the new test class name). Expected: FAIL — either a
+- [x] 3.2 Run `mvn -q -o test -Dtest=PrepareHandlerTest` (or the new test class name). Expected: FAIL — either a
       compile error (if `PublicationKinds` doesn't yet expose a way to add `NotePublicationKind`, which it does
       via `installed()`'s hardcoded list) or an assertion failure with a `publicContentType`-field diagnostic,
       since `PublicationKinds.installed()` only knows `blog/essay` until task 4.
@@ -880,7 +880,7 @@ an acceptable RED).
 - Create: `publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/NotePublicationKind.java`
 - Modify: `publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/PublicationKinds.java`
 
-- [ ] 4.1 Create `NotePublicationKind` — same field contract shape as `EssayPublicationKind` (identity + title +
+- [x] 4.1 Create `NotePublicationKind` — same field contract shape as `EssayPublicationKind` (identity + title +
       description, no required structured body, matching `site/src/content.config.ts`'s `blogNote`'s all-optional
       `observation`/`model`/`boundary`/`experiment` fields — see design.md's Goals):
 
@@ -984,7 +984,7 @@ public final class NotePublicationKind implements PublicationKind {
   genuinely different required-field shape (`statement`, `claimKinds`, `supports`/`opposes`/etc.) and will be the
   first real evidence for whether a shared abstraction is warranted.
 
-- [ ] 4.2 Register it in `PublicationKinds.installed()`:
+- [x] 4.2 Register it in `PublicationKinds.installed()`:
 
 ```java
     public static PublicationKinds installed() {
@@ -992,20 +992,20 @@ public final class NotePublicationKind implements PublicationKind {
     }
 ```
 
-- [ ] 4.3 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS — task 3's acceptance test goes green,
+- [x] 4.3 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS — task 3's acceptance test goes green,
       and the full essay suite stays green (essay fixtures are untouched; `PublicationKinds.forIdentity("blog",
       "essay")` still resolves to the same `EssayPublicationKind`).
 
-- [ ] 4.4 Add the mirror-image kind-level fixture test for `NotePublicationKind`, following the exact structure of
+- [x] 4.4 Add the mirror-image kind-level fixture test for `NotePublicationKind`, following the exact structure of
       `EssayPublicationKindFixture`/`EssayPublicationKindFixtures`/`EssayPublicationKindTest` from task 1.8 —
       create `NotePublicationKindFixture.java`, `NotePublicationKindFixtures.java` (fixtures: `validNote`,
       `invalidPublicId`, `missingSourceId`, `missingTitle`, `blankDescription`, `missingPublicIdAndSourceId` — the
       same shape as essay's kind-level fixtures, with `publicContentType: note` and no essay-only body fields),
       and `NotePublicationKindTest.java`.
 
-- [ ] 4.5 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS.
+- [x] 4.5 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS.
 
-- [ ] 4.6 Commit:
+- [x] 4.6 Commit:
 
 ```bash
 git add publication-exporter/src
@@ -1036,7 +1036,7 @@ all today, for any kind. **No production change is needed in this file for PCM-0
 `blog/note` identity produces `contentType: "note"` and the same shared-field set as essay, closing the coverage
 gap rather than fixing a bug.
 
-- [ ] 5.1 Add a failing-then-passing test proving a link to a `blog/note` target resolves to `/notes/{id}/`. If
+- [x] 5.1 Add a failing-then-passing test proving a link to a `blog/note` target resolves to `/notes/{id}/`. If
       `LinkResolverTest` builds `PublicNoteIndex` directly via its `Map`-based constructor (unaffected by task 2's
       changes), add a case there:
 
@@ -1059,11 +1059,11 @@ gap rather than fixing a bug.
   existing link-resolution test (it already has one for essay-to-essay linking — mirror its structure with a
   `blog/note` target instead).
 
-- [ ] 5.2 Run the new test(s) first to confirm they pass (task 2.2's change already made this correct — this task
+- [x] 5.2 Run the new test(s) first to confirm they pass (task 2.2's change already made this correct — this task
       is closing the coverage gap, not fixing a still-open bug). If any assertion fails, the gap is in task 2.2 or
       4.1 — fix there, not by special-casing here.
 
-- [ ] 5.3 Add a PCM-02 test to `FilesystemManagedSiteInstallerTest` proving `contentType: "note"` is projected for
+- [x] 5.3 Add a PCM-02 test to `FilesystemManagedSiteInstallerTest` proving `contentType: "note"` is projected for
       a `blog/note` identity with the same shared-field set as essay, no essay-only fields. Follow the exact
       existing pattern (`IDENTITY`/`SNAPSHOT` constants and `installWritesBothLocaleFilesAndTheManifestIntoAbsentManagedRoots`,
       lines 33-99 of that file):
@@ -1105,14 +1105,14 @@ gap rather than fixing a bug.
   `FilesystemManagedSiteInstaller` to derive `contentType` from the identity rather than any hardcoded literal,
   and re-run.
 
-- [ ] 5.4 Add a `blog/note` row to `PublicationContractConformanceTest`'s shared fixture table (mirroring however
+- [x] 5.4 Add a `blog/note` row to `PublicationContractConformanceTest`'s shared fixture table (mirroring however
       it currently enumerates the essay row) so contract/runtime agreement is proven for both kinds — read the
       test's current structure first (it was written in S15, per `dec-20260811-ad8fc743`) and follow its existing
       pattern exactly rather than introducing a new fixture format.
 
-- [ ] 5.5 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS.
+- [x] 5.5 Run `mvn -q -o test` from `publication-exporter/`. Expected: PASS.
 
-- [ ] 5.6 Commit:
+- [x] 5.6 Commit:
 
 ```bash
 git add publication-exporter/src
@@ -1121,18 +1121,18 @@ git commit -m "test(exporter): prove blog/note link routing, frontmatter project
 
 ## 6. Full-suite verification and reflect-config check
 
-- [ ] 6.1 Run the complete suite once more from a clean state: `cd publication-exporter && mvn -q -o clean test`.
+- [x] 6.1 Run the complete suite once more from a clean state: `cd publication-exporter && mvn -q -o clean test`.
       Expected: PASS, zero failures, zero errors.
 
-- [ ] 6.2 Confirm no new `@JsonProperty`-annotated class was introduced without a corresponding
+- [x] 6.2 Confirm no new `@JsonProperty`-annotated class was introduced without a corresponding
       `publication-exporter/src/main/resources/META-INF/native-image/reflect-config.json` entry (see this file's
       global constraints — expected: none needed, `AdmittedPublication`/`PublicationKind`/`PublicationKinds` are
       all internal and never serialized).
 
-- [ ] 6.3 Confirm `git status` shows a clean, fully-committed working tree with `EssayAdmission.java` and
+- [x] 6.3 Confirm `git status` shows a clean, fully-committed working tree with `EssayAdmission.java` and
       `EssayPublicationContract.java` deleted (not just unreferenced) and no stray files.
 
-- [ ] 6.4 Re-read specs/publication-admission/spec.md and specs/public-content-model/spec.md in this change folder
+- [x] 6.4 Re-read specs/publication-admission/spec.md and specs/public-content-model/spec.md in this change folder
       and confirm every scenario in both delta files is covered by a passing test written in this plan (ADM-03's
       two new/modified scenarios, ADM-04's two, PCM-02's one, PCM-03's one, PCM-06's one). List any gap found and
       close it before treating this slice as done.

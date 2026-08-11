@@ -5,8 +5,11 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.buildfromreview.BuildFromReviewHandler;
+import dev.eugene.publicationexporter.buildfromreview.ReleaseResult;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
+import dev.eugene.publicationexporter.release.ReleaseOutputStore;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
 import dev.eugene.publicationexporter.vault.VaultAssetReader;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -35,7 +38,7 @@ class BlogNoteAcceptanceTest {
             A short observation body.""";
 
     @Test
-    void blogNoteCompletesPrepareAndApproveThroughTheSamePathAsEssay() {
+    void blogNoteCompletesPrepareApproveAndReleaseThroughTheSamePathAsEssay() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-note.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_NOTE));
         VaultAssetReader vaultAssetReader = VaultAssetReader.createNull();
@@ -60,5 +63,10 @@ class BlogNoteAcceptanceTest {
 
         assertTrue(approveResponse.ok());
         assertTrue(approvedSnapshotWorkspace.read(identity).isPresent());
+
+        ReleaseResult releaseResult = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, ReleaseOutputStore.createNull()).buildFromReview(identity);
+
+        assertTrue(releaseResult.ok());
     }
 }
