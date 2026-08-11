@@ -388,8 +388,8 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             String ruFieldsDocument = readApprovedText(approvedFile(approvedDirectory, "ru.fields.json"));
             String enFieldsDocument = readApprovedText(approvedFile(approvedDirectory, "en.fields.json"));
             String structuredData = readApprovedText(approvedFile(approvedDirectory, "structured.json"));
-            List<PublicField> ruFields = PublicFieldsCodec.read(ruFieldsDocument);
-            List<PublicField> enFields = PublicFieldsCodec.read(enFieldsDocument);
+            List<PublicField> ruFields = readPublicFields(ruFieldsDocument, "ru.fields.json");
+            List<PublicField> enFields = readPublicFields(enFieldsDocument, "en.fields.json");
             ReferenceMap referenceMap = readReferenceMap(approvedFile(approvedDirectory, "references.json"));
             return new SnapshotRead(
                     CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, structuredData, referenceMap),
@@ -412,6 +412,14 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
         } catch (UncheckedIOException | IllegalArgumentException | NullPointerException invalidReferenceMap) {
             throw new IOException("references.json is invalid", invalidReferenceMap);
+        }
+    }
+
+    private List<PublicField> readPublicFields(String fieldsDocument, String fileLabel) throws IOException {
+        try {
+            return PublicFieldsCodec.read(fieldsDocument);
+        } catch (UncheckedIOException | IllegalArgumentException | NullPointerException invalidFields) {
+            throw new IOException(fileLabel + " is invalid", invalidFields);
         }
     }
 

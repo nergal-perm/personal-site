@@ -321,6 +321,19 @@ class FilesystemCandidateWorkspaceTest {
     }
 
     @Test
+    void readReportsMalformedFieldDocumentAsAnUncheckedIoFailure() throws Exception {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        installSnapshot(workspace, "Valid");
+        Path fieldsPath = reviewRoot.resolve("blog/my-essay/candidate/ru.fields.json");
+        Files.writeString(fieldsPath, "null", StandardCharsets.UTF_8);
+
+        UncheckedIOException failure = assertThrows(
+                UncheckedIOException.class, () -> workspace.read(IDENTITY));
+
+        assertTrue(failure.getCause().getMessage().contains("ru.fields.json is invalid"));
+    }
+
+    @Test
     void readRejectsSymlinkedMemberFileEscapingReviewRoot() throws Exception {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, snapshot("RU body", "EN body", "Title", "EN Title", "Description.", "EN Description.",
@@ -387,6 +400,15 @@ class FilesystemCandidateWorkspaceTest {
     private ReferenceMap referenceMap(String generation) {
         return ReferenceMap.empty(IDENTITY, generation + "-ru", generation + "-en", generation + "-ru-title", generation + "-en-title", generation + "-en-description");
     }
+
+    private void installSnapshot(FilesystemCandidateWorkspace workspace, String generation) {
+        workspace.install(IDENTITY,
+                generation + " RU", generation + " EN",
+                generation + " RU title", generation + " EN title",
+                generation + " RU description", generation + " EN description",
+                referenceMap(generation));
+    }
+
     private static CandidateSnapshot snapshot(String ruBody, String enBody,
             String ruTitle, String enTitle, String ruDescription, String enDescription,
             ReferenceMap referenceMap) {

@@ -6,30 +6,19 @@ import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Objects;
 import java.util.Optional;
 
 public interface CandidateWorkspace {
 
-    default void install(PublicationIdentity identity, CandidateSnapshot content, List<CandidateAsset> assets) {
-        Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(content, "content");
-        Objects.requireNonNull(assets, "assets");
-        if (!assets.isEmpty()) {
-            throw new UnsupportedOperationException(
-                    "This CandidateWorkspace implementation (" + getClass()
-                            + ") does not support installing assets yet.");
-        }
-        install(identity, content.ruBody(), content.enBody(), content.ruFields(), content.enFields(),
-                content.structuredData(), content.referenceMap());
-    }
+    void install(PublicationIdentity identity, CandidateSnapshot content, List<CandidateAsset> assets);
 
     default void install(PublicationIdentity identity, String ruBody, String enBody,
             String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
-        install(identity, ruBody, enBody,
+        install(identity, CandidateSnapshot.of(
+                ruBody, enBody,
                 List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
                 List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
-                "", referenceMap);
+                "", referenceMap), List.of());
     }
 
     default void install(PublicationIdentity identity, String ruBody, String enBody,

@@ -156,10 +156,10 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         try {
             String ruBody = readCandidateText(candidateFile(candidateDirectory, "ru.md"));
             String enBody = readCandidateText(candidateFile(candidateDirectory, "en.md"));
-            List<PublicField> ruFields =
-                    PublicFieldsCodec.read(readCandidateText(candidateFile(candidateDirectory, "ru.fields.json")));
-            List<PublicField> enFields =
-                    PublicFieldsCodec.read(readCandidateText(candidateFile(candidateDirectory, "en.fields.json")));
+            List<PublicField> ruFields = readPublicFields(
+                    candidateFile(candidateDirectory, "ru.fields.json"), "ru.fields.json");
+            List<PublicField> enFields = readPublicFields(
+                    candidateFile(candidateDirectory, "en.fields.json"), "en.fields.json");
             String structuredData = readCandidateText(candidateFile(candidateDirectory, "structured.json"));
             ReferenceMap referenceMap = readReferenceMap(candidateFile(candidateDirectory, "references.json"));
             return snapshotMatching(expectedIdentity, ruBody, enBody, ruFields, enFields, structuredData, referenceMap);
@@ -176,6 +176,15 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
     private ReferenceMap readReferenceMap(Path referencesPath) throws IOException {
         requireWithinReviewRoot(referencesPath);
         return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
+    }
+
+    private List<PublicField> readPublicFields(Path fieldsPath, String fileLabel) throws IOException {
+        requireWithinReviewRoot(fieldsPath);
+        try {
+            return PublicFieldsCodec.read(Files.readString(fieldsPath, StandardCharsets.UTF_8));
+        } catch (UncheckedIOException | IllegalArgumentException | NullPointerException invalidFields) {
+            throw new IOException(fileLabel + " is invalid", invalidFields);
+        }
     }
 
     private static Optional<CandidateSnapshot> snapshotMatching(

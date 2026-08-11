@@ -468,6 +468,26 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void malformedCanonicalFieldDocumentIsReplacedByValidBackupAndReported() throws Exception {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        installSnapshot(workspace, "Old");
+        Path approvedDir = reviewRoot.resolve("blog/my-essay/approved");
+        Path backupDir = approvedDir.resolveSibling("approved-backup-" + java.util.UUID.randomUUID());
+        Files.move(approvedDir, backupDir, StandardCopyOption.ATOMIC_MOVE);
+        writeSnapshotDirectory(approvedDir, "New");
+        Files.writeString(approvedDir.resolve("ru.fields.json"), "null", StandardCharsets.UTF_8);
+
+        ApprovedSnapshotRecoveryException recovery = assertThrows(
+                ApprovedSnapshotRecoveryException.class, () -> workspace.read(IDENTITY));
+
+        assertTrue(recovery.getMessage().contains("integrity"));
+        CandidateSnapshot restored = workspace.read(IDENTITY).orElseThrow();
+        assertEquals("Old RU", restored.ruBody());
+        assertEquals("Old RU title", PublicField.value(restored.ruFields(), "title").orElseThrow());
+        assertTrue(Files.notExists(backupDir));
+    }
+
+    @Test
     void readRejectsAChangedFieldsDocumentEvenWhenItsJsonStillParses() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         installSnapshot(workspace, "Original");
