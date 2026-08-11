@@ -15,7 +15,7 @@ public final class EnglishCandidateValidator {
     private static final Pattern INTERNAL_RU_ROUTE =
             Pattern.compile("/ru/");
     private static final Pattern ASSET_REFERENCE =
-            Pattern.compile("/assets/vault/[^\\s)\\]]+");
+            Pattern.compile("(?<![A-Za-z0-9.-])/assets/vault/[^\\s)\\]]+");
 
     private EnglishCandidateValidator() {
     }
@@ -86,20 +86,20 @@ public final class EnglishCandidateValidator {
     }
 
     private static Set<String> droppedMatches(String ruBody, String enBody, Pattern pattern) {
-        Set<String> ruUrls = extractMatches(ruBody, pattern);
-        Set<String> enUrls = extractMatches(enBody, pattern);
-        Set<String> dropped = new LinkedHashSet<>(ruUrls);
-        dropped.removeAll(enUrls);
-        return dropped;
+        Set<String> ruMatches = extractMatches(ruBody, pattern);
+        Set<String> enMatches = extractMatches(enBody, pattern);
+        Set<String> matches = new LinkedHashSet<>(ruMatches);
+        matches.removeAll(enMatches);
+        return matches;
     }
 
     private static Set<String> extractMatches(String text, Pattern pattern) {
-        Set<String> urls = new LinkedHashSet<>();
+        Set<String> matches = new LinkedHashSet<>();
         Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
-            urls.add(matcher.group());
+            matches.add(matcher.group());
         }
-        return urls;
+        return matches;
     }
 
     public static final class Result {
