@@ -7,6 +7,7 @@ import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidateAsset;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
@@ -18,6 +19,7 @@ import dev.eugene.publicationexporter.translation.TranslationFailure;
 import dev.eugene.publicationexporter.translation.TranslationJob;
 import dev.eugene.publicationexporter.translation.TranslationOutcome;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
+import dev.eugene.publicationexporter.vault.VaultAssetReader;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import dev.eugene.publicationexporter.workflow.WorkflowState;
@@ -52,7 +54,8 @@ public final class PrepareHandler {
         this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
     }
 
-    public BridgeResponse prepare(VaultRelativePath notePath, VaultReader vaultReader) {
+    public BridgeResponse prepare(
+            VaultRelativePath notePath, VaultReader vaultReader, VaultAssetReader vaultAssetReader) {
         NoteIntake.Result intake = new NoteIntake().admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
@@ -65,14 +68,18 @@ public final class PrepareHandler {
         }
         return MarkdownNormalizer.normalize(intake.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        resolvedBody -> prepareNormalizedEssay(notePath, vaultReader, intake, resolvedBody, knownNotes),
+                        resolvedBody -> AssetResolver.resolve(resolvedBody, vaultAssetReader).resolve(
+                                (assetResolvedBody, assets) -> prepareNormalizedEssay(notePath, vaultReader,
+                                        intake, assetResolvedBody, assets, knownNotes, vaultAssetReader),
+                                PrepareHandler::assetBlockedFailure),
                         PrepareHandler::transclusionBlockedFailure),
                 position -> unclosedCommentFailure(position));
     }
 
     private BridgeResponse prepareNormalizedEssay(
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
-            String normalizedBody, PublicNoteIndex knownNotes) {
+            String normalizedBody, List<CandidateAsset> assets, PublicNoteIndex knownNotes,
+            VaultAssetReader vaultAssetReader) {
         ApprovedBaselineLookup approved = lookupApprovedBaseline(intake, normalizedBody);
         if (approved.failed()) {
             return approved.failureResponse();
@@ -80,7 +87,8 @@ public final class PrepareHandler {
         if (approved.snapshot().isPresent()) {
             return mirrorApprovedCandidate(intake.identity(), approved.snapshot().get());
         }
-        return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody, knownNotes);
+        return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody, assets,
+                knownNotes, vaultAssetReader);
     }
 
     private ApprovedBaselineLookup lookupApprovedBaseline(NoteIntake.Result intake, String normalizedBody) {
@@ -113,12 +121,14 @@ public final class PrepareHandler {
 
     private BridgeResponse prepareWithInstallLock(
             VaultRelativePath notePath, VaultReader vaultReader,
-            NoteIntake.Result intake, String normalizedBody, PublicNoteIndex knownNotes) {
+            NoteIntake.Result intake, String normalizedBody, List<CandidateAsset> assets,
+            PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
         ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());
         installLock.lock();
         try {
             return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
-                    intake.sourceHash(), normalizedBody, intake.title(), intake.description(), knownNotes);
+                    intake.sourceHash(), normalizedBody, intake.title(), intake.description(), assets,
+                    knownNotes, vaultAssetReader);
         } finally {
             installLock.unlock();
         }
@@ -141,20 +151,19 @@ public final class PrepareHandler {
         if (candidateWorkspace.find(identity).isPresent()) {
             return;
         }
-        candidateWorkspace.install(identity, approved.ruBody(), approved.enBody(),
-                approved.ruTitle(), approved.enTitle(), approved.ruDescription(), approved.enDescription(),
-                approved.referenceMap());
+        candidateWorkspace.install(identity, approved, List.of());
     }
 
     private BridgeResponse prepareAdmittedEssay(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String sourceHash,
-            String ruBody, String ruTitle, String ruDescription, PublicNoteIndex knownNotes) {
+            String ruBody, String ruTitle, String ruDescription, List<CandidateAsset> assets,
+            PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
         TranslationJob job = TranslationJob.forSource(ruBody, ruTitle, ruDescription);
         return translateCandidate(job, ruBody, ruTitle, ruDescription).resolve(
                 translation -> prepareTranslatedEssay(
                         notePath, vaultReader, identity, sourceHash,
-                        ruBody, ruTitle, ruDescription, job, translation, knownNotes),
+                        ruBody, ruTitle, ruDescription, assets, job, translation, knownNotes, vaultAssetReader),
                 failure -> {
                     recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
                     return translationFailure(failure);
@@ -165,8 +174,8 @@ public final class PrepareHandler {
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String sourceHash,
             String ruBody, String ruTitle, String ruDescription,
-            TranslationJob job,
-            EnglishTranslation translation, PublicNoteIndex knownNotes) {
+            List<CandidateAsset> assets, TranslationJob job,
+            EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
         String enBody = translation.body();
         String enTitle = translation.title();
         String enDescription = translation.description();
@@ -177,12 +186,12 @@ public final class PrepareHandler {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
-        return sourceFreshness(notePath, vaultReader, identity, job, knownNotes).resolve(
+        return sourceFreshness(notePath, vaultReader, identity, job, knownNotes, vaultAssetReader).resolve(
                 currentSourceHash -> {
                     ReferenceMap referenceMap = buildReferenceMap(
                             identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
                     BridgeResponse response = installCandidate(identity, ruBody, enBody, ruTitle, enTitle,
-                            ruDescription, enDescription, referenceMap);
+                            ruDescription, enDescription, referenceMap, assets);
                     if (response.ok()) {
                         recordWorkflowStatus(notePath, currentSourceHash, WorkflowState.READY_FOR_REVIEW);
                     }
@@ -195,7 +204,8 @@ public final class PrepareHandler {
                                     "candidate", "Source note changed while translation was in progress."));
                 },
                 PrepareHandler::unclosedCommentFailure,
-                PrepareHandler::transclusionBlockedFailure);
+                PrepareHandler::transclusionBlockedFailure,
+                PrepareHandler::assetBlockedFailure);
     }
 
     private void recordWorkflowStatus(VaultRelativePath notePath, String sourceHash, String status) {
@@ -225,16 +235,20 @@ public final class PrepareHandler {
 
     private static SourceFreshnessOutcome sourceFreshness(
             VaultRelativePath notePath, VaultReader vaultReader,
-            PublicationIdentity expectedIdentity, TranslationJob job, PublicNoteIndex knownNotes) {
+            PublicationIdentity expectedIdentity, TranslationJob job, PublicNoteIndex knownNotes,
+            VaultAssetReader vaultAssetReader) {
         NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
             return SourceFreshnessOutcome.stale();
         }
         return MarkdownNormalizer.normalize(current.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        resolvedBody -> sourceFingerprintMatches(job, resolvedBody, current.title(), current.description())
-                                ? SourceFreshnessOutcome.matches(current.sourceHash())
-                                : SourceFreshnessOutcome.stale(),
+                        resolvedBody -> AssetResolver.resolve(resolvedBody, vaultAssetReader).resolve(
+                                (assetResolvedBody, ignoredAssets) ->
+                                        sourceFingerprintMatches(job, assetResolvedBody, current.title(), current.description())
+                                                ? SourceFreshnessOutcome.matches(current.sourceHash())
+                                                : SourceFreshnessOutcome.stale(),
+                                SourceFreshnessOutcome::assetBlocked),
                         SourceFreshnessOutcome::blockedTransclusion),
                 SourceFreshnessOutcome::unclosedComment);
     }
@@ -263,10 +277,11 @@ public final class PrepareHandler {
     private BridgeResponse installCandidate(
             PublicationIdentity identity, String ruBody, String enBody,
             String ruTitle, String enTitle, String ruDescription, String enDescription,
-            ReferenceMap referenceMap) {
+            ReferenceMap referenceMap, List<CandidateAsset> assets) {
         try {
-            candidateWorkspace.install(identity, ruBody, enBody,
-                    ruTitle, enTitle, ruDescription, enDescription, referenceMap);
+            candidateWorkspace.install(identity,
+                    CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap),
+                    assets);
         } catch (UncheckedIOException failure) {
             return candidateFailure(IoFailureMessages.describe("Candidate installation failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
@@ -308,6 +323,11 @@ public final class PrepareHandler {
     private static BridgeResponse transclusionBlockedFailure(String target) {
         return BridgeResponse.translationFailed(COMMAND,
                 Diagnostic.blocking("candidate", "Transclusion target \"" + target + "\" is not a public note."));
+    }
+
+    private static BridgeResponse assetBlockedFailure(String reference) {
+        return BridgeResponse.translationFailed(COMMAND,
+                Diagnostic.blocking("candidate", "Asset reference \"" + reference + "\" could not be resolved."));
     }
 
     private record ApprovedBaselineLookup(

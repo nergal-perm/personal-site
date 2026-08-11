@@ -14,10 +14,11 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
     private final List<InstalledCandidate> installed = new ArrayList<>();
 
     @Override
-    public void install(PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
-        installed.add(InstalledCandidate.of(identity, ruBody, enBody, ruTitle, enTitle,
-                ruDescription, enDescription, referenceMap));
+    public void install(PublicationIdentity identity, CandidateSnapshot content, List<CandidateAsset> assets) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(content, "content");
+        Objects.requireNonNull(assets, "assets");
+        installed.add(InstalledCandidate.of(identity, content, assets));
     }
 
     @Override
@@ -30,10 +31,8 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
     public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
         Objects.requireNonNull(identity, "identity");
         return lastInstalledMatching(identity)
-                .filter(candidate -> candidate.referenceMap().identity().equals(identity))
-                .map(candidate -> CandidateSnapshot.of(candidate.ruBody(), candidate.enBody(), candidate.ruTitle(),
-                        candidate.enTitle(), candidate.ruDescription(), candidate.enDescription(),
-                        candidate.referenceMap()));
+                .filter(candidate -> candidate.content().referenceMap().identity().equals(identity))
+                .map(InstalledCandidate::content);
     }
 
     private Optional<InstalledCandidate> lastInstalledMatching(PublicationIdentity identity) {
@@ -59,64 +58,57 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
     public static final class InstalledCandidate {
 
         private final PublicationIdentity identity;
-        private final String ruBody;
-        private final String enBody;
-        private final String ruTitle;
-        private final String enTitle;
-        private final String ruDescription;
-        private final String enDescription;
-        private final ReferenceMap referenceMap;
+        private final CandidateSnapshot content;
+        private final List<CandidateAsset> assets;
 
-        private InstalledCandidate(
-                PublicationIdentity identity, String ruBody, String enBody, String ruTitle, String enTitle,
-                String ruDescription, String enDescription, ReferenceMap referenceMap) {
+        private InstalledCandidate(PublicationIdentity identity, CandidateSnapshot content, List<CandidateAsset> assets) {
             this.identity = Objects.requireNonNull(identity, "identity");
-            this.ruBody = Objects.requireNonNull(ruBody, "ruBody");
-            this.enBody = Objects.requireNonNull(enBody, "enBody");
-            this.ruTitle = Objects.requireNonNull(ruTitle, "ruTitle");
-            this.enTitle = Objects.requireNonNull(enTitle, "enTitle");
-            this.ruDescription = Objects.requireNonNull(ruDescription, "ruDescription");
-            this.enDescription = Objects.requireNonNull(enDescription, "enDescription");
-            this.referenceMap = Objects.requireNonNull(referenceMap, "referenceMap");
+            this.content = Objects.requireNonNull(content, "content");
+            this.assets = List.copyOf(Objects.requireNonNull(assets, "assets"));
         }
 
-        public static InstalledCandidate of(
-                PublicationIdentity identity, String ruBody, String enBody, String ruTitle, String enTitle,
-                String ruDescription, String enDescription, ReferenceMap referenceMap) {
-            return new InstalledCandidate(identity, ruBody, enBody, ruTitle, enTitle,
-                    ruDescription, enDescription, referenceMap);
+        public static InstalledCandidate of(PublicationIdentity identity, CandidateSnapshot content, List<CandidateAsset> assets) {
+            return new InstalledCandidate(identity, content, assets);
         }
 
         public PublicationIdentity identity() {
             return identity;
         }
 
+        public CandidateSnapshot content() {
+            return content;
+        }
+
+        public List<CandidateAsset> assets() {
+            return assets;
+        }
+
         public String ruBody() {
-            return ruBody;
+            return content.ruBody();
         }
 
         public String enBody() {
-            return enBody;
+            return content.enBody();
         }
 
         public String ruTitle() {
-            return ruTitle;
+            return content.ruTitle();
         }
 
         public String enTitle() {
-            return enTitle;
+            return content.enTitle();
         }
 
         public String ruDescription() {
-            return ruDescription;
+            return content.ruDescription();
         }
 
         public String enDescription() {
-            return enDescription;
+            return content.enDescription();
         }
 
         public ReferenceMap referenceMap() {
-            return referenceMap;
+            return content.referenceMap();
         }
 
         @Override
@@ -127,28 +119,17 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
             if (!(other instanceof InstalledCandidate that)) {
                 return false;
             }
-            return identity.equals(that.identity)
-                    && ruBody.equals(that.ruBody)
-                    && enBody.equals(that.enBody)
-                    && ruTitle.equals(that.ruTitle)
-                    && enTitle.equals(that.enTitle)
-                    && ruDescription.equals(that.ruDescription)
-                    && enDescription.equals(that.enDescription)
-                    && referenceMap.equals(that.referenceMap);
+            return identity.equals(that.identity) && content.equals(that.content) && assets.equals(that.assets);
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap);
+            return Objects.hash(identity, content, assets);
         }
 
         @Override
         public String toString() {
-            return "InstalledCandidate[identity=" + identity
-                    + ", ruBody=" + ruBody + ", enBody=" + enBody
-                    + ", ruTitle=" + ruTitle + ", enTitle=" + enTitle
-                    + ", ruDescription=" + ruDescription + ", enDescription=" + enDescription
-                    + ", referenceMap=" + referenceMap + "]";
+            return "InstalledCandidate[identity=" + identity + ", content=" + content + ", assets=" + assets + "]";
         }
     }
 }

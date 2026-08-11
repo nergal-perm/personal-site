@@ -4,12 +4,25 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Objects;
 import java.util.Optional;
 
 public interface CandidateWorkspace {
 
-    void install(PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap);
+    default void install(PublicationIdentity identity, CandidateSnapshot content, List<CandidateAsset> assets) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(content, "content");
+        Objects.requireNonNull(assets, "assets");
+        install(identity, content.ruBody(), content.enBody(), content.ruTitle(), content.enTitle(),
+                content.ruDescription(), content.enDescription(), content.referenceMap());
+    }
+
+    default void install(PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
+        install(identity, CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
+                ruDescription, enDescription, referenceMap), List.of());
+    }
 
     Optional<CandidatePaths> find(PublicationIdentity identity);
 

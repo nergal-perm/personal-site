@@ -8,6 +8,7 @@ import dev.eugene.publicationexporter.prepare.PrepareHandler;
 import dev.eugene.publicationexporter.translation.ProcessTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationEngineConfiguration;
 import dev.eugene.publicationexporter.translation.TranslationWorker;
+import dev.eugene.publicationexporter.vault.VaultAssetReader;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
@@ -75,13 +76,14 @@ public final class PrepareCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
+        VaultAssetReader vaultAssetReader = VaultAssetReader.create(vaultRoot);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
         WorkflowStatusEditor workflowStatusEditor = WorkflowStatusEditor.create(vaultRoot);
         TranslationWorker translationWorker = translationWorkerForJobRoot.apply(jobsDirectory);
         BridgeResponse response = new PrepareHandler(
                 translationWorker, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor)
-                .prepare(VaultRelativePath.of(notePath), vaultReader);
+                .prepare(VaultRelativePath.of(notePath), vaultReader, vaultAssetReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));
         return response.ok() ? 0 : 1;

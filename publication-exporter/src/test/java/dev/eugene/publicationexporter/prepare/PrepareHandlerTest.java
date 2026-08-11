@@ -39,6 +39,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
@@ -71,7 +72,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
-        handler.prepare(path, vaultReader);
+        handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertEquals("ready_for_review", editor.currentValue(path, "workflowStatus"));
     }
@@ -104,7 +105,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertEquals("ready_for_review", response.status());
         assertEquals("ready_for_review", editor.currentValue(path, "workflowStatus"));
@@ -119,7 +120,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNullFailing("worker crashed"),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
-        handler.prepare(path, vaultReader);
+        handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertEquals("translation_failed", editor.currentValue(path, "workflowStatus"));
     }
@@ -150,7 +151,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertEquals("stale", response.status());
         assertEquals("stale", editor.currentValue(path, "workflowStatus"));
@@ -184,7 +185,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -204,7 +205,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals("ready_for_review", response.status());
@@ -222,7 +223,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 new NullCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals("ready_for_review", response.status());
@@ -252,7 +253,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -270,7 +271,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals("ready_for_review", response.status());
@@ -328,7 +329,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(validPath, vaultReader);
+        BridgeResponse response = handler.prepare(validPath, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals(1, workspace.installed().size());
@@ -344,7 +345,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNullFailing("worker crashed"), workspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -361,7 +362,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull(" \n\t", "Translated title", "Translated description."), workspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -378,7 +379,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", " \n\t", "Translated description."), workspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -395,7 +396,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", " \n\t"), workspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -423,7 +424,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -441,7 +442,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(worker, CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        handler.prepare(path, vaultReader);
+        handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertEquals(1, worker.requested().size());
         assertEquals("# My Essay\n\nPlain prose body.", worker.requested().get(0).ruBody());
@@ -475,7 +476,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals(1, workspace.installed().size());
@@ -507,7 +508,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals("# My Essay\n\nExample syntax: `[[Some Note]]` is a wiki-link.",
@@ -543,7 +544,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals("# My Essay\n\nPublic prose.\n\n```markdown\n"
@@ -580,7 +581,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -629,7 +630,7 @@ class PrepareHandlerTest {
                 WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(
-                path, VaultReader.createNull(Map.of(path, essayWithComment)));
+                path, VaultReader.createNull(Map.of(path, essayWithComment)), VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals("ready_for_review", response.status());
@@ -647,11 +648,11 @@ class PrepareHandlerTest {
         new PrepareHandler(TranslationWorker.createNull(
                 "Translated body", "Translated title", "Translated description."), firstWorkspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull())
-                .prepare(path, vaultReader);
+                .prepare(path, vaultReader, VaultAssetReader.createNull());
         new PrepareHandler(TranslationWorker.createNull(
                 "Translated body", "Translated title", "Translated description."), secondWorkspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull())
-                .prepare(path, vaultReader);
+                .prepare(path, vaultReader, VaultAssetReader.createNull());
 
         NullCandidateWorkspace.InstalledCandidate first = firstWorkspace.installed().get(0);
         NullCandidateWorkspace.InstalledCandidate second = secondWorkspace.installed().get(0);
@@ -672,7 +673,8 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(VaultRelativePath.of("../../etc/passwd.md"), vaultReader);
+        BridgeResponse response = handler.prepare(
+                VaultRelativePath.of("../../etc/passwd.md"), vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -686,7 +688,8 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(VaultRelativePath.of("blog/does-not-exist.md"), vaultReader);
+        BridgeResponse response = handler.prepare(
+                VaultRelativePath.of("blog/does-not-exist.md"), vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -716,7 +719,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("EN", "EN title", "EN description."), CandidateWorkspace.createNull(),
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("Note path must name a Markdown file.", response.diagnostics().get(0).message());
@@ -730,7 +733,7 @@ class PrepareHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
 
         BridgeResponse response = handler.prepare(path,
-                failingReader(new NoSuchElementException("gone")));
+                failingReader(new NoSuchElementException("gone")), VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -745,7 +748,7 @@ class PrepareHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
 
         BridgeResponse response = handler.prepare(path,
-                failingReader(new UncheckedIOException(new IOException("unreadable"))));
+                failingReader(new UncheckedIOException(new IOException("unreadable"))), VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -763,7 +766,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 failingWorker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -814,10 +817,12 @@ class PrepareHandlerTest {
                 controlledWorker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
         ExecutorService executor = Executors.newFixedThreadPool(2);
         try {
-            Future<BridgeResponse> stalePreparation = executor.submit(() -> firstHandler.prepare(path, vaultReader));
+            Future<BridgeResponse> stalePreparation = executor.submit(
+                    () -> firstHandler.prepare(path, vaultReader, VaultAssetReader.createNull()));
             assertTrue(firstTranslationStarted.await(5, TimeUnit.SECONDS));
             source.set(essayWithBody("Second source body."));
-            Future<BridgeResponse> freshPreparation = executor.submit(() -> secondHandler.prepare(path, vaultReader));
+            Future<BridgeResponse> freshPreparation = executor.submit(
+                    () -> secondHandler.prepare(path, vaultReader, VaultAssetReader.createNull()));
 
             releaseFirstTranslation.countDown();
             releaseSecondTranslation.countDown();
@@ -862,7 +867,7 @@ class PrepareHandlerTest {
                         "Translated body", "Translated title", "Translated description."), failingWorkspace,
                 ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -884,7 +889,7 @@ class PrepareHandlerTest {
                 CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.createNull(),
                 WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -904,7 +909,8 @@ class PrepareHandlerTest {
 
         BridgeResponse response = handler.prepare(
                 VaultRelativePath.of("blog/my-essay.md"),
-                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)),
+                VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -927,7 +933,8 @@ class PrepareHandlerTest {
 
         BridgeResponse response = handler.prepare(
                 VaultRelativePath.of("blog/my-essay.md"),
-                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)),
+                VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
@@ -948,7 +955,7 @@ class PrepareHandlerTest {
                 WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(
-                path, VaultReader.createNull(Map.of(path, VALID_ESSAY)));
+                path, VaultReader.createNull(Map.of(path, VALID_ESSAY)), VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals("ready_for_review", response.status());
@@ -1012,7 +1019,7 @@ class PrepareHandlerTest {
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(referrerPath, vaultReader);
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
         assertEquals(
@@ -1059,7 +1066,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
 
-        BridgeResponse response = handler.prepare(referrerPath, vaultReader);
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
@@ -1080,7 +1087,7 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(referrerPath, vaultReader);
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
 
         assertEquals("Transclusion target \"Черновик\" is not a public note.",
                 response.diagnostics().get(0).message());
@@ -1088,7 +1095,7 @@ class PrepareHandlerTest {
     }
 
     @Test
-    void assetEmbedIsLeftUntouchedByLinkResolution() {
+    void assetEmbedIsResolvedAfterLinkResolution() {
         String essay = """
                 ---
                 publish: true
@@ -1106,15 +1113,19 @@ class PrepareHandlerTest {
                 More prose.""";
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        byte[] imageBytes = "pretend-png-bytes".getBytes(StandardCharsets.UTF_8);
+        VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of("diagram.png", imageBytes));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
-        BridgeResponse response = handler.prepare(path, vaultReader);
+        BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
 
         assertTrue(response.ok());
-        assertEquals("# My Essay\n\n![[diagram.png]]\n\nMore prose.", workspace.installed().get(0).ruBody());
+        String expectedDigest = ContentHash.sha256Hex(imageBytes);
+        assertEquals("# My Essay\n\n![diagram](/assets/vault/" + expectedDigest + ".png)\n\nMore prose.",
+                workspace.installed().get(0).ruBody());
     }
 
     @Test
@@ -1152,6 +1163,9 @@ class PrepareHandlerTest {
         assertEquals(
                 "# My Essay\n\n![diagram](/assets/vault/" + expectedDigest + ".png)\n\nMore prose.",
                 workspace.installed().get(0).ruBody());
+        assertEquals(1, workspace.installed().get(0).assets().size());
+        assertEquals(expectedDigest + ".png", workspace.installed().get(0).assets().get(0).publicName());
+        assertArrayEquals(imageBytes, workspace.installed().get(0).assets().get(0).content());
     }
 
     @Test
@@ -1224,6 +1238,9 @@ class PrepareHandlerTest {
         assertEquals(
                 "# My Essay\n\n![cover](" + expectedReference + ") and ![cover](" + expectedReference + ")",
                 workspace.installed().get(0).ruBody());
+        assertEquals(1, workspace.installed().get(0).assets().size());
+        assertEquals(expectedDigest + ".png", workspace.installed().get(0).assets().get(0).publicName());
+        assertArrayEquals(sharedBytes, workspace.installed().get(0).assets().get(0).content());
     }
 
     private VaultReader failingReader(RuntimeException failure) {
