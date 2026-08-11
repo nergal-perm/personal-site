@@ -14,6 +14,8 @@ public final class EnglishCandidateValidator {
             Pattern.compile("https?://[^\\s)\\]]+");
     private static final Pattern INTERNAL_RU_ROUTE =
             Pattern.compile("/ru/");
+    private static final Pattern ASSET_REFERENCE =
+            Pattern.compile("/assets/vault/[^\\s)\\]]+");
 
     private EnglishCandidateValidator() {
     }
@@ -28,6 +30,7 @@ public final class EnglishCandidateValidator {
         diagnostics.addAll(blankFieldDiagnostics(enBody, enTitle, enDescription));
         diagnostics.addAll(internalRouteDiagnostics(enBody, enTitle, enDescription));
         diagnostics.addAll(droppedUrlDiagnostics(ruBody, enBody));
+        diagnostics.addAll(droppedAssetReferenceDiagnostics(ruBody, enBody));
         return diagnostics.isEmpty() ? Result.ok() : Result.invalid(diagnostics);
     }
 
@@ -68,23 +71,31 @@ public final class EnglishCandidateValidator {
 
     private static List<String> droppedUrlDiagnostics(String ruBody, String enBody) {
         List<String> diagnostics = new ArrayList<>();
-        for (String droppedUrl : droppedExternalUrls(ruBody, enBody)) {
+        for (String droppedUrl : droppedMatches(ruBody, enBody, EXTERNAL_URL)) {
             diagnostics.add("English candidate dropped external URL " + droppedUrl + ".");
         }
         return diagnostics;
     }
 
-    private static Set<String> droppedExternalUrls(String ruBody, String enBody) {
-        Set<String> ruUrls = extractUrls(ruBody);
-        Set<String> enUrls = extractUrls(enBody);
+    private static List<String> droppedAssetReferenceDiagnostics(String ruBody, String enBody) {
+        List<String> diagnostics = new ArrayList<>();
+        for (String droppedReference : droppedMatches(ruBody, enBody, ASSET_REFERENCE)) {
+            diagnostics.add("English candidate dropped asset reference " + droppedReference + ".");
+        }
+        return diagnostics;
+    }
+
+    private static Set<String> droppedMatches(String ruBody, String enBody, Pattern pattern) {
+        Set<String> ruUrls = extractMatches(ruBody, pattern);
+        Set<String> enUrls = extractMatches(enBody, pattern);
         Set<String> dropped = new LinkedHashSet<>(ruUrls);
         dropped.removeAll(enUrls);
         return dropped;
     }
 
-    private static Set<String> extractUrls(String text) {
+    private static Set<String> extractMatches(String text, Pattern pattern) {
         Set<String> urls = new LinkedHashSet<>();
-        Matcher matcher = EXTERNAL_URL.matcher(text);
+        Matcher matcher = pattern.matcher(text);
         while (matcher.find()) {
             urls.add(matcher.group());
         }

@@ -1114,17 +1114,20 @@ class PrepareHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
         byte[] imageBytes = "pretend-png-bytes".getBytes(StandardCharsets.UTF_8);
+        String expectedDigest = ContentHash.sha256Hex(imageBytes);
+        String expectedReference = "/assets/vault/" + expectedDigest + ".png";
         VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of("diagram.png", imageBytes));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull(
+                        "# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.",
+                        "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
 
         assertTrue(response.ok());
-        String expectedDigest = ContentHash.sha256Hex(imageBytes);
-        assertEquals("# My Essay\n\n![diagram](/assets/vault/" + expectedDigest + ".png)\n\nMore prose.",
+        assertEquals("# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.",
                 workspace.installed().get(0).ruBody());
     }
 
@@ -1151,17 +1154,20 @@ class PrepareHandlerTest {
         VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of(
                 "diagram.png", imageBytes,
                 "other/diagram.png", "different-bytes".getBytes(StandardCharsets.UTF_8)));
+        String expectedDigest = ContentHash.sha256Hex(imageBytes);
+        String expectedReference = "/assets/vault/" + expectedDigest + ".png";
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull(
+                        "# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.",
+                        "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
 
         assertTrue(response.ok());
-        String expectedDigest = ContentHash.sha256Hex(imageBytes);
         assertEquals(
-                "# My Essay\n\n![diagram](/assets/vault/" + expectedDigest + ".png)\n\nMore prose.",
+                "# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.",
                 workspace.installed().get(0).ruBody());
         assertEquals(1, workspace.installed().get(0).assets().size());
         assertEquals(expectedDigest + ".png", workspace.installed().get(0).assets().get(0).publicName());
@@ -1225,16 +1231,18 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
         VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of(
                 "a/cover.png", sharedBytes, "b/cover.png", sharedBytes));
+        String expectedDigest = ContentHash.sha256Hex(sharedBytes);
+        String expectedReference = "/assets/vault/" + expectedDigest + ".png";
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
-                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                TranslationWorker.createNull(
+                        "# My Essay\n\n![cover](" + expectedReference + ") and ![cover](" + expectedReference + ")",
+                        "Translated title", "Translated description."),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
 
         assertTrue(response.ok());
-        String expectedDigest = ContentHash.sha256Hex(sharedBytes);
-        String expectedReference = "/assets/vault/" + expectedDigest + ".png";
         assertEquals(
                 "# My Essay\n\n![cover](" + expectedReference + ") and ![cover](" + expectedReference + ")",
                 workspace.installed().get(0).ruBody());

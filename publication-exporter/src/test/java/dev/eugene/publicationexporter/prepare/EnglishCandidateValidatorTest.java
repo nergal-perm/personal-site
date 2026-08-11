@@ -114,6 +114,29 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void droppedAssetReferenceIsReportedAsInvalid() {
+        String ruBody = "See ![cover](/assets/vault/abc123.png).";
+        String enBody = "See the cover image.";
+
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                ruBody, enBody, "Title", "Description.");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("dropped asset reference")));
+    }
+
+    @Test
+    void preservedAssetReferenceIsValid() {
+        String ruBody = "See ![cover](/assets/vault/abc123.png).";
+        String enBody = "See ![cover](/assets/vault/abc123.png).";
+
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                ruBody, enBody, "Title", "Description.");
+
+        assertTrue(result.valid());
+    }
+
+    @Test
     void resultSupportsValueEqualityAndHashing() {
         EnglishCandidateValidator.Result first = EnglishCandidateValidator.validate(
                 "Текст", "See https://example.com/x", "Title", "Description");
