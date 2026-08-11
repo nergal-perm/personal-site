@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -1113,6 +1114,113 @@ class PrepareHandlerTest {
 
         assertTrue(response.ok());
         assertEquals("# My Essay\n\n![[diagram.png]]\n\nMore prose.", workspace.installed().get(0).ruBody());
+    }
+
+    @Test
+    void assetEmbedWithAnExactVaultRelativeMatchResolvesToAContentAddressedReference() {
+        byte[] imageBytes = "pretend-png-bytes".getBytes(StandardCharsets.UTF_8);
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                ![[diagram.png]]
+
+                More prose.""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of("diagram.png", imageBytes));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
+
+        assertTrue(response.ok());
+        String expectedDigest = ContentHash.sha256Hex(imageBytes);
+        assertEquals(
+                "# My Essay\n\n![diagram](/assets/vault/" + expectedDigest + ".png)\n\nMore prose.",
+                workspace.installed().get(0).ruBody());
+    }
+
+    @Test
+    void ambiguousAssetBasenameBlocksPreparationWithoutInstallingACandidate() {
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                ![[logo.png]]""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of(
+                "assets/logo.png", "a".getBytes(StandardCharsets.UTF_8),
+                "archive/logo.png", "b".getBytes(StandardCharsets.UTF_8)));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, essay));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", "EN title", "EN description."));
+        PrepareHandler handler = new PrepareHandler(
+                worker, workspace, ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(worker.requested().isEmpty());
+        assertTrue(workspace.installed().isEmpty());
+        assertEquals(null, editor.currentValue(path, "workflowStatus"));
+    }
+
+    @Test
+    void identicalAssetBytesReferencedTwiceMaterializeAsOnePublicAsset() {
+        byte[] sharedBytes = "same-bytes".getBytes(StandardCharsets.UTF_8);
+        String essay = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                ![[a/cover.png]] and ![[b/cover.png]]""";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, essay));
+        VaultAssetReader vaultAssetReader = VaultAssetReader.createNull(Map.of(
+                "a/cover.png", sharedBytes, "b/cover.png", sharedBytes));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, vaultAssetReader);
+
+        assertTrue(response.ok());
+        String expectedDigest = ContentHash.sha256Hex(sharedBytes);
+        String expectedReference = "/assets/vault/" + expectedDigest + ".png";
+        assertEquals(
+                "# My Essay\n\n![cover](" + expectedReference + ") and ![cover](" + expectedReference + ")",
+                workspace.installed().get(0).ruBody());
     }
 
     private VaultReader failingReader(RuntimeException failure) {
