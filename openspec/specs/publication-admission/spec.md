@@ -48,6 +48,12 @@ An admitted source note SHALL have `publicCollection`, a lowercase-slug `publicI
 - **WHEN** its publication contract is evaluated
 - **THEN** exactly one of essay, claim, note, book, album, concept, or curated editorial page is selected
 
+#### Scenario: A blog/note fixture is admitted as a distinct kind from essay
+- **GIVEN** a selected note with `publicCollection: blog`, `publicContentType: note`, a valid `publicId`, `id`, `title`, and `description`
+- **WHEN** its publication contract is evaluated
+- **THEN** it is admitted as the `blog/note` kind, not `blog/essay`
+- **AND** an essay fixture admitted in the same run is unaffected and still resolves to `blog/essay`
+
 #### Scenario: Ambiguous or incomplete identity is blocked
 - **GIVEN** a selected note with missing identity fields, an invalid public ID, an unsupported collection/content-type pair, or a duplicate publication identity
 - **WHEN** its publication contract is evaluated
@@ -58,7 +64,7 @@ An admitted source note SHALL have `publicCollection`, a lowercase-slug `publicI
 The exporter SHALL validate the required metadata and structured body sections for the selected publication kind before content preparation or release.
 
 #### Scenario: Kind-specific contract is complete
-- **GIVEN** a selected book with author metadata, an album with artist/work metadata and required body sections, a concept with description and definition, an editorial page with an allowed page key and valid structured body, or an essay with title and description
+- **GIVEN** a selected book with author metadata, an album with artist/work metadata and required body sections, a concept with description and definition, an editorial page with an allowed page key and valid structured body, a note with `id`, `title`, and `description` and no required structured body, or an essay with title and description
 - **WHEN** the note is validated
 - **THEN** the kind-specific contract passes
 
@@ -67,6 +73,11 @@ The exporter SHALL validate the required metadata and structured body sections f
 - **WHEN** the note is validated
 - **THEN** processing is blocked before translation or release
 - **AND** the diagnostic names the kind and missing requirement
+
+#### Scenario: blog/note has no required structured body
+- **GIVEN** a selected `blog/note` fixture with valid identity fields, `title`, and `description`, and no `observation`, `model`, `boundary`, or `experiment` content
+- **WHEN** the note is validated
+- **THEN** the kind-specific contract passes, since `blog/note` requires no structured body section
 
 ### Requirement: ADM-05 Validate the bounded request, not unrelated notes
 
@@ -95,16 +106,16 @@ The exporter SHALL expose a deterministic, machine-readable publication contract
 - **THEN** both responses are byte-equivalent after the declared serialization normalization
 - **AND** the normalization is: stable per-kind field order, kinds sorted by `(collection, contentType)`, no timestamp or environment-dependent value in the document
 
-#### Scenario: Contract describes the essay kind
-- **GIVEN** the exporter edition implements exactly one kind, `blog/essay`
+#### Scenario: Contract describes every installed kind
+- **GIVEN** the exporter edition implements `blog/essay` and `blog/note`
 - **WHEN** the publication contract is requested
-- **THEN** the contract lists exactly one kind entry for `blog`/`essay`
-- **AND** that entry's required fields match `EssayAdmission`'s enforced fields (`publish`, `publicCollection`, `publicContentType`, `publicId`, `id`, `title`, `description`) with their actual allowed values or pattern
-- **AND** that entry's structured-body requirements are empty
+- **THEN** the contract lists exactly one entry per installed kind, sorted by `(collection, contentType)`
+- **AND** each entry's required fields match that kind's own `PublicationKind` implementation's enforced fields (`publish`, `publicCollection`, `publicContentType`, `publicId`, `id`, `title`, `description`) with their actual allowed values or pattern
+- **AND** each entry's structured-body requirements are empty, since neither kind implemented so far requires one
 
 #### Scenario: Validator and published contract disagree
 - **GIVEN** a fixture accepted by the published contract but rejected by runtime validation, or the reverse
 - **WHEN** the contract conformance harness runs
 - **THEN** the exporter edition fails acceptance
-- **AND** the harness draws every fixture from one shared fixture table also exercised by `EssayAdmission`'s own validation tests, so the two suites cannot silently diverge in what fixtures they cover
+- **AND** the harness draws every fixture from one shared fixture table also exercised by that kind's own `PublicationKind` validation tests, so the two suites cannot silently diverge in what fixtures they cover
 
