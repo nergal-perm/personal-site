@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.cli;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
+import dev.eugene.publicationexporter.intake.NoteIntake;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.manifest.PublicationManifest;
 import dev.eugene.publicationexporter.manifest.PublicationManifestHandler;
@@ -19,7 +21,8 @@ public final class WritePublicationManifestCommand implements Callable<Integer> 
     @Override
     public Integer call() throws Exception {
         VaultReader vaultReader = VaultReader.create(vaultRoot);
-        PublicationManifest manifest = new PublicationManifestHandler().manifest(vaultReader);
+        NoteIntake noteIntake = new NoteIntake(PublicationKinds.installed());
+        PublicationManifest manifest = new PublicationManifestHandler(noteIntake).manifest(vaultReader);
         System.out.println(new ObjectMapper().writeValueAsString(manifest));
         return manifest.ok() ? 0 : 1;
     }

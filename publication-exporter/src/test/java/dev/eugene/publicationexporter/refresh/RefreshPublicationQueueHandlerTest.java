@@ -1,5 +1,8 @@
 package dev.eugene.publicationexporter.refresh;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
+import dev.eugene.publicationexporter.intake.NoteIntake;
+
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotIntegrityException;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
@@ -84,6 +87,7 @@ class RefreshPublicationQueueHandlerTest {
         editorNotes.put(UNCERTAIN_NOTE, uncertainSource + "\nChanged after queue validation.");
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(editorNotes);
         RefreshPublicationQueueHandler handler = new RefreshPublicationQueueHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace, approvedSnapshotWorkspace, editor);
 
         BridgeResponse response = handler.refresh(vaultReader);
@@ -122,6 +126,7 @@ class RefreshPublicationQueueHandlerTest {
         };
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(notePath, source));
         RefreshPublicationQueueHandler handler = new RefreshPublicationQueueHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = handler.refresh(vaultReader);
@@ -144,6 +149,7 @@ class RefreshPublicationQueueHandlerTest {
         notes.put(absentPath, absentSource);
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(notes);
         RefreshPublicationQueueHandler handler = new RefreshPublicationQueueHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 incompleteCandidateWorkspace(), ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = handler.refresh(VaultReader.createNull(notes));
@@ -178,6 +184,7 @@ class RefreshPublicationQueueHandlerTest {
             return delegateEditor.write(notePath, expectedSourceHash, newValue);
         };
         RefreshPublicationQueueHandler handler = new RefreshPublicationQueueHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspaceFailingFor("candidate-failure"),
                 approvedWorkspaceFailingFor("approved-failure"),
                 failingEditor);
@@ -216,6 +223,7 @@ class RefreshPublicationQueueHandlerTest {
 
         NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(notes);
         RefreshPublicationQueueHandler handler = new RefreshPublicationQueueHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), editor);
 
         BridgeResponse response = assertDoesNotThrow(

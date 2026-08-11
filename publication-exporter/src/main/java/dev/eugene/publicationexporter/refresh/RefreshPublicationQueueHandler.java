@@ -1,6 +1,5 @@
 package dev.eugene.publicationexporter.refresh;
 
-import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
@@ -21,13 +20,15 @@ public final class RefreshPublicationQueueHandler {
     private static final String COMMAND = "refresh-publication-queue";
     private static final String WORKFLOW_STATUS_KEY = "workflowStatus";
 
+    private final NoteIntake noteIntake;
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final WorkflowStatusEditor workflowStatusEditor;
     private final WorkflowStateClassifier classifier = new WorkflowStateClassifier();
 
-    public RefreshPublicationQueueHandler(CandidateWorkspace candidateWorkspace,
+    public RefreshPublicationQueueHandler(NoteIntake noteIntake, CandidateWorkspace candidateWorkspace,
             ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
+        this.noteIntake = Objects.requireNonNull(noteIntake, "noteIntake");
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
         this.approvedSnapshotWorkspace =
                 Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
@@ -52,7 +53,7 @@ public final class RefreshPublicationQueueHandler {
     }
 
     private ReconcileOutcome reconcileOne(VaultRelativePath notePath, VaultReader vaultReader) {
-        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
+        NoteIntake.Result intake = noteIntake.admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return ReconcileOutcome.EXCLUDED;
         }

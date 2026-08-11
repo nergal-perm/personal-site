@@ -1,5 +1,8 @@
 package dev.eugene.publicationexporter.inspect;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
+import dev.eugene.publicationexporter.intake.NoteIntake;
+
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
@@ -36,6 +39,7 @@ class InspectPublicationHandlerTest {
 
     private final InspectPublicationHandler handler =
             new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                     CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.createNull());
 
     @Test
@@ -133,7 +137,8 @@ class InspectPublicationHandlerTest {
                         ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
                         ContentHash.sha256Hex("RU description."), ContentHash.sha256Hex("EN description.")));
         InspectPublicationHandler handler =
-                new InspectPublicationHandler(CandidateWorkspace.createNull(), approved);
+                new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()), CandidateWorkspace.createNull(), approved);
         VaultReader vaultReader = VaultReader.createNull(Map.of(
                 VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY));
 
@@ -158,7 +163,8 @@ class InspectPublicationHandlerTest {
         ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
         approved.install(identity, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
-        InspectPublicationHandler handler = new InspectPublicationHandler(candidate, approved);
+        InspectPublicationHandler handler = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()), candidate, approved);
 
         BridgeResponse response = handler.inspect(VaultRelativePath.of("blog/my-essay.md"),
                 VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
@@ -242,6 +248,7 @@ class InspectPublicationHandlerTest {
                 "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(identity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         InspectPublicationHandler handlerWithCandidate = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
 
         BridgeResponse response = handlerWithCandidate.inspect(path, vaultReader);
@@ -267,6 +274,7 @@ class InspectPublicationHandlerTest {
     void candidateLookupConfinementFailureReturnsBlockedResponse() {
         CandidateWorkspace candidateWorkspace = candidateWorkspaceThrowing(candidateConfinementFailure());
         InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
@@ -287,6 +295,7 @@ class InspectPublicationHandlerTest {
         CandidateWorkspace candidateWorkspace = candidateWorkspaceThrowing(
                 new UncheckedIOException(new IOException("candidate directory unavailable")));
         InspectPublicationHandler handlerWithFailingLookup = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull());
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
@@ -309,6 +318,7 @@ class InspectPublicationHandlerTest {
         installCandidateAndApproved(reviewRoot);
         Files.writeString(reviewRoot.resolve("blog/my-essay/approved/references.json"), "not-json");
         InspectPublicationHandler handlerWithCorruptApproved = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.create(reviewRoot));
 
         BridgeResponse response = handlerWithCorruptApproved.inspect(
@@ -327,6 +337,7 @@ class InspectPublicationHandlerTest {
         installApprovedOnly(reviewRoot);
         Files.writeString(reviewRoot.resolve("blog/my-essay/approved/references.json"), "not-json");
         InspectPublicationHandler handlerWithCorruptApproved = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.create(reviewRoot));
 
         BridgeResponse response = handlerWithCorruptApproved.inspect(
@@ -348,6 +359,7 @@ class InspectPublicationHandlerTest {
         Files.delete(ruPath);
         Files.createSymbolicLink(ruPath, outside);
         InspectPublicationHandler handlerWithEscapingApproved = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.create(reviewRoot));
 
         BridgeResponse response = handlerWithEscapingApproved.inspect(

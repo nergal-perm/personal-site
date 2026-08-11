@@ -1,6 +1,5 @@
 package dev.eugene.publicationexporter.markreviewed;
 
-import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotAlreadyExistsException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotApprovalInProgressException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
@@ -36,19 +35,21 @@ public final class MarkReviewedHandler {
     private static final ConcurrentMap<PublicationIdentity, ReentrantLock> APPROVAL_LOCKS =
             new ConcurrentHashMap<>();
 
+    private final NoteIntake noteIntake;
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final WorkflowStatusEditor workflowStatusEditor;
 
-    public MarkReviewedHandler(CandidateWorkspace candidateWorkspace,
+    public MarkReviewedHandler(NoteIntake noteIntake, CandidateWorkspace candidateWorkspace,
             ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
+        this.noteIntake = Objects.requireNonNull(noteIntake, "noteIntake");
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
         this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
         this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
     }
 
     public BridgeResponse markReviewed(VaultRelativePath notePath, VaultReader vaultReader) {
-        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
+        NoteIntake.Result intake = noteIntake.admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
@@ -82,7 +83,7 @@ public final class MarkReviewedHandler {
 
     private BridgeResponse markReviewedWithFreshSource(
             VaultRelativePath notePath, VaultReader vaultReader, PublicationIdentity lockedIdentity) {
-        NoteIntake.Result current = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
+        NoteIntake.Result current = noteIntake.admit(notePath, vaultReader);
         if (!current.accepted()) {
             return BridgeResponse.blocked(COMMAND, current.diagnostics());
         }

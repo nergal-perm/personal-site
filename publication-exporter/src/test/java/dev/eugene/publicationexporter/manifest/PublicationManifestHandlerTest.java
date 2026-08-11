@@ -1,5 +1,8 @@
 package dev.eugene.publicationexporter.manifest;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
+import dev.eugene.publicationexporter.intake.NoteIntake;
+
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -83,7 +86,8 @@ class PublicationManifestHandlerTest {
                 VaultRelativePath.of("blog/second-essay.md"), SECOND,
                 VaultRelativePath.of("blog/draft.md"), LOOKALIKE));
 
-        PublicationManifest manifest = new PublicationManifestHandler().manifest(vaultReader);
+        PublicationManifest manifest = new PublicationManifestHandler(
+                new NoteIntake(PublicationKinds.installed())).manifest(vaultReader);
 
         assertFalse(manifest.ok());
         List<ManifestEntry> entries = manifest.entries();
@@ -118,7 +122,8 @@ class PublicationManifestHandlerTest {
                 VaultRelativePath.of("blog/first-essay.md"), FIRST,
                 VaultRelativePath.of("blog/second-essay.md"), SECOND));
 
-        PublicationManifest manifest = new PublicationManifestHandler().manifest(vaultReader);
+        PublicationManifest manifest = new PublicationManifestHandler(
+                new NoteIntake(PublicationKinds.installed())).manifest(vaultReader);
 
         assertTrue(manifest.ok());
         assertEquals(2, manifest.entries().size());
@@ -128,7 +133,8 @@ class PublicationManifestHandlerTest {
     void emptyVaultProducesACompleteEmptyManifest() {
         VaultReader vaultReader = VaultReader.createNull(Map.of());
 
-        PublicationManifest manifest = new PublicationManifestHandler().manifest(vaultReader);
+        PublicationManifest manifest = new PublicationManifestHandler(
+                new NoteIntake(PublicationKinds.installed())).manifest(vaultReader);
 
         assertTrue(manifest.ok());
         assertEquals(List.of(), manifest.entries());

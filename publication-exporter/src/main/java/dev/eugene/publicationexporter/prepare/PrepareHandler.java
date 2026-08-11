@@ -1,6 +1,5 @@
 package dev.eugene.publicationexporter.prepare;
 
-import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
@@ -41,13 +40,15 @@ public final class PrepareHandler {
     private static final ConcurrentMap<PublicationIdentity, ReentrantLock> INSTALL_LOCKS =
             new ConcurrentHashMap<>();
 
+    private final NoteIntake noteIntake;
     private final TranslationWorker translationWorker;
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final WorkflowStatusEditor workflowStatusEditor;
 
-    public PrepareHandler(TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
+    public PrepareHandler(NoteIntake noteIntake, TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
             ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
+        this.noteIntake = Objects.requireNonNull(noteIntake, "noteIntake");
         this.translationWorker = Objects.requireNonNull(translationWorker, "translationWorker");
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
         this.approvedSnapshotWorkspace =
@@ -57,13 +58,13 @@ public final class PrepareHandler {
 
     public BridgeResponse prepare(
             VaultRelativePath notePath, VaultReader vaultReader, VaultAssetReader vaultAssetReader) {
-        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
+        NoteIntake.Result intake = noteIntake.admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
         PublicNoteIndex knownNotes;
         try {
-            knownNotes = PublicNoteIndex.from(vaultReader);
+            knownNotes = PublicNoteIndex.from(vaultReader, noteIntake);
         } catch (UncheckedIOException failure) {
             return knownNotesLookupFailure(failure);
         }
@@ -204,7 +205,7 @@ public final class PrepareHandler {
         }
         SourceFreshnessOutcome freshness;
         try {
-            freshness = sourceFreshness(notePath, vaultReader, identity, job, knownNotes, vaultAssetReader);
+            freshness = sourceFreshness(notePath, vaultReader, identity, job, knownNotes, vaultAssetReader, noteIntake);
         } catch (UncheckedIOException failure) {
             return assetResolutionLookupFailure(failure);
         }
@@ -258,8 +259,8 @@ public final class PrepareHandler {
     private static SourceFreshnessOutcome sourceFreshness(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity expectedIdentity, TranslationJob job, PublicNoteIndex knownNotes,
-            VaultAssetReader vaultAssetReader) {
-        NoteIntake.Result current = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
+            VaultAssetReader vaultAssetReader, NoteIntake noteIntake) {
+        NoteIntake.Result current = noteIntake.admit(notePath, vaultReader);
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
             return SourceFreshnessOutcome.stale();
         }

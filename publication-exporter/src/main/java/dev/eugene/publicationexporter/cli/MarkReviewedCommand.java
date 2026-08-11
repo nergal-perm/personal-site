@@ -2,7 +2,9 @@ package dev.eugene.publicationexporter.cli;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
+import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -38,8 +40,9 @@ public final class MarkReviewedCommand implements Callable<Integer> {
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
         WorkflowStatusEditor workflowStatusEditor = WorkflowStatusEditor.create(vaultRoot);
+        NoteIntake noteIntake = new NoteIntake(PublicationKinds.installed());
         BridgeResponse response = new MarkReviewedHandler(
-                candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor)
+                noteIntake, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor)
                 .markReviewed(VaultRelativePath.of(notePath), vaultReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));

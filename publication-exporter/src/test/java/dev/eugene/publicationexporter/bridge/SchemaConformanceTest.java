@@ -9,9 +9,11 @@ import com.networknt.schema.JsonSchemaFactory;
 import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.inspect.InspectPublicationHandler;
+import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.prepare.RussianDiff;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -33,6 +35,7 @@ class SchemaConformanceTest {
     @Test
     void blockedResponseConformsToSchemaV2() throws Exception {
         InspectPublicationHandler handler = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.createNull());
         VaultReader vaultReader = VaultReader.createNull();
         BridgeResponse response = handler.inspect(
@@ -58,6 +61,7 @@ class SchemaConformanceTest {
         VaultReader vaultReader = VaultReader.createNull(java.util.Map.of(path, validEssay));
 
         InspectPublicationHandler handler = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
                 CandidateWorkspace.createNull(), ApprovedSnapshotWorkspace.createNull());
         BridgeResponse response = handler.inspect(path, vaultReader);
 

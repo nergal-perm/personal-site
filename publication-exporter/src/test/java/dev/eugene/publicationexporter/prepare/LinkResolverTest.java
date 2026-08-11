@@ -1,5 +1,8 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
+import dev.eugene.publicationexporter.intake.NoteIntake;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -101,7 +104,8 @@ final class LinkResolverTest {
 
                 Public prose.""";
         VaultRelativePath path = VaultRelativePath.of("blog/Заметка о времени.md");
-        PublicNoteIndex index = PublicNoteIndex.from(VaultReader.createNull(Map.of(path, note)));
+        PublicNoteIndex index = PublicNoteIndex.from(VaultReader.createNull(Map.of(path, note)),
+                new NoteIntake(PublicationKinds.installed()));
 
         assertEquals("/essays/notes-on-time/", index.routeFor("Заметка о времени").orElseThrow());
     }
@@ -137,7 +141,8 @@ final class LinkResolverTest {
         VaultRelativePath pathOne = VaultRelativePath.of("blog/Duplicate Title.md");
         VaultRelativePath pathTwo = VaultRelativePath.of("archive/Duplicate Title.md");
         PublicNoteIndex ambiguousIndex = PublicNoteIndex.from(
-                VaultReader.createNull(Map.of(pathOne, noteInBlog, pathTwo, noteInArchive)));
+                VaultReader.createNull(Map.of(pathOne, noteInBlog, pathTwo, noteInArchive)),
+                new NoteIntake(PublicationKinds.installed()));
 
         assertEquals("See Duplicate Title.", resolvedBodyOrFail("See [[Duplicate Title]].", ambiguousIndex));
     }

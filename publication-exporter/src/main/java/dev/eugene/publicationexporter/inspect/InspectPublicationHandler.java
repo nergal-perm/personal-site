@@ -1,6 +1,5 @@
 package dev.eugene.publicationexporter.inspect;
 
-import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
@@ -30,19 +29,21 @@ public final class InspectPublicationHandler {
     private static final String ABSENT = "absent";
     private static final String READY = "ready";
 
+    private final NoteIntake noteIntake;
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final WorkflowStateClassifier classifier = new WorkflowStateClassifier();
 
     public InspectPublicationHandler(
-            CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
+            NoteIntake noteIntake, CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
+        this.noteIntake = Objects.requireNonNull(noteIntake, "noteIntake");
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
         this.approvedSnapshotWorkspace =
                 Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
     }
 
     public BridgeResponse inspect(VaultRelativePath notePath, VaultReader vaultReader) {
-        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
+        NoteIntake.Result intake = noteIntake.admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }

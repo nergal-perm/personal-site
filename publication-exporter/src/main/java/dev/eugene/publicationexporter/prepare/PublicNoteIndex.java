@@ -1,6 +1,5 @@
 package dev.eugene.publicationexporter.prepare;
 
-import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -21,12 +20,13 @@ final class PublicNoteIndex {
         this.routesByFilenameStem = Map.copyOf(Objects.requireNonNull(routesByFilenameStem, "routesByFilenameStem"));
     }
 
-    static PublicNoteIndex from(VaultReader vaultReader) {
+    static PublicNoteIndex from(VaultReader vaultReader, NoteIntake noteIntake) {
         Objects.requireNonNull(vaultReader, "vaultReader");
+        Objects.requireNonNull(noteIntake, "noteIntake");
         Map<String, String> routes = new LinkedHashMap<>();
         Set<String> ambiguousStems = new HashSet<>();
         for (VaultRelativePath candidate : vaultReader.listPublishCandidates()) {
-            registerIfAdmitted(vaultReader, candidate, routes, ambiguousStems);
+            registerIfAdmitted(vaultReader, candidate, noteIntake, routes, ambiguousStems);
         }
         ambiguousStems.forEach(routes::remove);
         return new PublicNoteIndex(routes);
@@ -37,9 +37,9 @@ final class PublicNoteIndex {
     }
 
     private static void registerIfAdmitted(
-            VaultReader vaultReader, VaultRelativePath candidate,
+            VaultReader vaultReader, VaultRelativePath candidate, NoteIntake noteIntake,
             Map<String, String> routes, Set<String> ambiguousStems) {
-        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(candidate, vaultReader);
+        NoteIntake.Result intake = noteIntake.admit(candidate, vaultReader);
         if (!intake.accepted()) {
             return;
         }
