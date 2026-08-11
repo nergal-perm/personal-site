@@ -58,6 +58,10 @@ public final class EnglishCandidateValidator {
     }
 
     private static boolean containsInternalRuRoute(String text) {
+        return INTERNAL_RU_ROUTE.matcher(withoutExternalUrls(text)).find();
+    }
+
+    private static String withoutExternalUrls(String text) {
         Matcher urlMatcher = EXTERNAL_URL.matcher(text);
         StringBuilder withUrlsRemoved = new StringBuilder();
         int lastEnd = 0;
@@ -66,7 +70,7 @@ public final class EnglishCandidateValidator {
             lastEnd = urlMatcher.end();
         }
         withUrlsRemoved.append(text, lastEnd, text.length());
-        return INTERNAL_RU_ROUTE.matcher(withUrlsRemoved).find();
+        return withUrlsRemoved.toString();
     }
 
     private static List<String> droppedUrlDiagnostics(String ruBody, String enBody) {
@@ -79,7 +83,8 @@ public final class EnglishCandidateValidator {
 
     private static List<String> droppedAssetReferenceDiagnostics(String ruBody, String enBody) {
         List<String> diagnostics = new ArrayList<>();
-        for (String droppedReference : droppedMatches(ruBody, enBody, ASSET_REFERENCE)) {
+        for (String droppedReference : droppedMatches(
+                withoutExternalUrls(ruBody), withoutExternalUrls(enBody), ASSET_REFERENCE)) {
             diagnostics.add("English candidate dropped asset reference " + droppedReference + ".");
         }
         return diagnostics;

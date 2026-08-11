@@ -178,6 +178,19 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void fragmentEmbeddedAssetReferenceIsReportedAsDropped() {
+        String ruBody = "See ![cover](/assets/vault/abc123.png).";
+        String enBody = "See https://cdn.example/#/assets/vault/abc123.png";
+
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                ruBody, enBody, "Title", "Description.");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(
+                diagnostic -> diagnostic.contains("/assets/vault/abc123.png")));
+    }
+
+    @Test
     void preservedAssetReferenceIsValid() {
         String ruBody = "See ![cover](/assets/vault/abc123.png).";
         String enBody = "See ![cover](/assets/vault/abc123.png).";
