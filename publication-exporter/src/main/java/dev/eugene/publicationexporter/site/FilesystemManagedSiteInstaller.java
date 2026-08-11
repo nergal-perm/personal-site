@@ -88,7 +88,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
-        String expectedContentTypeLine = "contentType: " + doubleQuotedYamlScalar(identity.publicContentType());
+        String expectedContentTypeLine = "contentType: " + YamlScalar.doubleQuoted(identity.publicContentType());
         List<String> lines;
         try {
             lines = Files.readAllLines(resolved, StandardCharsets.UTF_8);
@@ -481,12 +481,6 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     }
 
     private static void appendYamlString(StringBuilder yaml, String key, String value) {
-        yaml.append(key).append(": ").append(doubleQuotedYamlScalar(value)).append('\n');
-    }
-
-    private static String doubleQuotedYamlScalar(String value) {
-        StringBuilder scalar = new StringBuilder();
-        SiteReleaseManifest.appendJsonString(scalar, value);
-        return scalar.toString();
+        yaml.append(key).append(": ").append(YamlScalar.doubleQuoted(value)).append('\n');
     }
 }

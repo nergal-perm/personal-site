@@ -80,6 +80,11 @@
     ]
   },
   {
+    "name": "dev.eugene.publicationexporter.reference.PublicField",
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
     "name": "dev.eugene.publicationexporter.bridge.ReviewPlan",
     "allDeclaredFields": true,
     "methods": [
