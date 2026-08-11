@@ -143,9 +143,11 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         Path enBodyPath = candidateFile(candidateDirectory, "en.md");
         Path ruFieldsPath = candidateFile(candidateDirectory, "ru.fields.json");
         Path enFieldsPath = candidateFile(candidateDirectory, "en.fields.json");
+        Path structuredDataPath = candidateFile(candidateDirectory, "structured.json");
         Path referencesPath = candidateFile(candidateDirectory, "references.json");
         return Files.exists(ruBodyPath) && Files.exists(enBodyPath)
                 && Files.exists(ruFieldsPath) && Files.exists(enFieldsPath)
+                && Files.exists(structuredDataPath)
                 && Files.exists(referencesPath);
     }
 
@@ -158,8 +160,9 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
                     PublicFieldsCodec.read(readCandidateText(candidateFile(candidateDirectory, "ru.fields.json")));
             List<PublicField> enFields =
                     PublicFieldsCodec.read(readCandidateText(candidateFile(candidateDirectory, "en.fields.json")));
+            String structuredData = readCandidateText(candidateFile(candidateDirectory, "structured.json"));
             ReferenceMap referenceMap = readReferenceMap(candidateFile(candidateDirectory, "references.json"));
-            return snapshotMatching(expectedIdentity, ruBody, enBody, ruFields, enFields, referenceMap);
+            return snapshotMatching(expectedIdentity, ruBody, enBody, ruFields, enFields, structuredData, referenceMap);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
@@ -177,12 +180,12 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
     private static Optional<CandidateSnapshot> snapshotMatching(
             PublicationIdentity expectedIdentity, String ruBody, String enBody,
-            List<PublicField> ruFields, List<PublicField> enFields,
+            List<PublicField> ruFields, List<PublicField> enFields, String structuredData,
             ReferenceMap referenceMap) {
         if (!referenceMap.identity().equals(expectedIdentity)) {
             return Optional.empty();
         }
-        return Optional.of(CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, "", referenceMap));
+        return Optional.of(CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, structuredData, referenceMap));
     }
 
     private Path candidateDirectory(PublicationIdentity identity) {
@@ -221,6 +224,8 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
                 PublicFieldsCodec.write(content.ruFields()), StandardCharsets.UTF_8);
         Files.writeString(candidateFile(staging, "en.fields.json"),
                 PublicFieldsCodec.write(content.enFields()), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "structured.json"),
+                content.structuredData(), StandardCharsets.UTF_8);
         Files.writeString(candidateFile(staging, "references.json"),
                 ReferenceMapCodec.write(content.referenceMap()), StandardCharsets.UTF_8);
     }

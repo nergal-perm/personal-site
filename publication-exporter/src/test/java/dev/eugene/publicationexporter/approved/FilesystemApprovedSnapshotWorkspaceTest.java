@@ -112,6 +112,27 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void readReturnsNonEmptyStructuredDataAfterInstall() throws Exception {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        String structuredData = "relationships:\n  - target: note-1\n";
+        List<PublicField> ruFields = List.of(PublicField.of("title", "RU title"));
+        List<PublicField> enFields = List.of(PublicField.of("title", "EN title"));
+        CandidateSnapshot content = CandidateSnapshot.of(
+                "RU body", "EN body", ruFields, enFields, structuredData,
+                ReferenceMap.empty(IDENTITY,
+                        ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                        ContentHash.sha256Hex(structuredData)));
+
+        workspace.install(IDENTITY, content);
+
+        Path structuredPath = reviewRoot.resolve("blog/my-essay/approved/structured.json");
+        assertEquals(structuredData, Files.readString(structuredPath));
+        assertEquals(structuredData, workspace.read(IDENTITY).orElseThrow().structuredData());
+    }
+
+    @Test
     void readRetriesWhenApprovedDirectoryGenerationChangesMidRead() throws Exception {
         installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "Old");
         CountDownLatch oldRussianBodyRead = new CountDownLatch(1);
@@ -407,6 +428,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         Files.writeString(approvedDir.resolve("en.fields.json"), PublicFieldsCodec.write(List.of(
                 PublicField.of("title", "New EN title"), PublicField.of("description", "New EN description"))),
                 StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("structured.json"), "", StandardCharsets.UTF_8);
         Files.writeString(approvedDir.resolve("references.json"), ReferenceMapCodec.write(newReferenceMap),
                 StandardCharsets.UTF_8);
 
@@ -558,6 +580,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         Files.writeString(directory.resolve("en.fields.json"), PublicFieldsCodec.write(List.of(
                 PublicField.of("title", generation + " EN title"),
                 PublicField.of("description", generation + " EN description"))), StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("structured.json"), "", StandardCharsets.UTF_8);
         Files.writeString(directory.resolve("references.json"),
                 ReferenceMapCodec.write(referenceMapFor(generation)), StandardCharsets.UTF_8);
     }

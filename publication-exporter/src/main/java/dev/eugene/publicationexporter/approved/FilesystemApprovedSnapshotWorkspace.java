@@ -81,14 +81,31 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         });
     }
 
+    void install(PublicationIdentity identity, CandidateSnapshot content) {
+        Objects.requireNonNull(identity, "identity");
+        Objects.requireNonNull(content, "content");
+
+        withApprovalLock(identity, () -> {
+            installUnderLock(identity, content);
+            return null;
+        });
+    }
+
     private void installUnderLock(PublicationIdentity identity, String ruBody, String enBody,
             String ruTitle, String enTitle, String ruDescription, String enDescription,
             ReferenceMap referenceMap) {
+        installUnderLock(identity, CandidateSnapshot.of(ruBody, enBody,
+                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
+                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
+                "", referenceMap));
+    }
+
+    private void installUnderLock(PublicationIdentity identity, CandidateSnapshot content) {
         recoverIfNeeded(identity, true);
         Path destination = approvedDirectory(identity);
         Path staging = createStagingDirectory();
         try {
-            writeSnapshot(staging, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap);
+            writeSnapshot(staging, content);
             requireWithinReviewRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinReviewRoot(destination);
@@ -370,11 +387,12 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             String enBody = readApprovedText(approvedFile(approvedDirectory, "en.md"));
             String ruFieldsDocument = readApprovedText(approvedFile(approvedDirectory, "ru.fields.json"));
             String enFieldsDocument = readApprovedText(approvedFile(approvedDirectory, "en.fields.json"));
+            String structuredData = readApprovedText(approvedFile(approvedDirectory, "structured.json"));
             List<PublicField> ruFields = PublicFieldsCodec.read(ruFieldsDocument);
             List<PublicField> enFields = PublicFieldsCodec.read(enFieldsDocument);
             ReferenceMap referenceMap = readReferenceMap(approvedFile(approvedDirectory, "references.json"));
             return new SnapshotRead(
-                    CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, "", referenceMap),
+                    CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, structuredData, referenceMap),
                     ruFieldsDocument, enFieldsDocument);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
@@ -409,7 +427,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         requireHash(failures, "en.md", snapshot.enBody(), referenceMap.enHash());
         requireHash(failures, "ru.fields.json", ruFieldsDocument, referenceMap.ruFieldsHash());
         requireHash(failures, "en.fields.json", enFieldsDocument, referenceMap.enFieldsHash());
-        requireHash(failures, "structuredData", snapshot.structuredData(), referenceMap.structuredDataHash());
+        requireHash(failures, "structured.json", snapshot.structuredData(), referenceMap.structuredDataHash());
         if (!failures.isEmpty()) {
             throw new ApprovedSnapshotIntegrityException(
                     approvedDirectory, String.join("; ", failures) + ".");
@@ -475,19 +493,16 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         return file;
     }
 
-    private void writeSnapshot(Path staging, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap)
-            throws IOException {
-        Files.writeString(approvedFile(staging, "ru.md"), ruBody, StandardCharsets.UTF_8);
-        Files.writeString(approvedFile(staging, "en.md"), enBody, StandardCharsets.UTF_8);
-        Files.writeString(approvedFile(staging, "ru.fields.json"), PublicFieldsCodec.write(
-                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription))),
+    private void writeSnapshot(Path staging, CandidateSnapshot content) throws IOException {
+        Files.writeString(approvedFile(staging, "ru.md"), content.ruBody(), StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "en.md"), content.enBody(), StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "ru.fields.json"), PublicFieldsCodec.write(content.ruFields()),
                 StandardCharsets.UTF_8);
-        Files.writeString(approvedFile(staging, "en.fields.json"), PublicFieldsCodec.write(
-                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription))),
+        Files.writeString(approvedFile(staging, "en.fields.json"), PublicFieldsCodec.write(content.enFields()),
                 StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "structured.json"), content.structuredData(), StandardCharsets.UTF_8);
         Files.writeString(approvedFile(staging, "references.json"),
-                ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
+                ReferenceMapCodec.write(content.referenceMap()), StandardCharsets.UTF_8);
     }
 
     @FunctionalInterface

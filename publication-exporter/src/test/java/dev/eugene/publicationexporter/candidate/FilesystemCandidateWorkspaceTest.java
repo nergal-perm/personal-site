@@ -303,6 +303,24 @@ class FilesystemCandidateWorkspaceTest {
     }
 
     @Test
+    void readReturnsNonEmptyStructuredDataAfterInstall() throws Exception {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        String structuredData = "relationships:\n  - target: note-1\n";
+        CandidateSnapshot content = CandidateSnapshot.of(
+                "RU body", "EN body",
+                List.of(PublicField.of("title", "RU title")),
+                List.of(PublicField.of("title", "EN title")),
+                structuredData,
+                ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-hash"));
+
+        workspace.install(IDENTITY, content, List.of());
+
+        assertEquals(structuredData, Files.readString(
+                reviewRoot.resolve("blog/my-essay/candidate/structured.json")));
+        assertEquals(structuredData, workspace.read(IDENTITY).orElseThrow().structuredData());
+    }
+
+    @Test
     void readRejectsSymlinkedMemberFileEscapingReviewRoot() throws Exception {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
         workspace.install(IDENTITY, snapshot("RU body", "EN body", "Title", "EN Title", "Description.", "EN Description.",
