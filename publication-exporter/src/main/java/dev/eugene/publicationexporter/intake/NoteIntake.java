@@ -1,6 +1,8 @@
 package dev.eugene.publicationexporter.intake;
 
-import dev.eugene.publicationexporter.admission.EssayAdmission;
+import dev.eugene.publicationexporter.admission.AdmittedPublication;
+import dev.eugene.publicationexporter.admission.PublicationKind;
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.hash.ContentHash;
@@ -15,6 +17,16 @@ import java.util.Objects;
 import java.util.Optional;
 
 public final class NoteIntake {
+
+    private final PublicationKinds publicationKinds;
+
+    public NoteIntake() {
+        this(PublicationKinds.installed());
+    }
+
+    public NoteIntake(PublicationKinds publicationKinds) {
+        this.publicationKinds = Objects.requireNonNull(publicationKinds, "publicationKinds");
+    }
 
     public Result admit(VaultRelativePath notePath, VaultReader vaultReader) {
         if (!notePath.isWithinVault()) {
@@ -37,7 +49,7 @@ public final class NoteIntake {
             String source = vaultReader.readSource(notePath);
             MarkdownNote frontmatter = MarkdownNote.parse(source);
             String sourceHash = ContentHash.sha256Hex(source);
-            EssayAdmission.Result admission = new EssayAdmission().admit(frontmatter);
+            AdmittedPublication admission = admitAgainstKind(frontmatter);
             if (!admission.accepted()) {
                 return Result.blocked(admission.diagnostics());
             }
@@ -48,14 +60,29 @@ public final class NoteIntake {
         }
     }
 
+    private AdmittedPublication admitAgainstKind(MarkdownNote frontmatter) {
+        if (!frontmatter.flag("publish")) {
+            return AdmittedPublication.blocked(List.of(
+                    Diagnostic.blocking("publish", "must be true; allowed value: true")));
+        }
+        String collection = frontmatter.string("publicCollection").orElse("");
+        String contentType = frontmatter.string("publicContentType").orElse("");
+        Optional<PublicationKind> kind = publicationKinds.forIdentity(collection, contentType);
+        if (kind.isEmpty()) {
+            return AdmittedPublication.blocked(List.of(Diagnostic.blocking(
+                    "publicContentType", "publicCollection/publicContentType is not a supported publication kind")));
+        }
+        return kind.get().admit(frontmatter);
+    }
+
     public static final class Result {
 
-        private final EssayAdmission.Result admission;
+        private final AdmittedPublication admission;
         private final MarkdownNote frontmatter;
         private final String sourceHash;
         private final List<Diagnostic> diagnostics;
 
-        private Result(EssayAdmission.Result admission, MarkdownNote frontmatter,
+        private Result(AdmittedPublication admission, MarkdownNote frontmatter,
                 String sourceHash, List<Diagnostic> diagnostics) {
             this.admission = admission;
             this.frontmatter = frontmatter;
@@ -63,7 +90,7 @@ public final class NoteIntake {
             this.diagnostics = List.copyOf(diagnostics);
         }
 
-        static Result accepted(EssayAdmission.Result admission, MarkdownNote frontmatter, String sourceHash) {
+        static Result accepted(AdmittedPublication admission, MarkdownNote frontmatter, String sourceHash) {
             return new Result(
                     Objects.requireNonNull(admission, "admission"),
                     Objects.requireNonNull(frontmatter, "frontmatter"),
@@ -80,6 +107,10 @@ public final class NoteIntake {
 
         public boolean accepted() {
             return diagnostics.isEmpty();
+        }
+
+        public PublicationKind kind() {
+            return admission.kind();
         }
 
         public PublicationIdentity identity() {

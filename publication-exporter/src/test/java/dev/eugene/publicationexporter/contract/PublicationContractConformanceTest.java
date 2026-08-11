@@ -1,8 +1,8 @@
 package dev.eugene.publicationexporter.contract;
 
-import dev.eugene.publicationexporter.admission.EssayAdmission;
-import dev.eugene.publicationexporter.admission.EssayAdmissionFixture;
-import dev.eugene.publicationexporter.admission.EssayAdmissionFixtures;
+import dev.eugene.publicationexporter.admission.EssayPublicationKind;
+import dev.eugene.publicationexporter.admission.EssayPublicationKindFixture;
+import dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures;
 import dev.eugene.publicationexporter.note.MarkdownNote;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
@@ -13,11 +13,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PublicationContractConformanceTest {
 
-    private final EssayAdmission admission = new EssayAdmission();
+    private final EssayPublicationKind admission = new EssayPublicationKind();
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("dev.eugene.publicationexporter.admission.EssayAdmissionFixtures#all")
-    void contractVerdictAgreesWithFixtureAndRuntimeValidator(EssayAdmissionFixture fixture) {
+    @MethodSource("dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures#all")
+    void contractVerdictAgreesWithFixtureAndRuntimeValidator(EssayPublicationKindFixture fixture) {
         MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
         KindContract essayKind = new PublicationContractWriter().write().kinds().get(0);
 

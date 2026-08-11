@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.intake;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.api.Test;
@@ -24,7 +25,37 @@ class NoteIntakeTest {
             ---
             # Body""";
 
-    private final NoteIntake intake = new NoteIntake();
+    private final NoteIntake intake = new NoteIntake(PublicationKinds.installed());
+
+    @Test
+    void unpublishedEssayIsBlocked() {
+        String unpublished = VALID_ESSAY.replace("publish: true\n", "");
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        NoteIntake.Result result = intake.admit(path, VaultReader.createNull(Map.of(path, unpublished)));
+
+        assertFalse(result.accepted());
+        assertEquals("publish", result.diagnostics().get(0).field());
+    }
+
+    @Test
+    void unsupportedCollectionContentTypePairIsBlocked() {
+        String wrongCollection = VALID_ESSAY.replace("publicCollection: blog", "publicCollection: bibliography");
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        NoteIntake.Result result = intake.admit(path, VaultReader.createNull(Map.of(path, wrongCollection)));
+
+        assertFalse(result.accepted());
+        assertEquals("publicContentType", result.diagnostics().get(0).field());
+    }
+
+    @Test
+    void unsupportedContentTypeIsBlocked() {
+        String wrongContentType = VALID_ESSAY.replace("publicContentType: essay", "publicContentType: claim");
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        NoteIntake.Result result = intake.admit(path, VaultReader.createNull(Map.of(path, wrongContentType)));
+
+        assertFalse(result.accepted());
+        assertEquals("publicContentType", result.diagnostics().get(0).field());
+    }
 
     @Test
     void unsafePathIsBlocked() {

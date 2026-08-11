@@ -2,14 +2,14 @@ package dev.eugene.publicationexporter.admission;
 
 import java.util.List;
 
-public final class EssayAdmissionFixtures {
+public final class EssayPublicationKindFixtures {
 
-    private EssayAdmissionFixtures() {
+    private EssayPublicationKindFixtures() {
     }
 
-    public static List<EssayAdmissionFixture> all() {
+    public static List<EssayPublicationKindFixture> all() {
         return List.of(
-                EssayAdmissionFixture.accepted("validEssay", """
+                EssayPublicationKindFixture.accepted("validEssay", """
                         ---
                         publish: true
                         publicCollection: blog
@@ -20,39 +20,7 @@ public final class EssayAdmissionFixtures {
                         description: A valid description.
                         ---
                         """),
-                EssayAdmissionFixture.blocked("unpublished", """
-                        ---
-                        publicCollection: blog
-                        publicContentType: essay
-                        publicId: my-essay
-                        id: 8f2c-my-essay
-                        title: My Essay
-                        description: A valid description.
-                        ---
-                        """, List.of("publish")),
-                EssayAdmissionFixture.blocked("wrongCollection", """
-                        ---
-                        publish: true
-                        publicCollection: bibliography
-                        publicContentType: essay
-                        publicId: my-essay
-                        id: 8f2c-my-essay
-                        title: My Essay
-                        description: A valid description.
-                        ---
-                        """, List.of("publicCollection", "publicContentType")),
-                EssayAdmissionFixture.blocked("wrongContentType", """
-                        ---
-                        publish: true
-                        publicCollection: blog
-                        publicContentType: claim
-                        publicId: my-essay
-                        id: 8f2c-my-essay
-                        title: My Essay
-                        description: A valid description.
-                        ---
-                        """, List.of("publicContentType")),
-                EssayAdmissionFixture.blocked("invalidPublicId", """
+                EssayPublicationKindFixture.blocked("invalidPublicId", """
                         ---
                         publish: true
                         publicCollection: blog
@@ -63,7 +31,7 @@ public final class EssayAdmissionFixtures {
                         description: A valid description.
                         ---
                         """, List.of("publicId")),
-                EssayAdmissionFixture.blocked("missingSourceId", """
+                EssayPublicationKindFixture.blocked("missingSourceId", """
                         ---
                         publish: true
                         publicCollection: blog
@@ -73,7 +41,7 @@ public final class EssayAdmissionFixtures {
                         description: A valid description.
                         ---
                         """, List.of("id")),
-                EssayAdmissionFixture.blocked("blankSourceId", """
+                EssayPublicationKindFixture.blocked("blankSourceId", """
                         ---
                         publish: true
                         publicCollection: blog
@@ -84,7 +52,7 @@ public final class EssayAdmissionFixtures {
                         description: A valid description.
                         ---
                         """, List.of("id")),
-                EssayAdmissionFixture.blocked("nullSourceId", """
+                EssayPublicationKindFixture.blocked("nullSourceId", """
                         ---
                         publish: true
                         publicCollection: blog
@@ -95,7 +63,7 @@ public final class EssayAdmissionFixtures {
                         description: A valid description.
                         ---
                         """, List.of("id")),
-                EssayAdmissionFixture.blocked("missingTitle", """
+                EssayPublicationKindFixture.blocked("missingTitle", """
                         ---
                         publish: true
                         publicCollection: blog
@@ -105,7 +73,7 @@ public final class EssayAdmissionFixtures {
                         description: A valid description.
                         ---
                         """, List.of("title")),
-                EssayAdmissionFixture.blocked("blankDescription", """
+                EssayPublicationKindFixture.blocked("blankDescription", """
                         ---
                         publish: true
                         publicCollection: blog
@@ -116,7 +84,7 @@ public final class EssayAdmissionFixtures {
                         description: "   "
                         ---
                         """, List.of("description")),
-                EssayAdmissionFixture.blocked("missingPublicIdAndSourceId", """
+                EssayPublicationKindFixture.blocked("missingPublicIdAndSourceId", """
                         ---
                         publish: true
                         publicCollection: blog

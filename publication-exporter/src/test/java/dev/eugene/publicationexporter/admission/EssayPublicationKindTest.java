@@ -12,16 +12,16 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class EssayAdmissionTest {
+class EssayPublicationKindTest {
 
-    private final EssayAdmission admission = new EssayAdmission();
+    private final EssayPublicationKind admission = new EssayPublicationKind();
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("dev.eugene.publicationexporter.admission.EssayAdmissionFixtures#all")
-    void admitsOrBlocksPerFixture(EssayAdmissionFixture fixture) {
+    @MethodSource("dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures#all")
+    void admitsOrBlocksPerFixture(EssayPublicationKindFixture fixture) {
         MarkdownNote frontmatter = MarkdownNote.parse(fixture.noteSource());
 
-        EssayAdmission.Result result = admission.admit(frontmatter);
+        AdmittedPublication result = admission.admit(frontmatter);
 
         assertEquals(fixture.expectedAccepted(), result.accepted(), fixture.name());
         if (!fixture.expectedAccepted()) {
@@ -43,7 +43,7 @@ class EssayAdmissionTest {
                 ---
                 """);
 
-        EssayAdmission.Result result = admission.admit(frontmatter);
+        AdmittedPublication result = admission.admit(frontmatter);
 
         assertTrue(result.accepted());
         assertEquals(PublicationIdentity.of("blog", "essay", "my-essay"), result.identity());
@@ -52,7 +52,7 @@ class EssayAdmissionTest {
         assertEquals("A valid description.", result.description());
     }
 
-    private List<String> blockedFields(EssayAdmission.Result result) {
+    private List<String> blockedFields(AdmittedPublication result) {
         return result.diagnostics().stream().map(Diagnostic::field).toList();
     }
 }
