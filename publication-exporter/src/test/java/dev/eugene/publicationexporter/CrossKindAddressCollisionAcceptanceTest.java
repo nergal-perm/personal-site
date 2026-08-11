@@ -7,6 +7,8 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceKindCollisionException;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.release.ReleaseAlreadyExistsException;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
@@ -88,14 +90,20 @@ class CrossKindAddressCollisionAcceptanceTest {
     }
 
     private static CandidateSnapshot candidateSnapshot(PublicationIdentity identity, String ruBody) {
-        return CandidateSnapshot.of(ruBody, "en", "ru-title", "en-title", "ru-desc", "en-desc",
-                referenceMap(identity, ruBody));
+        return CandidateSnapshot.of(ruBody, "en",
+                List.of(PublicField.of("title", "ru-title"), PublicField.of("description", "ru-desc")),
+                List.of(PublicField.of("title", "en-title"), PublicField.of("description", "en-desc")),
+                "", referenceMap(identity, ruBody));
     }
 
     private static ReferenceMap referenceMap(PublicationIdentity identity, String ruBody) {
+        String ruFields = PublicFieldsCodec.write(List.of(
+                PublicField.of("title", "ru-title"), PublicField.of("description", "ru-desc")));
+        String enFields = PublicFieldsCodec.write(List.of(
+                PublicField.of("title", "en-title"), PublicField.of("description", "en-desc")));
         return ReferenceMap.empty(identity,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex("en"),
-                ContentHash.sha256Hex("ru-title"), ContentHash.sha256Hex("en-title"),
-                ContentHash.sha256Hex("ru-desc"), ContentHash.sha256Hex("en-desc"));
+                ContentHash.sha256Hex(ruFields), ContentHash.sha256Hex(enFields),
+                ContentHash.sha256Hex(""));
     }
 }

@@ -5,6 +5,8 @@ import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 
@@ -310,9 +312,9 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
                 }
                 continue;
             }
-            CandidateSnapshot snapshot;
+            SnapshotRead snapshotRead;
             try {
-                snapshot = snapshotFrom(approvedDirectory);
+                snapshotRead = snapshotFrom(approvedDirectory);
             } catch (UncheckedIOException failure) {
                 if (generationBefore.equals(directoryGeneration(approvedDirectory))) {
                     throw new ApprovedSnapshotIntegrityException(
@@ -322,8 +324,9 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             }
             Object generationAfter = directoryGeneration(approvedDirectory);
             if (generationBefore.equals(generationAfter)) {
-                validateSnapshot(approvedDirectory, expectedIdentity, snapshot);
-                return Optional.of(snapshot);
+                validateSnapshot(approvedDirectory, expectedIdentity, snapshotRead.snapshot(),
+                        snapshotRead.ruFieldsDocument(), snapshotRead.enFieldsDocument());
+                return Optional.of(snapshotRead.snapshot());
             }
         }
         throw new ApprovedSnapshotWorkspaceStabilizationException(
@@ -361,17 +364,18 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         }
     }
 
-    private CandidateSnapshot snapshotFrom(Path approvedDirectory) {
+    private SnapshotRead snapshotFrom(Path approvedDirectory) {
         try {
             String ruBody = readApprovedText(approvedFile(approvedDirectory, "ru.md"));
             String enBody = readApprovedText(approvedFile(approvedDirectory, "en.md"));
-            String ruTitle = readApprovedText(approvedFile(approvedDirectory, "ru.title"));
-            String enTitle = readApprovedText(approvedFile(approvedDirectory, "en.title"));
-            String ruDescription = readApprovedText(approvedFile(approvedDirectory, "ru.description"));
-            String enDescription = readApprovedText(approvedFile(approvedDirectory, "en.description"));
+            String ruFieldsDocument = readApprovedText(approvedFile(approvedDirectory, "ru.fields.json"));
+            String enFieldsDocument = readApprovedText(approvedFile(approvedDirectory, "en.fields.json"));
+            List<PublicField> ruFields = PublicFieldsCodec.read(ruFieldsDocument);
+            List<PublicField> enFields = PublicFieldsCodec.read(enFieldsDocument);
             ReferenceMap referenceMap = readReferenceMap(approvedFile(approvedDirectory, "references.json"));
-            return CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
-                    ruDescription, enDescription, referenceMap);
+            return new SnapshotRead(
+                    CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, "", referenceMap),
+                    ruFieldsDocument, enFieldsDocument);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
@@ -394,7 +398,8 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     }
 
     private static void validateSnapshot(
-            Path approvedDirectory, PublicationIdentity expectedIdentity, CandidateSnapshot snapshot) {
+            Path approvedDirectory, PublicationIdentity expectedIdentity, CandidateSnapshot snapshot,
+            String ruFieldsDocument, String enFieldsDocument) {
         ReferenceMap referenceMap = snapshot.referenceMap();
         List<String> failures = new ArrayList<>();
         if (!referenceMap.identity().equals(expectedIdentity)) {
@@ -402,10 +407,9 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         }
         requireHash(failures, "ru.md", snapshot.ruBody(), referenceMap.ruHash());
         requireHash(failures, "en.md", snapshot.enBody(), referenceMap.enHash());
-        requireHash(failures, "ru.title", snapshot.ruTitle(), referenceMap.ruTitleHash());
-        requireHash(failures, "en.title", snapshot.enTitle(), referenceMap.enTitleHash());
-        requireHash(failures, "ru.description", snapshot.ruDescription(), referenceMap.ruDescriptionHash());
-        requireHash(failures, "en.description", snapshot.enDescription(), referenceMap.enDescriptionHash());
+        requireHash(failures, "ru.fields.json", ruFieldsDocument, referenceMap.ruFieldsHash());
+        requireHash(failures, "en.fields.json", enFieldsDocument, referenceMap.enFieldsHash());
+        requireHash(failures, "structuredData", snapshot.structuredData(), referenceMap.structuredDataHash());
         if (!failures.isEmpty()) {
             throw new ApprovedSnapshotIntegrityException(
                     approvedDirectory, String.join("; ", failures) + ".");
@@ -476,10 +480,12 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             throws IOException {
         Files.writeString(approvedFile(staging, "ru.md"), ruBody, StandardCharsets.UTF_8);
         Files.writeString(approvedFile(staging, "en.md"), enBody, StandardCharsets.UTF_8);
-        Files.writeString(approvedFile(staging, "ru.title"), ruTitle, StandardCharsets.UTF_8);
-        Files.writeString(approvedFile(staging, "en.title"), enTitle, StandardCharsets.UTF_8);
-        Files.writeString(approvedFile(staging, "ru.description"), ruDescription, StandardCharsets.UTF_8);
-        Files.writeString(approvedFile(staging, "en.description"), enDescription, StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "ru.fields.json"), PublicFieldsCodec.write(
+                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription))),
+                StandardCharsets.UTF_8);
+        Files.writeString(approvedFile(staging, "en.fields.json"), PublicFieldsCodec.write(
+                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription))),
+                StandardCharsets.UTF_8);
         Files.writeString(approvedFile(staging, "references.json"),
                 ReferenceMapCodec.write(referenceMap), StandardCharsets.UTF_8);
     }
@@ -512,5 +518,9 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         private boolean invalid() {
             return present && !valid;
         }
+    }
+
+    private record SnapshotRead(
+            CandidateSnapshot snapshot, String ruFieldsDocument, String enFieldsDocument) {
     }
 }

@@ -2,6 +2,8 @@ package dev.eugene.publicationexporter.candidate;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 
@@ -139,14 +141,11 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
     private boolean containsCandidateSnapshot(Path candidateDirectory) {
         Path ruBodyPath = candidateFile(candidateDirectory, "ru.md");
         Path enBodyPath = candidateFile(candidateDirectory, "en.md");
-        Path ruTitlePath = candidateFile(candidateDirectory, "ru.title");
-        Path enTitlePath = candidateFile(candidateDirectory, "en.title");
-        Path ruDescriptionPath = candidateFile(candidateDirectory, "ru.description");
-        Path enDescriptionPath = candidateFile(candidateDirectory, "en.description");
+        Path ruFieldsPath = candidateFile(candidateDirectory, "ru.fields.json");
+        Path enFieldsPath = candidateFile(candidateDirectory, "en.fields.json");
         Path referencesPath = candidateFile(candidateDirectory, "references.json");
         return Files.exists(ruBodyPath) && Files.exists(enBodyPath)
-                && Files.exists(ruTitlePath) && Files.exists(enTitlePath)
-                && Files.exists(ruDescriptionPath) && Files.exists(enDescriptionPath)
+                && Files.exists(ruFieldsPath) && Files.exists(enFieldsPath)
                 && Files.exists(referencesPath);
     }
 
@@ -155,13 +154,12 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         try {
             String ruBody = readCandidateText(candidateFile(candidateDirectory, "ru.md"));
             String enBody = readCandidateText(candidateFile(candidateDirectory, "en.md"));
-            String ruTitle = readCandidateText(candidateFile(candidateDirectory, "ru.title"));
-            String enTitle = readCandidateText(candidateFile(candidateDirectory, "en.title"));
-            String ruDescription = readCandidateText(candidateFile(candidateDirectory, "ru.description"));
-            String enDescription = readCandidateText(candidateFile(candidateDirectory, "en.description"));
+            List<PublicField> ruFields =
+                    PublicFieldsCodec.read(readCandidateText(candidateFile(candidateDirectory, "ru.fields.json")));
+            List<PublicField> enFields =
+                    PublicFieldsCodec.read(readCandidateText(candidateFile(candidateDirectory, "en.fields.json")));
             ReferenceMap referenceMap = readReferenceMap(candidateFile(candidateDirectory, "references.json"));
-            return snapshotMatching(expectedIdentity, ruBody, enBody, ruTitle, enTitle,
-                    ruDescription, enDescription, referenceMap);
+            return snapshotMatching(expectedIdentity, ruBody, enBody, ruFields, enFields, referenceMap);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
         }
@@ -178,13 +176,13 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
     }
 
     private static Optional<CandidateSnapshot> snapshotMatching(
-            PublicationIdentity expectedIdentity, String ruBody, String enBody, String ruTitle, String enTitle,
-            String ruDescription, String enDescription, ReferenceMap referenceMap) {
+            PublicationIdentity expectedIdentity, String ruBody, String enBody,
+            List<PublicField> ruFields, List<PublicField> enFields,
+            ReferenceMap referenceMap) {
         if (!referenceMap.identity().equals(expectedIdentity)) {
             return Optional.empty();
         }
-        return Optional.of(CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
-                ruDescription, enDescription, referenceMap));
+        return Optional.of(CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, "", referenceMap));
     }
 
     private Path candidateDirectory(PublicationIdentity identity) {
@@ -219,10 +217,10 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
     private void writeSnapshot(Path staging, CandidateSnapshot content) throws IOException {
         Files.writeString(candidateFile(staging, "ru.md"), content.ruBody(), StandardCharsets.UTF_8);
         Files.writeString(candidateFile(staging, "en.md"), content.enBody(), StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "ru.title"), content.ruTitle(), StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "en.title"), content.enTitle(), StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "ru.description"), content.ruDescription(), StandardCharsets.UTF_8);
-        Files.writeString(candidateFile(staging, "en.description"), content.enDescription(), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "ru.fields.json"),
+                PublicFieldsCodec.write(content.ruFields()), StandardCharsets.UTF_8);
+        Files.writeString(candidateFile(staging, "en.fields.json"),
+                PublicFieldsCodec.write(content.enFields()), StandardCharsets.UTF_8);
         Files.writeString(candidateFile(staging, "references.json"),
                 ReferenceMapCodec.write(content.referenceMap()), StandardCharsets.UTF_8);
     }

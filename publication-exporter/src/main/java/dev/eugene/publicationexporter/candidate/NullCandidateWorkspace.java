@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.candidate;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
@@ -91,20 +92,16 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
             return content.enBody();
         }
 
-        public String ruTitle() {
-            return content.ruTitle();
+        public List<PublicField> ruFields() {
+            return content.ruFields();
         }
 
-        public String enTitle() {
-            return content.enTitle();
+        public List<PublicField> enFields() {
+            return content.enFields();
         }
 
-        public String ruDescription() {
-            return content.ruDescription();
-        }
-
-        public String enDescription() {
-            return content.enDescription();
+        public String structuredData() {
+            return content.structuredData();
         }
 
         public ReferenceMap referenceMap() {

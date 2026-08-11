@@ -3,10 +3,12 @@ package dev.eugene.publicationexporter.approved;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -20,8 +22,10 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
             String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
         validateInstallArguments(identity, ruBody, enBody, ruTitle, enTitle,
                 ruDescription, enDescription, referenceMap);
-        installed.put(identity, CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
-                ruDescription, enDescription, referenceMap));
+        installed.put(identity, CandidateSnapshot.of(ruBody, enBody,
+                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
+                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
+                "", referenceMap));
     }
 
     private void validateInstallArguments(

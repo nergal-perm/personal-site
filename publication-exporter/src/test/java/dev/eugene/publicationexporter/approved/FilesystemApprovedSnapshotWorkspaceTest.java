@@ -4,6 +4,8 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
 import org.junit.jupiter.api.Test;
@@ -23,6 +25,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.Optional;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -40,9 +43,9 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
 
     @Test
-    void installWritesAllSnapshotFilesAtTheirFinalPath() throws Exception {
+    void installWritesTheGeneralizedSnapshotFilesAtTheirFinalPath() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -50,10 +53,10 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         Path approvedDir = reviewRoot.resolve("blog").resolve("my-essay").resolve("approved");
         assertEquals("RU body", Files.readString(approvedDir.resolve("ru.md")));
         assertEquals("EN body", Files.readString(approvedDir.resolve("en.md")));
-        assertEquals("RU title", Files.readString(approvedDir.resolve("ru.title")));
-        assertEquals("EN title", Files.readString(approvedDir.resolve("en.title")));
-        assertEquals("RU description.", Files.readString(approvedDir.resolve("ru.description")));
-        assertEquals("EN description.", Files.readString(approvedDir.resolve("en.description")));
+        assertEquals(List.of(PublicField.of("title", "RU title"), PublicField.of("description", "RU description.")),
+                PublicFieldsCodec.read(Files.readString(approvedDir.resolve("ru.fields.json"))));
+        assertEquals(List.of(PublicField.of("title", "EN title"), PublicField.of("description", "EN description.")),
+                PublicFieldsCodec.read(Files.readString(approvedDir.resolve("en.fields.json"))));
         assertTrue(Files.readString(approvedDir.resolve("references.json")).contains("\"ruHash\":\"ru-hash\""));
     }
 
@@ -101,10 +104,10 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         assertTrue(read.isPresent());
         assertEquals("RU body", read.get().ruBody());
         assertEquals("EN body", read.get().enBody());
-        assertEquals("RU title", read.get().ruTitle());
-        assertEquals("EN title", read.get().enTitle());
-        assertEquals("RU description.", read.get().ruDescription());
-        assertEquals("EN description.", read.get().enDescription());
+        assertEquals("RU title", PublicField.value(read.get().ruFields(), "title").orElseThrow());
+        assertEquals("EN title", PublicField.value(read.get().enFields(), "title").orElseThrow());
+        assertEquals("RU description.", PublicField.value(read.get().ruFields(), "description").orElseThrow());
+        assertEquals("EN description.", PublicField.value(read.get().enFields(), "description").orElseThrow());
         assertEquals(referenceMap, read.get().referenceMap());
     }
 
@@ -142,10 +145,10 @@ class FilesystemApprovedSnapshotWorkspaceTest {
 
             assertEquals("New RU", snapshot.ruBody());
             assertEquals("New EN", snapshot.enBody());
-            assertEquals("New RU title", snapshot.ruTitle());
-            assertEquals("New EN title", snapshot.enTitle());
-            assertEquals("New RU description", snapshot.ruDescription());
-            assertEquals("New EN description", snapshot.enDescription());
+            assertEquals("New RU title", PublicField.value(snapshot.ruFields(), "title").orElseThrow());
+            assertEquals("New EN title", PublicField.value(snapshot.enFields(), "title").orElseThrow());
+            assertEquals("New RU description", PublicField.value(snapshot.ruFields(), "description").orElseThrow());
+            assertEquals("New EN description", PublicField.value(snapshot.enFields(), "description").orElseThrow());
             assertEquals(referenceMapFor("New"), snapshot.referenceMap());
         } finally {
             replacementCompleted.countDown();
@@ -284,10 +287,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
 
         Path referencesPath = reviewRoot.resolve("blog/my-essay/approved/references.json");
         PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
-        ReferenceMap mismatching = ReferenceMap.empty(otherIdentity,
-                ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"),
-                ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
-                ContentHash.sha256Hex("RU description."), ContentHash.sha256Hex("EN description."));
+        ReferenceMap mismatching = ReferenceMap.empty(otherIdentity, ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"), ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"), ContentHash.sha256Hex("EN description."));
         Files.writeString(referencesPath, ReferenceMapCodec.write(mismatching), StandardCharsets.UTF_8);
 
         ApprovedSnapshotIntegrityException failure = assertThrows(
@@ -311,10 +311,10 @@ class FilesystemApprovedSnapshotWorkspaceTest {
 
         assertEquals("RU body 2", Files.readString(approvedDir.resolve("ru.md")));
         assertEquals("EN body 2", Files.readString(approvedDir.resolve("en.md")));
-        assertEquals("RU title 2", Files.readString(approvedDir.resolve("ru.title")));
-        assertEquals("EN title 2", Files.readString(approvedDir.resolve("en.title")));
-        assertEquals("RU description 2.", Files.readString(approvedDir.resolve("ru.description")));
-        assertEquals("EN description 2.", Files.readString(approvedDir.resolve("en.description")));
+        assertEquals(List.of(PublicField.of("title", "RU title 2"), PublicField.of("description", "RU description 2.")),
+                PublicFieldsCodec.read(Files.readString(approvedDir.resolve("ru.fields.json"))));
+        assertEquals(List.of(PublicField.of("title", "EN title 2"), PublicField.of("description", "EN description 2.")),
+                PublicFieldsCodec.read(Files.readString(approvedDir.resolve("en.fields.json"))));
     }
 
     @Test
@@ -401,10 +401,12 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         Files.createDirectories(approvedDir);
         Files.writeString(approvedDir.resolve("ru.md"), "New RU", StandardCharsets.UTF_8);
         Files.writeString(approvedDir.resolve("en.md"), "New EN", StandardCharsets.UTF_8);
-        Files.writeString(approvedDir.resolve("ru.title"), "New RU title", StandardCharsets.UTF_8);
-        Files.writeString(approvedDir.resolve("en.title"), "New EN title", StandardCharsets.UTF_8);
-        Files.writeString(approvedDir.resolve("ru.description"), "New RU description", StandardCharsets.UTF_8);
-        Files.writeString(approvedDir.resolve("en.description"), "New EN description", StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("ru.fields.json"), PublicFieldsCodec.write(List.of(
+                PublicField.of("title", "New RU title"), PublicField.of("description", "New RU description"))),
+                StandardCharsets.UTF_8);
+        Files.writeString(approvedDir.resolve("en.fields.json"), PublicFieldsCodec.write(List.of(
+                PublicField.of("title", "New EN title"), PublicField.of("description", "New EN description"))),
+                StandardCharsets.UTF_8);
         Files.writeString(approvedDir.resolve("references.json"), ReferenceMapCodec.write(newReferenceMap),
                 StandardCharsets.UTF_8);
 
@@ -444,6 +446,19 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void readRejectsAChangedFieldsDocumentEvenWhenItsJsonStillParses() throws Exception {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        installSnapshot(workspace, "Original");
+        Path fieldsPath = reviewRoot.resolve("blog/my-essay/approved/ru.fields.json");
+        Files.writeString(fieldsPath, Files.readString(fieldsPath) + " ", StandardCharsets.UTF_8);
+
+        ApprovedSnapshotIntegrityException failure = assertThrows(
+                ApprovedSnapshotIntegrityException.class, () -> workspace.read(IDENTITY));
+
+        assertTrue(failure.getMessage().contains("ru.fields.json"));
+    }
+
+    @Test
     void manualBackupDecoyIsIgnoredAndPreserved() throws Exception {
         installSnapshot(new FilesystemApprovedSnapshotWorkspace(reviewRoot), "Valid");
         Path decoy = reviewRoot.resolve("blog/my-essay/approved-backup-manual");
@@ -480,7 +495,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
         workspace.install(IDENTITY, "RU", "EN", "RU title", "EN title", "RU description.",
-                "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+                "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash"));
 
         try (var entries = Files.list(reviewRoot)) {
             long stagingLeftovers = entries
@@ -499,7 +514,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         assertThrows(IllegalStateException.class,
                 () -> workspace.install(escapingIdentity, "RU", "EN", "RU title", "EN title",
                         "RU description.", "EN description.",
-                        ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
+                        ReferenceMap.empty(escapingIdentity, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash")));
 
         assertTrue(Files.notExists(freshRoot));
     }
@@ -512,7 +527,7 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         assertThrows(IllegalStateException.class,
                 () -> workspace.install(IDENTITY, "RU", "EN", "RU title", "EN title",
                         "RU description.", "EN description.",
-                        ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash")));
+                        ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash")));
 
         assertTrue(Files.notExists(outsideRoot.resolve("my-essay/approved")));
         try (var entries = Files.list(reviewRoot)) {
@@ -537,10 +552,12 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         Files.createDirectories(directory);
         Files.writeString(directory.resolve("ru.md"), generation + " RU", StandardCharsets.UTF_8);
         Files.writeString(directory.resolve("en.md"), generation + " EN", StandardCharsets.UTF_8);
-        Files.writeString(directory.resolve("ru.title"), generation + " RU title", StandardCharsets.UTF_8);
-        Files.writeString(directory.resolve("en.title"), generation + " EN title", StandardCharsets.UTF_8);
-        Files.writeString(directory.resolve("ru.description"), generation + " RU description", StandardCharsets.UTF_8);
-        Files.writeString(directory.resolve("en.description"), generation + " EN description", StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("ru.fields.json"), PublicFieldsCodec.write(List.of(
+                PublicField.of("title", generation + " RU title"),
+                PublicField.of("description", generation + " RU description"))), StandardCharsets.UTF_8);
+        Files.writeString(directory.resolve("en.fields.json"), PublicFieldsCodec.write(List.of(
+                PublicField.of("title", generation + " EN title"),
+                PublicField.of("description", generation + " EN description"))), StandardCharsets.UTF_8);
         Files.writeString(directory.resolve("references.json"),
                 ReferenceMapCodec.write(referenceMapFor(generation)), StandardCharsets.UTF_8);
     }
@@ -555,10 +572,14 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     private static ReferenceMap matchingReferenceMap(
             String ruBody, String enBody, String ruTitle, String enTitle,
             String ruDescription, String enDescription) {
+        String ruFields = PublicFieldsCodec.write(List.of(
+                PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)));
+        String enFields = PublicFieldsCodec.write(List.of(
+                PublicField.of("title", enTitle), PublicField.of("description", enDescription)));
         return ReferenceMap.empty(IDENTITY,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
-                ContentHash.sha256Hex(ruTitle), ContentHash.sha256Hex(enTitle),
-                ContentHash.sha256Hex(ruDescription), ContentHash.sha256Hex(enDescription));
+                ContentHash.sha256Hex(ruFields), ContentHash.sha256Hex(enFields),
+                ContentHash.sha256Hex(""));
     }
 
     private static boolean validBackupDirectoryName(String fileName) {

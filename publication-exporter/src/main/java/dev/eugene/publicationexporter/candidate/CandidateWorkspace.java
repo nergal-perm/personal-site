@@ -1,6 +1,7 @@
 package dev.eugene.publicationexporter.candidate;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
@@ -19,14 +20,23 @@ public interface CandidateWorkspace {
                     "This CandidateWorkspace implementation (" + getClass()
                             + ") does not support installing assets yet.");
         }
-        install(identity, content.ruBody(), content.enBody(), content.ruTitle(), content.enTitle(),
-                content.ruDescription(), content.enDescription(), content.referenceMap());
+        install(identity, content.ruBody(), content.enBody(), content.ruFields(), content.enFields(),
+                content.structuredData(), content.referenceMap());
     }
 
     default void install(PublicationIdentity identity, String ruBody, String enBody,
             String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
-        install(identity, CandidateSnapshot.of(ruBody, enBody, ruTitle, enTitle,
-                ruDescription, enDescription, referenceMap), List.of());
+        install(identity, ruBody, enBody,
+                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
+                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
+                "", referenceMap);
+    }
+
+    default void install(PublicationIdentity identity, String ruBody, String enBody,
+            List<PublicField> ruFields, List<PublicField> enFields, String structuredData,
+            ReferenceMap referenceMap) {
+        install(identity, CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, structuredData, referenceMap),
+                List.of());
     }
 
     Optional<CandidatePaths> find(PublicationIdentity identity);

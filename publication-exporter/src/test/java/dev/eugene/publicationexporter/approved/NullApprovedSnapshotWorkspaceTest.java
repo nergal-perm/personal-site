@@ -3,6 +3,7 @@ package dev.eugene.publicationexporter.approved;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
+import dev.eugene.publicationexporter.reference.PublicField;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
@@ -26,7 +27,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void installThenFindReturnsPathsEndingInRuMdAndEnMd() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -42,7 +43,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void findIsAbsentForDifferentIdentityAfterInstallingOne() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash");
 
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
@@ -67,8 +68,7 @@ class NullApprovedSnapshotWorkspaceTest {
     }
 
     private static ReferenceMap referenceMap(String hash) {
-        return ReferenceMap.empty(IDENTITY, hash + "-ru", hash + "-en", hash + "-ru-title", hash + "-en-title",
-                hash + "-ru-description", hash + "-en-description");
+        return ReferenceMap.empty(IDENTITY, hash + "-ru", hash + "-en", hash + "-ru-title", hash + "-en-title", hash + "-en-description");
     }
 
     @Test
@@ -88,7 +88,7 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void readReturnsTheInstalledBodiesAndReferenceMap() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
@@ -97,10 +97,10 @@ class NullApprovedSnapshotWorkspaceTest {
         assertTrue(read.isPresent());
         assertEquals("RU body", read.get().ruBody());
         assertEquals("EN body", read.get().enBody());
-        assertEquals("RU title", read.get().ruTitle());
-        assertEquals("EN title", read.get().enTitle());
-        assertEquals("RU description.", read.get().ruDescription());
-        assertEquals("EN description.", read.get().enDescription());
+        assertEquals("RU title", PublicField.value(read.get().ruFields(), "title").orElseThrow());
+        assertEquals("EN title", PublicField.value(read.get().enFields(), "title").orElseThrow());
+        assertEquals("RU description.", PublicField.value(read.get().ruFields(), "description").orElseThrow());
+        assertEquals("EN description.", PublicField.value(read.get().enFields(), "description").orElseThrow());
         assertEquals(referenceMap, read.get().referenceMap());
     }
 
@@ -108,7 +108,7 @@ class NullApprovedSnapshotWorkspaceTest {
     void readIsAbsentForADifferentIdentity() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
-                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+                "RU description.", "EN description.", ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash"));
 
         assertEquals(Optional.empty(), workspace.read(DIFFERENT_IDENTITY));
     }
@@ -116,14 +116,14 @@ class NullApprovedSnapshotWorkspaceTest {
     @Test
     void readReturnsTheInstalledTitleAndDescription() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
-        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash");
+        ReferenceMap referenceMap = ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "en-description-hash");
         workspace.install(IDENTITY, "RU body", "EN body", "RU title", "EN title",
                 "RU description.", "EN description.", referenceMap);
 
         Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read = workspace.read(IDENTITY);
 
         assertTrue(read.isPresent());
-        assertEquals("RU title", read.get().ruTitle());
-        assertEquals("EN title", read.get().enTitle());
+        assertEquals("RU title", PublicField.value(read.get().ruFields(), "title").orElseThrow());
+        assertEquals("EN title", PublicField.value(read.get().enFields(), "title").orElseThrow());
     }
 }
