@@ -170,6 +170,34 @@ class FilesystemVaultReaderTest {
         assertEquals(List.of(), vaultReader.listPublishCandidates());
     }
 
+    @Test
+    void listPublishCandidatesReturnsResultsInDeterministicSortedOrder() throws Exception {
+        writeNote(vaultRoot, "blog/zebra.md", "---\npublish: true\n---\nBody.");
+        writeNote(vaultRoot, "blog/apple.md", "---\npublish: true\n---\nBody.");
+        writeNote(vaultRoot, "archive/middle.md", "---\npublish: true\n---\nBody.");
+        VaultReader vaultReader = VaultReader.create(vaultRoot);
+
+        assertEquals(
+                List.of(
+                        VaultRelativePath.of("archive/middle.md"),
+                        VaultRelativePath.of("blog/apple.md"),
+                        VaultRelativePath.of("blog/zebra.md")),
+                vaultReader.listPublishCandidates());
+    }
+
+    @Test
+    void listPublishCandidatesDiscoversASelectedNoteUnderANormallyIgnoredPath() throws Exception {
+        writeNote(vaultRoot, ".obsidian/blog/hidden-essay.md", "---\npublish: true\n---\nBody.");
+        writeNote(vaultRoot, "blog/visible-essay.md", "---\npublish: true\n---\nBody.");
+        VaultReader vaultReader = VaultReader.create(vaultRoot);
+
+        assertEquals(
+                List.of(
+                        VaultRelativePath.of(".obsidian/blog/hidden-essay.md"),
+                        VaultRelativePath.of("blog/visible-essay.md")),
+                vaultReader.listPublishCandidates());
+    }
+
     private Path writeNote(Path vaultRoot, String relativePath, String source) throws IOException {
         Path note = vaultRoot.resolve(relativePath);
         Files.createDirectories(note.getParent());
