@@ -10,10 +10,6 @@ valid_until: 2026-11-02T00:00:00Z
 created_at: 2026-08-02T10:30:59Z
 updated_at: 2026-08-07T19:26:02Z
 links:
-  - ref: TS.environment-change.002
-    type: governs
-  - ref: TS.environment-change.003
-    type: governs
   - ref: prob-20260802-1803dd18
     type: based_on
   - ref: sol-20260802-2618001e

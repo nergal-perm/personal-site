@@ -10,8 +10,6 @@ updated_at: 2026-08-10T06:09:37Z
 links:
   - ref: prob-20260805-d9f3aef2
     type: based_on
-  - ref: review-and-approval
-    type: governs
 ---
 
 # Extend CandidateWorkspace with find(...), report candidate-ready state and a first-publication reviewPlan through inspect-publication

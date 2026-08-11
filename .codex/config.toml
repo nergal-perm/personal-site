@@ -14,6 +14,7 @@ tool_timeout_sec = 60
 
 [mcp_servers.haft.env]
 HAFT_PROJECT_ROOT = "."
+HAFT_EXPECTED_PROJECT_ID = "qnt_bf986bfe"
 
 [mcp_servers.haft.tools.haft_query]
 approval_mode = "approve"

@@ -2,6 +2,27 @@
 
 # Target System Spec
 
+## TS.publication-environment.001 Explicitly reviewed vault notes become bilingual public pages
+
+```yaml spec-section
+id: TS.publication-environment.001
+spec: target-system
+kind: target.environment
+title: Explicitly reviewed vault notes become bilingual public pages
+owner: human
+statement_type: explanation
+claim_layer: description
+status: active
+valid_until: "2027-08-02T00:00:00Z"
+depends_on: []
+supersedes: []
+terms: [publish flag, approved translation baseline]
+target_refs: [README.md]
+evidence_required: []
+```
+
+An author-marked vault note becomes a public page in Russian and English only after the plugin, exporter review, and approved baseline path completes. Notes without that explicit approval remain private; later source edits leave the published page unchanged until re-review creates a new approved baseline.
+
 ## TS.environment-change.001 Approved vault notes become published bilingual blog pages
 
 ```yaml spec-section

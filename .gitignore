@@ -6,3 +6,4 @@ e2e/.review/
 **/.idea/
 publication-exporter.toml
 graphify-out/
+data/

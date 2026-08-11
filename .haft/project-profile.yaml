@@ -1,0 +1,33 @@
+# Generated from the canonical SQLite profile-admission ledger.
+# Human-readable projection only: not authority and not admission proof.
+schema: haft.project-profile-projection/v1
+semantic_role: human_readable_projection
+canonical_source: sqlite_profile_admission_ledger
+project_root: /Users/eugene/Dev/personal-site
+profile_kind: Declared
+ledger_revision: 1
+ledger_recorded_at: "2026-08-11T13:21:43.742236Z"
+profile_payload_digest: sha256:6c6b8e45a0bd0063b0783a18e87c4ba8ed103e9d5be78d3d26e1e55648704860
+admission_record_ref: profile-admission.dd92475ee4b374fd9341452d7966b1e267f1ff2f7a96b6e84069b38395db03a1
+admission_record_digest: sha256:a2ae5d9a5e832f17bb3827755310933e1aac7e32949d8ae700412af2a6e612a3
+receipt_digest: sha256:993f3e3176c492ec87da55f70ccb10f16d8137903209f8e34e0963aeb68602b7
+receipt_canonical_json: '{"schema":"haft.project-profile.declaration-receipt/v1","authority_resolution_record_ref":"profile-authority-resolution:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b","authority_resolution_record_digest":"sha256:27034cac8da4242a56d44a4ecb21c0946f2c0280c3e9ab613882a8f507bcb78a","authority_basis_ref":"profile-authority-basis:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b","work_record_ref":"work-record:profile-onboarding:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b","candidate_provenance_digest":"sha256:95bf1d9ebc1dbd7d9ca14ec4da1c40ba17141e07235c3c8fd544970b785453dc","payload_digest":"sha256:6c6b8e45a0bd0063b0783a18e87c4ba8ed103e9d5be78d3d26e1e55648704860","observed_basis_digest":"sha256:80f219bc9f9f1f242a0012a80c3c6767986db0eee51732229231e61f44382dc2","ledger_revision":1,"recorded_at":"2026-08-11T13:21:43.742236Z"}'
+provenance:
+  candidate_provenance_digest: sha256:95bf1d9ebc1dbd7d9ca14ec4da1c40ba17141e07235c3c8fd544970b785453dc
+  work_record_ref: work-record:profile-onboarding:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b
+  work_record_digest: sha256:1ffcd1f138ecc79388d870f4f4c3162a260cf4c72535373faf4f2d66388cfde2
+  authority_basis_ref: profile-authority-basis:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b
+  authority_basis_digest: sha256:79ce43e36b09b4ed6b225c6bca69126eb012dd41a7ce40eb22ba273e0b6538a0
+  authority_resolution_ref: profile-authority-resolution:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b
+  authority_resolution_digest: sha256:27034cac8da4242a56d44a4ecb21c0946f2c0280c3e9ab613882a8f507bcb78a
+  profile_author_assignment_ref: role-assignment:profile-author:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b
+  profile_author_assignment_digest: sha256:398249a322d32a422b45ea9cef846b64ab2a6cc7e54e2e84eb6d29040e584c93
+  observed_project_basis_ref: observed-basis:explicit-profile-request:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b
+  observed_project_basis_digest: sha256:80f219bc9f9f1f242a0012a80c3c6767986db0eee51732229231e61f44382dc2
+  outcome_assessment_ref: assessment:profile-candidate:86d02c24b2a03e07780fd42b16bf467f5d23ba18bed11253f37f0bab599f228b
+  outcome_assessment_digest: sha256:8afc2ec9ac490edf258659c0e5a0c7cce0adab8d77dea75a608dc55d81307c4d
+scopes:
+  - kind: software
+    scope_id: publication-pipeline
+    entity_reference:
+      kind: none

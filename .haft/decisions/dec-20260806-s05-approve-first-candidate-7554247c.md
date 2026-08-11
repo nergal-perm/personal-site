@@ -10,8 +10,6 @@ updated_at: 2026-08-10T06:09:41Z
 links:
   - ref: prob-20260805-3d747bed
     type: based_on
-  - ref: review-and-approval
-    type: governs
 ---
 
 # New ApprovedSnapshotWorkspace port + CandidateWorkspace#read + MarkReviewedHandler for the first approved snapshot
