@@ -47,6 +47,8 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         Path enDestination = markdownFile(identity, "en");
         return withInstallationLock(identity, () -> {
             boolean recovered = recoverIfNeeded(ruDestination, enDestination);
+            requireNoKindCollision(identity, ruDestination);
+            requireNoKindCollision(identity, enDestination);
             try {
                 installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
             } catch (RuntimeException failure) {
@@ -71,6 +73,32 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
             throw new UncheckedIOException(error);
         } finally {
             deleteStagingDirectory(staging);
+        }
+    }
+
+    /**
+     * The real destination path is keyed by (collection, locale, publicId) only, so a different
+     * kind sharing that triple would otherwise silently overwrite this one's site file on
+     * replace. Every file this adapter writes carries its own {@code contentType} frontmatter
+     * line (see {@link #frontmatter}), so the existing file's kind is checked against the
+     * incoming one before any write happens.
+     */
+    private void requireNoKindCollision(PublicationIdentity identity, Path destination) {
+        Path resolved = resolveWithinSiteRoot(destination);
+        if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        String expectedContentTypeLine = "contentType: " + doubleQuotedYamlScalar(identity.publicContentType());
+        List<String> lines;
+        try {
+            lines = Files.readAllLines(resolved, StandardCharsets.UTF_8);
+        } catch (IOException unreadable) {
+            return;
+        }
+        boolean matchesIncomingKind = lines.stream().anyMatch(expectedContentTypeLine::equals);
+        boolean hasAnyContentTypeLine = lines.stream().anyMatch(line -> line.startsWith("contentType: "));
+        if (hasAnyContentTypeLine && !matchesIncomingKind) {
+            throw new ManagedSiteKindCollisionException(identity, resolved);
         }
     }
 

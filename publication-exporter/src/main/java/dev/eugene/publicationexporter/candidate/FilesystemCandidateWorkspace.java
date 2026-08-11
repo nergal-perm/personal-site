@@ -39,6 +39,7 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         Objects.requireNonNull(assets, "assets");
 
         Path destination = candidateDirectory(identity);
+        requireNoKindCollision(identity, destination);
         Path staging = createStagingDirectory();
         try {
             writeSnapshot(staging, content);
@@ -88,6 +89,29 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         requireWithinReviewRoot(source);
         requireWithinReviewRoot(destination);
         moveOperation.move(source, destination);
+    }
+
+    /**
+     * The real destination path is keyed by (collection, publicId) only, so a different kind
+     * sharing that pair would otherwise silently overwrite this one's candidate on replace.
+     * references.json already carries the full identity of whatever currently occupies the
+     * directory, so the existing snapshot's kind is checked against the incoming one before
+     * any write happens.
+     */
+    private void requireNoKindCollision(PublicationIdentity identity, Path destination) {
+        Path referencesPath = candidateFile(destination, "references.json");
+        if (!Files.exists(referencesPath, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        PublicationIdentity existingIdentity;
+        try {
+            existingIdentity = readReferenceMap(referencesPath).identity();
+        } catch (IOException | RuntimeException unreadable) {
+            return;
+        }
+        if (!existingIdentity.equals(identity)) {
+            throw new CandidateWorkspaceKindCollisionException(identity, existingIdentity);
+        }
     }
 
     @Override
