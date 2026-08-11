@@ -286,6 +286,8 @@ public final class PrepareHandler {
             return candidateFailure(IoFailureMessages.describe("Candidate installation failed", failure));
         } catch (CandidateWorkspaceConfinementException failure) {
             return candidateFailure("Candidate installation failed: " + failure.getMessage());
+        } catch (UnsupportedOperationException failure) {
+            return candidateFailure("Candidate installation failed: " + failure.getMessage());
         }
         return BridgeResponse.prepared(COMMAND, identity);
     }
