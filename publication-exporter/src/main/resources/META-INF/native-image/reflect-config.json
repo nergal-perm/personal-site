@@ -199,6 +199,29 @@
     "allDeclaredMethods": true
   },
   {
+    "name": "dev.eugene.publicationexporter.cli.WritePublicationManifestCommand",
+    "allDeclaredConstructors": true,
+    "allDeclaredFields": true,
+    "allDeclaredMethods": true
+  },
+  {
+    "name": "dev.eugene.publicationexporter.manifest.PublicationManifest",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "ok", "parameterTypes": []},
+      {"name": "entries", "parameterTypes": []}
+    ]
+  },
+  {
+    "name": "dev.eugene.publicationexporter.manifest.ManifestEntry",
+    "allDeclaredFields": true,
+    "methods": [
+      {"name": "path", "parameterTypes": []},
+      {"name": "identity", "parameterTypes": []},
+      {"name": "diagnostics", "parameterTypes": []}
+    ]
+  },
+  {
     "name": "com.fasterxml.jackson.databind.ext.Java7SupportImpl",
     "methods": [
       {
