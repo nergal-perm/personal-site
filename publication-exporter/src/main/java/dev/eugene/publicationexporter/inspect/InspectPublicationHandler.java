@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.inspect;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
@@ -41,7 +42,7 @@ public final class InspectPublicationHandler {
     }
 
     public BridgeResponse inspect(VaultRelativePath notePath, VaultReader vaultReader) {
-        NoteIntake.Result intake = new NoteIntake().admit(notePath, vaultReader);
+        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }

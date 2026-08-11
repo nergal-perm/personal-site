@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceConfinementException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateException;
@@ -56,7 +57,7 @@ public final class PrepareHandler {
 
     public BridgeResponse prepare(
             VaultRelativePath notePath, VaultReader vaultReader, VaultAssetReader vaultAssetReader) {
-        NoteIntake.Result intake = new NoteIntake().admit(notePath, vaultReader);
+        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
@@ -258,7 +259,7 @@ public final class PrepareHandler {
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity expectedIdentity, TranslationJob job, PublicNoteIndex knownNotes,
             VaultAssetReader vaultAssetReader) {
-        NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
+        NoteIntake.Result current = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
             return SourceFreshnessOutcome.stale();
         }

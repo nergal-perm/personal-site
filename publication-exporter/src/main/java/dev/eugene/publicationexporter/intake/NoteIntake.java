@@ -20,10 +20,6 @@ public final class NoteIntake {
 
     private final PublicationKinds publicationKinds;
 
-    public NoteIntake() {
-        this(PublicationKinds.installed());
-    }
-
     public NoteIntake(PublicationKinds publicationKinds) {
         this.publicationKinds = Objects.requireNonNull(publicationKinds, "publicationKinds");
     }

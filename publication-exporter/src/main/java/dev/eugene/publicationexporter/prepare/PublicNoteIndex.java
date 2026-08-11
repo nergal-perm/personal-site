@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.prepare;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.vault.VaultReader;
@@ -38,7 +39,7 @@ final class PublicNoteIndex {
     private static void registerIfAdmitted(
             VaultReader vaultReader, VaultRelativePath candidate,
             Map<String, String> routes, Set<String> ambiguousStems) {
-        NoteIntake.Result intake = new NoteIntake().admit(candidate, vaultReader);
+        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(candidate, vaultReader);
         if (!intake.accepted()) {
             return;
         }

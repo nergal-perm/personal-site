@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.refresh;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
@@ -51,7 +52,7 @@ public final class RefreshPublicationQueueHandler {
     }
 
     private ReconcileOutcome reconcileOne(VaultRelativePath notePath, VaultReader vaultReader) {
-        NoteIntake.Result intake = new NoteIntake().admit(notePath, vaultReader);
+        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return ReconcileOutcome.EXCLUDED;
         }

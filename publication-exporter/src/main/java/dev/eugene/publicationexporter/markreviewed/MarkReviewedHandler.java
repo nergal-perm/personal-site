@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.markreviewed;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotAlreadyExistsException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotApprovalInProgressException;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
@@ -47,7 +48,7 @@ public final class MarkReviewedHandler {
     }
 
     public BridgeResponse markReviewed(VaultRelativePath notePath, VaultReader vaultReader) {
-        NoteIntake.Result intake = new NoteIntake().admit(notePath, vaultReader);
+        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
@@ -81,7 +82,7 @@ public final class MarkReviewedHandler {
 
     private BridgeResponse markReviewedWithFreshSource(
             VaultRelativePath notePath, VaultReader vaultReader, PublicationIdentity lockedIdentity) {
-        NoteIntake.Result current = new NoteIntake().admit(notePath, vaultReader);
+        NoteIntake.Result current = new NoteIntake(PublicationKinds.installed()).admit(notePath, vaultReader);
         if (!current.accepted()) {
             return BridgeResponse.blocked(COMMAND, current.diagnostics());
         }

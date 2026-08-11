@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.manifest;
 
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -20,7 +21,7 @@ public final class PublicationManifestHandler {
     }
 
     private ManifestEntry entryFor(VaultRelativePath path, VaultReader vaultReader) {
-        NoteIntake.Result intake = new NoteIntake().admit(path, vaultReader);
+        NoteIntake.Result intake = new NoteIntake(PublicationKinds.installed()).admit(path, vaultReader);
         return intake.accepted()
                 ? ManifestEntry.admitted(path.value(), intake.identity())
                 : ManifestEntry.blocked(path.value(), intake.diagnostics());

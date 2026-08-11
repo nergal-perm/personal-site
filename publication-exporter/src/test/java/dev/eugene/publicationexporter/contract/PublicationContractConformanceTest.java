@@ -1,32 +1,76 @@
 package dev.eugene.publicationexporter.contract;
 
-import dev.eugene.publicationexporter.admission.EssayPublicationKind;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures;
+import dev.eugene.publicationexporter.admission.PublicationKinds;
+import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.note.MarkdownNote;
+import dev.eugene.publicationexporter.vault.VaultReader;
+import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.List;
+import java.util.Map;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class PublicationContractConformanceTest {
 
-    private final EssayPublicationKind admission = new EssayPublicationKind();
+    private final NoteIntake intake = new NoteIntake(PublicationKinds.installed());
 
     @ParameterizedTest(name = "{0}")
-    @MethodSource("dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures#all")
+    @MethodSource("allAdmissionFixtures")
     void contractVerdictAgreesWithFixtureAndRuntimeValidator(EssayPublicationKindFixture fixture) {
         MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
         KindContract essayKind = new PublicationContractWriter().write().kinds().get(0);
 
         boolean contractAccepts = contractAccepts(essayKind, note);
-        boolean runtimeAccepts = admission.admit(note).accepted();
+        VaultRelativePath path = VaultRelativePath.of("blog/" + fixture.name() + ".md");
+        boolean runtimeAccepts = intake.admit(path, VaultReader.createNull(Map.of(path, fixture.noteSource())))
+                .accepted();
 
         assertEquals(fixture.expectedAccepted(), contractAccepts, "contract verdict for " + fixture.name());
         assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
         assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
+    }
+
+    private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {
+        return Stream.concat(EssayPublicationKindFixtures.all().stream(), Stream.of(
+                EssayPublicationKindFixture.blocked("unpublished", """
+                        ---
+                        publicCollection: blog
+                        publicContentType: essay
+                        publicId: my-essay
+                        id: 8f2c-my-essay
+                        title: My Essay
+                        description: A valid description.
+                        ---
+                        """, List.of("publish")),
+                EssayPublicationKindFixture.blocked("wrongCollection", """
+                        ---
+                        publish: true
+                        publicCollection: bibliography
+                        publicContentType: essay
+                        publicId: my-essay
+                        id: 8f2c-my-essay
+                        title: My Essay
+                        description: A valid description.
+                        ---
+                        """, List.of("publicCollection", "publicContentType")),
+                EssayPublicationKindFixture.blocked("wrongContentType", """
+                        ---
+                        publish: true
+                        publicCollection: blog
+                        publicContentType: claim
+                        publicId: my-essay
+                        id: 8f2c-my-essay
+                        title: My Essay
+                        description: A valid description.
+                        ---
+                        """, List.of("publicContentType"))));
     }
 
     private boolean contractAccepts(KindContract kind, MarkdownNote note) {
