@@ -14,6 +14,17 @@ public final class EssayAdmission {
     private static final Pattern PUBLIC_ID_SLUG = Pattern.compile("^[a-z0-9]+(?:-[a-z0-9]+)*$");
     private static final String REQUIRED_COLLECTION = "blog";
     private static final String REQUIRED_CONTENT_TYPE = "essay";
+    private static final List<FieldRule> FIELD_RULES = List.of(
+            FieldRule.mustEqual("publicCollection", REQUIRED_COLLECTION),
+            FieldRule.mustEqual("publicContentType", REQUIRED_CONTENT_TYPE),
+            FieldRule.mustMatch("publicId", PUBLIC_ID_SLUG, "a lowercase route slug"),
+            FieldRule.nonBlank("id"),
+            FieldRule.nonBlank("title"),
+            FieldRule.nonBlank("description"));
+
+    public static List<FieldRule> fieldRules() {
+        return FIELD_RULES;
+    }
 
     public Result admit(MarkdownNote frontmatter) {
         if (!isPublished(frontmatter)) {
