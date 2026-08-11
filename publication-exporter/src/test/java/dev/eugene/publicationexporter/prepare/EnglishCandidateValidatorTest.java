@@ -152,6 +152,32 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void protocolRelativeAssetReferenceIsReportedAsDropped() {
+        String ruBody = "See ![cover](/assets/vault/abc123.png).";
+        String enBody = "See ![cover](//assets/vault/abc123.png).";
+
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                ruBody, enBody, "Title", "Description.");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(
+                diagnostic -> diagnostic.contains("/assets/vault/abc123.png")));
+    }
+
+    @Test
+    void queryStringEmbeddedAssetReferenceIsReportedAsDropped() {
+        String ruBody = "See ![cover](/assets/vault/abc123.png).";
+        String enBody = "See https://cdn.example/?next=/assets/vault/abc123.png";
+
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                ruBody, enBody, "Title", "Description.");
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(
+                diagnostic -> diagnostic.contains("/assets/vault/abc123.png")));
+    }
+
+    @Test
     void preservedAssetReferenceIsValid() {
         String ruBody = "See ![cover](/assets/vault/abc123.png).";
         String enBody = "See ![cover](/assets/vault/abc123.png).";

@@ -68,12 +68,25 @@ public final class PrepareHandler {
         }
         return MarkdownNormalizer.normalize(intake.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        resolvedBody -> AssetResolver.resolve(resolvedBody, vaultAssetReader).resolve(
-                                (assetResolvedBody, assets) -> prepareNormalizedEssay(notePath, vaultReader,
-                                        intake, assetResolvedBody, assets, knownNotes, vaultAssetReader),
-                                PrepareHandler::assetBlockedFailure),
+                        resolvedBody -> prepareAfterAssetResolution(
+                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader),
                         PrepareHandler::transclusionBlockedFailure),
                 position -> unclosedCommentFailure(position));
+    }
+
+    private BridgeResponse prepareAfterAssetResolution(
+            VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
+            String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
+        AssetResolutionOutcome outcome;
+        try {
+            outcome = AssetResolver.resolve(resolvedBody, vaultAssetReader);
+        } catch (UncheckedIOException failure) {
+            return assetResolutionLookupFailure(failure);
+        }
+        return outcome.resolve(
+                (assetResolvedBody, assets) -> prepareNormalizedEssay(notePath, vaultReader,
+                        intake, assetResolvedBody, assets, knownNotes, vaultAssetReader),
+                PrepareHandler::assetBlockedFailure);
     }
 
     private BridgeResponse prepareNormalizedEssay(
@@ -85,7 +98,7 @@ public final class PrepareHandler {
             return approved.failureResponse();
         }
         if (approved.snapshot().isPresent()) {
-            return mirrorApprovedCandidate(intake.identity(), approved.snapshot().get());
+            return mirrorApprovedCandidate(intake.identity(), approved.snapshot().get(), assets);
         }
         return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody, assets,
                 knownNotes, vaultAssetReader);
@@ -107,9 +120,10 @@ public final class PrepareHandler {
         }
     }
 
-    private BridgeResponse mirrorApprovedCandidate(PublicationIdentity identity, CandidateSnapshot approved) {
+    private BridgeResponse mirrorApprovedCandidate(
+            PublicationIdentity identity, CandidateSnapshot approved, List<CandidateAsset> assets) {
         try {
-            ensureCandidateMirrorsApproved(identity, approved);
+            ensureCandidateMirrorsApproved(identity, approved, assets);
         } catch (UncheckedIOException failure) {
             return candidateFailure(
                     IoFailureMessages.describe("Candidate mirror of approved snapshot failed", failure));
@@ -147,11 +161,12 @@ public final class PrepareHandler {
         return unchanged ? approved : Optional.empty();
     }
 
-    private void ensureCandidateMirrorsApproved(PublicationIdentity identity, CandidateSnapshot approved) {
+    private void ensureCandidateMirrorsApproved(
+            PublicationIdentity identity, CandidateSnapshot approved, List<CandidateAsset> assets) {
         if (candidateWorkspace.find(identity).isPresent()) {
             return;
         }
-        candidateWorkspace.install(identity, approved, List.of());
+        candidateWorkspace.install(identity, approved, assets);
     }
 
     private BridgeResponse prepareAdmittedEssay(
@@ -186,7 +201,13 @@ public final class PrepareHandler {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
         }
-        return sourceFreshness(notePath, vaultReader, identity, job, knownNotes, vaultAssetReader).resolve(
+        SourceFreshnessOutcome freshness;
+        try {
+            freshness = sourceFreshness(notePath, vaultReader, identity, job, knownNotes, vaultAssetReader);
+        } catch (UncheckedIOException failure) {
+            return assetResolutionLookupFailure(failure);
+        }
+        return freshness.resolve(
                 currentSourceHash -> {
                     ReferenceMap referenceMap = buildReferenceMap(
                             identity, ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription);
@@ -315,6 +336,12 @@ public final class PrepareHandler {
         return BridgeResponse.blocked(COMMAND,
                 Diagnostic.blocking(
                         "known-notes", IoFailureMessages.describe("Known note lookup failed", failure)));
+    }
+
+    private static BridgeResponse assetResolutionLookupFailure(UncheckedIOException failure) {
+        return BridgeResponse.blocked(COMMAND,
+                Diagnostic.blocking(
+                        "assets", IoFailureMessages.describe("Asset resolution failed", failure)));
     }
 
     private static BridgeResponse unclosedCommentFailure(int position) {

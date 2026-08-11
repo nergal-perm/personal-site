@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,9 +31,11 @@ final class FilesystemVaultAssetReader implements VaultAssetReader {
         if (!VaultRelativePath.of(reference).isWithinVault()) {
             return AssetLookup.unsafe();
         }
-        Optional<Path> exact = resolveWithinVault(reference);
-        if (exact.isPresent()) {
-            return readAsset(exact.get());
+        Optional<Path> candidate = candidateFor(reference);
+        if (candidate.isPresent() && Files.exists(candidate.get(), LinkOption.NOFOLLOW_LINKS)) {
+            return resolveWithinVault(reference)
+                    .map(this::readAsset)
+                    .orElseGet(AssetLookup::unsafe);
         }
         return resolveByBasename(basename(reference));
     }
@@ -52,6 +55,7 @@ final class FilesystemVaultAssetReader implements VaultAssetReader {
         try (var paths = Files.walk(canonicalVaultRoot)) {
             List<Path> matches = new ArrayList<>();
             paths.filter(path -> path.getFileName().toString().equals(basename))
+                    .filter(path -> !hasHiddenComponent(canonicalVaultRoot.relativize(path)))
                     .map(FilesystemVaultAssetReader::realPathOf)
                     .flatMap(Optional::stream)
                     .filter(this::isInsideVault)
@@ -93,6 +97,15 @@ final class FilesystemVaultAssetReader implements VaultAssetReader {
     private static String basename(String reference) {
         int lastSlash = reference.lastIndexOf('/');
         return lastSlash >= 0 ? reference.substring(lastSlash + 1) : reference;
+    }
+
+    private static boolean hasHiddenComponent(Path path) {
+        for (Path component : path) {
+            if (component.toString().startsWith(".")) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static Path canonicalize(Path vaultRoot) {

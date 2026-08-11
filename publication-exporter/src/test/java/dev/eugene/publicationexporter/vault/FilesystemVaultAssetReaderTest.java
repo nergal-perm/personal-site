@@ -49,6 +49,19 @@ final class FilesystemVaultAssetReaderTest {
     }
 
     @Test
+    void basenameFallbackIgnoresFilesInsideHiddenDirectories() throws IOException {
+        Files.createDirectories(vaultRoot.resolve(".private"));
+        Files.writeString(vaultRoot.resolve(".private/cover.png"), "private", StandardCharsets.UTF_8);
+        VaultAssetReader reader = VaultAssetReader.create(vaultRoot);
+
+        AssetLookup lookup = reader.resolve("cover.png");
+
+        String outcome = lookup.resolve(
+                content -> "found", () -> "ambiguous", () -> "unsafe", () -> "notFound");
+        assertEquals("notFound", outcome);
+    }
+
+    @Test
     void ambiguousBasenameIsBlockedWhenNoExactMatchExists() throws IOException {
         Files.createDirectories(vaultRoot.resolve("a"));
         Files.createDirectories(vaultRoot.resolve("b"));
@@ -88,7 +101,24 @@ final class FilesystemVaultAssetReaderTest {
 
         String outcome = lookup.resolve(
                 content -> "found", () -> "ambiguous", () -> "unsafe", () -> "notFound");
-        assertEquals("notFound", outcome);
+        assertEquals("unsafe", outcome);
+    }
+
+    @Test
+    void exactSymlinkEscapeDoesNotFallBackToSafeFileWithSameBasename() throws IOException {
+        Path outside = Files.createTempDirectory("outside-vault");
+        Path outsideFile = Files.writeString(outside.resolve("logo.png"), "secret", StandardCharsets.UTF_8);
+        Files.createDirectories(vaultRoot.resolve("assets"));
+        Files.createSymbolicLink(vaultRoot.resolve("assets/logo.png"), outsideFile);
+        Files.createDirectories(vaultRoot.resolve("archive"));
+        Files.writeString(vaultRoot.resolve("archive/logo.png"), "safe-but-unrelated", StandardCharsets.UTF_8);
+        VaultAssetReader reader = VaultAssetReader.create(vaultRoot);
+
+        AssetLookup lookup = reader.resolve("assets/logo.png");
+
+        String outcome = lookup.resolve(
+                content -> "found", () -> "ambiguous", () -> "unsafe", () -> "notFound");
+        assertEquals("unsafe", outcome);
     }
 
     @Test

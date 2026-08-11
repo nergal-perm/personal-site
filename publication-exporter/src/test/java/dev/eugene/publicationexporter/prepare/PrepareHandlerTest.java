@@ -263,6 +263,58 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void initialAssetResolutionIoFailureReturnsBlockedResponseWithoutInstallingCandidate() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                path, essayWithBody("# My Essay\n\n![[diagram.png]]")));
+        VaultAssetReader failingAssetReader = reference -> {
+            throw new UncheckedIOException(new IOException("asset storage unavailable"));
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull("Translated body", "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, failingAssetReader);
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("assets", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("asset storage unavailable"));
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void freshnessAssetResolutionIoFailureReturnsBlockedResponseWithoutInstallingCandidate() {
+        byte[] imageBytes = "diagram".getBytes(StandardCharsets.UTF_8);
+        String digest = ContentHash.sha256Hex(imageBytes);
+        String resolvedBody = "# My Essay\n\n![diagram](/assets/vault/" + digest + ".png)";
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                path, essayWithBody("# My Essay\n\n![[diagram.png]]")));
+        VaultAssetReader availableAssets = VaultAssetReader.createNull(Map.of("diagram.png", imageBytes));
+        AtomicInteger resolutions = new AtomicInteger();
+        VaultAssetReader intermittentlyFailingAssetReader = reference -> {
+            if (resolutions.incrementAndGet() == 1) {
+                return availableAssets.resolve(reference);
+            }
+            throw new UncheckedIOException(new IOException("asset freshness lookup unavailable"));
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                TranslationWorker.createNull(resolvedBody, "Translated title", "Translated description."),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, intermittentlyFailingAssetReader);
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("assets", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("asset freshness lookup unavailable"));
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void validEssayInstallsOneCandidateAndReturnsReadyForReview() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
@@ -964,6 +1016,40 @@ class PrepareHandlerTest {
         CandidateSnapshot candidate = candidateWorkspace.read(PublicationIdentity.of("blog", "essay", "my-essay"))
                 .orElseThrow();
         assertEquals("EN body", candidate.enBody());
+    }
+
+    @Test
+    void approvedAssetBearingSourceRecreatesCandidateWithFreshlyResolvedAssets() {
+        byte[] imageBytes = "approved-image".getBytes(StandardCharsets.UTF_8);
+        String digest = ContentHash.sha256Hex(imageBytes);
+        String assetReference = "/assets/vault/" + digest + ".png";
+        String resolvedBody = "# My Essay\n\n![diagram](" + assetReference + ")";
+        String englishBody = "# My Essay\n\n![diagram](" + assetReference + ")";
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ReferenceMap referenceMap = ReferenceMap.empty(
+                identity, ContentHash.sha256Hex(resolvedBody), ContentHash.sha256Hex(englishBody),
+                ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
+                ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description"));
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, resolvedBody, englishBody, "My Essay", "EN title",
+                "A valid description.", "EN description", referenceMap);
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        TranslationWorker refusingWorker = (job, ruBody, ruTitle, ruDescription) ->
+                fail("Prepare must not translate a source that matches its approved baseline.");
+        PrepareHandler handler = new PrepareHandler(
+                refusingWorker, workspace, approved, WorkflowStatusEditor.createNull());
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+
+        BridgeResponse response = handler.prepare(
+                path,
+                VaultReader.createNull(Map.of(path, essayWithBody("# My Essay\n\n![[diagram.png]]"))),
+                VaultAssetReader.createNull(Map.of("diagram.png", imageBytes)));
+
+        assertTrue(response.ok());
+        assertEquals(1, workspace.installed().size());
+        assertEquals(1, workspace.installed().get(0).assets().size());
+        assertEquals(digest + ".png", workspace.installed().get(0).assets().get(0).publicName());
+        assertArrayEquals(imageBytes, workspace.installed().get(0).assets().get(0).content());
     }
 
     @Test

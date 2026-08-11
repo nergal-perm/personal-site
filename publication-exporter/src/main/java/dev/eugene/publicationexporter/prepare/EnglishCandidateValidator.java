@@ -15,7 +15,7 @@ public final class EnglishCandidateValidator {
     private static final Pattern INTERNAL_RU_ROUTE =
             Pattern.compile("/ru/");
     private static final Pattern ASSET_REFERENCE =
-            Pattern.compile("(?<![\\p{L}\\p{N}.-])/assets/vault/[^\\s)\\]]+");
+            Pattern.compile("(?<![\\p{L}\\p{N}./=?&:-])/assets/vault/[^\\s)\\]]+");
 
     private EnglishCandidateValidator() {
     }
