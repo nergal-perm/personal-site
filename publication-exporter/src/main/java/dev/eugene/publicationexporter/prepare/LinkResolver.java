@@ -1,8 +1,6 @@
 package dev.eugene.publicationexporter.prepare;
 
-import java.util.Locale;
 import java.util.Optional;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -10,9 +8,6 @@ public final class LinkResolver {
 
     private static final Pattern WIKILINK =
             Pattern.compile("(!?)\\[\\[([^\\[\\]|#]+)(?:#[^\\[\\]|]*)?(?:\\|([^\\[\\]]+))?]]");
-    private static final Set<String> ASSET_EXTENSIONS =
-            Set.of(".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".mp3", ".mp4");
-
     private LinkResolver() {
     }
 
@@ -59,7 +54,7 @@ public final class LinkResolver {
         boolean isEmbed = !link.group(1).isEmpty();
         String target = link.group(2).strip();
         String label = labelFor(link, target);
-        if (isEmbed && isAssetTarget(target)) {
+        if (isEmbed && AssetTargets.isAssetTarget(target)) {
             output.append(link.group());
             return Optional.empty();
         }
@@ -85,8 +80,4 @@ public final class LinkResolver {
         return lastSlash >= 0 ? target.substring(lastSlash + 1) : target;
     }
 
-    private static boolean isAssetTarget(String target) {
-        String lowercaseTarget = target.toLowerCase(Locale.ROOT);
-        return ASSET_EXTENSIONS.stream().anyMatch(lowercaseTarget::endsWith);
-    }
 }
