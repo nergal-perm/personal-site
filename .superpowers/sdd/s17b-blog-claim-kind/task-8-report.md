@@ -17,10 +17,9 @@ DONE_WITH_CONCERNS
 - `mvn -q test -Dtest=WritePublicationContractCliAcceptanceTest,PublicationContractConformanceTest` — passed.
 - `mvn -q test -Dtest=WritePublicationContractCliAcceptanceTest,PublicationContractConformanceTest,ClaimPublicationKindTest` — passed (34 tests).
 - `mvn -q test` — passed (619 tests, 0 failures, 0 errors, 0 skipped).
-- `git diff --check` — pending final delivery gate.
-- `graphify update .` — attempted from the repository root; rebuild failed with `Operation not permitted`.
+- `git diff --check` — passed (working-tree and staged diff clean before commit).
+- `graphify update .` — succeeded from the repository root after sandbox escalation: graphify rebuilt `graphify-out` with 8,617 nodes and 22,184 edges.
 
 ## Concerns
 
-- Graphify refresh could not complete due to the environment's filesystem permission failure; no successful graph-refresh claim is made.
 - Existing unrelated working-tree changes in `.codex/config.toml` and `task-3-report.md` were preserved.

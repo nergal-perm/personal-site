@@ -443,4 +443,4 @@ public final class ClaimPublicationKind implements PublicationKind {
 
 - [x] 8.4 Run the full suite once more: `mvn -q test`. Confirm the total test count only grew (no test was silently deleted instead of migrated) and `BUILD SUCCESS`.
 
-- [ ] 8.5 Run `graphify update .` from the repo root to refresh the knowledge graph before requesting review, per this project's CLAUDE.md.
+- [x] 8.5 Run `graphify update .` from the repo root to refresh the knowledge graph before requesting review, per this project's CLAUDE.md.
