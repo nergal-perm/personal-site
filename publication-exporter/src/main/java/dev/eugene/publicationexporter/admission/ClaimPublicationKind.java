@@ -93,7 +93,16 @@ public final class ClaimPublicationKind implements PublicationKind {
         for (String relationshipKey : RELATIONSHIP_KEYS) {
             requireValidRelationshipList(frontmatter, relationshipKey, diagnostics);
         }
-        requireList(frontmatter, "sources", diagnostics);
+        requireValidSources(frontmatter, diagnostics);
+    }
+
+    private void requireValidSources(MarkdownNote frontmatter, List<Diagnostic> diagnostics) {
+        if (!requireList(frontmatter, "sources", diagnostics)) {
+            return;
+        }
+        frontmatter.opaqueListYaml("sources")
+                .filter(yaml -> !ClaimSourceShape.matches(yaml))
+                .ifPresent(ignored -> diagnostics.add(invalidSourcesDiagnostic()));
     }
 
     private void requireValidRelationshipList(
@@ -132,6 +141,11 @@ public final class ClaimPublicationKind implements PublicationKind {
     private static Diagnostic invalidRelationshipDiagnostic(String key) {
         return Diagnostic.blocking(
                 key, "blog/claim " + key + " entries require a non-blank label and optional target.");
+    }
+
+    private static Diagnostic invalidSourcesDiagnostic() {
+        return Diagnostic.blocking(
+                "sources", "blog/claim sources entries must match the site claimSource shape.");
     }
 
     private static void appendMapList(

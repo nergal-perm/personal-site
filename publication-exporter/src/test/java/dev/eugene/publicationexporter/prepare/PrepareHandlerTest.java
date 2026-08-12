@@ -11,6 +11,8 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationJob;
@@ -162,6 +164,54 @@ class PrepareHandlerTest {
 
         assertEquals("stale", response.status());
         assertEquals("stale", editor.currentValue(path, "workflowStatus"));
+        assertEquals(3, reads.get());
+    }
+
+    @Test
+    void structuredMetadataChangeDuringTranslationIsStale() {
+        VaultRelativePath path = VaultRelativePath.of("blog/latency-budget-is-fiction.md");
+        String originalClaim = claimWithStructuredData("""
+                supports:
+                  - label: Original supporting claim
+                """);
+        String editedClaim = claimWithStructuredData("""
+                supports:
+                  - label: Edited supporting claim
+                """);
+        AtomicInteger reads = new AtomicInteger();
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return reads.incrementAndGet() == 1 ? originalClaim : editedClaim;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
+            }
+        };
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(path, editedClaim));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "English claim body.",
+                        claimFields(
+                                "A fixed latency budget is fiction",
+                                "A valid English description.",
+                                "A fixed latency budget is usually the wrong abstraction.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertEquals("stale", response.status());
+        assertEquals("stale", editor.currentValue(path, "workflowStatus"));
+        assertTrue(workspace.installed().isEmpty());
         assertEquals(3, reads.get());
     }
 
@@ -715,6 +765,65 @@ class PrepareHandlerTest {
         assertEquals("ready_for_review", response.status());
         CandidateSnapshot candidate = candidateWorkspace.read(identity).orElseThrow();
         assertEquals("# My Essay\n\nPublic prose.\n\n\n\nMore prose.", candidate.ruBody());
+    }
+
+    @Test
+    void structuredMetadataOnlyEditAgainstApprovedClaimCreatesReviewCandidate() {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "claim", "latency-budget-is-fiction");
+        String body = "Claim body.";
+        String englishBody = "English claim body.";
+        List<PublicField> russianFields = claimFields(
+                "A fixed latency budget is fiction",
+                "A valid description.",
+                "A fixed latency budget is usually the wrong abstraction.");
+        List<PublicField> englishFields = claimFields(
+                "A fixed latency budget is fiction",
+                "A valid English description.",
+                "A fixed latency budget is usually the wrong abstraction.");
+        String approvedStructuredData = """
+                supports:
+                  - label: "Old supporting claim"
+                sources:
+                  - link:
+                      label: Old source
+                """;
+        String currentStructuredData = """
+                supports:
+                  - label: "New supporting claim"
+                sources:
+                  - link:
+                      label: New source
+                """;
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, CandidateSnapshot.of(
+                body, englishBody, russianFields, englishFields, approvedStructuredData,
+                referenceMap(identity, body, englishBody, russianFields, englishFields, approvedStructuredData)));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(englishBody, englishFields));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        VaultRelativePath path = VaultRelativePath.of("blog/latency-budget-is-fiction.md");
+        String claim = claimWithStructuredData("""
+                supports:
+                  - label: New supporting claim
+                sources:
+                  - link:
+                      label: New source
+                """);
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()), worker, workspace, approved,
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path, VaultReader.createNull(Map.of(path, claim)), VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, worker.requested().size(),
+                "a structured metadata edit must take the translation/review path, not mirror approval");
+        assertEquals(currentStructuredData, workspace.installed().get(0).structuredData());
+        assertEquals(
+                ContentHash.sha256Hex(currentStructuredData),
+                workspace.installed().get(0).referenceMap().structuredDataHash());
     }
 
     @Test
@@ -1478,6 +1587,42 @@ class PrepareHandlerTest {
         return List.of(
                 dev.eugene.publicationexporter.reference.PublicField.of("title", title),
                 dev.eugene.publicationexporter.reference.PublicField.of("description", description));
+    }
+
+    private static List<PublicField> claimFields(String title, String description, String statement) {
+        return List.of(
+                PublicField.of("title", title),
+                PublicField.of("description", description),
+                PublicField.of("statement", statement));
+    }
+
+    private static ReferenceMap referenceMap(
+            PublicationIdentity identity, String ruBody, String enBody,
+            List<PublicField> ruFields, List<PublicField> enFields, String structuredData) {
+        return ReferenceMap.empty(
+                identity,
+                ContentHash.sha256Hex(ruBody),
+                ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                ContentHash.sha256Hex(structuredData));
+    }
+
+    private static String claimWithStructuredData(String structuredData) {
+        return """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: claim
+                publicId: latency-budget-is-fiction
+                id: 91aa-latency-claim
+                title: A fixed latency budget is fiction
+                description: A valid description.
+                statement: A fixed latency budget is usually the wrong abstraction.
+                """ + structuredData.stripTrailing() + """
+
+                ---
+                Claim body.""";
     }
 
     private void installApproved(Path reviewRoot) {

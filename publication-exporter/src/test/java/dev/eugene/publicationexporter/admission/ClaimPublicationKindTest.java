@@ -184,6 +184,63 @@ class ClaimPublicationKindTest {
     }
 
     @Test
+    void siteShapedSourceMetadataRemainsOpaque() {
+        String sources = """
+                sources:
+                  - link:
+                      label: Queueing theory
+                      target: measuring-tail-latency
+                    attestation: explicit
+                    evidence: Tail latency compounds across hops.
+                    locator:
+                      - kind: text
+                        value: Section 3
+                      - kind: reference
+                        target: measuring-tail-latency
+                    confidence: high
+                """;
+
+        AdmittedPublication result = admitClaimWith(sources);
+
+        assertTrue(result.accepted(), result.diagnostics().toString());
+        assertEquals(sources, result.structuredData());
+    }
+
+    @Test
+    void sourceLinkMustBeReferenceObject() {
+        AdmittedPublication result = admitClaimWith("""
+                sources:
+                  - link: measuring-tail-latency
+                """);
+
+        assertStructuredFieldBlocked(result, "sources", "site claimSource shape");
+    }
+
+    @Test
+    void sourceEntriesRejectUndeclaredFields() {
+        AdmittedPublication result = admitClaimWith("""
+                sources:
+                  - attestation: explicit
+                    privateNote: must-not-be-projected
+                """);
+
+        assertStructuredFieldBlocked(result, "sources", "site claimSource shape");
+    }
+
+    @Test
+    void sourceRichTextTokensRejectUndeclaredFields() {
+        AdmittedPublication result = admitClaimWith("""
+                sources:
+                  - evidence:
+                      - kind: text
+                        value: Tail latency compounds.
+                        privateNote: must-not-be-projected
+                """);
+
+        assertStructuredFieldBlocked(result, "sources", "site claimSource shape");
+    }
+
+    @Test
     void relationshipEntriesRequireLabels() {
         AdmittedPublication result = admitClaimWith("""
                 supports:

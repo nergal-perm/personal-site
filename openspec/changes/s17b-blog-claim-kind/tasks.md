@@ -269,9 +269,9 @@ public final class PublicFieldsCodec {
 
 (Adjust the generic-typed read implementation to whatever is cleanest with the project's existing Jackson usage style — the shape that matters is: write a JSON array of `{"key":...,"value":...}` objects in order, read it back into an equal-order `List<PublicField>`. Add a `PublicFieldsCodecTest` alongside `ReferenceMapCodecTest`'s own style: round-trip, empty list, ordering preserved.)
 
-- [x] 4.2 `FilesystemCandidateWorkspace`: `writeSnapshot` writes `ru.fields.json`/`en.fields.json` (via `PublicFieldsCodec.write`) instead of `ru.title`/`en.title`/`ru.description`/`en.description`. `containsCandidateSnapshot` checks for `ru.md`, `en.md`, `ru.fields.json`, `en.fields.json`, `references.json` (drops the four old file checks). `snapshotFrom` reads `ru.fields.json`/`en.fields.json` via `PublicFieldsCodec.read` instead of the four `readCandidateText` calls, and reads `structuredData` from the read `ReferenceMap` (not a separate file — `references.json` already carries it per section 3). `requireNoKindCollision` (the cross-kind collision guard from `dec-20260811-02b96a37`) is untouched — it only reads `references.json`'s `identity`, unaffected by this file-set change.
+- [x] 4.2 `FilesystemCandidateWorkspace`: `writeSnapshot` writes `ru.fields.json`/`en.fields.json` (via `PublicFieldsCodec.write`) instead of `ru.title`/`en.title`/`ru.description`/`en.description`, and writes the opaque fragment to `structured.json`. `containsCandidateSnapshot` checks for `ru.md`, `en.md`, `ru.fields.json`, `en.fields.json`, `structured.json`, and `references.json` (drops the four old field-file checks). `snapshotFrom` reads `ru.fields.json`/`en.fields.json` via `PublicFieldsCodec.read` instead of the four `readCandidateText` calls and reads `structuredData` from `structured.json`; `references.json` carries only its `structuredDataHash` alongside the identity and other hashes. `requireNoKindCollision` (the cross-kind collision guard from `dec-20260811-02b96a37`) is untouched — it only reads `references.json`'s `identity`, unaffected by this file-set change.
 
-- [x] 4.3 `FilesystemApprovedSnapshotWorkspace`: same file-set change as 4.2 (`writeSnapshot`, `snapshotFrom`, `approvedFile` call sites, `validateSnapshot`'s per-file hash checks — now checking `ruFieldsHash`/`enFieldsHash` against the whole `ru.fields.json`/`en.fields.json` document bytes, plus `structuredDataHash` against the `structuredData` string, instead of four named-field hash checks).
+- [x] 4.3 `FilesystemApprovedSnapshotWorkspace`: same file-set change as 4.2 (`writeSnapshot`, `snapshotFrom`, `approvedFile` call sites, `validateSnapshot`'s per-file hash checks — now checking `ruFieldsHash`/`enFieldsHash` against the whole `ru.fields.json`/`en.fields.json` document bytes, plus `structuredDataHash` against the `structured.json` content, instead of four named-field hash checks).
 
 - [x] 4.4 Update `FilesystemCandidateWorkspaceTest`/`FilesystemApprovedSnapshotWorkspaceTest`: replace assertions reading `candidateDir.resolve("ru.title")`/etc. with assertions reading `ru.fields.json`/`en.fields.json` and checking the decoded field list; every other assertion (atomic replace, backup/recovery, confinement, the cross-kind collision tests from `CrossKindAddressCollisionAcceptanceTest`) stays behaviourally the same.
 
@@ -290,7 +290,7 @@ public final class PublicFieldsCodec {
 
 - [x] 5.1 `AdmittedPublication`: add `structuredData()` accessor (default `""`, set by `EssayPublicationKind`/`NotePublicationKind`'s `admit()` — literally the empty string, since neither has structured kind-specific data). Update `accepted(...)` factory to take it as a parameter (or add an overload defaulting to `""` for the two existing kinds, whichever keeps `EssayPublicationKind`/`NotePublicationKind` diffs minimal).
 
-- [x] 5.2 `PrepareHandler`: replace every `ruTitle`/`ruDescription`/`enTitle`/`enDescription` parameter with `List<PublicField> ruFields`/`enFields`, built once from `intake` at the top of `prepareAdmittedEssay` (`List.of(PublicField.of("title", intake.title()), PublicField.of("description", intake.description()))`) and threaded through `TranslationJob.forSource`, `translateCandidate`, `prepareTranslatedEssay`, `validateEnglishCandidate` (now `EnglishCandidateValidator.validate(ruBody, enBody, enFields)`), `sourceFingerprintMatches` (now compares `List<PublicField>` via `TranslationJob.forSource`'s own fingerprint, unchanged logic), `buildReferenceMap` (now hashes `PublicFieldsCodec.write(ruFields)`/`PublicFieldsCodec.write(enFields)` for `ruFieldsHash`/`enFieldsHash`, and `ContentHash.sha256Hex(structuredData)` for `structuredDataHash`), and `installCandidate` (passes `structuredData` through to `CandidateSnapshot.of`). `matchingApprovedBaseline`'s `RussianDiff.between` call becomes `RussianDiff.between(baseline.ruBody(), baseline.ruFields(), currentBody, currentFields)`.
+- [x] 5.2 `PrepareHandler`: replace every `ruTitle`/`ruDescription`/`enTitle`/`enDescription` parameter with `List<PublicField> ruFields`/`enFields`, built once from `intake` at the top of `prepareAdmittedEssay` (`List.of(PublicField.of("title", intake.title()), PublicField.of("description", intake.description()))`) and threaded through `TranslationJob.forSource`, `translateCandidate`, `prepareTranslatedEssay`, `validateEnglishCandidate` (now `EnglishCandidateValidator.validate(ruBody, enBody, enFields)`), `sourceFingerprintMatches` (now compares `List<PublicField>` via `TranslationJob.forSource`'s own fingerprint, unchanged logic), `buildReferenceMap` (now hashes `PublicFieldsCodec.write(ruFields)`/`PublicFieldsCodec.write(enFields)` for `ruFieldsHash`/`enFieldsHash`, and `ContentHash.sha256Hex(structuredData)` for `structuredDataHash`), and `installCandidate` (passes `structuredData` through to `CandidateSnapshot.of`). `matchingApprovedBaseline` uses `RussianDiff.between(baseline.ruBody(), baseline.ruFields(), currentBody, currentFields)` and also requires byte-equal `structuredData`; a structured-metadata-only edit therefore creates a fresh candidate for review instead of mirroring the approved snapshot. The post-translation source-freshness recheck likewise requires the captured `structuredData` to equal the current admitted value, so a concurrent metadata-only edit returns stale and installs no candidate.
 
 - [x] 5.3 `FilesystemManagedSiteInstaller.frontmatter(PublicationIdentity identity, CandidateSnapshot approved, String locale)`: replace the two `appendYamlString(yaml, "title", ...)`/`appendYamlString(yaml, "description", ...)` calls with a loop over `(isRu ? approved.ruFields() : approved.enFields())`, emitting `appendYamlString(yaml, field.key(), field.value())` for each in order (title/description still land first and second, byte-identical to today's output for essay/note). After the existing fixed fields and before the closing `---`, append `approved.structuredData()` verbatim when non-blank (no YAML key wrapping — the kind already rendered complete YAML lines, per design.md D5).
 
@@ -337,7 +337,7 @@ Assert: `prepare` succeeds and resolves to `PublicationIdentity.of("blog", "clai
 - Modify: `publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/PublicationKinds.java`
 - Create: `publication-exporter/src/test/java/dev/eugene/publicationexporter/admission/ClaimPublicationKindTest.java` (mirror `NotePublicationKindTest.java`'s structure)
 
-**Design context (design.md D5):** `ClaimPublicationKind.admit(...)` validates identity + non-blank `statement` (relationship arrays/`sources` optional — no validation beyond well-formed YAML-safe strings), builds `[title, description, statement]` `PublicField`s, and renders `supports`/`opposes`/`assumes`/`refines`/`contradicts`/`sources` into one `structuredData` YAML fragment via `YamlScalar.doubleQuoted(...)` — using `MarkdownNote`'s existing frontmatter-array-reading capability (check `MarkdownNote`'s current API for reading a list-of-maps field; extend it minimally if it does not yet support one, following the same non-null-tolerant style `frontmatter.string(key)` already uses).
+**Design context (design.md D5):** `ClaimPublicationKind.admit(...)` validates identity + non-blank `statement`; relationship arrays/`sources` remain optional, but populated values must match `site/src/content.config.ts`'s declared transport shape and contain no undeclared field. It builds `[title, description, statement]` `PublicField`s and renders `supports`/`opposes`/`assumes`/`refines`/`contradicts`/`sources` into one `structuredData` YAML fragment via `YamlScalar.doubleQuoted(...)` — using `MarkdownNote`'s existing frontmatter-array-reading capability. Nested valid source YAML remains opaque and byte-preserved; this task adds neither semantic target resolution nor translation.
 
 - [x] 7.1 Create `ClaimPublicationKind`:
 
@@ -385,6 +385,7 @@ public final class ClaimPublicationKind implements PublicationKind {
         String title = requireNonBlank(frontmatter, "title", diagnostics);
         String description = requireNonBlank(frontmatter, "description", diagnostics);
         String statement = requireNonBlank(frontmatter, "statement", diagnostics);
+        requireValidStructuredMetadata(frontmatter, diagnostics);
 
         if (!diagnostics.isEmpty()) {
             return AdmittedPublication.blocked(diagnostics);
@@ -400,16 +401,15 @@ public final class ClaimPublicationKind implements PublicationKind {
     private String structuredDataFrom(MarkdownNote frontmatter) {
         StringBuilder yaml = new StringBuilder();
         for (String key : RELATIONSHIP_KEYS) {
-            appendRelationshipArray(yaml, key, frontmatter);
+            appendMapList(yaml, key, frontmatter.listOfMaps(key));
         }
-        appendSourcesArray(yaml, frontmatter);
+        frontmatter.opaqueListYaml("sources").ifPresent(yaml::append);
         return yaml.toString();
     }
 
-    // appendRelationshipArray/appendSourcesArray: read frontmatter's list-of-maps field (extend
-    // MarkdownNote minimally if needed), emit one YAML block-sequence entry per item using
-    // YamlScalar.doubleQuoted(...) for every scalar value, skip the key entirely when the source
-    // list is empty (no "supports: []" noise in the rendered fragment).
+    // requireValidStructuredMetadata validates the site transport shape and undeclared fields.
+    // appendMapList renders relationship scalars with YamlScalar.doubleQuoted(...); sources stay
+    // opaque and byte-preserved. Empty lists add no YAML block.
 
     // ... (contract(), requireValidPublicId, requireNonBlank, toFieldContract: same shape as
     // EssayPublicationKind/NotePublicationKind, plus one more FieldRule.nonBlank("statement") in

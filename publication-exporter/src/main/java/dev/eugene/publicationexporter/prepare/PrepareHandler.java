@@ -111,7 +111,7 @@ public final class PrepareHandler {
     private ApprovedBaselineLookup lookupApprovedBaseline(NoteIntake.Result intake, String normalizedBody) {
         try {
             return ApprovedBaselineLookup.found(matchingApprovedBaseline(
-                    intake.identity(), normalizedBody, fieldsOf(intake)));
+                    intake.identity(), normalizedBody, fieldsOf(intake), intake.structuredData()));
         } catch (UncheckedIOException failure) {
             return ApprovedBaselineLookup.failed(
                     approvedLookupFailure(IoFailureMessages.describe("Approved snapshot lookup failed", failure)));
@@ -153,14 +153,16 @@ public final class PrepareHandler {
     }
 
     private Optional<CandidateSnapshot> matchingApprovedBaseline(
-            PublicationIdentity identity, String currentBody, List<PublicField> currentFields) {
+            PublicationIdentity identity, String currentBody, List<PublicField> currentFields,
+            String currentStructuredData) {
         Optional<CandidateSnapshot> approved = approvedSnapshotWorkspace.read(identity);
         if (approved.isEmpty()) {
             return Optional.empty();
         }
         CandidateSnapshot baseline = approved.get();
         boolean unchanged = RussianDiff.between(
-                baseline.ruBody(), baseline.ruFields(), currentBody, currentFields).isEmpty();
+                baseline.ruBody(), baseline.ruFields(), currentBody, currentFields).isEmpty()
+                && baseline.structuredData().equals(currentStructuredData);
         return unchanged ? approved : Optional.empty();
     }
 
@@ -205,7 +207,9 @@ public final class PrepareHandler {
         }
         SourceFreshnessOutcome freshness;
         try {
-            freshness = sourceFreshness(notePath, vaultReader, identity, job, knownNotes, vaultAssetReader, noteIntake);
+            freshness = sourceFreshness(
+                    notePath, vaultReader, identity, job, structuredData,
+                    knownNotes, vaultAssetReader, noteIntake);
         } catch (UncheckedIOException failure) {
             return assetResolutionLookupFailure(failure);
         }
@@ -258,7 +262,8 @@ public final class PrepareHandler {
 
     private static SourceFreshnessOutcome sourceFreshness(
             VaultRelativePath notePath, VaultReader vaultReader,
-            PublicationIdentity expectedIdentity, TranslationJob job, PublicNoteIndex knownNotes,
+            PublicationIdentity expectedIdentity, TranslationJob job, String expectedStructuredData,
+            PublicNoteIndex knownNotes,
             VaultAssetReader vaultAssetReader, NoteIntake noteIntake) {
         NoteIntake.Result current = noteIntake.admit(notePath, vaultReader);
         if (!current.accepted() || !expectedIdentity.equals(current.identity())) {
@@ -269,6 +274,7 @@ public final class PrepareHandler {
                         resolvedBody -> AssetResolver.resolve(resolvedBody, vaultAssetReader).resolve(
                                 (assetResolvedBody, ignoredAssets) ->
                                         sourceFingerprintMatches(job, assetResolvedBody, fieldsOf(current))
+                                                && expectedStructuredData.equals(current.structuredData())
                                                 ? SourceFreshnessOutcome.matches(current.sourceHash())
                                                 : SourceFreshnessOutcome.stale(),
                                 SourceFreshnessOutcome::assetBlocked),

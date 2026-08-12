@@ -50,6 +50,14 @@ The exporter SHALL validate the required metadata and structured body sections f
 - **GIVEN** a selected `blog/claim` fixture with valid identity fields, `title`, `description`, and a non-blank `statement`
 - **WHEN** the note is validated
 - **THEN** the kind-specific contract passes, whether or not any relationship array (`supports`/`opposes`/`assumes`/`refines`/`contradicts`) or `sources` entry is populated — those remain optional, per `blogClaim`'s site schema
+- **AND** any populated relationship or source entry matches `site/src/content.config.ts`'s declared list/object/scalar shape and contains no undeclared field
+
+#### Scenario: blog/claim source metadata is malformed
+- **GIVEN** a selected `blog/claim` fixture whose `sources` value is not a list, whose `link` is not a reference object, whose rich-text token has the wrong shape, or whose source object contains an undeclared field
+- **WHEN** the note is validated
+- **THEN** processing is blocked before translation or site installation
+- **AND** the diagnostic names `sources`
+- **AND** no target is resolved and no nested source text is translated as part of this transport-shape validation
 
 #### Scenario: blog/claim missing its statement is blocked
 - **GIVEN** a selected `blog/claim` fixture with valid identity fields but a missing or blank `statement`
