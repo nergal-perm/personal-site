@@ -117,14 +117,56 @@ public final class InspectPublicationHandler {
                     fieldValue(candidateSnapshot.enFields(), "description"));
         }
         CandidateSnapshot baseline = approved.get();
-        RussianDiff diff = RussianDiff.between(
-                baseline.ruBody(), baseline.ruFields(), candidateSnapshot.ruBody(), candidateSnapshot.ruFields());
+        RussianDiff diff = alignedFieldStructure(baseline.ruFields(), candidateSnapshot.ruFields())
+                ? RussianDiff.between(
+                        baseline.ruBody(), baseline.ruFields(),
+                        candidateSnapshot.ruBody(), candidateSnapshot.ruFields())
+                : RussianDiff.betweenBodies(
+                        reviewPlanDiffInput(baseline.ruFields(), baseline.ruBody()),
+                        reviewPlanDiffInput(candidateSnapshot.ruFields(), candidateSnapshot.ruBody()));
         return ReviewPlan.changedPublication(
                 candidatePaths,
                 fieldValue(candidateSnapshot.ruFields(), "title"),
                 fieldValue(candidateSnapshot.enFields(), "title"),
                 fieldValue(candidateSnapshot.ruFields(), "description"),
                 fieldValue(candidateSnapshot.enFields(), "description"), diff);
+    }
+
+    private static boolean alignedFieldStructure(List<PublicField> baselineFields, List<PublicField> currentFields) {
+        if (baselineFields.size() != currentFields.size()) {
+            return false;
+        }
+        for (int i = 0; i < baselineFields.size(); i++) {
+            if (!baselineFields.get(i).key().equals(currentFields.get(i).key())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static String reviewPlanDiffInput(List<PublicField> fields, String body) {
+        StringBuilder content = new StringBuilder();
+        for (PublicField field : fields) {
+            appendFieldLines(content, field);
+        }
+        if (!fields.isEmpty() && !body.isEmpty()) {
+            content.append('\n');
+        }
+        content.append(body);
+        return content.toString();
+    }
+
+    private static void appendFieldLines(StringBuilder content, PublicField field) {
+        for (String line : normalizedLines(field.value())) {
+            content.append(field.key()).append(": ").append(line).append('\n');
+        }
+    }
+
+    private static String[] normalizedLines(String value) {
+        if (value.isEmpty()) {
+            return new String[] { "" };
+        }
+        return value.replace("\r\n", "\n").replace('\r', '\n').split("\n", -1);
     }
 
     private static String fieldValue(List<PublicField> fields, String key) {

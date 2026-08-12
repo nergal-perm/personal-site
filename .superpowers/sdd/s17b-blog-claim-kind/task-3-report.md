@@ -6,8 +6,9 @@ DONE_WITH_CONCERNS
 
 Task 3's model and codec generalization is implemented and the changed unit
 surface passes isolated compilation and execution. The normal Maven module
-build remains blocked by the intentionally deferred old-API callers. The
-requested commit is attempted after this report is written.
+build remains blocked by the intentionally deferred old-API callers.
+
+Commit: `e789763 refactor(publication-exporter): generalize candidate snapshots and reference maps`
 
 ## Implemented
 
@@ -123,7 +124,7 @@ environment with `Operation not permitted` while rebuilding the graph.
   semantics.
 - `CandidateSnapshot` stores both field lists through `List.copyOf(...)`.
 - No getter- or setter-prefixed production methods were added; the scan's only
-  `get...` matches were test calls to `AssertionError` message accessors.
+  `get...` matches were test calls to exception message accessors.
 - `PublicField.value(...)` is the only field-key lookup loop in the module
   after this change, and the focused test exercises both a match and a miss.
 - No production comments were added; no non-obvious rationale required one.
@@ -140,5 +141,3 @@ environment with `Operation not permitted` while rebuilding the graph.
 2. The normal Maven suite cannot run until those later callers are migrated.
 3. `graphify update .` remains blocked by the environment's
    `Operation not permitted` error.
-4. Commit status is pending the commit attempt immediately following this
-   report.

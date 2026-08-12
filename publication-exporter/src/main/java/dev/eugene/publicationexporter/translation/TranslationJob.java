@@ -35,6 +35,7 @@ public final class TranslationJob {
         StringBuilder canonical = new StringBuilder();
         canonical.append(ruBody.length()).append(':').append(ruBody);
         for (PublicField field : ruFields) {
+            canonical.append(field.key().length()).append(':').append(field.key());
             canonical.append(field.value().length()).append(':').append(field.value());
         }
         return ContentHash.sha256Hex(canonical.toString());

@@ -1,43 +1,4 @@
-# Publication admission Specification
-
-## Purpose
-
-Define which vault notes enter publication work and prove that a requested note is safe and complete enough to process. Evidence: E-ADM and E-GOV in `openspec/requirements-baseline.md`.
-## Requirements
-### Requirement: ADM-01 Discover explicitly selected notes
-
-The exporter SHALL discover Markdown source notes whose parsed frontmatter value `publish` is Boolean `true`, including notes in normally ignored vault paths, and SHALL exclude absent, false, string-valued, or malformed publication flags. Discovery order is deterministic (sorted by vault-relative path), not incidental to filesystem or map traversal order — both the in-memory and real vault adapters honor this.
-
-#### Scenario: Selected note is discovered
-- **GIVEN** a vault-relative Markdown file with parsed frontmatter `publish: true`
-- **WHEN** publication discovery scans the vault
-- **THEN** the file is present exactly once in the selected-note set
-- **AND** a selected note under a normally tool-ignored path (e.g. a dotfolder) is discovered the same as any other
-
-#### Scenario: Lookalike publication flag is excluded
-- **GIVEN** a Markdown file whose `publish` value is absent, false, or the string `"true"`
-- **WHEN** publication discovery scans the vault
-- **THEN** the file is absent from the selected-note set
-
-#### Scenario: Discovery order is deterministic
-- **GIVEN** multiple selected notes at different vault-relative paths
-- **WHEN** publication discovery scans the vault twice with no vault changes between scans
-- **THEN** both scans return the selected notes in the same sorted-by-path order
-
-### Requirement: ADM-02 Confine note requests to the vault
-
-The exporter SHALL accept only existing, regular, vault-relative `.md` source-note paths whose resolved path remains within the configured vault root.
-
-#### Scenario: Safe relative path is admitted
-- **GIVEN** an existing regular Markdown file reached by a vault-relative path without indirection outside the vault
-- **WHEN** an operator requests note-scoped processing
-- **THEN** preflight admits that exact file
-
-#### Scenario: Escaping path is blocked
-- **GIVEN** an absolute path, traversal path, non-Markdown path, missing file, or symlink resolving outside the vault
-- **WHEN** an operator requests note-scoped processing
-- **THEN** preflight blocks before candidate, approved, workflow, or site state changes
-- **AND** a diagnostic identifies the rejected path predicate without exposing unrelated private paths
+## MODIFIED Requirements
 
 ### Requirement: ADM-03 Require a unique publication identity and supported kind
 
@@ -122,23 +83,6 @@ The exporter SHALL validate the required metadata and structured body sections f
 - **THEN** processing is blocked before translation or site installation
 - **AND** the diagnostic names `selectedQuote`
 - **AND** the reason states that mixed translated structured quote metadata is not supported by this slice
-
-### Requirement: ADM-05 Validate the bounded request, not unrelated notes
-
-Note-scoped commands SHALL validate the requested selected note and its direct safety dependencies without making unrelated invalid vault notes a blocker.
-
-#### Scenario: Unrelated invalid note exists
-- **GIVEN** the requested note passes admission and another selected vault note is invalid
-- **WHEN** the operator prepares or inspects the requested note
-- **THEN** the requested note's result is determined without being blocked by the unrelated note
-
-#### Scenario: Whole-vault release is requested
-- **GIVEN** one or more selected notes fail admission
-- **WHEN** a whole-vault manifest or release is requested
-- **THEN** the aggregate operation is blocked or omits no invalid selected note silently
-- **AND** diagnostics identify every selected note that prevents a complete release
-- **AND** the `write-publication-manifest` command is this requirement's read-only whole-vault manifest: it reports one entry per selected note (its identity when admitted, or its diagnostics when not), never dropping a failing entry to produce a manifest that looks complete
-- **AND** the command reports the manifest as complete only when every selected note admits successfully; otherwise it reports the manifest as incomplete while still listing every selected note's outcome, admitted or not
 
 ### Requirement: ADM-06 Export the publication contract for authoring tools
 

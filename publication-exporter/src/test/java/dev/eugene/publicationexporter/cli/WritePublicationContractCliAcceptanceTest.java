@@ -48,12 +48,49 @@ class WritePublicationContractCliAcceptanceTest {
         assertEquals(1, contract.get("contractVersion").asInt());
 
         JsonNode kinds = contract.get("kinds");
-        assertEquals(3, kinds.size());
+        assertEquals(4, kinds.size());
         List<String> kindNames = new ArrayList<>();
         for (JsonNode kind : kinds) {
             kindNames.add(kind.get("collection").asText() + "/" + kind.get("contentType").asText());
         }
-        assertEquals(List.of("blog/claim", "blog/essay", "blog/note"), kindNames);
+        assertEquals(List.of("bibliography/book", "blog/claim", "blog/essay", "blog/note"), kindNames);
+
+        JsonNode bookKind = kindNamed(kinds, "book");
+        assertEquals("bibliography", bookKind.get("collection").asText());
+        assertEquals("book", bookKind.get("contentType").asText());
+        assertTrue(bookKind.get("structuredBody").isEmpty());
+        JsonNode optionalBookFields = bookKind.get("optionalFields");
+        JsonNode blockedBookFields = bookKind.get("blockedFields");
+        JsonNode requiredBookFields = bookKind.get("requiredFields");
+        assertEquals(8, requiredBookFields.size());
+        assertFieldNamed(requiredBookFields, "publish", field -> {
+            assertEquals("BOOLEAN", field.get("type").asText());
+            assertEquals("true", field.get("allowedValues").get(0).asText());
+        });
+        assertFieldNamed(requiredBookFields, "publicCollection", field ->
+                assertEquals("bibliography", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredBookFields, "publicContentType", field ->
+                assertEquals("book", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredBookFields, "publicId", field ->
+                assertTrue(field.get("pattern").asText().length() > 0));
+        assertFieldNamed(requiredBookFields, "id", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredBookFields, "title", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredBookFields, "description", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredBookFields, "authors", field -> {
+            assertEquals("STRING_LIST", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertEquals(7, optionalBookFields.size());
+        assertFieldNamed(optionalBookFields, "publication", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(optionalBookFields, "publicationDate", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(optionalBookFields, "start", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(optionalBookFields, "end", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(optionalBookFields, "readingStatus", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(optionalBookFields, "use", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(optionalBookFields, "boundary", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertEquals(1, blockedBookFields.size());
+        assertEquals("selectedQuote", blockedBookFields.get(0).asText());
+
         JsonNode essayKind = kindNamed(kinds, "essay");
         assertEquals("blog", essayKind.get("collection").asText());
         assertEquals("essay", essayKind.get("contentType").asText());

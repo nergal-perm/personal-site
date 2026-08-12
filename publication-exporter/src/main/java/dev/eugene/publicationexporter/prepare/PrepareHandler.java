@@ -160,10 +160,25 @@ public final class PrepareHandler {
             return Optional.empty();
         }
         CandidateSnapshot baseline = approved.get();
+        if (!alignedFieldStructure(baseline.ruFields(), currentFields)) {
+            return Optional.empty();
+        }
         boolean unchanged = RussianDiff.between(
                 baseline.ruBody(), baseline.ruFields(), currentBody, currentFields).isEmpty()
                 && baseline.structuredData().equals(currentStructuredData);
         return unchanged ? approved : Optional.empty();
+    }
+
+    private boolean alignedFieldStructure(List<PublicField> baselineFields, List<PublicField> currentFields) {
+        if (baselineFields.size() != currentFields.size()) {
+            return false;
+        }
+        for (int i = 0; i < baselineFields.size(); i++) {
+            if (!baselineFields.get(i).key().equals(currentFields.get(i).key())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private void ensureCandidateMirrorsApproved(
@@ -200,7 +215,7 @@ public final class PrepareHandler {
         List<PublicField> enFields = translation.fields();
 
         EnglishCandidateValidator.Result validation = validateEnglishCandidate(
-                ruBody, enBody, enFields);
+                ruBody, ruFields, enBody, enFields);
         if (!validation.valid()) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, blockingDiagnostics(validation.diagnostics()));
@@ -289,8 +304,8 @@ public final class PrepareHandler {
     }
 
     private static EnglishCandidateValidator.Result validateEnglishCandidate(
-            String ruBody, String enBody, List<PublicField> enFields) {
-        return EnglishCandidateValidator.validate(ruBody, enBody, enFields);
+            String ruBody, List<PublicField> ruFields, String enBody, List<PublicField> enFields) {
+        return EnglishCandidateValidator.validate(ruBody, ruFields, enBody, enFields);
     }
 
     private static ReferenceMap buildReferenceMap(

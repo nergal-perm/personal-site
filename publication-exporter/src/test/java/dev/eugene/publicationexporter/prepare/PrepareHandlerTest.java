@@ -68,6 +68,27 @@ class PrepareHandlerTest {
 
             Plain prose body.""";
 
+    private static final String VALID_BOOK = """
+            ---
+            publish: true
+            publicCollection: bibliography
+            publicContentType: book
+            publicId: the-lean-startup
+            id: 8f2c-the-lean-startup
+            title: The Lean Startup
+            description: A valid description.
+            authors:
+              - Eric Ries
+            publication: Crown Business
+            publicationDate: 2011-09-13
+            readingStatus: finished
+            use: Explains how to test demand before scaling a product bet.
+            boundary: Only the startup-method parts are directly relevant.
+            ---
+            # The Lean Startup
+
+            A reading note body.""";
+
     @Test
     void successfulPrepareWritesReadyForReviewWorkflowStatus() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
@@ -213,6 +234,292 @@ class PrepareHandlerTest {
         assertEquals("stale", editor.currentValue(path, "workflowStatus"));
         assertTrue(workspace.installed().isEmpty());
         assertEquals(3, reads.get());
+    }
+
+    @Test
+    void prepareBibliographyBookInstallsTranslatedFieldsAndInvariantStructuredData() {
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_BOOK));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "Translated book body.",
+                        bookFields(
+                                "The Lean Startup",
+                                "A valid English description.",
+                                "Explains how to test demand before scaling a product bet.",
+                                "Only the startup-method parts are directly relevant.")),
+                workspace,
+                ApprovedSnapshotWorkspace.createNull(),
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, workspace.installed().size());
+        NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
+        assertEquals(PublicationIdentity.of("bibliography", "book", "the-lean-startup"), installed.identity());
+        assertEquals(bookFields(
+                "The Lean Startup",
+                "A valid description.",
+                "Explains how to test demand before scaling a product bet.",
+                "Only the startup-method parts are directly relevant."),
+                installed.ruFields());
+        assertEquals(bookFields(
+                "The Lean Startup",
+                "A valid English description.",
+                "Explains how to test demand before scaling a product bet.",
+                "Only the startup-method parts are directly relevant."),
+                installed.enFields());
+        String expectedStructuredData = bookStructuredData(
+                "Crown Business",
+                "2011-09-13",
+                null,
+                null,
+                "finished");
+        assertEquals(expectedStructuredData, installed.structuredData());
+        assertEquals(ContentHash.sha256Hex(expectedStructuredData),
+                installed.referenceMap().structuredDataHash());
+    }
+
+    @Test
+    void changedBookInvariantMetadataSkipsApprovedMirrorAndBuildsFreshCandidate() {
+        PublicationIdentity identity = PublicationIdentity.of("bibliography", "book", "the-lean-startup");
+        String ruBody = "# The Lean Startup\n\nA reading note body.";
+        String enBody = "Translated book body.";
+        List<PublicField> russianFields = bookFields(
+                "The Lean Startup",
+                "A valid description.",
+                "Explains how to test demand before scaling a product bet.",
+                "Only the startup-method parts are directly relevant.");
+        List<PublicField> englishFields = bookFields(
+                "The Lean Startup",
+                "A valid English description.",
+                "Explains how to test demand before scaling a product bet.",
+                "Only the startup-method parts are directly relevant.");
+        String approvedStructuredData = bookStructuredData(
+                "Portfolio",
+                "2011-09-13",
+                null,
+                null,
+                "finished");
+        String currentStructuredData = bookStructuredData(
+                "Crown Business",
+                "2011-09-13",
+                null,
+                null,
+                "finished");
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, CandidateSnapshot.of(
+                ruBody, enBody, russianFields, englishFields, approvedStructuredData,
+                referenceMap(identity, ruBody, enBody, russianFields, englishFields, approvedStructuredData)));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(enBody, englishFields));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace,
+                approved,
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path,
+                VaultReader.createNull(Map.of(path, VALID_BOOK)),
+                VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, worker.requested().size(),
+                "a book invariant metadata edit must take the translation/review path, not mirror approval");
+        assertEquals(currentStructuredData, workspace.installed().get(0).structuredData());
+        assertEquals(ContentHash.sha256Hex(currentStructuredData),
+                workspace.installed().get(0).referenceMap().structuredDataHash());
+    }
+
+    @Test
+    void approvedBookWithMissingOptionalTranslatedFieldBuildsFreshCandidate() {
+        PublicationIdentity identity = PublicationIdentity.of("bibliography", "book", "the-lean-startup");
+        String ruBody = "# The Lean Startup\n\nA reading note body.";
+        String enBody = "Translated book body.";
+        List<PublicField> approvedRussianFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid description."),
+                PublicField.of("use", "Explains how to test demand before scaling a product bet."));
+        List<PublicField> approvedEnglishFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid English description."),
+                PublicField.of("use", "Explains how to test demand before scaling a product bet."));
+        String structuredData = bookStructuredData(
+                "Portfolio",
+                "2011-09-13",
+                null,
+                null,
+                "finished");
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, CandidateSnapshot.of(
+                ruBody, enBody, approvedRussianFields, approvedEnglishFields, structuredData,
+                referenceMap(identity, ruBody, enBody, approvedRussianFields, approvedEnglishFields, structuredData)));
+        List<PublicField> translatedFields = bookFields(
+                "The Lean Startup",
+                "A valid English description.",
+                "Explains how to test demand before scaling a product bet.",
+                "Only the startup-method parts are directly relevant.");
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(enBody, translatedFields));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace,
+                approved,
+                WorkflowStatusEditor.createNull());
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+
+        BridgeResponse response = handler.prepare(
+                path,
+                VaultReader.createNull(Map.of(path, VALID_BOOK)),
+                VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, worker.requested().size(),
+                "approved snapshots with a different optional translated field count must be retranslated");
+        assertEquals(translatedFields, workspace.installed().get(0).enFields());
+    }
+
+    @Test
+    void approvedBookWithDifferentOptionalTranslatedFieldKeyBuildsFreshCandidate() {
+        PublicationIdentity identity = PublicationIdentity.of("bibliography", "book", "the-lean-startup");
+        String ruBody = "# The Lean Startup\n\nA reading note body.";
+        String enBody = "Translated book body.";
+        List<PublicField> approvedRussianFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid description."),
+                PublicField.of("use", "Same note"));
+        List<PublicField> approvedEnglishFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid English description."),
+                PublicField.of("use", "Same note"));
+        String structuredData = bookStructuredData(
+                "Portfolio",
+                "2011-09-13",
+                null,
+                null,
+                "finished");
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, CandidateSnapshot.of(
+                ruBody, enBody, approvedRussianFields, approvedEnglishFields, structuredData,
+                referenceMap(identity, ruBody, enBody, approvedRussianFields, approvedEnglishFields, structuredData)));
+        List<PublicField> translatedFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid English description."),
+                PublicField.of("boundary", "Same note"));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(enBody, translatedFields));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace,
+                approved,
+                WorkflowStatusEditor.createNull());
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+
+        BridgeResponse response = handler.prepare(
+                path,
+                VaultReader.createNull(Map.of(path, bookWithTranslatedField("boundary", "Same note"))),
+                VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, worker.requested().size(),
+                "approved snapshots with a different optional translated field key must be retranslated");
+        assertEquals(translatedFields, workspace.installed().get(0).enFields());
+    }
+
+    @Test
+    void changedBookTranslatedFieldKeyWithSameValueIsStale() throws Exception {
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+        AtomicReference<String> source = new AtomicReference<>(bookWithTranslatedField("use", "Same note"));
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return source.get();
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
+            }
+        };
+        CountDownLatch translationStarted = new CountDownLatch(1);
+        CountDownLatch releaseTranslation = new CountDownLatch(1);
+        TranslationWorker worker = (job, ruBody, ruFields) -> {
+            translationStarted.countDown();
+            await(releaseTranslation);
+            return TranslationOutcome.success(
+                    "Translated book body.",
+                    List.of(
+                            PublicField.of("title", "The Lean Startup"),
+                            PublicField.of("description", "A valid English description."),
+                            PublicField.of("use", "Same note")));
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace,
+                ApprovedSnapshotWorkspace.createNull(),
+                WorkflowStatusEditor.createNull());
+
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<BridgeResponse> response = executor.submit(
+                    () -> handler.prepare(path, vaultReader, VaultAssetReader.createNull()));
+            assertTrue(translationStarted.await(5, TimeUnit.SECONDS));
+            source.set(bookWithTranslatedField("boundary", "Same note"));
+            releaseTranslation.countDown();
+
+            assertEquals("stale", response.get(5, TimeUnit.SECONDS).status());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void prepareBibliographyBookBlocksMissingTranslatedBookFields() {
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_BOOK));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "Translated book body.",
+                        fields("The Lean Startup", "A valid English description.")),
+                workspace,
+                ApprovedSnapshotWorkspace.createNull(),
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("translated field structure"));
+        assertTrue(response.diagnostics().get(0).message().contains("use"));
+        assertTrue(response.diagnostics().get(0).message().contains("boundary"));
+        assertTrue(workspace.installed().isEmpty());
     }
 
     @Test
@@ -1582,11 +1889,40 @@ class PrepareHandlerTest {
                 """ + body;
     }
 
+    private static String bookWithTranslatedField(String field, String value) {
+        return """
+                ---
+                publish: true
+                publicCollection: bibliography
+                publicContentType: book
+                publicId: the-lean-startup
+                id: 8f2c-the-lean-startup
+                title: The Lean Startup
+                description: A valid description.
+                authors:
+                  - Eric Ries
+                """ + field + ": " + value + """
+
+                ---
+                # The Lean Startup
+
+                A reading note body.""";
+    }
+
     private static List<dev.eugene.publicationexporter.reference.PublicField> fields(
             String title, String description) {
         return List.of(
                 dev.eugene.publicationexporter.reference.PublicField.of("title", title),
                 dev.eugene.publicationexporter.reference.PublicField.of("description", description));
+    }
+
+    private static List<PublicField> bookFields(
+            String title, String description, String use, String boundary) {
+        return List.of(
+                PublicField.of("title", title),
+                PublicField.of("description", description),
+                PublicField.of("use", use),
+                PublicField.of("boundary", boundary));
     }
 
     private static List<PublicField> claimFields(String title, String description, String statement) {
@@ -1623,6 +1959,30 @@ class PrepareHandlerTest {
 
                 ---
                 Claim body.""";
+    }
+
+    private static String bookStructuredData(
+            String publication,
+            String publicationDate,
+            String start,
+            String end,
+            String readingStatus) {
+        StringBuilder yaml = new StringBuilder("""
+                authors:
+                  - "Eric Ries"
+                """);
+        appendStructuredLine(yaml, "publication", publication);
+        appendStructuredLine(yaml, "publicationDate", publicationDate);
+        appendStructuredLine(yaml, "start", start);
+        appendStructuredLine(yaml, "end", end);
+        appendStructuredLine(yaml, "readingStatus", readingStatus);
+        return yaml.toString();
+    }
+
+    private static void appendStructuredLine(StringBuilder yaml, String key, String value) {
+        if (value != null) {
+            yaml.append(key).append(": \"").append(value).append("\"\n");
+        }
     }
 
     private void installApproved(Path reviewRoot) {

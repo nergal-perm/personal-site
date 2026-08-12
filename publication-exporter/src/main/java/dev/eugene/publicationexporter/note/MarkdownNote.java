@@ -156,6 +156,14 @@ public final class MarkdownNote {
                 .orElseGet(List::of);
     }
 
+    public List<String> listOfScalars(String key) {
+        Objects.requireNonNull(key, "key");
+        return Optional.ofNullable(frontmatterStructuredValues.get(key))
+                .filter(FrontmatterList::containsOnlyScalars)
+                .map(FrontmatterList::scalarEntries)
+                .orElseGet(List::of);
+    }
+
     public Optional<String> opaqueListYaml(String key) {
         Objects.requireNonNull(key, "key");
         return Optional.ofNullable(frontmatterStructuredValues.get(key))
@@ -329,7 +337,7 @@ public final class MarkdownNote {
         if (!startsBlockList(sourceLines)) {
             return Optional.of(FrontmatterList.nonList(sourceLines));
         }
-        return new ScalarMapListParser(sourceLines).parse();
+        return new BlockListParser(sourceLines).parse();
     }
 
     private static boolean startsBlockList(List<String> sourceLines) {
@@ -412,11 +420,17 @@ public final class MarkdownNote {
             if (colon < 0) {
                 return Optional.empty();
             }
-            String key = line.substring(0, colon).strip();
+            Optional<String> key = normalizedKey(line.substring(0, colon).strip());
             if (key.isEmpty()) {
                 return Optional.empty();
             }
-            return Optional.of(new FrontmatterLine(key, line.substring(colon + 1).strip()));
+            return Optional.of(new FrontmatterLine(key.get(), line.substring(colon + 1).strip()));
+        }
+
+        private static Optional<String> normalizedKey(String token) {
+            return FrontmatterScalar.parse(token)
+                    .flatMap(FrontmatterScalar::stringValue)
+                    .filter(key -> !key.isEmpty());
         }
 
         private boolean emptyList() {
@@ -434,20 +448,24 @@ public final class MarkdownNote {
         }
     }
 
-    private static final class ScalarMapListParser {
+    private static final class BlockListParser {
 
         private final List<String> sourceLines;
         private final int itemIndent;
-        private final List<Map<String, String>> entries;
-        private Map<String, String> currentEntry;
+        private final List<Map<String, String>> mapEntries;
+        private final List<String> scalarEntries;
+        private CurrentEntry currentEntry;
         private boolean containsOnlyScalarMaps;
+        private boolean containsOnlyScalars;
 
-        private ScalarMapListParser(List<String> sourceLines) {
+        private BlockListParser(List<String> sourceLines) {
             this.sourceLines = List.copyOf(sourceLines);
             this.itemIndent = indentation(sourceLines.get(0));
-            this.entries = new ArrayList<>();
+            this.mapEntries = new ArrayList<>();
+            this.scalarEntries = new ArrayList<>();
             this.currentEntry = null;
             this.containsOnlyScalarMaps = true;
+            this.containsOnlyScalars = true;
         }
 
         private Optional<FrontmatterList> parse() {
@@ -457,7 +475,12 @@ public final class MarkdownNote {
                 }
             }
             finishCurrentEntry();
-            return Optional.of(FrontmatterList.list(entries, sourceLines, containsOnlyScalarMaps));
+            return Optional.of(FrontmatterList.list(
+                    mapEntries,
+                    scalarEntries,
+                    sourceLines,
+                    containsOnlyScalarMaps,
+                    containsOnlyScalars));
         }
 
         private boolean accept(String sourceLine) {
@@ -469,11 +492,7 @@ public final class MarkdownNote {
             if (currentEntry == null || indent <= itemIndent) {
                 return false;
             }
-            if (indent == itemIndent + 2) {
-                recordEntryField(content);
-            } else {
-                containsOnlyScalarMaps = false;
-            }
+            currentEntry.recordContinuation(indent, content);
             return true;
         }
 
@@ -483,48 +502,119 @@ public final class MarkdownNote {
 
         private boolean startEntry(String firstField) {
             finishCurrentEntry();
-            currentEntry = new LinkedHashMap<>();
-            recordEntryField(firstField);
+            currentEntry = CurrentEntry.parse(firstField, itemIndent);
+            containsOnlyScalarMaps &= currentEntry.hasScalarMapShape();
+            containsOnlyScalars &= currentEntry.hasScalarShape();
             return true;
-        }
-
-        private void recordEntryField(String fieldLine) {
-            if (!addMapEntry(currentEntry, fieldLine)) {
-                containsOnlyScalarMaps = false;
-            }
         }
 
         private void finishCurrentEntry() {
             if (currentEntry != null) {
-                entries.add(immutableMap(currentEntry));
+                currentEntry.recordInto(mapEntries, scalarEntries);
+                containsOnlyScalarMaps &= currentEntry.hasScalarMapShape();
+                containsOnlyScalars &= currentEntry.hasScalarShape();
+                currentEntry = null;
+            }
+        }
+
+        private static final class CurrentEntry {
+
+            private final Map<String, String> mapValue;
+            private final String scalarValue;
+            private final int itemIndent;
+            private boolean scalarMapShape;
+            private boolean scalarShape;
+
+            private CurrentEntry(
+                    Map<String, String> mapValue,
+                    String scalarValue,
+                    int itemIndent,
+                    boolean scalarMapShape,
+                    boolean scalarShape) {
+                this.mapValue = mapValue;
+                this.scalarValue = scalarValue;
+                this.itemIndent = itemIndent;
+                this.scalarMapShape = scalarMapShape;
+                this.scalarShape = scalarShape;
+            }
+
+            private static CurrentEntry parse(String token, int itemIndent) {
+                Optional<String> scalarValue = FrontmatterScalar.parse(token)
+                        .flatMap(FrontmatterScalar::listStringValue);
+                if (scalarValue.isPresent()) {
+                    return new CurrentEntry(null, scalarValue.get(), itemIndent, false, true);
+                }
+                Map<String, String> mapValue = new LinkedHashMap<>();
+                if (addMapEntry(mapValue, token)) {
+                    return new CurrentEntry(mapValue, null, itemIndent, true, false);
+                }
+                return new CurrentEntry(null, null, itemIndent, false, false);
+            }
+
+            private void recordContinuation(int indent, String content) {
+                scalarShape = false;
+                if (mapValue != null && indent == itemIndent + 2) {
+                    if (!addMapEntry(mapValue, content)) {
+                        scalarMapShape = false;
+                    }
+                    return;
+                }
+                scalarMapShape = false;
+            }
+
+            private boolean hasScalarMapShape() {
+                return scalarMapShape;
+            }
+
+            private boolean hasScalarShape() {
+                return scalarShape;
+            }
+
+            private void recordInto(List<Map<String, String>> mapEntries, List<String> scalarEntries) {
+                if (mapValue != null) {
+                    mapEntries.add(immutableMap(mapValue));
+                } else if (scalarValue != null) {
+                    scalarEntries.add(scalarValue);
+                }
             }
         }
     }
 
     private record FrontmatterList(
             List<Map<String, String>> entries,
+            List<String> scalarEntries,
             List<String> sourceLines,
             boolean containsOnlyScalarMaps,
+            boolean containsOnlyScalars,
             boolean listShape) {
 
         private FrontmatterList {
             entries = entries.stream().map(MarkdownNote::immutableMap).toList();
+            scalarEntries = List.copyOf(scalarEntries);
             sourceLines = List.copyOf(sourceLines);
         }
 
         private static FrontmatterList empty() {
-            return new FrontmatterList(List.of(), List.of(), true, true);
+            return new FrontmatterList(List.of(), List.of(), List.of(), true, true, true);
         }
 
         private static FrontmatterList nonList(List<String> sourceLines) {
-            return new FrontmatterList(List.of(), sourceLines, false, false);
+            return new FrontmatterList(List.of(), List.of(), sourceLines, false, false, false);
         }
 
         private static FrontmatterList list(
                 List<Map<String, String>> entries,
+                List<String> scalarEntries,
                 List<String> sourceLines,
-                boolean containsOnlyScalarMaps) {
-            return new FrontmatterList(entries, sourceLines, containsOnlyScalarMaps, true);
+                boolean containsOnlyScalarMaps,
+                boolean containsOnlyScalars) {
+            return new FrontmatterList(
+                    entries,
+                    scalarEntries,
+                    sourceLines,
+                    containsOnlyScalarMaps,
+                    containsOnlyScalars,
+                    true);
         }
 
         private boolean populated() {

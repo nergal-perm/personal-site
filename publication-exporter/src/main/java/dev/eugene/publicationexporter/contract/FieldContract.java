@@ -9,7 +9,7 @@ import java.util.Objects;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public final class FieldContract {
 
-    public enum Type { BOOLEAN, STRING }
+    public enum Type { BOOLEAN, STRING, STRING_LIST }
 
     private final String name;
     private final Type type;
@@ -36,6 +36,10 @@ public final class FieldContract {
 
     public static FieldContract nonBlank(String name) {
         return new FieldContract(name, Type.STRING, null, null, true);
+    }
+
+    public static FieldContract nonBlankStringList(String name) {
+        return new FieldContract(name, Type.STRING_LIST, null, null, true);
     }
 
     @JsonProperty("name")

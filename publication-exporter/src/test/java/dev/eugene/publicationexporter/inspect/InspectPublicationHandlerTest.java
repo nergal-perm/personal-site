@@ -12,6 +12,8 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -92,6 +94,20 @@ class InspectPublicationHandlerTest {
             ---
             """;
 
+    private static final String VALID_BOOK = """
+            ---
+            publish: true
+            publicCollection: bibliography
+            publicContentType: book
+            publicId: the-lean-startup
+            id: 8f2c-the-lean-startup
+            title: The Lean Startup
+            description: A valid description.
+            authors:
+              - Eric Ries
+            ---
+            """;
+
     @Test
     void validEssayIsAcceptedWithAllStatesAbsent() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
@@ -109,6 +125,125 @@ class InspectPublicationHandlerTest {
         assertEquals("absent", response.semanticReferenceState());
         assertEquals("absent", response.releaseState());
         assertEquals(0, response.diagnostics().size());
+    }
+
+    @Test
+    void bibliographyBookIsAcceptedWithAllStatesAbsent() {
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_BOOK));
+
+        BridgeResponse response = handler.inspect(path, vaultReader);
+
+        assertTrue(response.ok());
+        assertEquals("not_prepared", response.status());
+        assertEquals("bibliography", response.identity().publicCollection());
+        assertEquals("book", response.identity().publicContentType());
+        assertEquals("the-lean-startup", response.identity().publicId());
+        assertEquals("absent", response.candidateState());
+        assertEquals("absent", response.approvedSnapshotState());
+        assertEquals("absent", response.semanticReferenceState());
+        assertEquals("absent", response.releaseState());
+    }
+
+    @Test
+    void bibliographyBookReviewPlanHandlesAddedOptionalTranslatedField() {
+        Path reviewRoot = temporaryRoot.resolve("book-added-field-review");
+        PublicationIdentity identity = PublicationIdentity.of("bibliography", "book", "the-lean-startup");
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
+        ApprovedSnapshotWorkspace approvedWorkspace = ApprovedSnapshotWorkspace.create(reviewRoot);
+        List<PublicField> approvedRuFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid description."),
+                PublicField.of("use", "Explains how to test demand before scaling a product bet."));
+        List<PublicField> approvedEnFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid English description."),
+                PublicField.of("use", "Explains how to test demand before scaling a product bet."));
+        List<PublicField> candidateRuFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid description."),
+                PublicField.of("use", "Explains how to test demand before scaling a product bet."),
+                PublicField.of("boundary", "Only the startup-method parts are directly relevant."));
+        List<PublicField> candidateEnFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid English description."),
+                PublicField.of("use", "Explains how to test demand before scaling a product bet."),
+                PublicField.of("boundary", "Only the startup-method parts are directly relevant."));
+        String structuredData = """
+                authors:
+                  - "Eric Ries"
+                publication: "Crown Business"
+                publicationDate: "2011-09-13"
+                readingStatus: "finished"
+                """;
+        approvedWorkspace.install(identity, CandidateSnapshot.of(
+                "RU body", "EN body", approvedRuFields, approvedEnFields, structuredData,
+                referenceMap(identity, "RU body", "EN body", approvedRuFields, approvedEnFields, structuredData)));
+        candidateWorkspace.install(identity, "RU body", "EN body",
+                candidateRuFields, candidateEnFields, structuredData,
+                referenceMap(identity, "RU body", "EN body", candidateRuFields, candidateEnFields, structuredData));
+        InspectPublicationHandler handlerWithBookReview = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()), candidateWorkspace, approvedWorkspace);
+
+        BridgeResponse response = handlerWithBookReview.inspect(
+                VaultRelativePath.of("bibliography/the-lean-startup.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("bibliography/the-lean-startup.md"), VALID_BOOK)));
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals("changed", response.reviewPlan().baselineState());
+        assertFalse(response.reviewPlan().diff().isEmpty());
+        assertTrue(response.reviewPlan().diff().stream()
+                .anyMatch(line -> line.text().contains("boundary: Only the startup-method parts are directly relevant.")));
+    }
+
+    @Test
+    void bibliographyBookReviewPlanHandlesOptionalTranslatedFieldKeySwap() {
+        Path reviewRoot = temporaryRoot.resolve("book-key-swap-review");
+        PublicationIdentity identity = PublicationIdentity.of("bibliography", "book", "the-lean-startup");
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
+        ApprovedSnapshotWorkspace approvedWorkspace = ApprovedSnapshotWorkspace.create(reviewRoot);
+        List<PublicField> approvedRuFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid description."),
+                PublicField.of("use", "Same note"));
+        List<PublicField> approvedEnFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid English description."),
+                PublicField.of("use", "Same note"));
+        List<PublicField> candidateRuFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid description."),
+                PublicField.of("boundary", "Same note"));
+        List<PublicField> candidateEnFields = List.of(
+                PublicField.of("title", "The Lean Startup"),
+                PublicField.of("description", "A valid English description."),
+                PublicField.of("boundary", "Same note"));
+        String structuredData = """
+                authors:
+                  - "Eric Ries"
+                readingStatus: "finished"
+                """;
+        approvedWorkspace.install(identity, CandidateSnapshot.of(
+                "RU body", "EN body", approvedRuFields, approvedEnFields, structuredData,
+                referenceMap(identity, "RU body", "EN body", approvedRuFields, approvedEnFields, structuredData)));
+        candidateWorkspace.install(identity, "RU body", "EN body",
+                candidateRuFields, candidateEnFields, structuredData,
+                referenceMap(identity, "RU body", "EN body", candidateRuFields, candidateEnFields, structuredData));
+        InspectPublicationHandler handlerWithBookReview = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()), candidateWorkspace, approvedWorkspace);
+
+        BridgeResponse response = handlerWithBookReview.inspect(
+                VaultRelativePath.of("bibliography/the-lean-startup.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("bibliography/the-lean-startup.md"), VALID_BOOK)));
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals("changed", response.reviewPlan().baselineState());
+        assertFalse(response.reviewPlan().diff().isEmpty());
+        assertTrue(response.reviewPlan().diff().stream()
+                .anyMatch(line -> line.text().contains("use: Same note")
+                        || line.text().contains("boundary: Same note")));
     }
 
     @Test
@@ -485,5 +620,21 @@ class InspectPublicationHandlerTest {
         ApprovedSnapshotWorkspace.create(reviewRoot).install(
                 identity, "RU body", "EN body", "RU title", "EN title",
                 "RU description", "EN description", referenceMap);
+    }
+
+    private static ReferenceMap referenceMap(
+            PublicationIdentity identity,
+            String ruBody,
+            String enBody,
+            List<PublicField> ruFields,
+            List<PublicField> enFields,
+            String structuredData) {
+        return ReferenceMap.empty(
+                identity,
+                ContentHash.sha256Hex(ruBody),
+                ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                ContentHash.sha256Hex(structuredData));
     }
 }

@@ -13,6 +13,8 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -56,6 +58,25 @@ class MarkReviewedHandlerTest {
             # My Essay""";
 
     private static final String ESSAY_BODY = "# My Essay";
+
+    private static final String VALID_BOOK = """
+            ---
+            publish: true
+            publicCollection: bibliography
+            publicContentType: book
+            publicId: the-lean-startup
+            id: 8f2c-the-lean-startup
+            title: The Lean Startup
+            description: A valid description.
+            authors:
+              - Eric Ries
+            publication: Crown Business
+            publicationDate: 2011-09-13
+            readingStatus: finished
+            use: Explains how to test demand before scaling a product bet.
+            boundary: Only the startup-method parts are directly relevant.
+            ---
+            # The Lean Startup""";
 
     @Test
     void unsafePathIsBlocked() {
@@ -296,6 +317,48 @@ class MarkReviewedHandlerTest {
     }
 
     @Test
+    void bookSourceInvariantMetadataChangedSinceCandidateWasPreparedIsStale() {
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_BOOK));
+        PublicationIdentity identity = PublicationIdentity.of("bibliography", "book", "the-lean-startup");
+        List<PublicField> ruFields = bookFields(
+                "The Lean Startup",
+                "A valid description.",
+                "Explains how to test demand before scaling a product bet.",
+                "Only the startup-method parts are directly relevant.");
+        List<PublicField> enFields = bookFields(
+                "The Lean Startup",
+                "A valid English description.",
+                "Explains how to test demand before scaling a product bet.",
+                "Only the startup-method parts are directly relevant.");
+        String staleStructuredData = bookStructuredData("Portfolio", "2011-09-13", "finished");
+        NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
+        candidateWorkspace.install(
+                identity,
+                "# The Lean Startup",
+                "Translated book body.",
+                ruFields,
+                enFields,
+                staleStructuredData,
+                ReferenceMap.empty(
+                        identity,
+                        ContentHash.sha256Hex("# The Lean Startup"),
+                        ContentHash.sha256Hex("Translated book body."),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                        ContentHash.sha256Hex(staleStructuredData)));
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                candidateWorkspace,
+                ApprovedSnapshotWorkspace.createNull(),
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.markReviewed(path, vaultReader);
+
+        assertStale(response, "Source note structured data has changed since the candidate was prepared.");
+    }
+
+    @Test
     void candidateReadConfinementFailureReturnsBlockedResponse() {
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
@@ -463,6 +526,26 @@ class MarkReviewedHandlerTest {
         assertFalse(response.ok());
         assertEquals("stale", response.status());
         assertEquals(expectedMessage, response.diagnostics().get(0).message());
+    }
+
+    private static List<PublicField> bookFields(
+            String title, String description, String use, String boundary) {
+        return List.of(
+                PublicField.of("title", title),
+                PublicField.of("description", description),
+                PublicField.of("use", use),
+                PublicField.of("boundary", boundary));
+    }
+
+    private static String bookStructuredData(
+            String publication, String publicationDate, String readingStatus) {
+        return """
+                authors:
+                  - "Eric Ries"
+                publication: "%s"
+                publicationDate: "%s"
+                readingStatus: "%s"
+                """.formatted(publication, publicationDate, readingStatus);
     }
 
     private static CandidateWorkspace candidateWorkspaceThrowing(RuntimeException failure) {

@@ -23,16 +23,41 @@ public final class EnglishCandidateValidator {
     }
 
     public static Result validate(String ruBody, String enBody, List<PublicField> enFields) {
+        return validate(ruBody, enFields, enBody, enFields);
+    }
+
+    public static Result validate(
+            String ruBody,
+            List<PublicField> ruFields,
+            String enBody,
+            List<PublicField> enFields) {
         Objects.requireNonNull(ruBody, "ruBody");
+        Objects.requireNonNull(ruFields, "ruFields");
         Objects.requireNonNull(enBody, "enBody");
         Objects.requireNonNull(enFields, "enFields");
 
         List<String> diagnostics = new ArrayList<>();
+        diagnostics.addAll(translatedFieldStructureDiagnostics(ruFields, enFields));
         diagnostics.addAll(blankFieldDiagnostics(enBody, enFields));
         diagnostics.addAll(internalRouteDiagnostics(enBody, enFields));
-        diagnostics.addAll(droppedUrlDiagnostics(ruBody, enBody));
-        diagnostics.addAll(droppedAssetReferenceDiagnostics(ruBody, enBody));
+        diagnostics.addAll(droppedUrlDiagnostics(ruBody, ruFields, enBody, enFields));
+        diagnostics.addAll(droppedAssetReferenceDiagnostics(ruBody, ruFields, enBody, enFields));
         return diagnostics.isEmpty() ? Result.ok() : Result.invalid(diagnostics);
+    }
+
+    private static List<String> translatedFieldStructureDiagnostics(
+            List<PublicField> ruFields,
+            List<PublicField> enFields) {
+        List<String> expectedKeys = fieldKeys(ruFields);
+        List<String> actualKeys = fieldKeys(enFields);
+        return expectedKeys.equals(actualKeys)
+                ? List.of()
+                : List.of("English candidate changed translated field structure: expected "
+                + expectedKeys + " but got " + actualKeys + ".");
+    }
+
+    private static List<String> fieldKeys(List<PublicField> fields) {
+        return fields.stream().map(PublicField::key).toList();
     }
 
     private static List<String> blankFieldDiagnostics(String enBody, List<PublicField> enFields) {
@@ -74,36 +99,59 @@ public final class EnglishCandidateValidator {
         return withUrlsRemoved.toString();
     }
 
-    private static List<String> droppedUrlDiagnostics(String ruBody, String enBody) {
+    private static List<String> droppedUrlDiagnostics(
+            String ruBody,
+            List<PublicField> ruFields,
+            String enBody,
+            List<PublicField> enFields) {
         List<String> diagnostics = new ArrayList<>();
-        for (String droppedUrl : droppedMatches(ruBody, enBody, EXTERNAL_URL)) {
+        for (String droppedUrl : droppedMatches(candidateTexts(ruBody, ruFields), candidateTexts(enBody, enFields), EXTERNAL_URL)) {
             diagnostics.add("English candidate dropped external URL " + droppedUrl + ".");
         }
         return diagnostics;
     }
 
-    private static List<String> droppedAssetReferenceDiagnostics(String ruBody, String enBody) {
+    private static List<String> droppedAssetReferenceDiagnostics(
+            String ruBody,
+            List<PublicField> ruFields,
+            String enBody,
+            List<PublicField> enFields) {
         List<String> diagnostics = new ArrayList<>();
         for (String droppedReference : droppedMatches(
-                withoutExternalUrls(ruBody), withoutExternalUrls(enBody), ASSET_REFERENCE)) {
+                textsWithoutExternalUrls(candidateTexts(ruBody, ruFields)),
+                textsWithoutExternalUrls(candidateTexts(enBody, enFields)),
+                ASSET_REFERENCE)) {
             diagnostics.add("English candidate dropped asset reference " + droppedReference + ".");
         }
         return diagnostics;
     }
 
-    private static Set<String> droppedMatches(String ruBody, String enBody, Pattern pattern) {
-        Set<String> ruMatches = extractMatches(ruBody, pattern);
-        Set<String> enMatches = extractMatches(enBody, pattern);
+    private static List<String> candidateTexts(String body, List<PublicField> fields) {
+        List<String> texts = new ArrayList<>();
+        texts.add(body);
+        fields.stream().map(PublicField::value).forEach(texts::add);
+        return List.copyOf(texts);
+    }
+
+    private static List<String> textsWithoutExternalUrls(List<String> texts) {
+        return texts.stream().map(EnglishCandidateValidator::withoutExternalUrls).toList();
+    }
+
+    private static Set<String> droppedMatches(List<String> ruTexts, List<String> enTexts, Pattern pattern) {
+        Set<String> ruMatches = extractMatches(ruTexts, pattern);
+        Set<String> enMatches = extractMatches(enTexts, pattern);
         Set<String> matches = new LinkedHashSet<>(ruMatches);
         matches.removeAll(enMatches);
         return matches;
     }
 
-    private static Set<String> extractMatches(String text, Pattern pattern) {
+    private static Set<String> extractMatches(List<String> texts, Pattern pattern) {
         Set<String> matches = new LinkedHashSet<>();
-        Matcher matcher = pattern.matcher(text);
-        while (matcher.find()) {
-            matches.add(matcher.group());
+        for (String text : texts) {
+            Matcher matcher = pattern.matcher(text);
+            while (matcher.find()) {
+                matches.add(matcher.group());
+            }
         }
         return matches;
     }

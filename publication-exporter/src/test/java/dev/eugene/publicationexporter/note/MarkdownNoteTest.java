@@ -175,6 +175,163 @@ class MarkdownNoteTest {
     }
 
     @Test
+    void parsesAListOfScalarStrings() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors:
+                  - Eric Ries
+                  - "Cindy Alvarez"
+                ---
+                """);
+
+        assertEquals(List.of("Eric Ries", "Cindy Alvarez"), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void emptyScalarListHasNoEntries() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors: []
+                ---
+                """);
+
+        assertEquals(List.of(), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void nonListValueHasNoScalarListEntries() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors: Eric Ries
+                ---
+                """);
+
+        assertEquals(List.of(), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void mixedScalarAndNonScalarListHasNoScalarListEntries() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors:
+                  - Eric Ries
+                  - name: Cindy Alvarez
+                ---
+                """);
+
+        assertEquals(List.of(), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void scalarListPreservesBlankEntriesForKindValidation() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors:
+                  - Eric Ries
+                  - "   "
+                ---
+                """);
+
+        assertEquals(List.of("Eric Ries", "   "), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void numericScalarListEntryIsNotTreatedAsAString() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors:
+                  - 123
+                ---
+                """);
+
+        assertEquals(List.of(), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void flowSequenceScalarListEntryIsNotTreatedAsAString() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors:
+                  - []
+                ---
+                """);
+
+        assertEquals(List.of(), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void flowMapScalarListEntryIsNotTreatedAsAString() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                authors:
+                  - {}
+                ---
+                """);
+
+        assertEquals(List.of(), frontmatter.listOfScalars("authors"));
+    }
+
+    @Test
+    void additionalYamlNonStringScalarsAreNotTreatedAsScalarListStrings() {
+        MarkdownNote scientific = MarkdownNote.parse("""
+                ---
+                authors:
+                  - 1e3
+                ---
+                """);
+        MarkdownNote hex = MarkdownNote.parse("""
+                ---
+                authors:
+                  - 0x10
+                ---
+                """);
+        MarkdownNote upperTrue = MarkdownNote.parse("""
+                ---
+                authors:
+                  - TRUE
+                ---
+                """);
+        MarkdownNote date = MarkdownNote.parse("""
+                ---
+                authors:
+                  - 2026-01-01
+                ---
+                """);
+        MarkdownNote leadingZero = MarkdownNote.parse("""
+                ---
+                authors:
+                  - 0123
+                ---
+                """);
+        MarkdownNote doubleZero = MarkdownNote.parse("""
+                ---
+                authors:
+                  - 00
+                ---
+                """);
+
+        assertEquals(List.of(), scientific.listOfScalars("authors"));
+        assertEquals(List.of(), hex.listOfScalars("authors"));
+        assertEquals(List.of(), upperTrue.listOfScalars("authors"));
+        assertEquals(List.of(), date.listOfScalars("authors"));
+        assertEquals(List.of(), leadingZero.listOfScalars("authors"));
+        assertEquals(List.of(), doubleZero.listOfScalars("authors"));
+    }
+
+    @Test
+    void quotedFrontmatterKeyIsAccessibleByItsUnquotedName() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                'selectedQuote':
+                  kind: text
+                  text: A quote that needs translation.
+                ---
+                """);
+
+        assertEquals(MarkdownNote.StructuredField.NON_LIST, frontmatter.structuredField("selectedQuote"));
+    }
+
+    @Test
     void nestedMapAndArrayListValuesKeepTheHeaderReadable() {
         MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---

@@ -33,3 +33,6 @@ approval_mode = "approve"
 
 [mcp_servers.haft.tools.haft_refresh]
 approval_mode = "approve"
+
+[mcp_servers.haft.tools.haft_method]
+approval_mode = "approve"

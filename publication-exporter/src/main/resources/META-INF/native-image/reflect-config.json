@@ -123,10 +123,9 @@
       {"name": "identity", "parameterTypes": []},
       {"name": "ruHash", "parameterTypes": []},
       {"name": "enHash", "parameterTypes": []},
-      {"name": "ruTitleHash", "parameterTypes": []},
-      {"name": "enTitleHash", "parameterTypes": []},
-      {"name": "ruDescriptionHash", "parameterTypes": []},
-      {"name": "enDescriptionHash", "parameterTypes": []},
+      {"name": "ruFieldsHash", "parameterTypes": []},
+      {"name": "enFieldsHash", "parameterTypes": []},
+      {"name": "structuredDataHash", "parameterTypes": []},
       {"name": "occurrences", "parameterTypes": []}
     ]
   },
@@ -184,6 +183,8 @@
       {"name": "collection", "parameterTypes": []},
       {"name": "contentType", "parameterTypes": []},
       {"name": "requiredFields", "parameterTypes": []},
+      {"name": "optionalFields", "parameterTypes": []},
+      {"name": "blockedFields", "parameterTypes": []},
       {"name": "structuredBody", "parameterTypes": []}
     ]
   },

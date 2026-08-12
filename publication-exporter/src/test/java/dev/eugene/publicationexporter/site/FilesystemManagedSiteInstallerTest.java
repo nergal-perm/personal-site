@@ -37,6 +37,8 @@ class FilesystemManagedSiteInstallerTest {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
     private static final PublicationIdentity NOTE_IDENTITY = PublicationIdentity.of("blog", "note", "my-note");
+    private static final PublicationIdentity BOOK_IDENTITY =
+            PublicationIdentity.of("bibliography", "book", "the-lean-startup");
     private static final PublicationIdentity OTHER_IDENTITY =
             PublicationIdentity.of("blog", "essay", "another-essay");
     private static final CandidateSnapshot SNAPSHOT = LegacyCandidateSnapshotFixture.of(
@@ -48,6 +50,47 @@ class FilesystemManagedSiteInstallerTest {
             ReferenceMap.empty(NOTE_IDENTITY, "note-ru-hash", "note-en-hash",
                     "note-ru-title-hash", "note-en-title-hash",
                     "note-ru-description-hash", "note-en-description-hash"));
+    private static final CandidateSnapshot BOOK_SNAPSHOT = CandidateSnapshot.of(
+            "# RU book body",
+            "# EN book body",
+            List.of(
+                    PublicField.of("title", "RU book title"),
+                    PublicField.of("description", "RU book description."),
+                    PublicField.of("use", "RU use"),
+                    PublicField.of("boundary", "RU boundary")),
+            List.of(
+                    PublicField.of("title", "EN book title"),
+                    PublicField.of("description", "EN book description."),
+                    PublicField.of("use", "EN use"),
+                    PublicField.of("boundary", "EN boundary")),
+            """
+                    authors:
+                      - "Eric Ries"
+                    publication: "Crown Business"
+                    publicationDate: "2011-09-13"
+                    readingStatus: "finished"
+                    """,
+            ReferenceMap.empty(
+                    BOOK_IDENTITY,
+                    "book-ru-hash",
+                    "book-en-hash",
+                    ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                            PublicField.of("title", "RU book title"),
+                            PublicField.of("description", "RU book description."),
+                            PublicField.of("use", "RU use"),
+                            PublicField.of("boundary", "RU boundary")))),
+                    ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                            PublicField.of("title", "EN book title"),
+                            PublicField.of("description", "EN book description."),
+                            PublicField.of("use", "EN use"),
+                            PublicField.of("boundary", "EN boundary")))),
+                    ContentHash.sha256Hex("""
+                            authors:
+                              - "Eric Ries"
+                            publication: "Crown Business"
+                            publicationDate: "2011-09-13"
+                            readingStatus: "finished"
+                            """)));
     private static final CandidateSnapshot REPLACEMENT_SNAPSHOT = LegacyCandidateSnapshotFixture.of(
             "# Replacement RU body", "# Replacement EN body",
             "Replacement RU title", "Replacement EN title",
@@ -155,6 +198,59 @@ class FilesystemManagedSiteInstallerTest {
                 + "translationStatus: \"source\"\n"
                 + "---\n"
                 + "# RU note body", Files.readString(ruFile, StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void installProjectsBibliographyBookIntoLibraryFilesWithTranslatedAndInvariantMetadata() throws Exception {
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+
+        installer.install(BOOK_IDENTITY, BOOK_SNAPSHOT);
+
+        Path ruFile = siteRoot.resolve("src/content/bibliography/ru/the-lean-startup.md");
+        Path enFile = siteRoot.resolve("src/content/bibliography/en/the-lean-startup.md");
+        assertTrue(Files.exists(ruFile));
+        assertTrue(Files.exists(enFile));
+        assertEquals("---\n"
+                + "id: \"the-lean-startup\"\n"
+                + "title: \"RU book title\"\n"
+                + "description: \"RU book description.\"\n"
+                + "use: \"RU use\"\n"
+                + "boundary: \"RU boundary\"\n"
+                + "publish: true\n"
+                + "contentType: \"book\"\n"
+                + "language: \"ru\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"book-ru-hash\"\n"
+                + "translationStatus: \"source\"\n"
+                + "authors:\n"
+                + "  - \"Eric Ries\"\n"
+                + "publication: \"Crown Business\"\n"
+                + "publicationDate: \"2011-09-13\"\n"
+                + "readingStatus: \"finished\"\n"
+                + "---\n"
+                + "# RU book body", Files.readString(ruFile, StandardCharsets.UTF_8));
+        assertEquals("---\n"
+                + "id: \"the-lean-startup\"\n"
+                + "title: \"EN book title\"\n"
+                + "description: \"EN book description.\"\n"
+                + "use: \"EN use\"\n"
+                + "boundary: \"EN boundary\"\n"
+                + "publish: true\n"
+                + "contentType: \"book\"\n"
+                + "language: \"en\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"book-ru-hash\"\n"
+                + "translationStatus: \"generated\"\n"
+                + "translationOf: \"the-lean-startup\"\n"
+                + "authors:\n"
+                + "  - \"Eric Ries\"\n"
+                + "publication: \"Crown Business\"\n"
+                + "publicationDate: \"2011-09-13\"\n"
+                + "readingStatus: \"finished\"\n"
+                + "---\n"
+                + "# EN book body", Files.readString(enFile, StandardCharsets.UTF_8));
+        assertFalse(Files.readString(ruFile, StandardCharsets.UTF_8).contains("selectedQuote"));
+        assertFalse(Files.readString(enFile, StandardCharsets.UTF_8).contains("selectedQuote"));
     }
 
     @Test

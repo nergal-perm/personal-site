@@ -116,6 +116,18 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void rejectsDroppedExternalUrlFromTranslatedBookField() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст",
+                bookFields("Заголовок", "Описание", "Смотрите https://example.com/use", "Граница"),
+                "Body",
+                bookFields("Title", "Description", "See the use note.", "Boundary"));
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("https://example.com/use")));
+    }
+
+    @Test
     void droppedAssetReferenceIsReportedAsInvalid() {
         String ruBody = "See ![cover](/assets/vault/abc123.png).";
         String enBody = "See the cover image.";
@@ -125,6 +137,18 @@ class EnglishCandidateValidatorTest {
 
         assertFalse(result.valid());
         assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("dropped asset reference")));
+    }
+
+    @Test
+    void droppedAssetReferenceFromTranslatedBookFieldIsReportedAsInvalid() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст",
+                bookFields("Заголовок", "Описание", "См. ![cover](/assets/vault/abc123.png).", "Граница"),
+                "Body",
+                bookFields("Title", "Description", "See the cover note.", "Boundary"));
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("/assets/vault/abc123.png")));
     }
 
     @Test
@@ -204,6 +228,34 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void rejectsMissingTranslatedBookField() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст",
+                bookFields("Заголовок", "Описание", "Использование", "Граница"),
+                "Body",
+                fields("Title", "Description"));
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("translated field structure")));
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("use")));
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("boundary")));
+    }
+
+    @Test
+    void rejectsExtraTranslatedBookField() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Текст",
+                fields("Заголовок", "Описание"),
+                "Body",
+                bookFields("Title", "Description", "Use", "Boundary"));
+
+        assertFalse(result.valid());
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("translated field structure")));
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("use")));
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic -> diagnostic.contains("boundary")));
+    }
+
+    @Test
     void resultSupportsValueEqualityAndHashing() {
         EnglishCandidateValidator.Result first = EnglishCandidateValidator.validate(
                 "Текст", "See https://example.com/x", fields("Title", "Description"));
@@ -216,5 +268,13 @@ class EnglishCandidateValidatorTest {
 
     private static List<PublicField> fields(String title, String description) {
         return List.of(PublicField.of("title", title), PublicField.of("description", description));
+    }
+
+    private static List<PublicField> bookFields(String title, String description, String use, String boundary) {
+        return List.of(
+                PublicField.of("title", title),
+                PublicField.of("description", description),
+                PublicField.of("use", use),
+                PublicField.of("boundary", boundary));
     }
 }

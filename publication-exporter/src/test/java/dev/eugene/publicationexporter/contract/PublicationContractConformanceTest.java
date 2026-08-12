@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.contract;
 
+import dev.eugene.publicationexporter.admission.BookPublicationKindFixture;
+import dev.eugene.publicationexporter.admission.BookPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixture;
@@ -82,12 +84,35 @@ class PublicationContractConformanceTest {
         assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
     }
 
+    @ParameterizedTest(name = "bibliography/book {0}")
+    @MethodSource("allBookAdmissionFixtures")
+    void bookContractVerdictAgreesWithFixtureAndRuntimeValidator(BookPublicationKindFixture fixture) {
+        MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
+        KindContract bookKind = new PublicationContractWriter().write().kinds().stream()
+                .filter(kind -> kind.collection().equals("bibliography") && kind.contentType().equals("book"))
+                .findFirst()
+                .orElseThrow();
+
+        boolean contractAccepts = contractAccepts(bookKind, note);
+        VaultRelativePath path = VaultRelativePath.of("bibliography/" + fixture.name() + ".md");
+        boolean runtimeAccepts = intake.admit(path, VaultReader.createNull(Map.of(path, fixture.noteSource())))
+                .accepted();
+
+        assertEquals(fixture.expectedAccepted(), contractAccepts, "contract verdict for " + fixture.name());
+        assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
+        assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
+    }
+
     private static Stream<NotePublicationKindFixture> allNoteAdmissionFixtures() {
         return NotePublicationKindFixtures.all().stream();
     }
 
     private static Stream<ClaimPublicationKindFixture> allClaimAdmissionFixtures() {
         return ClaimPublicationKindFixtures.all().stream();
+    }
+
+    private static Stream<BookPublicationKindFixture> allBookAdmissionFixtures() {
+        return BookPublicationKindFixtures.all().stream();
     }
 
     private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {
@@ -132,14 +157,31 @@ class PublicationContractConformanceTest {
                 return false;
             }
         }
+        for (FieldContract field : kind.optionalFields()) {
+            if (fieldPresent(field.name(), note) && !fieldSatisfied(field, note)) {
+                return false;
+            }
+        }
+        for (String blockedField : kind.blockedFields()) {
+            if (fieldPresent(blockedField, note)) {
+                return false;
+            }
+        }
         return true;
     }
 
+    private boolean fieldPresent(String key, MarkdownNote note) {
+        return note.string(key).isPresent()
+                || note.structuredField(key) != MarkdownNote.StructuredField.ABSENT
+                || !note.listOfScalars(key).isEmpty();
+    }
+
     private boolean fieldSatisfied(FieldContract field, MarkdownNote note) {
-        if (field.type() == FieldContract.Type.BOOLEAN) {
-            return field.allowedValues().contains(String.valueOf(note.flag(field.name())));
-        }
-        return note.string(field.name()).map(value -> stringFieldSatisfied(field, value)).orElse(false);
+        return switch (field.type()) {
+            case BOOLEAN -> field.allowedValues().contains(String.valueOf(note.flag(field.name())));
+            case STRING -> note.string(field.name()).map(value -> stringFieldSatisfied(field, value)).orElse(false);
+            case STRING_LIST -> stringListFieldSatisfied(field, note.listOfScalars(field.name()));
+        };
     }
 
     private boolean stringFieldSatisfied(FieldContract field, String value) {
@@ -150,5 +192,15 @@ class PublicationContractConformanceTest {
             return Pattern.compile(field.pattern()).matcher(value).matches();
         }
         return field.allowedValues().contains(value);
+    }
+
+    private boolean stringListFieldSatisfied(FieldContract field, List<String> values) {
+        if (values.isEmpty()) {
+            return false;
+        }
+        if (field.nonBlank() && values.stream().anyMatch(String::isBlank)) {
+            return false;
+        }
+        return true;
     }
 }

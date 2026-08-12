@@ -70,4 +70,18 @@ class TranslationJobTest {
 
         assertNotEquals(first.id(), second.id());
     }
+
+    @Test
+    void differentFieldKeysWithSameValuesProduceDifferentFingerprint() {
+        TranslationJob first = TranslationJob.forSource("body", List.of(
+                PublicField.of("title", "title"),
+                PublicField.of("description", "description"),
+                PublicField.of("use", "same value")));
+        TranslationJob second = TranslationJob.forSource("body", List.of(
+                PublicField.of("title", "title"),
+                PublicField.of("description", "description"),
+                PublicField.of("boundary", "same value")));
+
+        assertNotEquals(first.sourceFingerprint(), second.sourceFingerprint());
+    }
 }

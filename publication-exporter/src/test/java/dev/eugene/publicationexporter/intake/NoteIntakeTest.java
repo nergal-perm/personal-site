@@ -25,6 +25,20 @@ class NoteIntakeTest {
             ---
             # Body""";
 
+    private static final String VALID_BOOK = """
+            ---
+            publish: true
+            publicCollection: bibliography
+            publicContentType: book
+            publicId: the-lean-startup
+            id: 8f2c-the-lean-startup
+            title: The Lean Startup
+            description: A valid description.
+            authors:
+              - Eric Ries
+            ---
+            # Body""";
+
     private final NoteIntake intake = new NoteIntake(PublicationKinds.installed());
 
     @Test
@@ -120,6 +134,19 @@ class NoteIntakeTest {
 
         assertTrue(result.accepted());
         assertEquals("My Essay", result.title());
+        assertEquals("A valid description.", result.description());
+    }
+
+    @Test
+    void bibliographyBookIsAcceptedWithTheInstalledBookKind() {
+        VaultRelativePath path = VaultRelativePath.of("bibliography/the-lean-startup.md");
+        NoteIntake.Result result = intake.admit(path, VaultReader.createNull(Map.of(path, VALID_BOOK)));
+
+        assertTrue(result.accepted(), result.diagnostics().toString());
+        assertEquals("bibliography", result.identity().publicCollection());
+        assertEquals("book", result.identity().publicContentType());
+        assertEquals("the-lean-startup", result.identity().publicId());
+        assertEquals("The Lean Startup", result.title());
         assertEquals("A valid description.", result.description());
     }
 
