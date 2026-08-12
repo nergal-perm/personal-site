@@ -1,8 +1,13 @@
 package dev.eugene.publicationexporter.site;
 
+import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.candidate.LegacyCandidateSnapshotFixture;
 import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
+import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -34,16 +39,16 @@ class FilesystemManagedSiteInstallerTest {
     private static final PublicationIdentity NOTE_IDENTITY = PublicationIdentity.of("blog", "note", "my-note");
     private static final PublicationIdentity OTHER_IDENTITY =
             PublicationIdentity.of("blog", "essay", "another-essay");
-    private static final CandidateSnapshot SNAPSHOT = CandidateSnapshot.of(
+    private static final CandidateSnapshot SNAPSHOT = LegacyCandidateSnapshotFixture.of(
             "# RU body", "# EN body", "RU title", "EN title", "RU description.", "EN description.",
             ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
-    private static final CandidateSnapshot NOTE_SNAPSHOT = CandidateSnapshot.of(
+    private static final CandidateSnapshot NOTE_SNAPSHOT = LegacyCandidateSnapshotFixture.of(
             "# RU note body", "# EN note body", "RU note title", "EN note title",
             "RU note description.", "EN note description.",
             ReferenceMap.empty(NOTE_IDENTITY, "note-ru-hash", "note-en-hash",
                     "note-ru-title-hash", "note-en-title-hash",
                     "note-ru-description-hash", "note-en-description-hash"));
-    private static final CandidateSnapshot REPLACEMENT_SNAPSHOT = CandidateSnapshot.of(
+    private static final CandidateSnapshot REPLACEMENT_SNAPSHOT = LegacyCandidateSnapshotFixture.of(
             "# Replacement RU body", "# Replacement EN body",
             "Replacement RU title", "Replacement EN title",
             "Replacement RU description.", "Replacement EN description.",
@@ -51,13 +56,13 @@ class FilesystemManagedSiteInstallerTest {
                     "replacement-ru-hash", "replacement-en-hash",
                     "replacement-ru-title-hash", "replacement-en-title-hash",
                     "replacement-ru-description-hash", "replacement-en-description-hash"));
-    private static final CandidateSnapshot UNWRITABLE_SNAPSHOT = CandidateSnapshot.of(
+    private static final CandidateSnapshot UNWRITABLE_SNAPSHOT = LegacyCandidateSnapshotFixture.of(
             "\uD800", "unused", "title", "title", "description", "description",
             ReferenceMap.empty(IDENTITY,
                     "unwritable-ru-hash", "unwritable-en-hash",
                     "unwritable-ru-title-hash", "unwritable-en-title-hash",
                     "unwritable-ru-description-hash", "unwritable-en-description-hash"));
-    private static final CandidateSnapshot OTHER_SNAPSHOT = CandidateSnapshot.of(
+    private static final CandidateSnapshot OTHER_SNAPSHOT = LegacyCandidateSnapshotFixture.of(
             "# Other RU body", "# Other EN body", "Other RU title", "Other EN title",
             "Other RU description.", "Other EN description.",
             ReferenceMap.empty(OTHER_IDENTITY, "other-ru-hash", "other-en-hash",
@@ -66,6 +71,32 @@ class FilesystemManagedSiteInstallerTest {
 
     @TempDir
     Path siteRoot;
+
+    @Test
+    void approvedStructuredSnapshotInstallsStructuredDataInBothSiteLocales() throws Exception {
+        CandidateSnapshot prepared = CandidateSnapshot.of(
+                "RU body", "EN body",
+                List.of(PublicField.of("title", "RU title"), PublicField.of("description", "RU description")),
+                List.of(PublicField.of("title", "EN title"), PublicField.of("description", "EN description")),
+                "relationships:\n  - target: note-1\n",
+                ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU body"), ContentHash.sha256Hex("EN body"),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                                PublicField.of("title", "RU title"), PublicField.of("description", "RU description")))),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                                PublicField.of("title", "EN title"), PublicField.of("description", "EN description")))),
+                        ContentHash.sha256Hex("relationships:\n  - target: note-1\n")));
+        Path reviewRoot = siteRoot.resolve("review");
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.create(reviewRoot);
+        approved.install(IDENTITY, prepared);
+
+        CandidateSnapshot approvedSnapshot = approved.read(IDENTITY).orElseThrow();
+        new FilesystemManagedSiteInstaller(siteRoot).install(IDENTITY, approvedSnapshot);
+
+        String ru = Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md"));
+        String en = Files.readString(siteRoot.resolve("src/content/blog/en/my-essay.md"));
+        assertTrue(ru.contains("relationships:\n  - target: note-1\n---\n"));
+        assertTrue(en.contains("relationships:\n  - target: note-1\n---\n"));
+    }
 
     @Test
     void installWritesBothLocaleFilesAndTheManifestIntoAbsentManagedRoots() throws Exception {
@@ -461,7 +492,7 @@ class FilesystemManagedSiteInstallerTest {
     @Test
     void aPathEscapingSiteRootIsRejected() {
         PublicationIdentity escaping = PublicationIdentity.of("../../../outside", "essay", "my-essay");
-        CandidateSnapshot snapshot = CandidateSnapshot.of(
+        CandidateSnapshot snapshot = LegacyCandidateSnapshotFixture.of(
                 "ru", "en", "ru title", "en title", "ru description", "en description",
                 ReferenceMap.empty(escaping, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 

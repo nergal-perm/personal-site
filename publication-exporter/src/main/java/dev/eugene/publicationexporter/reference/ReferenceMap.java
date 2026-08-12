@@ -43,6 +43,7 @@ public final class ReferenceMap {
                 ruFieldsHash, enFieldsHash, structuredDataHash);
     }
 
+    @Deprecated
     public static ReferenceMap empty(
             PublicationIdentity identity,
             String ruHash,

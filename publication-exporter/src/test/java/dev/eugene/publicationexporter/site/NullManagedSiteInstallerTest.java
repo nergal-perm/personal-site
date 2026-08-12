@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.site;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.candidate.LegacyCandidateSnapshotFixture;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 
@@ -12,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class NullManagedSiteInstallerTest {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
-    private static final CandidateSnapshot SNAPSHOT = CandidateSnapshot.of(
+    private static final CandidateSnapshot SNAPSHOT = LegacyCandidateSnapshotFixture.of(
             "RU body", "EN body", "RU title", "EN title", "RU description.", "EN description.",
             ReferenceMap.empty(IDENTITY, "ru-hash", "en-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
 
@@ -60,7 +61,7 @@ class NullManagedSiteInstallerTest {
     }
 
     private static CandidateSnapshot candidateSnapshot(String ruBody, String enBody) {
-        return CandidateSnapshot.of(
+        return LegacyCandidateSnapshotFixture.of(
                 ruBody,
                 enBody,
                 "RU title",

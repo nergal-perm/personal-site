@@ -351,6 +351,26 @@ class InspectPublicationHandlerTest {
     }
 
     @Test
+    void candidateMissingRequiredFieldReturnsStructuredBlockedResponse() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("missing-candidate-field-review");
+        installCandidateAndApproved(reviewRoot);
+        Path fieldsPath = reviewRoot.resolve("blog/my-essay/candidate/ru.fields.json");
+        Files.writeString(fieldsPath, "[{\"key\":\"description\",\"value\":\"Only description\"}]\n");
+
+        InspectPublicationHandler handlerWithCorruptCandidate = new InspectPublicationHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                CandidateWorkspace.create(reviewRoot), ApprovedSnapshotWorkspace.createNull());
+        BridgeResponse response = handlerWithCorruptCandidate.inspect(
+                VaultRelativePath.of("blog/my-essay.md"),
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/my-essay.md"), VALID_ESSAY)));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("missing required field 'title'"));
+    }
+
+    @Test
     void escapingApprovedMemberReturnsStructuredBlockedResponse() throws Exception {
         Path reviewRoot = temporaryRoot.resolve("escaping-review");
         installCandidateAndApproved(reviewRoot);

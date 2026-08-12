@@ -3,7 +3,6 @@ package dev.eugene.publicationexporter.approved;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
-import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
@@ -13,22 +12,13 @@ import java.util.function.Supplier;
 
 public interface ApprovedSnapshotWorkspace {
 
-    void install(PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap);
+    void install(PublicationIdentity identity, CandidateSnapshot snapshot);
 
-    default void install(PublicationIdentity identity, CandidateSnapshot content) {
+    default void install(PublicationIdentity identity, String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
         Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(content, "content");
-        if (!content.structuredData().isEmpty()) {
-            throw new UnsupportedOperationException(
-                    "Approved snapshot workspace does not support structured data.");
-        }
-        install(identity, content.ruBody(), content.enBody(),
-                PublicField.value(content.ruFields(), "title").orElseThrow(),
-                PublicField.value(content.enFields(), "title").orElseThrow(),
-                PublicField.value(content.ruFields(), "description").orElseThrow(),
-                PublicField.value(content.enFields(), "description").orElseThrow(),
-                content.referenceMap());
+        install(identity, LegacyApprovedSnapshotInstaller.snapshot(
+                ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, referenceMap));
     }
 
     Optional<CandidatePaths> find(PublicationIdentity identity);

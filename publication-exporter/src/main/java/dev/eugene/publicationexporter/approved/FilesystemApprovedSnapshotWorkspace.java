@@ -63,65 +63,21 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     }
 
     @Override
-    public void install(PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
+    public void install(PublicationIdentity identity, CandidateSnapshot snapshot) {
         Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(ruBody, "ruBody");
-        Objects.requireNonNull(enBody, "enBody");
-        Objects.requireNonNull(ruTitle, "ruTitle");
-        Objects.requireNonNull(enTitle, "enTitle");
-        Objects.requireNonNull(ruDescription, "ruDescription");
-        Objects.requireNonNull(enDescription, "enDescription");
-        Objects.requireNonNull(referenceMap, "referenceMap");
+        Objects.requireNonNull(snapshot, "snapshot");
 
         withApprovalLock(identity, () -> {
-            installUnderLock(identity, ruBody, enBody, ruTitle, enTitle,
-                    ruDescription, enDescription, referenceMap);
+            installUnderLock(identity, snapshot);
             return null;
         });
     }
-
-    @Override
-    public void install(PublicationIdentity identity, CandidateSnapshot content) {
-        Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(content, "content");
-
-        withApprovalLock(identity, () -> {
-            installUnderLock(identity, content);
-            return null;
-        });
-    }
-
-    private void installUnderLock(PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription,
-            ReferenceMap referenceMap) {
-        installUnderLock(identity, CandidateSnapshot.of(ruBody, enBody,
-                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
-                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
-                "", canonicalReferenceMap(identity, ruBody, enBody, ruTitle, enTitle,
-                        ruDescription, enDescription, referenceMap)));
-    }
-
-    private static ReferenceMap canonicalReferenceMap(
-            PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription,
-            ReferenceMap referenceMap) {
-        List<PublicField> ruFields = List.of(
-                PublicField.of("title", ruTitle), PublicField.of("description", ruDescription));
-        List<PublicField> enFields = List.of(
-                PublicField.of("title", enTitle), PublicField.of("description", enDescription));
-        return ReferenceMap.empty(identity, referenceMap.ruHash(), referenceMap.enHash(),
-                ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
-                ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
-                ContentHash.sha256Hex(""));
-    }
-
-    private void installUnderLock(PublicationIdentity identity, CandidateSnapshot content) {
+    private void installUnderLock(PublicationIdentity identity, CandidateSnapshot snapshot) {
         recoverIfNeeded(identity, true);
         Path destination = approvedDirectory(identity);
         Path staging = createStagingDirectory();
         try {
-            writeSnapshot(staging, content);
+            writeSnapshot(staging, snapshot);
             requireWithinReviewRoot(destination);
             stagedInstall.createParentDirectories(destination);
             requireWithinReviewRoot(destination);

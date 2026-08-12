@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.site;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.candidate.LegacyCandidateSnapshotFixture;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -45,7 +46,7 @@ class AstroBuildSmokeIT {
     @Test
     void astroBuildParsesEscapedMetadataWithoutChangingIt() throws Exception {
         seedCuratedPageFixtures(siteRoot);
-        CandidateSnapshot snapshot = CandidateSnapshot.of("# My Essay\n\nBody.", "# My Essay (EN)\n\nBody.",
+        CandidateSnapshot snapshot = LegacyCandidateSnapshotFixture.of("# My Essay\n\nBody.", "# My Essay (EN)\n\nBody.",
                 RU_TITLE, EN_TITLE, RU_DESCRIPTION, EN_DESCRIPTION,
                 ReferenceMap.empty(IDENTITY, "ru-source-hash", "en-source-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         ManagedSiteInstaller.create(siteRoot).install(IDENTITY, snapshot);

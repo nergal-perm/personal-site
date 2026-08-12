@@ -230,6 +230,11 @@ class InstallToSiteHandlerTest {
             private int readCount;
 
             @Override
+            public void install(PublicationIdentity identity, CandidateSnapshot snapshot) {
+                backingWorkspace.install(identity, snapshot);
+            }
+
+            @Override
             public void install(PublicationIdentity identity, String ruBody, String enBody,
                     String ruTitle, String enTitle, String ruDescription, String enDescription,
                     ReferenceMap referenceMap) {

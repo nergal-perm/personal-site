@@ -2,10 +2,13 @@ package dev.eugene.publicationexporter.approved;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -101,7 +104,12 @@ class NullApprovedSnapshotWorkspaceTest {
         assertEquals("EN title", PublicField.value(read.get().enFields(), "title").orElseThrow());
         assertEquals("RU description.", PublicField.value(read.get().ruFields(), "description").orElseThrow());
         assertEquals("EN description.", PublicField.value(read.get().enFields(), "description").orElseThrow());
-        assertEquals(referenceMap, read.get().referenceMap());
+        assertEquals(ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                        PublicField.of("title", "RU title"), PublicField.of("description", "RU description.")))),
+                read.get().referenceMap().ruFieldsHash());
+        assertEquals(ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                        PublicField.of("title", "EN title"), PublicField.of("description", "EN description.")))),
+                read.get().referenceMap().enFieldsHash());
     }
 
     @Test

@@ -128,6 +128,12 @@ class BuildFromReviewHandlerTest {
         return new ApprovedSnapshotWorkspace() {
             @Override
             public void install(PublicationIdentity identity,
+                    dev.eugene.publicationexporter.candidate.CandidateSnapshot snapshot) {
+                // no-op: this test double exercises only the read side
+            }
+
+            @Override
+            public void install(PublicationIdentity identity,
                                 String ruBody,
                                 String enBody,
                                 String ruTitle,

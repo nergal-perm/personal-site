@@ -22,6 +22,7 @@ import java.io.UncheckedIOException;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.NoSuchElementException;
 
 public final class InspectPublicationHandler {
 
@@ -71,6 +72,8 @@ public final class InspectPublicationHandler {
                 }
                 return readyForReviewResponse(
                         intake.identity(), candidatePaths.get(), candidateSnapshot.get(), approved);
+            } catch (NoSuchElementException failure) {
+                return candidateLookupFailure("Candidate lookup failed: " + failure.getMessage());
             } catch (UncheckedIOException failure) {
                 return approvedLookupFailure(
                         IoFailureMessages.describe("Approved snapshot lookup failed", failure));
@@ -125,7 +128,9 @@ public final class InspectPublicationHandler {
     }
 
     private static String fieldValue(List<PublicField> fields, String key) {
-        return PublicField.value(fields, key).orElseThrow();
+        return PublicField.value(fields, key)
+                .orElseThrow(() -> new NoSuchElementException(
+                        "candidate snapshot is missing required field '" + key + "'"));
     }
 
     private BridgeResponse notPreparedOrReadyToPublishResponse(

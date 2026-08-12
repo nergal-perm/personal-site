@@ -3,8 +3,6 @@ package dev.eugene.publicationexporter.approved;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
-import dev.eugene.publicationexporter.reference.PublicField;
-import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -18,34 +16,10 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
     private final Map<PublicationIdentity, CandidateSnapshot> installed = new HashMap<>();
 
     @Override
-    public void install(PublicationIdentity identity, String ruBody, String enBody,
-            String ruTitle, String enTitle, String ruDescription, String enDescription, ReferenceMap referenceMap) {
-        validateInstallArguments(identity, ruBody, enBody, ruTitle, enTitle,
-                ruDescription, enDescription, referenceMap);
-        installed.put(identity, CandidateSnapshot.of(ruBody, enBody,
-                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
-                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
-                "", referenceMap));
-    }
-
-    @Override
-    public void install(PublicationIdentity identity, CandidateSnapshot content) {
+    public void install(PublicationIdentity identity, CandidateSnapshot snapshot) {
         Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(content, "content");
-        installed.put(identity, content);
-    }
-
-    private void validateInstallArguments(
-            PublicationIdentity identity, String ruBody, String enBody, String ruTitle, String enTitle,
-            String ruDescription, String enDescription, ReferenceMap referenceMap) {
-        Objects.requireNonNull(identity, "identity");
-        Objects.requireNonNull(ruBody, "ruBody");
-        Objects.requireNonNull(enBody, "enBody");
-        Objects.requireNonNull(ruTitle, "ruTitle");
-        Objects.requireNonNull(enTitle, "enTitle");
-        Objects.requireNonNull(ruDescription, "ruDescription");
-        Objects.requireNonNull(enDescription, "enDescription");
-        Objects.requireNonNull(referenceMap, "referenceMap");
+        Objects.requireNonNull(snapshot, "snapshot");
+        installed.put(identity, snapshot);
     }
 
     @Override

@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.site;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.candidate.LegacyCandidateSnapshotFixture;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -137,13 +138,13 @@ class CheckContentGateContractTest {
     }
 
     private static CandidateSnapshot essaySnapshot() {
-        return CandidateSnapshot.of("# My Essay\n\nBody.", "# My Essay (EN)\n\nBody.",
+        return LegacyCandidateSnapshotFixture.of("# My Essay\n\nBody.", "# My Essay (EN)\n\nBody.",
                 "My Essay", "My Essay (EN)", "A valid description.", "A valid description (EN).",
                 ReferenceMap.empty(IDENTITY, "ru-source-hash", "en-source-hash", "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
     }
 
     private static CandidateSnapshot replacementEssaySnapshot() {
-        return CandidateSnapshot.of("# Replacement Essay\n\nNew body.",
+        return LegacyCandidateSnapshotFixture.of("# Replacement Essay\n\nNew body.",
                 "# Replacement Essay (EN)\n\nNew body.",
                 "Replacement Essay", "Replacement Essay (EN)",
                 "A replacement description.", "A replacement description (EN).",

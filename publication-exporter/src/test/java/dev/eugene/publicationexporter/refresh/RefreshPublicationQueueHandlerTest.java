@@ -314,6 +314,11 @@ class RefreshPublicationQueueHandlerTest {
     private ApprovedSnapshotWorkspace approvedWorkspaceFailingFor(String failingPublicId) {
         return new ApprovedSnapshotWorkspace() {
             @Override
+            public void install(PublicationIdentity identity, CandidateSnapshot snapshot) {
+                // no-op: refresh only reads approved state
+            }
+
+            @Override
             public void install(PublicationIdentity identity, String ruBody, String enBody,
                     String ruTitle, String enTitle, String ruDescription, String enDescription,
                     ReferenceMap referenceMap) {
