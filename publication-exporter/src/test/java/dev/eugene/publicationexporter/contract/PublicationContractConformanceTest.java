@@ -184,7 +184,7 @@ class PublicationContractConformanceTest {
             }
         }
         for (FieldContract field : kind.optionalFields()) {
-            if (fieldPresent(field.name(), note) && !fieldSatisfied(field, note)) {
+            if (optionalFieldPresent(field, note) && !fieldSatisfied(field, note)) {
                 return false;
             }
         }
@@ -194,6 +194,14 @@ class PublicationContractConformanceTest {
             }
         }
         return true;
+    }
+
+    private boolean optionalFieldPresent(FieldContract field, MarkdownNote note) {
+        if (field.type() == FieldContract.Type.STRING_LIST
+                || field.type() == FieldContract.Type.STRUCTURED_LIST) {
+            return note.structuredField(field.name()) == MarkdownNote.StructuredField.POPULATED_LIST;
+        }
+        return fieldPresent(field.name(), note);
     }
 
     private boolean fieldPresent(String key, MarkdownNote note) {

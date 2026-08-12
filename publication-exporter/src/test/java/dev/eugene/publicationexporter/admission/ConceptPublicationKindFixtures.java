@@ -20,6 +20,19 @@ public final class ConceptPublicationKindFixtures {
                         description: A valid public concept.
                         ---
                         """),
+                ConceptPublicationKindFixture.accepted("conceptWithExplicitEmptyRelationsAndExamples", """
+                        ---
+                        publish: true
+                        publicCollection: concepts
+                        publicContentType: concept
+                        publicId: concept-with-empty-lists
+                        id: 4bc5-concept-empty-lists
+                        title: Concept with Empty Lists
+                        description: A valid public concept with explicit empty lists.
+                        relations: []
+                        examples: []
+                        ---
+                        """),
                 ConceptPublicationKindFixture.accepted("conceptWithRelationsAndExamples", """
                         ---
                         publish: true
