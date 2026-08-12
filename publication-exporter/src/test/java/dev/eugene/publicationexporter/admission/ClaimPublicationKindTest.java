@@ -5,6 +5,8 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.note.MarkdownNote;
 import dev.eugene.publicationexporter.reference.PublicField;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 
@@ -14,6 +16,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class ClaimPublicationKindTest {
 
     private final ClaimPublicationKind admission = new ClaimPublicationKind();
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("dev.eugene.publicationexporter.admission.ClaimPublicationKindFixtures#all")
+    void admitsOrBlocksPerFixture(ClaimPublicationKindFixture fixture) {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(fixture.noteSource()));
+
+        assertEquals(fixture.expectedAccepted(), result.accepted(), fixture.name());
+        if (!fixture.expectedAccepted()) {
+            assertEquals(fixture.expectedBlockedFields(), blockedFields(result), fixture.name());
+        }
+    }
 
     @Test
     void validClaimCarriesOrderedPublicFieldsAndOpaqueStructuredData() {

@@ -44,7 +44,7 @@ Global constraints (apply to every task below):
 
 **Design context (design.md D1, D5):** `PublicField` is the ordered `(key, value)` pair every kind's translatable content is built from. `YamlScalar` is the shared scalar-escaping helper both `FilesystemManagedSiteInstaller` (today) and `ClaimPublicationKind` (task 7) use, so the two call sites cannot silently diverge in how they escape a string into `"..."` YAML.
 
-- [ ] 1.1 Create `PublicField`:
+- [x] 1.1 Create `PublicField`:
 
 ```java
 package dev.eugene.publicationexporter.reference;
@@ -100,7 +100,7 @@ public final class PublicField {
 }
 ```
 
-- [ ] 1.2 Create `YamlScalar` by lifting `FilesystemManagedSiteInstaller`'s existing `doubleQuotedYamlScalar`/`appendJsonString`-based escaping verbatim (same escaping behaviour, just relocated and made public):
+- [x] 1.2 Create `YamlScalar` by lifting `FilesystemManagedSiteInstaller`'s existing `doubleQuotedYamlScalar`/`appendJsonString`-based escaping verbatim (same escaping behaviour, just relocated and made public):
 
 ```java
 package dev.eugene.publicationexporter.site;
@@ -120,7 +120,7 @@ public final class YamlScalar {
 
 Update `FilesystemManagedSiteInstaller.appendYamlString`/`doubleQuotedYamlScalar` to delegate to `YamlScalar.doubleQuoted(value)` instead of calling `SiteReleaseManifest.appendJsonString` directly; delete the now-redundant private `doubleQuotedYamlScalar` method. No observable output change — write a quick manual check (existing `FilesystemManagedSiteInstallerTest` frontmatter assertions must stay green) before moving on.
 
-- [ ] 1.3 Add `PublicField`'s reflect-config.json entry (mirror the shape of `PublicationIdentity`'s or `Diagnostic`'s existing entry):
+- [x] 1.3 Add `PublicField`'s reflect-config.json entry (mirror the shape of `PublicationIdentity`'s or `Diagnostic`'s existing entry):
 
 ```json
 {
@@ -130,7 +130,7 @@ Update `FilesystemManagedSiteInstaller.appendYamlString`/`doubleQuotedYamlScalar
 }
 ```
 
-- [ ] 1.4 Run `mvn -q test` — full suite green (no behaviour changed yet, only additive).
+- [x] 1.4 Run `mvn -q test` — full suite green (no behaviour changed yet, only additive).
 
 ## 2. Generalize the translation pipeline to `(body, List<PublicField>)` (behaviour-preserving)
 
@@ -146,7 +146,7 @@ Update `FilesystemManagedSiteInstaller.appendYamlString`/`doubleQuotedYamlScalar
 
 **Design context (design.md D2):** `title`/`description` become `fields.get(0)`/`fields.get(1)` by construction (every kind's `admit()` puts them first, enforced in section 5) — no class in this section needs to know the literal strings `"title"`/`"description"`; they only ever iterate the list they're given.
 
-- [ ] 2.1 `TranslationJob.forSource(String ruBody, List<PublicField> ruFields)`: fingerprint is the same canonical-length-prefix concatenation as today, generalized from two named parameters to a loop over `ruFields` (in order) after the body:
+- [x] 2.1 `TranslationJob.forSource(String ruBody, List<PublicField> ruFields)`: fingerprint is the same canonical-length-prefix concatenation as today, generalized from two named parameters to a loop over `ruFields` (in order) after the body:
 
 ```java
 private static String fingerprintFor(String ruBody, List<PublicField> ruFields) {
@@ -161,15 +161,15 @@ private static String fingerprintFor(String ruBody, List<PublicField> ruFields) 
 
 Keep `requireSourceFields` validating `ruBody` and every field's `value()` non-null (fields list itself non-null, `List.copyOf` defensively).
 
-- [ ] 2.2 `EnglishTranslation.of(String body, List<PublicField> fields)`; `body()`/`fields()` accessors (drop `title()`/`description()`).
+- [x] 2.2 `EnglishTranslation.of(String body, List<PublicField> fields)`; `body()`/`fields()` accessors (drop `title()`/`description()`).
 
-- [ ] 2.3 `TranslationOutcome.success(String enBody, List<PublicField> enFields)`; `TranslationOutcome.failure(...)`/`stale()` unchanged (they carry no field data).
+- [x] 2.3 `TranslationOutcome.success(String enBody, List<PublicField> enFields)`; `TranslationOutcome.failure(...)`/`stale()` unchanged (they carry no field data).
 
-- [ ] 2.4 `TranslationWorker.translate(TranslationJob job, String ruBody, List<PublicField> ruFields) -> TranslationOutcome`; `TranslationWorker.createNull(String enBody, List<PublicField> enFields)` (replaces the 3-string overload — update every call site).
+- [x] 2.4 `TranslationWorker.translate(TranslationJob job, String ruBody, List<PublicField> ruFields) -> TranslationOutcome`; `TranslationWorker.createNull(String enBody, List<PublicField> enFields)` (replaces the 3-string overload — update every call site).
 
-- [ ] 2.5 `NullTranslationWorker`: `translate(...)` records `RequestedTranslation(String ruBody, List<PublicField> ruFields)` instead of the 3-string record; `requested()` unchanged in spirit.
+- [x] 2.5 `NullTranslationWorker`: `translate(...)` records `RequestedTranslation(String ruBody, List<PublicField> ruFields)` instead of the 3-string record; `requested()` unchanged in spirit.
 
-- [ ] 2.6 `RussianDiff.between(String approvedBody, List<PublicField> approvedFields, String currentBody, List<PublicField> currentFields)`: replace the two `labeledFieldDiff("title", ...)`/`labeledFieldDiff("description", ...)` calls with one loop, zipping `approvedFields`/`currentFields` by index (both lists are always built by the same kind in the same order, so index-alignment is safe) and labeling each diff line with that field's own `key()`:
+- [x] 2.6 `RussianDiff.between(String approvedBody, List<PublicField> approvedFields, String currentBody, List<PublicField> currentFields)`: replace the two `labeledFieldDiff("title", ...)`/`labeledFieldDiff("description", ...)` calls with one loop, zipping `approvedFields`/`currentFields` by index (both lists are always built by the same kind in the same order, so index-alignment is safe) and labeling each diff line with that field's own `key()`:
 
 ```java
 for (int i = 0; i < approvedFields.size(); i++) {
@@ -180,11 +180,11 @@ for (int i = 0; i < approvedFields.size(); i++) {
 
 `betweenBodies(String approvedBody, String currentBody)` stays as a convenience overload calling `between(approvedBody, List.of(), currentBody, List.of())`.
 
-- [ ] 2.7 `EnglishCandidateValidator.validate(String ruBody, String enBody, List<PublicField> enFields)`: `blankFieldDiagnostics` iterates `enFields` (blank value → `"Translation worker produced a blank " + field.key() + "."`) instead of naming `enTitle`/`enDescription`; `internalRouteDiagnostics` scans `enBody` plus every field's `value()`. `droppedUrlDiagnostics`/`droppedAssetReferenceDiagnostics` stay body-only, unchanged.
+- [x] 2.7 `EnglishCandidateValidator.validate(String ruBody, String enBody, List<PublicField> enFields)`: `blankFieldDiagnostics` iterates `enFields` (blank value → `"Translation worker produced a blank " + field.key() + "."`) instead of naming `enTitle`/`enDescription`; `internalRouteDiagnostics` scans `enBody` plus every field's `value()`. `droppedUrlDiagnostics`/`droppedAssetReferenceDiagnostics` stay body-only, unchanged.
 
-- [ ] 2.8 Update every test in the Files list above to the new signatures — same assertions, same fixture content, just `List.of(PublicField.of("title", "..."), PublicField.of("description", "..."))` instead of two string parameters. `PrepareHandler` itself is updated in section 5, not here — its own tests may need temporary signature stubs; coordinate so this task's tests compile (a shared test-fixture helper building the standard `[title, description]` list is reasonable here if several test files need it).
+- [x] 2.8 Update every test in the Files list above to the new signatures — same assertions, same fixture content, just `List.of(PublicField.of("title", "..."), PublicField.of("description", "..."))` instead of two string parameters. `PrepareHandler` itself is updated in section 5, not here — its own tests may need temporary signature stubs; coordinate so this task's tests compile (a shared test-fixture helper building the standard `[title, description]` list is reasonable here if several test files need it).
 
-- [ ] 2.9 Run `mvn -q test` — full suite green.
+- [x] 2.9 Run `mvn -q test` — full suite green.
 
 ## 3. Generalize `CandidateSnapshot` and `ReferenceMap`/`ReferenceMapCodec` (behaviour-preserving)
 
@@ -196,7 +196,7 @@ for (int i = 0; i < approvedFields.size(); i++) {
 
 **Design context (design.md D3, D4):** `CandidateSnapshot` drops `ruTitle()`/`enTitle()`/`ruDescription()`/`enDescription()` in favor of `ruFields()`/`enFields()` plus a new `structuredData()`. `ReferenceMap` drops the four named field-hashes for two whole-document hashes plus one structured-data hash.
 
-- [ ] 3.1 `CandidateSnapshot.of(String ruBody, String enBody, List<PublicField> ruFields, List<PublicField> enFields, String structuredData, ReferenceMap referenceMap)`. Add a small shared helper both `CandidateSnapshot` callers and `FilesystemManagedSiteInstaller` (section 5) can use to look up a field by key:
+- [x] 3.1 `CandidateSnapshot.of(String ruBody, String enBody, List<PublicField> ruFields, List<PublicField> enFields, String structuredData, ReferenceMap referenceMap)`. Add a small shared helper both `CandidateSnapshot` callers and `FilesystemManagedSiteInstaller` (section 5) can use to look up a field by key:
 
 ```java
 public Optional<String> field(List<PublicField> fields, String key) {
@@ -206,13 +206,13 @@ public Optional<String> field(List<PublicField> fields, String key) {
 
 (Place as a small package-visible static helper — e.g. on `PublicField` itself as `PublicField.value(List<PublicField> fields, String key)` — rather than duplicating the lookup loop at each call site.) Update `equals`/`hashCode`/`toString` to the new field set.
 
-- [ ] 3.2 `ReferenceMap.empty(PublicationIdentity identity, String ruHash, String enHash, String ruFieldsHash, String enFieldsHash, String structuredDataHash)` (drops `ruTitleHash`/`enTitleHash`/`ruDescriptionHash`/`enDescriptionHash`, adds `ruFieldsHash`/`enFieldsHash`/`structuredDataHash`). Keep `identity()`, `ruHash()`, `enHash()`, `sameContentAs(...)`, `occurrences()` unchanged in spirit — `sameContentAs` now compares all five hash fields instead of six.
+- [x] 3.2 `ReferenceMap.empty(PublicationIdentity identity, String ruHash, String enHash, String ruFieldsHash, String enFieldsHash, String structuredDataHash)` (drops `ruTitleHash`/`enTitleHash`/`ruDescriptionHash`/`enDescriptionHash`, adds `ruFieldsHash`/`enFieldsHash`/`structuredDataHash`). Keep `identity()`, `ruHash()`, `enHash()`, `sameContentAs(...)`, `occurrences()` unchanged in spirit — `sameContentAs` now compares all five hash fields instead of six.
 
-- [ ] 3.3 `ReferenceMapCodec`: `write`/`read` follow the new field names via Jackson (no manual JSON construction needed — `@JsonProperty` on `ReferenceMap`'s accessors already drives this); update `referenceMapFrom(JsonNode root)` to read `ruFieldsHash`/`enFieldsHash`/`structuredDataHash` instead of the four dropped fields.
+- [x] 3.3 `ReferenceMapCodec`: `write`/`read` follow the new field names via Jackson (no manual JSON construction needed — `@JsonProperty` on `ReferenceMap`'s accessors already drives this); update `referenceMapFrom(JsonNode root)` to read `ruFieldsHash`/`enFieldsHash`/`structuredDataHash` instead of the four dropped fields.
 
-- [ ] 3.4 Update `ReferenceMapTest`/`ReferenceMapCodecTest` to the new field shape — same behavioural assertions (round-trip, identity mismatch, hash mismatch), new field names.
+- [x] 3.4 Update `ReferenceMapTest`/`ReferenceMapCodecTest` to the new field shape — same behavioural assertions (round-trip, identity mismatch, hash mismatch), new field names.
 
-- [ ] 3.5 Run `mvn -q test` — expect failures only in `FilesystemCandidateWorkspaceTest`/`FilesystemApprovedSnapshotWorkspaceTest`/`PrepareHandlerTest`/`FilesystemManagedSiteInstallerTest` (their own generalization is sections 4-5); every other test must be green.
+- [x] 3.5 Run `mvn -q test` — expect failures only in `FilesystemCandidateWorkspaceTest`/`FilesystemApprovedSnapshotWorkspaceTest`/`PrepareHandlerTest`/`FilesystemManagedSiteInstallerTest` (their own generalization is sections 4-5); every other test must be green.
 
 ## 4. Generalize the real filesystem workspaces' file format (behaviour-preserving)
 
@@ -224,7 +224,7 @@ public Optional<String> field(List<PublicField> fields, String key) {
 
 **Design context (design.md D6):** `ru.title`/`en.title`/`ru.description`/`en.description` are replaced by one `ru.fields.json`/`en.fields.json` document per locale (a JSON array of `PublicField`, written/read via Jackson through a new small `PublicFieldsCodec`, mirroring `ReferenceMapCodec`'s own pattern). `ru.md`/`en.md`/`references.json` are unchanged in name; `references.json`'s content follows section 3's `ReferenceMap` shape automatically.
 
-- [ ] 4.1 Create `publication-exporter/src/main/java/dev/eugene/publicationexporter/reference/PublicFieldsCodec.java`:
+- [x] 4.1 Create `publication-exporter/src/main/java/dev/eugene/publicationexporter/reference/PublicFieldsCodec.java`:
 
 ```java
 package dev.eugene.publicationexporter.reference;
@@ -269,13 +269,13 @@ public final class PublicFieldsCodec {
 
 (Adjust the generic-typed read implementation to whatever is cleanest with the project's existing Jackson usage style — the shape that matters is: write a JSON array of `{"key":...,"value":...}` objects in order, read it back into an equal-order `List<PublicField>`. Add a `PublicFieldsCodecTest` alongside `ReferenceMapCodecTest`'s own style: round-trip, empty list, ordering preserved.)
 
-- [ ] 4.2 `FilesystemCandidateWorkspace`: `writeSnapshot` writes `ru.fields.json`/`en.fields.json` (via `PublicFieldsCodec.write`) instead of `ru.title`/`en.title`/`ru.description`/`en.description`. `containsCandidateSnapshot` checks for `ru.md`, `en.md`, `ru.fields.json`, `en.fields.json`, `references.json` (drops the four old file checks). `snapshotFrom` reads `ru.fields.json`/`en.fields.json` via `PublicFieldsCodec.read` instead of the four `readCandidateText` calls, and reads `structuredData` from the read `ReferenceMap` (not a separate file — `references.json` already carries it per section 3). `requireNoKindCollision` (the cross-kind collision guard from `dec-20260811-02b96a37`) is untouched — it only reads `references.json`'s `identity`, unaffected by this file-set change.
+- [x] 4.2 `FilesystemCandidateWorkspace`: `writeSnapshot` writes `ru.fields.json`/`en.fields.json` (via `PublicFieldsCodec.write`) instead of `ru.title`/`en.title`/`ru.description`/`en.description`. `containsCandidateSnapshot` checks for `ru.md`, `en.md`, `ru.fields.json`, `en.fields.json`, `references.json` (drops the four old file checks). `snapshotFrom` reads `ru.fields.json`/`en.fields.json` via `PublicFieldsCodec.read` instead of the four `readCandidateText` calls, and reads `structuredData` from the read `ReferenceMap` (not a separate file — `references.json` already carries it per section 3). `requireNoKindCollision` (the cross-kind collision guard from `dec-20260811-02b96a37`) is untouched — it only reads `references.json`'s `identity`, unaffected by this file-set change.
 
-- [ ] 4.3 `FilesystemApprovedSnapshotWorkspace`: same file-set change as 4.2 (`writeSnapshot`, `snapshotFrom`, `approvedFile` call sites, `validateSnapshot`'s per-file hash checks — now checking `ruFieldsHash`/`enFieldsHash` against the whole `ru.fields.json`/`en.fields.json` document bytes, plus `structuredDataHash` against the `structuredData` string, instead of four named-field hash checks).
+- [x] 4.3 `FilesystemApprovedSnapshotWorkspace`: same file-set change as 4.2 (`writeSnapshot`, `snapshotFrom`, `approvedFile` call sites, `validateSnapshot`'s per-file hash checks — now checking `ruFieldsHash`/`enFieldsHash` against the whole `ru.fields.json`/`en.fields.json` document bytes, plus `structuredDataHash` against the `structuredData` string, instead of four named-field hash checks).
 
-- [ ] 4.4 Update `FilesystemCandidateWorkspaceTest`/`FilesystemApprovedSnapshotWorkspaceTest`: replace assertions reading `candidateDir.resolve("ru.title")`/etc. with assertions reading `ru.fields.json`/`en.fields.json` and checking the decoded field list; every other assertion (atomic replace, backup/recovery, confinement, the cross-kind collision tests from `CrossKindAddressCollisionAcceptanceTest`) stays behaviourally the same.
+- [x] 4.4 Update `FilesystemCandidateWorkspaceTest`/`FilesystemApprovedSnapshotWorkspaceTest`: replace assertions reading `candidateDir.resolve("ru.title")`/etc. with assertions reading `ru.fields.json`/`en.fields.json` and checking the decoded field list; every other assertion (atomic replace, backup/recovery, confinement, the cross-kind collision tests from `CrossKindAddressCollisionAcceptanceTest`) stays behaviourally the same.
 
-- [ ] 4.5 Run `mvn -q test` — expect failures only in `PrepareHandlerTest`/`FilesystemManagedSiteInstallerTest` (section 5); everything else green, including `CrossKindAddressCollisionAcceptanceTest`.
+- [x] 4.5 Run `mvn -q test` — expect failures only in `PrepareHandlerTest`/`FilesystemManagedSiteInstallerTest` (section 5); everything else green, including `CrossKindAddressCollisionAcceptanceTest`.
 
 ## 5. Update `PrepareHandler` and `FilesystemManagedSiteInstaller` to the new shapes (closes the behaviour-preserving phase)
 
@@ -288,15 +288,15 @@ public final class PublicFieldsCodec {
 
 **Design context (design.md D3, D5):** `PrepareHandler` builds `List.of(PublicField.of("title", intake.title()), PublicField.of("description", intake.description()))` from `AdmittedPublication` (order matters — title first, description second, matching every prior section's assumption) and threads `structuredData` straight through unchanged from admission to the installed `CandidateSnapshot`. `FilesystemManagedSiteInstaller.frontmatter()` writes every `PublicField` (in order) plus, when `structuredData()` is non-blank, appends it verbatim before the closing `---`.
 
-- [ ] 5.1 `AdmittedPublication`: add `structuredData()` accessor (default `""`, set by `EssayPublicationKind`/`NotePublicationKind`'s `admit()` — literally the empty string, since neither has structured kind-specific data). Update `accepted(...)` factory to take it as a parameter (or add an overload defaulting to `""` for the two existing kinds, whichever keeps `EssayPublicationKind`/`NotePublicationKind` diffs minimal).
+- [x] 5.1 `AdmittedPublication`: add `structuredData()` accessor (default `""`, set by `EssayPublicationKind`/`NotePublicationKind`'s `admit()` — literally the empty string, since neither has structured kind-specific data). Update `accepted(...)` factory to take it as a parameter (or add an overload defaulting to `""` for the two existing kinds, whichever keeps `EssayPublicationKind`/`NotePublicationKind` diffs minimal).
 
-- [ ] 5.2 `PrepareHandler`: replace every `ruTitle`/`ruDescription`/`enTitle`/`enDescription` parameter with `List<PublicField> ruFields`/`enFields`, built once from `intake` at the top of `prepareAdmittedEssay` (`List.of(PublicField.of("title", intake.title()), PublicField.of("description", intake.description()))`) and threaded through `TranslationJob.forSource`, `translateCandidate`, `prepareTranslatedEssay`, `validateEnglishCandidate` (now `EnglishCandidateValidator.validate(ruBody, enBody, enFields)`), `sourceFingerprintMatches` (now compares `List<PublicField>` via `TranslationJob.forSource`'s own fingerprint, unchanged logic), `buildReferenceMap` (now hashes `PublicFieldsCodec.write(ruFields)`/`PublicFieldsCodec.write(enFields)` for `ruFieldsHash`/`enFieldsHash`, and `ContentHash.sha256Hex(structuredData)` for `structuredDataHash`), and `installCandidate` (passes `structuredData` through to `CandidateSnapshot.of`). `matchingApprovedBaseline`'s `RussianDiff.between` call becomes `RussianDiff.between(baseline.ruBody(), baseline.ruFields(), currentBody, currentFields)`.
+- [x] 5.2 `PrepareHandler`: replace every `ruTitle`/`ruDescription`/`enTitle`/`enDescription` parameter with `List<PublicField> ruFields`/`enFields`, built once from `intake` at the top of `prepareAdmittedEssay` (`List.of(PublicField.of("title", intake.title()), PublicField.of("description", intake.description()))`) and threaded through `TranslationJob.forSource`, `translateCandidate`, `prepareTranslatedEssay`, `validateEnglishCandidate` (now `EnglishCandidateValidator.validate(ruBody, enBody, enFields)`), `sourceFingerprintMatches` (now compares `List<PublicField>` via `TranslationJob.forSource`'s own fingerprint, unchanged logic), `buildReferenceMap` (now hashes `PublicFieldsCodec.write(ruFields)`/`PublicFieldsCodec.write(enFields)` for `ruFieldsHash`/`enFieldsHash`, and `ContentHash.sha256Hex(structuredData)` for `structuredDataHash`), and `installCandidate` (passes `structuredData` through to `CandidateSnapshot.of`). `matchingApprovedBaseline`'s `RussianDiff.between` call becomes `RussianDiff.between(baseline.ruBody(), baseline.ruFields(), currentBody, currentFields)`.
 
-- [ ] 5.3 `FilesystemManagedSiteInstaller.frontmatter(PublicationIdentity identity, CandidateSnapshot approved, String locale)`: replace the two `appendYamlString(yaml, "title", ...)`/`appendYamlString(yaml, "description", ...)` calls with a loop over `(isRu ? approved.ruFields() : approved.enFields())`, emitting `appendYamlString(yaml, field.key(), field.value())` for each in order (title/description still land first and second, byte-identical to today's output for essay/note). After the existing fixed fields and before the closing `---`, append `approved.structuredData()` verbatim when non-blank (no YAML key wrapping — the kind already rendered complete YAML lines, per design.md D5).
+- [x] 5.3 `FilesystemManagedSiteInstaller.frontmatter(PublicationIdentity identity, CandidateSnapshot approved, String locale)`: replace the two `appendYamlString(yaml, "title", ...)`/`appendYamlString(yaml, "description", ...)` calls with a loop over `(isRu ? approved.ruFields() : approved.enFields())`, emitting `appendYamlString(yaml, field.key(), field.value())` for each in order (title/description still land first and second, byte-identical to today's output for essay/note). After the existing fixed fields and before the closing `---`, append `approved.structuredData()` verbatim when non-blank (no YAML key wrapping — the kind already rendered complete YAML lines, per design.md D5).
 
-- [ ] 5.4 Update `PrepareHandlerTest`/`FilesystemManagedSiteInstallerTest` to the new signatures — same assertions, same fixture content.
+- [x] 5.4 Update `PrepareHandlerTest`/`FilesystemManagedSiteInstallerTest` to the new signatures — same assertions, same fixture content.
 
-- [ ] 5.5 Run `mvn -q test` — full suite green. This closes the behaviour-preserving refactor phase: no essay/note observable behaviour has changed (title/description round-trip identically; `structuredData` is empty for both, so `frontmatter()`'s output is byte-identical to before this section).
+- [x] 5.5 Run `mvn -q test` — full suite green. This closes the behaviour-preserving refactor phase: no essay/note observable behaviour has changed (title/description round-trip identically; `structuredData` is empty for both, so `frontmatter()`'s output is byte-identical to before this section).
 
 ## 6. Failing acceptance test: blog/claim completes admit → prepare → approve → release → site install (RED)
 
@@ -435,12 +435,12 @@ public final class ClaimPublicationKind implements PublicationKind {
 
 **Design context:** `spec.md`'s `ADM-06` delta — `write-publication-contract` must emit a complete, independently correct `blog/claim` entry (required fields including `statement`) alongside the unchanged `blog/essay`/`blog/note` entries, drawn from the same shared fixture table the runtime validator uses.
 
-- [ ] 8.1 Add a `blog/claim` row (or fixture) to `PublicationContractConformanceTest`'s shared fixture table, proving the published contract and `ClaimPublicationKind.admit(...)` agree on both an accepted and a missing-`statement` fixture.
+- [x] 8.1 Add a `blog/claim` row (or fixture) to `PublicationContractConformanceTest`'s shared fixture table, proving the published contract and `ClaimPublicationKind.admit(...)` agree on both an accepted and a missing-`statement` fixture.
 
-- [ ] 8.2 Run `mvn -q test -Dtest=WritePublicationContractCliAcceptanceTest,PublicationContractConformanceTest` — confirm the contract lists all three kinds sorted by `(collection, contentType)` (`blog/claim` before `blog/essay` before `blog/note` alphabetically — verify against `KindContract`'s actual sort key, not assumed).
+- [x] 8.2 Run `mvn -q test -Dtest=WritePublicationContractCliAcceptanceTest,PublicationContractConformanceTest` — confirm the contract lists all three kinds sorted by `(collection, contentType)` (`blog/claim` before `blog/essay` before `blog/note` alphabetically — verify against `KindContract`'s actual sort key, not assumed).
 
-- [ ] 8.3 Inspect `publication-exporter/src/main/resources/META-INF/native-image/reflect-config.json` end to end: confirm `PublicField` (task 1.3) is present, and confirm no other class introduced in this slice (`ClaimPublicationKind`, `PublicFieldsCodec`, `YamlScalar`) needs an entry — none of them are directly Jackson-serialized (only `PublicField` itself is; `ClaimPublicationKind` is internal, `PublicFieldsCodec`/`YamlScalar` are static utilities). This mirrors S17a's own final-review lesson: verify explicitly, do not assume.
+- [x] 8.3 Inspect `publication-exporter/src/main/resources/META-INF/native-image/reflect-config.json` end to end: confirm `PublicField` (task 1.3) is present, and confirm no other class introduced in this slice (`ClaimPublicationKind`, `PublicFieldsCodec`, `YamlScalar`) needs an entry — none of them are directly Jackson-serialized (only `PublicField` itself is; `ClaimPublicationKind` is internal, `PublicFieldsCodec`/`YamlScalar` are static utilities). This mirrors S17a's own final-review lesson: verify explicitly, do not assume.
 
-- [ ] 8.4 Run the full suite once more: `mvn -q test`. Confirm the total test count only grew (no test was silently deleted instead of migrated) and `BUILD SUCCESS`.
+- [x] 8.4 Run the full suite once more: `mvn -q test`. Confirm the total test count only grew (no test was silently deleted instead of migrated) and `BUILD SUCCESS`.
 
 - [ ] 8.5 Run `graphify update .` from the repo root to refresh the knowledge graph before requesting review, per this project's CLAUDE.md.

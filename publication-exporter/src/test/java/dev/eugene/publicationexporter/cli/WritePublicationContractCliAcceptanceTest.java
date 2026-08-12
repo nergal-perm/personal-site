@@ -11,6 +11,8 @@ import picocli.CommandLine;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.function.Consumer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,6 +49,11 @@ class WritePublicationContractCliAcceptanceTest {
 
         JsonNode kinds = contract.get("kinds");
         assertEquals(3, kinds.size());
+        List<String> kindNames = new ArrayList<>();
+        for (JsonNode kind : kinds) {
+            kindNames.add(kind.get("collection").asText() + "/" + kind.get("contentType").asText());
+        }
+        assertEquals(List.of("blog/claim", "blog/essay", "blog/note"), kindNames);
         JsonNode essayKind = kindNamed(kinds, "essay");
         assertEquals("blog", essayKind.get("collection").asText());
         assertEquals("essay", essayKind.get("contentType").asText());
@@ -88,6 +95,15 @@ class WritePublicationContractCliAcceptanceTest {
         assertFieldNamed(requiredNoteFields, "id", field -> assertTrue(field.get("nonBlank").asBoolean()));
         assertFieldNamed(requiredNoteFields, "title", field -> assertTrue(field.get("nonBlank").asBoolean()));
         assertFieldNamed(requiredNoteFields, "description", field -> assertTrue(field.get("nonBlank").asBoolean()));
+
+        JsonNode claimKind = kindNamed(kinds, "claim");
+        assertEquals("blog", claimKind.get("collection").asText());
+        assertEquals("claim", claimKind.get("contentType").asText());
+        assertTrue(claimKind.get("structuredBody").isEmpty());
+        JsonNode requiredClaimFields = claimKind.get("requiredFields");
+        assertEquals(8, requiredClaimFields.size());
+        assertFieldNamed(requiredClaimFields, "statement", field ->
+                assertTrue(field.get("nonBlank").asBoolean()));
     }
 
     @Test

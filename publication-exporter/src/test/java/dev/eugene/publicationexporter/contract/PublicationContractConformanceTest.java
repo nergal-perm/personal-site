@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.contract;
 
+import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixture;
+import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.NotePublicationKindFixture;
@@ -61,8 +63,31 @@ class PublicationContractConformanceTest {
         assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
     }
 
+    @ParameterizedTest(name = "blog/claim {0}")
+    @MethodSource("allClaimAdmissionFixtures")
+    void claimContractVerdictAgreesWithFixtureAndRuntimeValidator(ClaimPublicationKindFixture fixture) {
+        MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
+        KindContract claimKind = new PublicationContractWriter().write().kinds().stream()
+                .filter(kind -> kind.collection().equals("blog") && kind.contentType().equals("claim"))
+                .findFirst()
+                .orElseThrow();
+
+        boolean contractAccepts = contractAccepts(claimKind, note);
+        VaultRelativePath path = VaultRelativePath.of("blog/" + fixture.name() + ".md");
+        boolean runtimeAccepts = intake.admit(path, VaultReader.createNull(Map.of(path, fixture.noteSource())))
+                .accepted();
+
+        assertEquals(fixture.expectedAccepted(), contractAccepts, "contract verdict for " + fixture.name());
+        assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
+        assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
+    }
+
     private static Stream<NotePublicationKindFixture> allNoteAdmissionFixtures() {
         return NotePublicationKindFixtures.all().stream();
+    }
+
+    private static Stream<ClaimPublicationKindFixture> allClaimAdmissionFixtures() {
+        return ClaimPublicationKindFixtures.all().stream();
     }
 
     private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {
