@@ -147,6 +147,29 @@ class WritePublicationContractCliAcceptanceTest {
         assertEquals("concepts", conceptKind.get("collection").asText());
         assertEquals("concept", conceptKind.get("contentType").asText());
         assertTrue(conceptKind.get("structuredBody").isEmpty());
+        JsonNode requiredConceptFields = conceptKind.get("requiredFields");
+        assertEquals(7, requiredConceptFields.size());
+        List<String> requiredConceptFieldNames = new ArrayList<>();
+        for (JsonNode field : requiredConceptFields) {
+            requiredConceptFieldNames.add(field.get("name").asText());
+        }
+        assertEquals(List.of(
+                "publish", "publicCollection", "publicContentType", "publicId", "id", "title", "description"),
+                requiredConceptFieldNames);
+        assertFieldNamed(requiredConceptFields, "publish", field -> {
+            assertEquals("BOOLEAN", field.get("type").asText());
+            assertEquals("true", field.get("allowedValues").get(0).asText());
+        });
+        assertFieldNamed(requiredConceptFields, "publicCollection", field ->
+                assertEquals("concepts", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredConceptFields, "publicContentType", field ->
+                assertEquals("concept", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredConceptFields, "publicId", field ->
+                assertTrue(field.get("pattern").asText().length() > 0));
+        assertFieldNamed(requiredConceptFields, "id", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredConceptFields, "title", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredConceptFields, "description", field ->
+                assertTrue(field.get("nonBlank").asBoolean()));
         JsonNode optionalConceptFields = conceptKind.get("optionalFields");
         assertEquals(3, optionalConceptFields.size());
         List<String> optionalConceptFieldNames = new ArrayList<>();
