@@ -108,6 +108,20 @@ class ConceptPublicationKindTest {
     }
 
     @Test
+    void scalarRelationEntryBlocksAdmission() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("relations:\n  - parent")));
+
+        assertEquals(List.of("relations"), blockedFields(result));
+    }
+
+    @Test
+    void explicitEmptyRelationsListIsAccepted() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("relations: []")));
+
+        assertTrue(result.accepted(), result.diagnostics().toString());
+    }
+
+    @Test
     void nonListExamplesBlockAdmission() {
         AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("examples: one example")));
 
@@ -115,10 +129,38 @@ class ConceptPublicationKindTest {
     }
 
     @Test
+    void nonScalarExampleEntryBlocksAdmission() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("examples:\n  - nested: object")));
+
+        assertEquals(List.of("examples"), blockedFields(result));
+    }
+
+    @Test
+    void explicitEmptyExamplesListIsAccepted() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("examples: []")));
+
+        assertTrue(result.accepted(), result.diagnostics().toString());
+    }
+
+    @Test
     void blankExamplesBlockAdmission() {
         AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("examples:\n  - \"   \"")));
 
         assertEquals(List.of("examples"), blockedFields(result));
+    }
+
+    @Test
+    void blankNotThisBlocksAdmission() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("notThis: \"   \"")));
+
+        assertEquals(List.of("notThis"), blockedFields(result));
+    }
+
+    @Test
+    void structuredNotThisBlocksAdmission() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(validConceptWith("notThis:\n  - neighboring concept")));
+
+        assertEquals(List.of("notThis"), blockedFields(result));
     }
 
     @ParameterizedTest(name = "missing {0}")

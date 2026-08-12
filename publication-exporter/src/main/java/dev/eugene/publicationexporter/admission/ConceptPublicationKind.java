@@ -42,6 +42,7 @@ public final class ConceptPublicationKind implements PublicationKind {
         String description = requireNonBlank(frontmatter, "description", diagnostics);
         requireValidRelations(frontmatter, diagnostics);
         requireValidExamples(frontmatter, diagnostics);
+        requireValidNotThis(frontmatter, diagnostics);
 
         if (!diagnostics.isEmpty()) {
             return AdmittedPublication.blocked(diagnostics);
@@ -112,6 +113,13 @@ public final class ConceptPublicationKind implements PublicationKind {
             diagnostics.add(Diagnostic.blocking("relations", "concepts/concept relations must be a list."));
             return;
         }
+        if (frontmatter.structuredField("relations") == MarkdownNote.StructuredField.POPULATED_LIST
+                && !frontmatter.hasOnlyScalarMapEntries("relations")) {
+            diagnostics.add(Diagnostic.blocking(
+                    "relations",
+                    "concepts/concept relations entries require non-blank name and relation, no other fields."));
+            return;
+        }
         for (Map<String, String> relation : frontmatter.listOfMaps("relations")) {
             if (!validRelation(relation)) {
                 diagnostics.add(Diagnostic.blocking(
@@ -134,10 +142,27 @@ public final class ConceptPublicationKind implements PublicationKind {
             diagnostics.add(Diagnostic.blocking("examples", "concepts/concept examples must be a list."));
             return;
         }
+        if (frontmatter.structuredField("examples") == MarkdownNote.StructuredField.POPULATED_LIST
+                && frontmatter.listOfScalars("examples").isEmpty()) {
+            diagnostics.add(Diagnostic.blocking(
+                    "examples", "concepts/concept examples entries must be non-blank strings."));
+            return;
+        }
         if (frontmatter.listOfScalars("examples").stream().anyMatch(example -> !nonBlank(example))) {
             diagnostics.add(Diagnostic.blocking(
                     "examples", "concepts/concept examples entries must be non-blank strings."));
         }
+    }
+
+    private void requireValidNotThis(MarkdownNote frontmatter, List<Diagnostic> diagnostics) {
+        if (frontmatter.string("notThis").filter(value -> !value.isBlank()).isPresent()) {
+            return;
+        }
+        if (frontmatter.structuredField("notThis") == MarkdownNote.StructuredField.ABSENT) {
+            return;
+        }
+        diagnostics.add(Diagnostic.blocking(
+                "notThis", "concepts/concept optional notThis must be a non-blank string when present."));
     }
 
     private static boolean nonBlank(String value) {
