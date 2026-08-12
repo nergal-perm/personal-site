@@ -2,6 +2,8 @@ package dev.eugene.publicationexporter.contract;
 
 import dev.eugene.publicationexporter.admission.BookPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.BookPublicationKindFixtures;
+import dev.eugene.publicationexporter.admission.AlbumPublicationKindFixture;
+import dev.eugene.publicationexporter.admission.AlbumPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.ConceptPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.ConceptPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixture;
@@ -125,6 +127,26 @@ class PublicationContractConformanceTest {
         assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
     }
 
+    @ParameterizedTest(name = "music/album {0}")
+    @MethodSource("allAlbumAdmissionFixtures")
+    void albumContractVerdictAgreesWithFixtureAndRuntimeValidator(AlbumPublicationKindFixture fixture) {
+        MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
+        KindContract albumKind = new PublicationContractWriter().write().kinds().stream()
+                .filter(kind -> kind.collection().equals("music") && kind.contentType().equals("album"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "publicCollection/publicContentType is not a supported publication kind"));
+
+        boolean contractAccepts = contractAccepts(albumKind, note);
+        VaultRelativePath path = VaultRelativePath.of("music/" + fixture.name() + ".md");
+        boolean runtimeAccepts = intake.admit(path, VaultReader.createNull(Map.of(path, fixture.noteSource())))
+                .accepted();
+
+        assertEquals(fixture.expectedAccepted(), contractAccepts, "contract verdict for " + fixture.name());
+        assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
+        assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
+    }
+
     private static Stream<NotePublicationKindFixture> allNoteAdmissionFixtures() {
         return NotePublicationKindFixtures.all().stream();
     }
@@ -139,6 +161,10 @@ class PublicationContractConformanceTest {
 
     private static Stream<ConceptPublicationKindFixture> allConceptAdmissionFixtures() {
         return ConceptPublicationKindFixtures.all().stream();
+    }
+
+    private static Stream<AlbumPublicationKindFixture> allAlbumAdmissionFixtures() {
+        return AlbumPublicationKindFixtures.all().stream();
     }
 
     private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {

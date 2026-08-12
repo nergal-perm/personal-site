@@ -41,6 +41,8 @@ class FilesystemManagedSiteInstallerTest {
             PublicationIdentity.of("bibliography", "book", "the-lean-startup");
     private static final PublicationIdentity CONCEPT_IDENTITY =
             PublicationIdentity.of("concepts", "concept", "bounded-context");
+    private static final PublicationIdentity ALBUM_IDENTITY =
+            PublicationIdentity.of("music", "album", "kind-of-blue");
     private static final PublicationIdentity OTHER_IDENTITY =
             PublicationIdentity.of("blog", "essay", "another-essay");
     private static final CandidateSnapshot SNAPSHOT = LegacyCandidateSnapshotFixture.of(
@@ -253,6 +255,94 @@ class FilesystemManagedSiteInstallerTest {
                 + "# EN book body", Files.readString(enFile, StandardCharsets.UTF_8));
         assertFalse(Files.readString(ruFile, StandardCharsets.UTF_8).contains("selectedQuote"));
         assertFalse(Files.readString(enFile, StandardCharsets.UTF_8).contains("selectedQuote"));
+    }
+
+    @Test
+    void installProjectsMusicAlbumIntoMusicFilesWithTranslatedAndInvariantMetadata() throws Exception {
+        List<PublicField> ruFields = List.of(
+                PublicField.of("title", "RU album title"),
+                PublicField.of("description", "RU album description."),
+                PublicField.of("context", "RU album context."),
+                PublicField.of("association", "RU album association."),
+                PublicField.of("format", "LP"),
+                PublicField.of("care", "Listen with headphones."),
+                PublicField.of("listenFor[0]", "RU melody"),
+                PublicField.of("listenFor[1]", "RU texture"));
+        List<PublicField> enFields = List.of(
+                PublicField.of("title", "EN album title"),
+                PublicField.of("description", "EN album description."),
+                PublicField.of("context", "EN album context."),
+                PublicField.of("association", "EN album association."),
+                PublicField.of("format", "LP"),
+                PublicField.of("care", "Listen with headphones."),
+                PublicField.of("listenFor[0]", "EN melody"),
+                PublicField.of("listenFor[1]", "EN texture"));
+        String structuredData = """
+                artist: "Miles Davis"
+                work: "Kind of Blue"
+                releaseDate: "1959-08-17"
+                streamingUrl: "https://example.test/kind-of-blue"
+                bandcampEmbedUrl: "https://bandcamp.test/embed/kind-of-blue"
+                genreTags:
+                  - "jazz"
+                  - "modal"
+                reviewType: "album"
+                """;
+        CandidateSnapshot snapshot = CandidateSnapshot.of(
+                "# RU album body", "# EN album body", ruFields, enFields, structuredData,
+                ReferenceMap.empty(
+                        ALBUM_IDENTITY,
+                        "album-ru-hash",
+                        "album-en-hash",
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                        ContentHash.sha256Hex(structuredData)));
+
+        new FilesystemManagedSiteInstaller(siteRoot).install(ALBUM_IDENTITY, snapshot);
+
+        Path ruFile = siteRoot.resolve("src/content/music/ru/kind-of-blue.md");
+        Path enFile = siteRoot.resolve("src/content/music/en/kind-of-blue.md");
+        assertEquals("---\n"
+                + "id: \"kind-of-blue\"\n"
+                + "title: \"RU album title\"\n"
+                + "description: \"RU album description.\"\n"
+                + "context: \"RU album context.\"\n"
+                + "association: \"RU album association.\"\n"
+                + "format: \"LP\"\n"
+                + "care: \"Listen with headphones.\"\n"
+                + "listenFor:\n"
+                + "  - \"RU melody\"\n"
+                + "  - \"RU texture\"\n"
+                + "publish: true\n"
+                + "contentType: \"album\"\n"
+                + "language: \"ru\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"album-ru-hash\"\n"
+                + "translationStatus: \"source\"\n"
+                + structuredData
+                + "---\n"
+                + "# RU album body", Files.readString(ruFile, StandardCharsets.UTF_8));
+        assertEquals("---\n"
+                + "id: \"kind-of-blue\"\n"
+                + "title: \"EN album title\"\n"
+                + "description: \"EN album description.\"\n"
+                + "context: \"EN album context.\"\n"
+                + "association: \"EN album association.\"\n"
+                + "format: \"LP\"\n"
+                + "care: \"Listen with headphones.\"\n"
+                + "listenFor:\n"
+                + "  - \"EN melody\"\n"
+                + "  - \"EN texture\"\n"
+                + "publish: true\n"
+                + "contentType: \"album\"\n"
+                + "language: \"en\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"album-ru-hash\"\n"
+                + "translationStatus: \"generated\"\n"
+                + "translationOf: \"kind-of-blue\"\n"
+                + structuredData
+                + "---\n"
+                + "# EN album body", Files.readString(enFile, StandardCharsets.UTF_8));
     }
 
     @Test

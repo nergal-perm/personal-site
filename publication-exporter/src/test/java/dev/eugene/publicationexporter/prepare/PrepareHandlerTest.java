@@ -89,6 +89,64 @@ class PrepareHandlerTest {
 
             A reading note body.""";
 
+    private static final String VALID_ALBUM = """
+            ---
+            publish: true
+            publicCollection: music
+            publicContentType: album
+            publicId: kind-of-blue
+            id: 8f2c-kind-of-blue
+            title: Kind of Blue
+            description: A valid album description.
+            artist: Miles Davis
+            work: Kind of Blue
+            context: A modal jazz record.
+            association: Blue note.
+            format: LP
+            care: Listen with headphones.
+            listenFor:
+              - modal harmony
+              - ensemble interaction
+            releaseDate: 1959-08-17
+            genreTags:
+              - jazz
+              - modal
+            streamingUrl: "https://example.test/kind-of-blue"
+            bandcampEmbedUrl: "https://bandcamp.test/embed/kind-of-blue"
+            ---
+            # Kind of Blue
+
+            An album body.""";
+
+    private static final String CHANGED_ALBUM = """
+            ---
+            publish: true
+            publicCollection: music
+            publicContentType: album
+            publicId: kind-of-blue
+            id: 8f2c-kind-of-blue
+            title: Kind of Blue
+            description: A valid album description.
+            artist: Kamasi Washington
+            work: The Epic
+            context: A modal jazz record.
+            association: Blue note.
+            format: LP
+            care: Listen with headphones.
+            listenFor:
+              - modal harmony
+              - ensemble interaction
+            releaseDate: 2015-05-29
+            genreTags:
+              - contemporary-jazz
+              - experimental
+            streamingUrl: "https://example.test/the-epic"
+            bandcampEmbedUrl: "https://bandcamp.test/embed/the-epic"
+            ---
+            # Kind of Blue
+
+            An album body.""";
+
     @Test
     void successfulPrepareWritesReadyForReviewWorkflowStatus() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
@@ -338,6 +396,103 @@ class PrepareHandlerTest {
         assertEquals(currentStructuredData, workspace.installed().get(0).structuredData());
         assertEquals(ContentHash.sha256Hex(currentStructuredData),
                 workspace.installed().get(0).referenceMap().structuredDataHash());
+    }
+
+    @Test
+    void changedAlbumInvariantMetadataSkipsApprovedMirrorAndBuildsFreshCandidate() {
+        PublicationIdentity identity = PublicationIdentity.of("music", "album", "kind-of-blue");
+        String ruBody = "# Kind of Blue\n\nAn album body.";
+        String enBody = "Translated album body.";
+        List<PublicField> russianFields = albumFields(
+                "Kind of Blue", "A valid album description.", "A modal jazz record.", "Blue note.");
+        List<PublicField> englishFields = albumFields(
+                "Kind of Blue", "A valid English album description.", "A modal jazz record.", "Blue note.");
+        String approvedStructuredData = albumStructuredData(
+                "Miles Davis", "Kind of Blue", "1959-08-17", "https://example.test/kind-of-blue",
+                "https://bandcamp.test/embed/kind-of-blue", List.of("jazz", "modal"));
+        String currentStructuredData = albumStructuredData(
+                "Kamasi Washington", "The Epic", "2015-05-29", "https://example.test/the-epic",
+                "https://bandcamp.test/embed/the-epic", List.of("contemporary-jazz", "experimental"));
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, CandidateSnapshot.of(
+                ruBody, enBody, russianFields, englishFields, approvedStructuredData,
+                referenceMap(identity, ruBody, enBody, russianFields, englishFields, approvedStructuredData)));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(enBody, englishFields));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        VaultRelativePath path = VaultRelativePath.of("music/kind-of-blue.md");
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace,
+                approved,
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path,
+                VaultReader.createNull(Map.of(path, CHANGED_ALBUM)),
+                VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, worker.requested().size(),
+                "an album invariant metadata edit must take the translation/review path, not mirror approval");
+        assertEquals(currentStructuredData, workspace.installed().get(0).structuredData());
+        assertEquals(ContentHash.sha256Hex(currentStructuredData),
+                workspace.installed().get(0).referenceMap().structuredDataHash());
+    }
+
+    @Test
+    void changedAlbumInvariantMetadataDuringTranslationIsStale() throws Exception {
+        VaultRelativePath path = VaultRelativePath.of("music/kind-of-blue.md");
+        AtomicReference<String> source = new AtomicReference<>(VALID_ALBUM);
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return true;
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return source.get();
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of();
+            }
+        };
+        CountDownLatch translationStarted = new CountDownLatch(1);
+        CountDownLatch releaseTranslation = new CountDownLatch(1);
+        TranslationWorker worker = (job, ruBody, ruFields) -> {
+            translationStarted.countDown();
+            await(releaseTranslation);
+            return TranslationOutcome.success(
+                    "Translated album body.",
+                    albumFields("Kind of Blue", "A valid English album description.",
+                            "A modal jazz record.", "Blue note."));
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace,
+                ApprovedSnapshotWorkspace.createNull(),
+                WorkflowStatusEditor.createNull());
+        ExecutorService executor = Executors.newSingleThreadExecutor();
+        try {
+            Future<BridgeResponse> response = executor.submit(
+                    () -> handler.prepare(path, vaultReader, VaultAssetReader.createNull()));
+            assertTrue(translationStarted.await(5, TimeUnit.SECONDS));
+            source.set(CHANGED_ALBUM);
+            releaseTranslation.countDown();
+
+            assertEquals("stale", response.get(5, TimeUnit.SECONDS).status());
+        } finally {
+            executor.shutdownNow();
+        }
+
+        assertTrue(workspace.installed().isEmpty());
     }
 
     @Test
@@ -1925,6 +2080,19 @@ class PrepareHandlerTest {
                 PublicField.of("boundary", boundary));
     }
 
+    private static List<PublicField> albumFields(
+            String title, String description, String context, String association) {
+        return List.of(
+                PublicField.of("title", title),
+                PublicField.of("description", description),
+                PublicField.of("context", context),
+                PublicField.of("association", association),
+                PublicField.of("format", "LP"),
+                PublicField.of("care", "Listen with headphones."),
+                PublicField.of("listenFor[0]", "modal harmony"),
+                PublicField.of("listenFor[1]", "ensemble interaction"));
+    }
+
     private static List<PublicField> claimFields(String title, String description, String statement) {
         return List.of(
                 PublicField.of("title", title),
@@ -1976,6 +2144,23 @@ class PrepareHandlerTest {
         appendStructuredLine(yaml, "start", start);
         appendStructuredLine(yaml, "end", end);
         appendStructuredLine(yaml, "readingStatus", readingStatus);
+        return yaml.toString();
+    }
+
+    private static String albumStructuredData(
+            String artist, String work, String releaseDate, String streamingUrl,
+            String bandcampEmbedUrl, List<String> genreTags) {
+        StringBuilder yaml = new StringBuilder();
+        appendStructuredLine(yaml, "artist", artist);
+        appendStructuredLine(yaml, "work", work);
+        appendStructuredLine(yaml, "releaseDate", releaseDate);
+        appendStructuredLine(yaml, "streamingUrl", streamingUrl);
+        appendStructuredLine(yaml, "bandcampEmbedUrl", bandcampEmbedUrl);
+        yaml.append("genreTags:\n");
+        for (String genreTag : genreTags) {
+            yaml.append("  - \"").append(genreTag).append("\"\n");
+        }
+        yaml.append("reviewType: \"album\"\n");
         return yaml.toString();
     }
 
