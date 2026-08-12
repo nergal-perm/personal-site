@@ -66,6 +66,12 @@ An admitted source note SHALL have `publicCollection`, a lowercase-slug `publicI
 - **THEN** it is admitted as the `bibliography/book` kind, not any `blog/*` kind
 - **AND** a blog essay, note, or claim fixture admitted in the same run is unaffected and still resolves to its own kind
 
+#### Scenario: A concepts/concept fixture is admitted as a distinct kind from blog and bibliography kinds
+- **GIVEN** a selected note with `publicCollection: concepts`, `publicContentType: concept`, a valid `publicId`, `id`, `title`, and `description`
+- **WHEN** its publication contract is evaluated
+- **THEN** it is admitted as the `concepts/concept` kind, not any `blog/*` or `bibliography/book` kind
+- **AND** an essay, note, claim, or book fixture admitted in the same run is unaffected and still resolves to its own kind
+
 #### Scenario: Ambiguous or incomplete identity is blocked
 - **GIVEN** a selected note with missing identity fields, an invalid public ID, an unsupported collection/content-type pair, or a duplicate publication identity
 - **WHEN** its publication contract is evaluated
@@ -76,7 +82,7 @@ An admitted source note SHALL have `publicCollection`, a lowercase-slug `publicI
 The exporter SHALL validate the required metadata and structured body sections for the selected publication kind before content preparation or release.
 
 #### Scenario: Kind-specific contract is complete
-- **GIVEN** a selected book with a non-empty `authors` list and no `selectedQuote`, an album with artist/work metadata and required body sections, a concept with description and definition, an editorial page with an allowed page key and valid structured body, a note with `id`, `title`, and `description` and no required structured body, a claim with `id`, `title`, `description`, and a non-blank `statement`, or an essay with title and description
+- **GIVEN** a selected book with a non-empty `authors` list and no `selectedQuote`, an album with artist/work metadata and required body sections, a concept with `id`, `title`, and `description` and any combination of optional `notThis`, `relations`, and `examples`, an editorial page with an allowed page key and valid structured body, a note with `id`, `title`, and `description` and no required structured body, a claim with `id`, `title`, `description`, and a non-blank `statement`, or an essay with title and description
 - **WHEN** the note is validated
 - **THEN** the kind-specific contract passes
 
@@ -123,6 +129,23 @@ The exporter SHALL validate the required metadata and structured body sections f
 - **AND** the diagnostic names `selectedQuote`
 - **AND** the reason states that mixed translated structured quote metadata is not supported by this slice
 
+#### Scenario: concepts/concept requires only identity, title, and description
+- **GIVEN** a selected `concepts/concept` fixture with valid identity fields, `title`, and `description`, and no `notThis`, `relations`, or `examples` content
+- **WHEN** the note is validated
+- **THEN** the kind-specific contract passes, since `notThis`, `relations`, and `examples` are optional per `site/src/content.config.ts`'s declared `concepts` schema
+
+#### Scenario: concepts/concept optional relations and examples must match the declared shape
+- **GIVEN** a selected `concepts/concept` fixture whose `relations` value is not a list, whose `relations` entries are missing a non-blank `name` or `relation`, contain an undeclared field, or whose `examples` value is not a list of non-blank strings
+- **WHEN** the note is validated
+- **THEN** processing is blocked before translation or release
+- **AND** the diagnostic names the offending field (`relations` or `examples`)
+
+#### Scenario: concepts/concept missing identity fields is blocked
+- **GIVEN** a selected `concepts/concept` fixture with a missing or blank `id`, `title`, or `description`
+- **WHEN** the note is validated
+- **THEN** the kind-specific contract fails
+- **AND** the diagnostic names `concepts/concept` and the missing requirement
+
 ### Requirement: ADM-05 Validate the bounded request, not unrelated notes
 
 Note-scoped commands SHALL validate the requested selected note and its direct safety dependencies without making unrelated invalid vault notes a blocker.
@@ -142,7 +165,7 @@ Note-scoped commands SHALL validate the requested selected note and its direct s
 
 ### Requirement: ADM-06 Export the publication contract for authoring tools
 
-The exporter SHALL expose a deterministic, machine-readable publication contract describing supported kinds, required fields, allowed values, and structured-body requirements. The contract is a standalone JSON document (`contractVersion` plus one entry per supported kind) returned by the `write-publication-contract` command; it is not wrapped in the `BridgeResponse` schema-v2 envelope used by note-scoped commands, since a contract has no operation outcome (no `ok`/`status`/`diagnostics`/`identity`) — it is a declarative description of what a valid publication looks like. For each kind, the contract states: its `collection`/`contentType` pair; each required frontmatter field with its expected type, and where applicable an explicit allowed-value list (e.g. `publicCollection` must be `"blog"`) or a documented pattern (e.g. `publicId` must match the lowercase route-slug pattern); and its structured-body requirements. For the kinds implemented after this slice, those requirements remain empty (`blog/essay`, `blog/note`, `blog/claim`, and `bibliography/book`), because `bibliography/book`'s supported fields all live in frontmatter and `selectedQuote` is explicitly unsupported here.
+The exporter SHALL expose a deterministic, machine-readable publication contract describing supported kinds, required fields, allowed values, and structured-body requirements. The contract is a standalone JSON document (`contractVersion` plus one entry per supported kind) returned by the `write-publication-contract` command; it is not wrapped in the `BridgeResponse` schema-v2 envelope used by note-scoped commands, since a contract has no operation outcome (no `ok`/`status`/`diagnostics`/`identity`) — it is a declarative description of what a valid publication looks like. For each kind, the contract states: its `collection`/`contentType` pair; each required frontmatter field with its expected type, and where applicable an explicit allowed-value list (e.g. `publicCollection` must be `"blog"`) or a documented pattern (e.g. `publicId` must match the lowercase route-slug pattern); its optional fields and their shape; and its structured-body requirements. For the kinds implemented after this slice, those requirements remain empty (`blog/essay`, `blog/note`, `blog/claim`, `bibliography/book`, and `concepts/concept`), because every implemented kind's supported fields live in frontmatter.
 
 #### Scenario: Contract is requested twice
 - **GIVEN** the same exporter edition and no contract changes
@@ -151,7 +174,7 @@ The exporter SHALL expose a deterministic, machine-readable publication contract
 - **AND** the normalization is: stable per-kind field order, kinds sorted by `(collection, contentType)`, no timestamp or environment-dependent value in the document
 
 #### Scenario: Contract describes every installed kind
-- **GIVEN** the exporter edition implements `blog/essay`, `blog/note`, `blog/claim`, and `bibliography/book`
+- **GIVEN** the exporter edition implements `blog/essay`, `blog/note`, `blog/claim`, `bibliography/book`, and `concepts/concept`
 - **WHEN** the publication contract is requested
 - **THEN** the contract lists exactly one entry per installed kind, sorted by `(collection, contentType)`
 - **AND** each entry's required fields match that kind's own `PublicationKind` implementation's enforced fields, with their actual allowed values, type, or pattern
@@ -169,6 +192,13 @@ The exporter SHALL expose a deterministic, machine-readable publication contract
 - **THEN** the `bibliography/book` entry's required fields include `authors` as a non-empty list-of-strings requirement, alongside the shared identity fields (`publish`, `publicCollection`, `publicContentType`, `publicId`, `id`, `title`, `description`)
 - **AND** the optional book metadata supported in this slice (`publication`, `publicationDate`, `start`, `end`, `readingStatus`, `use`, `boundary`) is documented consistently with the runtime validator
 - **AND** `selectedQuote` is absent from the supported contract for this slice because notes carrying it are blocked
+
+#### Scenario: Contract describes concepts/concept's optional translated fields
+- **GIVEN** the exporter edition implements `concepts/concept`
+- **WHEN** the publication contract is requested
+- **THEN** the `concepts/concept` entry's required fields are exactly the shared identity fields (`publish`, `publicCollection`, `publicContentType`, `publicId`, `id`, `title`, `description`), matching `site/src/content.config.ts`'s declared `concepts` schema where `notThis`, `relations`, and `examples` all default to absent/empty
+- **AND** the entry's optional fields document `notThis` as an optional non-blank string, `relations` as an optional list of `{name, relation}` entries, and `examples` as an optional list of non-blank strings
+- **AND** its structured-body requirements remain empty
 
 #### Scenario: Validator and published contract disagree
 - **GIVEN** a fixture accepted by the published contract but rejected by runtime validation, or the reverse
