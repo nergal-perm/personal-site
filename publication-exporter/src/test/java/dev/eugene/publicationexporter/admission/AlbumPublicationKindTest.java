@@ -127,6 +127,36 @@ class AlbumPublicationKindTest {
         assertTrue(result.diagnostics().get(0).message().contains(field));
     }
 
+    @ParameterizedTest(name = "blank {0}")
+    @MethodSource("requiredAlbumFields")
+    void blankRequiredAlbumFieldBlocksAdmission(String field) {
+        String note = validAlbumWith(field + ": \"\"")
+                .replace("\n" + field + ": " + fieldValue(field), "");
+
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(note));
+
+        assertEquals(List.of(field), blockedFields(result));
+        assertTrue(result.diagnostics().get(0).message().contains(field));
+    }
+
+    @Test
+    void explicitEmptyListenForAndGenreTagsListsAreAccepted() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(
+                validAlbumWith("listenFor: []\ngenreTags: []")));
+
+        assertTrue(result.accepted(), result.diagnostics().toString());
+    }
+
+    @ParameterizedTest(name = "blank entry in {0}")
+    @MethodSource("scalarListFields")
+    void blankScalarListEntryBlocksAdmission(String field) {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(
+                validAlbumWith(field + ":\n  - \"   \"")));
+
+        assertEquals(List.of(field), blockedFields(result));
+        assertTrue(result.diagnostics().get(0).message().contains(field));
+    }
+
     @ParameterizedTest(name = "malformed {0}")
     @MethodSource("malformedScalarLists")
     void malformedScalarListBlocksAdmission(String fieldAndValue) {
@@ -164,6 +194,10 @@ class AlbumPublicationKindTest {
                 "genreTags: one tag",
                 "listenFor:\n  - nested: object",
                 "genreTags:\n  - nested: object");
+    }
+
+    private static Stream<String> scalarListFields() {
+        return Stream.of("listenFor", "genreTags");
     }
 
     private static String validAlbumWith(String additionalField) {
