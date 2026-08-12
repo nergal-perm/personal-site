@@ -190,6 +190,77 @@ class WritePublicationContractCliAcceptanceTest {
             assertEquals("STRUCTURED_LIST", field.get("type").asText());
             assertEquals(List.of("name", "relation"), jsonStrings(field.get("structuredMembers")));
         });
+
+        JsonNode albumKind = kindNamed(kinds, "album");
+        assertEquals("music", albumKind.get("collection").asText());
+        assertEquals("album", albumKind.get("contentType").asText());
+        assertTrue(albumKind.get("structuredBody").isEmpty());
+        JsonNode requiredAlbumFields = albumKind.get("requiredFields");
+        assertEquals(11, requiredAlbumFields.size());
+        List<String> requiredAlbumFieldNames = new ArrayList<>();
+        for (JsonNode field : requiredAlbumFields) {
+            requiredAlbumFieldNames.add(field.get("name").asText());
+        }
+        assertEquals(List.of(
+                "publish", "publicCollection", "publicContentType", "publicId", "id", "title",
+                "description", "artist", "work", "context", "association"), requiredAlbumFieldNames);
+        assertFieldNamed(requiredAlbumFields, "publish", field -> {
+            assertEquals("BOOLEAN", field.get("type").asText());
+            assertEquals("true", field.get("allowedValues").get(0).asText());
+        });
+        assertFieldNamed(requiredAlbumFields, "publicCollection", field ->
+                assertEquals("music", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredAlbumFields, "publicContentType", field ->
+                assertEquals("album", field.get("allowedValues").get(0).asText()));
+        assertFieldNamed(requiredAlbumFields, "publicId", field ->
+                assertTrue(field.get("pattern").asText().length() > 0));
+        assertFieldNamed(requiredAlbumFields, "id", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredAlbumFields, "title", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredAlbumFields, "description", field ->
+                assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredAlbumFields, "artist", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredAlbumFields, "work", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredAlbumFields, "context", field -> assertTrue(field.get("nonBlank").asBoolean()));
+        assertFieldNamed(requiredAlbumFields, "association", field ->
+                assertTrue(field.get("nonBlank").asBoolean()));
+
+        JsonNode optionalAlbumFields = albumKind.get("optionalFields");
+        assertEquals(7, optionalAlbumFields.size());
+        List<String> optionalAlbumFieldNames = new ArrayList<>();
+        for (JsonNode field : optionalAlbumFields) {
+            optionalAlbumFieldNames.add(field.get("name").asText());
+        }
+        assertEquals(List.of(
+                "format", "care", "releaseDate", "streamingUrl", "bandcampEmbedUrl", "listenFor", "genreTags"),
+                optionalAlbumFieldNames);
+        assertFieldNamed(optionalAlbumFields, "format", field -> {
+            assertEquals("STRING", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalAlbumFields, "care", field -> {
+            assertEquals("STRING", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalAlbumFields, "releaseDate", field -> {
+            assertEquals("STRING", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalAlbumFields, "streamingUrl", field -> {
+            assertEquals("STRING", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalAlbumFields, "bandcampEmbedUrl", field -> {
+            assertEquals("STRING", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalAlbumFields, "listenFor", field -> {
+            assertEquals("STRING_LIST", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalAlbumFields, "genreTags", field -> {
+            assertEquals("STRING_LIST", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
     }
 
     @Test
