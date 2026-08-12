@@ -20,7 +20,8 @@ public final class PublicationKinds {
                         new EssayPublicationKind(),
                         new NotePublicationKind(),
                         new ClaimPublicationKind(),
-                        new BookPublicationKind()));
+                        new BookPublicationKind(),
+                        new ConceptPublicationKind()));
     }
 
     public Optional<PublicationKind> forIdentity(String collection, String contentType) {
