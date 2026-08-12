@@ -62,6 +62,18 @@ public final class ConceptPublicationKindFixtures {
                         relations:
                           - relation: implies
                         ---
+                        """),
+                ConceptPublicationKindFixture.blocked("conceptWithScalarRelations", """
+                        ---
+                        publish: true
+                        publicCollection: concepts
+                        publicContentType: concept
+                        publicId: concept-scalar-relations
+                        id: 4bc5-concept-scalar-relations
+                        title: Concept with Scalar Relations
+                        description: A concept whose relations value is a scalar, not a list.
+                        relations: parent
+                        ---
                         """));
     }
 }

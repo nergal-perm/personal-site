@@ -199,9 +199,15 @@ class PublicationContractConformanceTest {
     private boolean optionalFieldPresent(FieldContract field, MarkdownNote note) {
         if (field.type() == FieldContract.Type.STRING_LIST
                 || field.type() == FieldContract.Type.STRUCTURED_LIST) {
-            return note.structuredField(field.name()) == MarkdownNote.StructuredField.POPULATED_LIST;
+            return optionalListFieldPresent(field.name(), note);
         }
         return fieldPresent(field.name(), note);
+    }
+
+    private boolean optionalListFieldPresent(String key, MarkdownNote note) {
+        MarkdownNote.StructuredField shape = note.structuredField(key);
+        return shape == MarkdownNote.StructuredField.POPULATED_LIST
+                || shape == MarkdownNote.StructuredField.NON_LIST;
     }
 
     private boolean fieldPresent(String key, MarkdownNote note) {
