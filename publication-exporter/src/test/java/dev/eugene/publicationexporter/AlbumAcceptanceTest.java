@@ -119,6 +119,7 @@ class AlbumAcceptanceTest {
                 siteRoot.resolve("src/content/music/ru/nocturnal-lines.md"));
         String installedEn = Files.readString(
                 siteRoot.resolve("src/content/music/en/nocturnal-lines.md"));
+        assertTrue(installedEn.contains("English album body."));
         assertTrue(installedRu.contains("""
                 title: "Ночные линии"
                 description: "Русское описание альбома."
@@ -142,7 +143,7 @@ class AlbumAcceptanceTest {
                   - "texture"
                 """));
 
-        String invariantBlock = """
+        String expectedInvariantBlock = """
                 artist: "Алина Орлова"
                 work: "Ночные линии"
                 releaseDate: "2024-04-01"
@@ -153,11 +154,11 @@ class AlbumAcceptanceTest {
                   - "electronic"
                 reviewType: "album"
                 """;
-        assertEquals(invariantBlock, invariantBlock(installedRu));
-        assertEquals(invariantBlock, invariantBlock(installedEn));
+        assertEquals(expectedInvariantBlock, extractInvariantBlock(installedRu));
+        assertEquals(expectedInvariantBlock, extractInvariantBlock(installedEn));
     }
 
-    private String invariantBlock(String installed) {
+    private String extractInvariantBlock(String installed) {
         int start = installed.indexOf("artist: ");
         int end = installed.indexOf("---\n", start);
         return installed.substring(start, end);

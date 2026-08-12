@@ -139,6 +139,16 @@ class AlbumPublicationKindTest {
         assertTrue(result.diagnostics().get(0).message().contains(field));
     }
 
+    @ParameterizedTest(name = "blank optional {0}")
+    @MethodSource("optionalAlbumScalarFields")
+    void blankOptionalAlbumScalarBlocksAdmission(String field) {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(
+                validAlbumWith(field + ": \"\"")));
+
+        assertEquals(List.of(field), blockedFields(result));
+        assertTrue(result.diagnostics().get(0).message().contains(field));
+    }
+
     @Test
     void explicitEmptyListenForAndGenreTagsListsAreAccepted() {
         AdmittedPublication result = admission.admit(MarkdownNote.parse(
@@ -186,6 +196,10 @@ class AlbumPublicationKindTest {
 
     private static Stream<String> requiredAlbumFields() {
         return Stream.of("artist", "work", "context", "association");
+    }
+
+    private static Stream<String> optionalAlbumScalarFields() {
+        return Stream.of("format", "care", "releaseDate", "streamingUrl", "bandcampEmbedUrl");
     }
 
     private static Stream<String> malformedScalarLists() {
