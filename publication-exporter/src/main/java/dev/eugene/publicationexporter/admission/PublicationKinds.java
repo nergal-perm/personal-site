@@ -21,7 +21,8 @@ public final class PublicationKinds {
                         new NotePublicationKind(),
                         new ClaimPublicationKind(),
                         new BookPublicationKind(),
-                        new ConceptPublicationKind()));
+                        new ConceptPublicationKind(),
+                        new AlbumPublicationKind()));
     }
 
     public Optional<PublicationKind> forIdentity(String collection, String contentType) {
