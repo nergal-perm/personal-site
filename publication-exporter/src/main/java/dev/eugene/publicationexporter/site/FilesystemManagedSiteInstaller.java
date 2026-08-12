@@ -468,7 +468,7 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         StringBuilder yaml = new StringBuilder("---\n");
         appendYamlString(yaml, "id", identity.publicId());
         List<PublicField> fields = isRu ? approved.ruFields() : approved.enFields();
-        fields.forEach(field -> appendYamlString(yaml, field.key(), field.value()));
+        yaml.append(BracketIndexedFields.render(fields, field -> appendYamlString(yaml, field.key(), field.value())));
         yaml.append("publish: true\n");
         appendYamlString(yaml, "contentType", identity.publicContentType());
         appendYamlString(yaml, "language", locale);

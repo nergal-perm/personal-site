@@ -39,6 +39,8 @@ class FilesystemManagedSiteInstallerTest {
     private static final PublicationIdentity NOTE_IDENTITY = PublicationIdentity.of("blog", "note", "my-note");
     private static final PublicationIdentity BOOK_IDENTITY =
             PublicationIdentity.of("bibliography", "book", "the-lean-startup");
+    private static final PublicationIdentity CONCEPT_IDENTITY =
+            PublicationIdentity.of("concepts", "concept", "bounded-context");
     private static final PublicationIdentity OTHER_IDENTITY =
             PublicationIdentity.of("blog", "essay", "another-essay");
     private static final CandidateSnapshot SNAPSHOT = LegacyCandidateSnapshotFixture.of(
@@ -251,6 +253,65 @@ class FilesystemManagedSiteInstallerTest {
                 + "# EN book body", Files.readString(enFile, StandardCharsets.UTF_8));
         assertFalse(Files.readString(ruFile, StandardCharsets.UTF_8).contains("selectedQuote"));
         assertFalse(Files.readString(enFile, StandardCharsets.UTF_8).contains("selectedQuote"));
+    }
+
+    @Test
+    void installProjectsConceptListsBackIntoYamlBlocks() throws Exception {
+        List<PublicField> ruFields = List.of(
+                PublicField.of("title", "RU concept title"),
+                PublicField.of("description", "RU concept description."),
+                PublicField.of("notThis", "RU not this"),
+                PublicField.of("relations[0].name", "RU first name"),
+                PublicField.of("relations[0].relation", "RU first relation"),
+                PublicField.of("relations[1].name", "RU second name"),
+                PublicField.of("relations[1].relation", "RU second relation"),
+                PublicField.of("examples[0]", "RU first example"),
+                PublicField.of("examples[1]", "RU second example"));
+        List<PublicField> enFields = List.of(
+                PublicField.of("title", "EN concept title"),
+                PublicField.of("description", "EN concept description."),
+                PublicField.of("notThis", "EN not this"),
+                PublicField.of("relations[0].name", "EN first name"),
+                PublicField.of("relations[0].relation", "EN first relation"),
+                PublicField.of("relations[1].name", "EN second name"),
+                PublicField.of("relations[1].relation", "EN second relation"),
+                PublicField.of("examples[0]", "EN first example"),
+                PublicField.of("examples[1]", "EN second example"));
+        CandidateSnapshot snapshot = CandidateSnapshot.of(
+                "# RU concept body", "# EN concept body", ruFields, enFields, "",
+                ReferenceMap.empty(
+                        CONCEPT_IDENTITY,
+                        "concept-ru-hash",
+                        "concept-en-hash",
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                        ContentHash.sha256Hex("")));
+
+        new FilesystemManagedSiteInstaller(siteRoot).install(CONCEPT_IDENTITY, snapshot);
+
+        assertEquals("---\n"
+                + "id: \"bounded-context\"\n"
+                + "title: \"EN concept title\"\n"
+                + "description: \"EN concept description.\"\n"
+                + "notThis: \"EN not this\"\n"
+                + "relations:\n"
+                + "  - name: \"EN first name\"\n"
+                + "    relation: \"EN first relation\"\n"
+                + "  - name: \"EN second name\"\n"
+                + "    relation: \"EN second relation\"\n"
+                + "examples:\n"
+                + "  - \"EN first example\"\n"
+                + "  - \"EN second example\"\n"
+                + "publish: true\n"
+                + "contentType: \"concept\"\n"
+                + "language: \"en\"\n"
+                + "sourceLanguage: \"ru\"\n"
+                + "sourceHash: \"concept-ru-hash\"\n"
+                + "translationStatus: \"generated\"\n"
+                + "translationOf: \"bounded-context\"\n"
+                + "---\n"
+                + "# EN concept body", Files.readString(
+                        siteRoot.resolve("src/content/concepts/en/bounded-context.md"), StandardCharsets.UTF_8));
     }
 
     @Test
