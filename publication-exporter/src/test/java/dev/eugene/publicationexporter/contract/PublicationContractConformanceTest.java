@@ -2,6 +2,8 @@ package dev.eugene.publicationexporter.contract;
 
 import dev.eugene.publicationexporter.admission.BookPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.BookPublicationKindFixtures;
+import dev.eugene.publicationexporter.admission.ConceptPublicationKindFixtures;
+import dev.eugene.publicationexporter.admission.ConceptPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixture;
@@ -136,48 +138,7 @@ class PublicationContractConformanceTest {
     }
 
     private static Stream<ConceptPublicationKindFixture> allConceptAdmissionFixtures() {
-        return Stream.of(
-                ConceptPublicationKindFixture.accepted("validConceptWithoutRelations", """
-                        ---
-                        publish: true
-                        publicCollection: concepts
-                        publicContentType: concept
-                        publicId: concept-example
-                        id: 4bc5-concept-example
-                        title: Core Concept
-                        description: A valid public concept.
-                        ---
-                        """),
-                ConceptPublicationKindFixture.accepted("conceptWithRelationsAndExamples", """
-                        ---
-                        publish: true
-                        publicCollection: concepts
-                        publicContentType: concept
-                        publicId: concept-with-relations
-                        id: 4bc5-concept-relations
-                        title: Concept with Relations
-                        description: A valid public concept with relation data.
-                        relations:
-                          - name: parent
-                            relation: implies
-                        examples:
-                          - a first relation example
-                          - a second relation example
-                        ---
-                        """),
-                ConceptPublicationKindFixture.blocked("conceptWithMalformedRelations", """
-                        ---
-                        publish: true
-                        publicCollection: concepts
-                        publicContentType: concept
-                        publicId: concept-bad-relations
-                        id: 4bc5-concept-bad-relations
-                        title: Concept with Malformed Relations
-                        description: A concept with malformed relation entries.
-                        relations:
-                          - relation: implies
-                        ---
-                        """));
+        return ConceptPublicationKindFixtures.all().stream();
     }
 
     private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {
@@ -274,61 +235,31 @@ class PublicationContractConformanceTest {
     }
 
     private boolean structuredListFieldSatisfied(FieldContract field, List<Map<String, String>> values) {
-        if (values.isEmpty()) {
-            return false;
-        }
-        if (field.structuredMembers() == null || field.structuredMembers().isEmpty()) {
-            return false;
-        }
-        for (Map<String, String> value : values) {
-            for (String member : field.structuredMembers()) {
-                if (value.get(member) == null || value.get(member).isBlank()) {
-                    return false;
-                }
-            }
-            if (!value.keySet().containsAll(field.structuredMembers())
-                    || !field.structuredMembers().containsAll(value.keySet())) {
+        return hasStructuredListValues(values)
+                && hasDeclaredStructuredMembers(field)
+                && values.stream().allMatch(value -> hasRequiredMembers(field, value) && hasExactMembers(field, value));
+    }
+
+    private boolean hasStructuredListValues(List<Map<String, String>> values) {
+        return !values.isEmpty();
+    }
+
+    private boolean hasDeclaredStructuredMembers(FieldContract field) {
+        return field.structuredMembers() != null && !field.structuredMembers().isEmpty();
+    }
+
+    private boolean hasRequiredMembers(FieldContract field, Map<String, String> value) {
+        for (String member : field.structuredMembers()) {
+            String memberValue = value.get(member);
+            if (memberValue == null || memberValue.isBlank()) {
                 return false;
             }
         }
         return true;
     }
 
-    private static final class ConceptPublicationKindFixture {
-
-        private final String name;
-        private final String noteSource;
-        private final boolean expectedAccepted;
-
-        private ConceptPublicationKindFixture(String name, String noteSource, boolean expectedAccepted) {
-            this.name = name;
-            this.noteSource = noteSource;
-            this.expectedAccepted = expectedAccepted;
-        }
-
-        static ConceptPublicationKindFixture accepted(String name, String noteSource) {
-            return new ConceptPublicationKindFixture(name, noteSource, true);
-        }
-
-        static ConceptPublicationKindFixture blocked(String name, String noteSource) {
-            return new ConceptPublicationKindFixture(name, noteSource, false);
-        }
-
-        String name() {
-            return name;
-        }
-
-        String noteSource() {
-            return noteSource;
-        }
-
-        boolean expectedAccepted() {
-            return expectedAccepted;
-        }
-
-        @Override
-        public String toString() {
-            return name;
-        }
+    private boolean hasExactMembers(FieldContract field, Map<String, String> value) {
+        return value.keySet().containsAll(field.structuredMembers())
+                && field.structuredMembers().containsAll(value.keySet());
     }
 }

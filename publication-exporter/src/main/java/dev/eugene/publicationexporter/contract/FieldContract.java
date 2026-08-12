@@ -51,7 +51,7 @@ public final class FieldContract {
     }
 
     public static FieldContract nonBlankStructuredList(String name, List<String> memberFields) {
-        return new FieldContract(name, Type.STRUCTURED_LIST, null, null, false, memberFields);
+        return new FieldContract(name, Type.STRUCTURED_LIST, null, null, false, List.copyOf(memberFields));
     }
 
     @JsonProperty("name")
