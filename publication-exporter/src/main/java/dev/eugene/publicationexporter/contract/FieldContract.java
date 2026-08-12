@@ -9,37 +9,49 @@ import java.util.Objects;
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public final class FieldContract {
 
-    public enum Type { BOOLEAN, STRING, STRING_LIST }
+    public enum Type { BOOLEAN, STRING, STRING_LIST, STRUCTURED_LIST }
 
     private final String name;
     private final Type type;
     private final List<String> allowedValues;
     private final String pattern;
     private final boolean nonBlank;
+    private final List<String> structuredMembers;
 
-    private FieldContract(String name, Type type, List<String> allowedValues, String pattern, boolean nonBlank) {
+    private FieldContract(
+            String name,
+            Type type,
+            List<String> allowedValues,
+            String pattern,
+            boolean nonBlank,
+            List<String> structuredMembers) {
         this.name = Objects.requireNonNull(name, "name");
         this.type = Objects.requireNonNull(type, "type");
         this.allowedValues = allowedValues == null ? null : List.copyOf(allowedValues);
         this.pattern = pattern;
         this.nonBlank = nonBlank;
+        this.structuredMembers = structuredMembers == null ? null : List.copyOf(structuredMembers);
     }
 
     public static FieldContract allowedValue(String name, Type type, String literalValue) {
         return new FieldContract(name, type, List.of(Objects.requireNonNull(literalValue, "literalValue")),
-                null, false);
+                null, false, null);
     }
 
     public static FieldContract matchingPattern(String name, String patternText) {
-        return new FieldContract(name, Type.STRING, null, Objects.requireNonNull(patternText, "patternText"), false);
+        return new FieldContract(name, Type.STRING, null, Objects.requireNonNull(patternText, "patternText"), false, null);
     }
 
     public static FieldContract nonBlank(String name) {
-        return new FieldContract(name, Type.STRING, null, null, true);
+        return new FieldContract(name, Type.STRING, null, null, true, null);
     }
 
     public static FieldContract nonBlankStringList(String name) {
-        return new FieldContract(name, Type.STRING_LIST, null, null, true);
+        return new FieldContract(name, Type.STRING_LIST, null, null, true, null);
+    }
+
+    public static FieldContract nonBlankStructuredList(String name, List<String> memberFields) {
+        return new FieldContract(name, Type.STRUCTURED_LIST, null, null, false, memberFields);
     }
 
     @JsonProperty("name")
@@ -67,6 +79,11 @@ public final class FieldContract {
         return nonBlank;
     }
 
+    @JsonProperty("structuredMembers")
+    public List<String> structuredMembers() {
+        return structuredMembers;
+    }
+
     @Override
     public boolean equals(Object other) {
         if (this == other) {
@@ -76,17 +93,19 @@ public final class FieldContract {
             return false;
         }
         return nonBlank == that.nonBlank && name.equals(that.name) && type == that.type
-                && Objects.equals(allowedValues, that.allowedValues) && Objects.equals(pattern, that.pattern);
+                && Objects.equals(allowedValues, that.allowedValues) && Objects.equals(pattern, that.pattern)
+                && Objects.equals(structuredMembers, that.structuredMembers);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(name, type, allowedValues, pattern, nonBlank);
+        return Objects.hash(name, type, allowedValues, pattern, nonBlank, structuredMembers);
     }
 
     @Override
     public String toString() {
         return "FieldContract[name=" + name + ", type=" + type + ", allowedValues=" + allowedValues
-                + ", pattern=" + pattern + ", nonBlank=" + nonBlank + "]";
+                + ", pattern=" + pattern + ", nonBlank=" + nonBlank + ", structuredMembers="
+                + structuredMembers + "]";
     }
 }

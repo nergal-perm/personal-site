@@ -18,8 +18,8 @@ import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -103,6 +103,26 @@ class PublicationContractConformanceTest {
         assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
     }
 
+    @ParameterizedTest(name = "concepts/concept {0}")
+    @MethodSource("allConceptAdmissionFixtures")
+    void conceptContractVerdictAgreesWithFixtureAndRuntimeValidator(ConceptPublicationKindFixture fixture) {
+        MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
+        KindContract conceptKind = new PublicationContractWriter().write().kinds().stream()
+                .filter(kind -> kind.collection().equals("concepts") && kind.contentType().equals("concept"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "publicCollection/publicContentType is not a supported publication kind"));
+
+        boolean contractAccepts = contractAccepts(conceptKind, note);
+        VaultRelativePath path = VaultRelativePath.of("concepts/" + fixture.name() + ".md");
+        boolean runtimeAccepts = intake.admit(path, VaultReader.createNull(Map.of(path, fixture.noteSource())))
+                .accepted();
+
+        assertEquals(fixture.expectedAccepted(), contractAccepts, "contract verdict for " + fixture.name());
+        assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
+        assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
+    }
+
     private static Stream<NotePublicationKindFixture> allNoteAdmissionFixtures() {
         return NotePublicationKindFixtures.all().stream();
     }
@@ -113,6 +133,51 @@ class PublicationContractConformanceTest {
 
     private static Stream<BookPublicationKindFixture> allBookAdmissionFixtures() {
         return BookPublicationKindFixtures.all().stream();
+    }
+
+    private static Stream<ConceptPublicationKindFixture> allConceptAdmissionFixtures() {
+        return Stream.of(
+                ConceptPublicationKindFixture.accepted("validConceptWithoutRelations", """
+                        ---
+                        publish: true
+                        publicCollection: concepts
+                        publicContentType: concept
+                        publicId: concept-example
+                        id: 4bc5-concept-example
+                        title: Core Concept
+                        description: A valid public concept.
+                        ---
+                        """),
+                ConceptPublicationKindFixture.accepted("conceptWithRelationsAndExamples", """
+                        ---
+                        publish: true
+                        publicCollection: concepts
+                        publicContentType: concept
+                        publicId: concept-with-relations
+                        id: 4bc5-concept-relations
+                        title: Concept with Relations
+                        description: A valid public concept with relation data.
+                        relations:
+                          - name: parent
+                            relation: implies
+                        examples:
+                          - a first relation example
+                          - a second relation example
+                        ---
+                        """),
+                ConceptPublicationKindFixture.blocked("conceptWithMalformedRelations", """
+                        ---
+                        publish: true
+                        publicCollection: concepts
+                        publicContentType: concept
+                        publicId: concept-bad-relations
+                        id: 4bc5-concept-bad-relations
+                        title: Concept with Malformed Relations
+                        description: A concept with malformed relation entries.
+                        relations:
+                          - relation: implies
+                        ---
+                        """));
     }
 
     private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {
@@ -179,12 +244,16 @@ class PublicationContractConformanceTest {
     private boolean fieldSatisfied(FieldContract field, MarkdownNote note) {
         return switch (field.type()) {
             case BOOLEAN -> field.allowedValues().contains(String.valueOf(note.flag(field.name())));
-            case STRING -> note.string(field.name()).map(value -> stringFieldSatisfied(field, value)).orElse(false);
+            case STRING -> stringFieldSatisfied(field, note.string(field.name()).orElse(null));
             case STRING_LIST -> stringListFieldSatisfied(field, note.listOfScalars(field.name()));
+            case STRUCTURED_LIST -> structuredListFieldSatisfied(field, note.listOfMaps(field.name()));
         };
     }
 
     private boolean stringFieldSatisfied(FieldContract field, String value) {
+        if (value == null) {
+            return false;
+        }
         if (field.nonBlank()) {
             return !value.isBlank();
         }
@@ -202,5 +271,64 @@ class PublicationContractConformanceTest {
             return false;
         }
         return true;
+    }
+
+    private boolean structuredListFieldSatisfied(FieldContract field, List<Map<String, String>> values) {
+        if (values.isEmpty()) {
+            return false;
+        }
+        if (field.structuredMembers() == null || field.structuredMembers().isEmpty()) {
+            return false;
+        }
+        for (Map<String, String> value : values) {
+            for (String member : field.structuredMembers()) {
+                if (value.get(member) == null || value.get(member).isBlank()) {
+                    return false;
+                }
+            }
+            if (!value.keySet().containsAll(field.structuredMembers())
+                    || !field.structuredMembers().containsAll(value.keySet())) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static final class ConceptPublicationKindFixture {
+
+        private final String name;
+        private final String noteSource;
+        private final boolean expectedAccepted;
+
+        private ConceptPublicationKindFixture(String name, String noteSource, boolean expectedAccepted) {
+            this.name = name;
+            this.noteSource = noteSource;
+            this.expectedAccepted = expectedAccepted;
+        }
+
+        static ConceptPublicationKindFixture accepted(String name, String noteSource) {
+            return new ConceptPublicationKindFixture(name, noteSource, true);
+        }
+
+        static ConceptPublicationKindFixture blocked(String name, String noteSource) {
+            return new ConceptPublicationKindFixture(name, noteSource, false);
+        }
+
+        String name() {
+            return name;
+        }
+
+        String noteSource() {
+            return noteSource;
+        }
+
+        boolean expectedAccepted() {
+            return expectedAccepted;
+        }
+
+        @Override
+        public String toString() {
+            return name;
+        }
     }
 }
