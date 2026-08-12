@@ -29,12 +29,23 @@ class ClaimPublicationKindTest {
                 statement: A fixed latency budget is usually the wrong abstraction.
                 supports:
                   - label: "Queueing theory: tail latency compounds across hops"
-                    target: measuring-tail-latency
+                    target: "urn:claim:measuring-tail-latency"
                   - label: A "quoted" supporting claim
                 opposes:
                   - label: SLA templates assume a single fixed budget
                 sources:
-                  - attestation: explicit
+                  - link:
+                      label: Queueing theory
+                      target: measuring-tail-latency
+                    attestation: explicit
+                    evidence:
+                      - kind: text
+                        value: Tail latency compounds.
+                      - kind: reference
+                        target: measuring-tail-latency
+                    locator:
+                      - kind: text
+                        value: Section 3
                     confidence: high
                 ---
                 Claim body.""");
@@ -56,13 +67,24 @@ class ClaimPublicationKindTest {
         assertEquals("""
                 supports:
                   - label: "Queueing theory: tail latency compounds across hops"
-                    target: "measuring-tail-latency"
+                    target: "urn:claim:measuring-tail-latency"
                   - label: "A \\\"quoted\\\" supporting claim"
                 opposes:
                   - label: "SLA templates assume a single fixed budget"
                 sources:
-                  - attestation: "explicit"
-                    confidence: "high"
+                  - link:
+                      label: Queueing theory
+                      target: measuring-tail-latency
+                    attestation: explicit
+                    evidence:
+                      - kind: text
+                        value: Tail latency compounds.
+                      - kind: reference
+                        target: measuring-tail-latency
+                    locator:
+                      - kind: text
+                        value: Section 3
+                    confidence: high
                 """, result.structuredData());
     }
 
@@ -121,6 +143,100 @@ class ClaimPublicationKindTest {
 
         assertTrue(result.accepted(), result.diagnostics().toString());
         assertEquals("", result.structuredData());
+    }
+
+    @Test
+    void nonListRelationshipMetadataBlocksClaimAdmission() {
+        AdmittedPublication result = admitClaimWith("supports: measuring-tail-latency");
+
+        assertStructuredFieldBlocked(result, "supports", "list");
+    }
+
+    @Test
+    void nonListSourceMetadataBlocksClaimAdmission() {
+        AdmittedPublication result = admitClaimWith("""
+                sources:
+                  link:
+                    label: Queueing theory
+                """);
+
+        assertStructuredFieldBlocked(result, "sources", "list");
+    }
+
+    @Test
+    void inlineMappingSourceMetadataBlocksClaimAdmission() {
+        AdmittedPublication result = admitClaimWith("sources: {attestation: explicit}");
+
+        assertStructuredFieldBlocked(result, "sources", "list");
+    }
+
+    @Test
+    void relationshipEntriesRequireLabels() {
+        AdmittedPublication result = admitClaimWith("""
+                supports:
+                  - target: measuring-tail-latency
+                """);
+
+        assertStructuredFieldBlocked(result, "supports", "label");
+    }
+
+    @Test
+    void relationshipEntriesRequireNonBlankLabels() {
+        AdmittedPublication result = admitClaimWith("""
+                supports:
+                  - label: "   "
+                    target: measuring-tail-latency
+                """);
+
+        assertStructuredFieldBlocked(result, "supports", "label");
+    }
+
+    @Test
+    void relationshipEntriesRejectUndeclaredKeys() {
+        AdmittedPublication result = admitClaimWith("""
+                supports:
+                  - label: Queueing theory
+                    privateNote: must-not-be-projected
+                """);
+
+        assertStructuredFieldBlocked(result, "supports", "label and optional target");
+    }
+
+    @Test
+    void relationshipEntriesRejectStructuredValues() {
+        AdmittedPublication result = admitClaimWith("""
+                supports:
+                  - label:
+                      text: Queueing theory
+                    target: measuring-tail-latency
+                """);
+
+        assertStructuredFieldBlocked(result, "supports", "label and optional target");
+    }
+
+    private AdmittedPublication admitClaimWith(String structuredMetadata) {
+        String note = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: claim
+                publicId: structured-metadata
+                id: 91aa-structured-metadata
+                title: Structured metadata
+                description: A valid description.
+                statement: A valid claim statement.
+                """ + structuredMetadata.stripTrailing() + """
+
+                ---
+                """;
+        return admission.admit(MarkdownNote.parse(note));
+    }
+
+    private static void assertStructuredFieldBlocked(
+            AdmittedPublication result, String field, String expectedMessagePart) {
+        assertEquals(List.of(field), blockedFields(result));
+        assertTrue(result.diagnostics().get(0).message().contains("blog/claim"));
+        assertTrue(result.diagnostics().get(0).message().contains(expectedMessagePart));
     }
 
     private static List<String> blockedFields(AdmittedPublication result) {

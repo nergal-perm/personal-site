@@ -11,6 +11,7 @@ import dev.eugene.publicationexporter.site.YamlScalar;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.regex.Pattern;
 
 public final class ClaimPublicationKind implements PublicationKind {
@@ -18,6 +19,7 @@ public final class ClaimPublicationKind implements PublicationKind {
     private static final Pattern PUBLIC_ID_SLUG = Pattern.compile("^[a-z0-9]+(?:-[a-z0-9]+)*$");
     private static final List<String> RELATIONSHIP_KEYS =
             List.of("supports", "opposes", "assumes", "refines", "contradicts");
+    private static final Set<String> RELATIONSHIP_FIELDS = Set.of("label", "target");
     private static final List<FieldRule> FIELD_RULES = List.of(
             FieldRule.mustMatch("publicId", PUBLIC_ID_SLUG, "a lowercase route slug"),
             FieldRule.nonBlank("id"),
@@ -48,6 +50,7 @@ public final class ClaimPublicationKind implements PublicationKind {
         String title = requireNonBlank(frontmatter, "title", diagnostics);
         String description = requireNonBlank(frontmatter, "description", diagnostics);
         String statement = requireNonBlank(frontmatter, "statement", diagnostics);
+        requireValidStructuredMetadata(frontmatter, diagnostics);
 
         if (!diagnostics.isEmpty()) {
             return AdmittedPublication.blocked(diagnostics);
@@ -81,8 +84,54 @@ public final class ClaimPublicationKind implements PublicationKind {
         for (String key : RELATIONSHIP_KEYS) {
             appendMapList(yaml, key, frontmatter.listOfMaps(key));
         }
-        appendMapList(yaml, "sources", frontmatter.listOfMaps("sources"));
+        frontmatter.opaqueListYaml("sources").ifPresent(yaml::append);
         return yaml.toString();
+    }
+
+    private void requireValidStructuredMetadata(
+            MarkdownNote frontmatter, List<Diagnostic> diagnostics) {
+        for (String relationshipKey : RELATIONSHIP_KEYS) {
+            requireValidRelationshipList(frontmatter, relationshipKey, diagnostics);
+        }
+        requireList(frontmatter, "sources", diagnostics);
+    }
+
+    private void requireValidRelationshipList(
+            MarkdownNote frontmatter, String key, List<Diagnostic> diagnostics) {
+        if (!requireList(frontmatter, key, diagnostics)) {
+            return;
+        }
+        if (frontmatter.structuredField(key) == MarkdownNote.StructuredField.POPULATED_LIST
+                && !frontmatter.hasOnlyScalarMapEntries(key)) {
+            diagnostics.add(invalidRelationshipDiagnostic(key));
+            return;
+        }
+        for (Map<String, String> relationship : frontmatter.listOfMaps(key)) {
+            if (!validRelationship(relationship)) {
+                diagnostics.add(invalidRelationshipDiagnostic(key));
+                return;
+            }
+        }
+    }
+
+    private boolean requireList(
+            MarkdownNote frontmatter, String key, List<Diagnostic> diagnostics) {
+        if (frontmatter.structuredField(key) == MarkdownNote.StructuredField.NON_LIST) {
+            diagnostics.add(Diagnostic.blocking(key, "blog/claim " + key + " must be a list."));
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean validRelationship(Map<String, String> relationship) {
+        return RELATIONSHIP_FIELDS.containsAll(relationship.keySet())
+                && relationship.containsKey("label")
+                && !relationship.get("label").isBlank();
+    }
+
+    private static Diagnostic invalidRelationshipDiagnostic(String key) {
+        return Diagnostic.blocking(
+                key, "blog/claim " + key + " entries require a non-blank label and optional target.");
     }
 
     private static void appendMapList(

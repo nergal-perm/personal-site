@@ -175,6 +175,55 @@ class MarkdownNoteTest {
     }
 
     @Test
+    void nestedMapAndArrayListValuesKeepTheHeaderReadable() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                statement: Tail latency compounds across hops.
+                sources:
+                  - link:
+                      label: Queueing theory
+                      target: measuring-tail-latency
+                    evidence:
+                      - kind: text
+                        value: Tail latency compounds.
+                      - kind: reference
+                        target: measuring-tail-latency
+                    locator:
+                      - kind: text
+                        value: Section 3
+                ---
+                Claim body.""");
+
+        assertEquals(MarkdownNote.HeaderState.PRESENT, frontmatter.headerState());
+        assertEquals(
+                MarkdownNote.StructuredField.POPULATED_LIST,
+                frontmatter.structuredField("sources"));
+        assertEquals(
+                Optional.of("Tail latency compounds across hops."),
+                frontmatter.string("statement"));
+    }
+
+    @Test
+    void indentedMappingValueKeepsTheHeaderReadableForFieldSpecificValidation() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                statement: Tail latency compounds across hops.
+                sources:
+                  link:
+                    label: Queueing theory
+                ---
+                Claim body.""");
+
+        assertEquals(MarkdownNote.HeaderState.PRESENT, frontmatter.headerState());
+        assertEquals(
+                MarkdownNote.StructuredField.NON_LIST,
+                frontmatter.structuredField("sources"));
+        assertEquals(
+                Optional.of("Tail latency compounds across hops."),
+                frontmatter.string("statement"));
+    }
+
+    @Test
     void absentAndExplicitlyEmptyMapListsAreEmpty() {
         MarkdownNote frontmatter = MarkdownNote.parse("""
                 ---

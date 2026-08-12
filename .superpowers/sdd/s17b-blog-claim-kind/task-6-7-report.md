@@ -78,3 +78,48 @@ The pre-existing modification to `.superpowers/sdd/s17b-blog-claim-kind/task-3-r
 
 - Graphify refresh remains environmentally blocked by `Operation not permitted`.
 - Task 8 still owns claim-specific publication-contract conformance fixtures and explicit claim contract assertions; this slice only made the existing essay/note contract tests compatible with the newly installed third kind.
+
+## Fix round 1 — nested claim metadata and parser composition
+
+Status: DONE_WITH_CONCERNS
+
+### Addressed
+
+- `MarkdownNote` now retains populated block-list YAML in source order, so site-supported `sources` entries with nested `link` objects and `evidence`/`locator` rich-text arrays pass admission and reach the installed RU site frontmatter without flattening.
+- Structured-field shape remains observable after parsing. Scalar, indented-map, and inline-map values supplied for relationship fields or `sources` block `blog/claim` admission with diagnostics naming the offending field and required list shape; they are no longer treated as absent/empty.
+- Every populated relationship entry must be a scalar map containing a non-blank `label` and at most the optional opaque `target`. Unknown keys, missing/blank labels, and nested values block the relationship field before projection. Accepted targets remain opaque and are emitted through `YamlScalar.doubleQuoted(...)`.
+- `MarkdownNote.parseHeader(...)` now delegates each field to named record steps, and `parseMapList(...)` composes named boundary, source-line, and list-shape helpers. The small `ScalarMapListParser` keeps per-entry scanning at one abstraction level while the opaque source carrier stays scoped to the already-supported block structure.
+- The acceptance fixture now includes nested `sources.link`, `sources.evidence`, and `sources.locator` data and verifies that the real `FilesystemManagedSiteInstaller` carries that YAML into the installed claim.
+
+No Task 8 contract-conformance fixture or assertion was added. No file under `exporter-java/` or the production release package was changed, and semantic resolution/translation behavior was not altered.
+
+### TDD evidence
+
+Commands run from `publication-exporter/`:
+
+- RED: `mvn -q test -Dtest=MarkdownNoteTest,ClaimPublicationKindTest,BlogClaimAcceptanceTest` failed because nested `sources` made the header `MALFORMED`, blocking claim admission and the end-to-end fixture.
+- GREEN: the same focused command passed after retaining nested source YAML and projecting it opaquely.
+- RED: `mvn -q test -Dtest=MarkdownNoteTest,ClaimPublicationKindTest` failed on non-list relationship/source shapes plus missing, blank, and undeclared relationship fields.
+- GREEN: the focused parser/admission/acceptance command passed after adding structured-shape diagnostics and relationship validation.
+- RED/GREEN edge: `ClaimPublicationKindTest#relationshipEntriesRejectStructuredValues` and `ClaimPublicationKindTest#inlineMappingSourceMetadataBlocksClaimAdmission` each failed for the expected silent-acceptance/wrong-diagnostic behavior, then passed after the corresponding guards.
+
+### Verification
+
+- `mvn -q test -Dtest=MarkdownNoteTest,ClaimPublicationKindTest,BlogClaimAcceptanceTest` — passed (45 tests, 0 failures, 0 errors).
+- `mvn -q test` — passed (615 tests, 0 failures, 0 errors, 0 skipped).
+- `git diff --check` — passed before this report append and will be rerun as the final delivery gate.
+- `graphify update .` — attempted after the source changes; rebuild failed with `[Errno 1] Operation not permitted`, so no successful graph refresh is claimed.
+
+### Files changed in fix round 1
+
+- `publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/ClaimPublicationKind.java`
+- `publication-exporter/src/main/java/dev/eugene/publicationexporter/note/MarkdownNote.java`
+- `publication-exporter/src/test/java/dev/eugene/publicationexporter/BlogClaimAcceptanceTest.java`
+- `publication-exporter/src/test/java/dev/eugene/publicationexporter/admission/ClaimPublicationKindTest.java`
+- `publication-exporter/src/test/java/dev/eugene/publicationexporter/note/MarkdownNoteTest.java`
+- `.superpowers/sdd/s17b-blog-claim-kind/task-6-7-report.md`
+
+### Concerns
+
+- Graphify refresh remains environmentally blocked by `Operation not permitted`.
+- Task 8 remains intentionally unimplemented in this fix round.

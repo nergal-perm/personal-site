@@ -46,6 +46,18 @@ class BlogClaimAcceptanceTest {
             supports:
               - label: "Queueing theory: tail latency compounds across hops"
                 target: measuring-tail-latency
+            sources:
+              - link:
+                  label: Queueing theory
+                  target: measuring-tail-latency
+                evidence:
+                  - kind: text
+                    value: Tail latency compounds.
+                  - kind: reference
+                    target: measuring-tail-latency
+                locator:
+                  - kind: text
+                    value: Section 3
             ---
             Body prose discussing the claim.""";
 
@@ -95,6 +107,20 @@ class BlogClaimAcceptanceTest {
                 supports:
                   - label: "Queueing theory: tail latency compounds across hops"
                     target: "measuring-tail-latency"
+                """));
+        assertTrue(installed.contains("""
+                sources:
+                  - link:
+                      label: Queueing theory
+                      target: measuring-tail-latency
+                    evidence:
+                      - kind: text
+                        value: Tail latency compounds.
+                      - kind: reference
+                        target: measuring-tail-latency
+                    locator:
+                      - kind: text
+                        value: Section 3
                 """));
     }
 
