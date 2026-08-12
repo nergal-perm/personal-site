@@ -19,16 +19,27 @@ final class BracketIndexedFields {
     static String render(List<PublicField> fields, Consumer<PublicField> scalarFieldWriter) {
         StringBuilder yaml = new StringBuilder();
         LinkedHashMap<String, LinkedHashMap<Integer, LinkedHashMap<String, String>>> grouped = new LinkedHashMap<>();
-        for (PublicField field : fields) {
-            Matcher match = LIST_ITEM.matcher(field.key());
-            if (!match.matches()) {
-                scalarFieldWriter.accept(field);
-                continue;
-            }
-            groupListItem(grouped, match, field.value());
-        }
-        grouped.forEach((name, items) -> appendListBlock(yaml, name, items));
+        fields.forEach(field -> dispatchField(grouped, scalarFieldWriter, field));
+        appendListBlocks(yaml, grouped);
         return yaml.toString();
+    }
+
+    private static void dispatchField(
+            Map<String, LinkedHashMap<Integer, LinkedHashMap<String, String>>> grouped,
+            Consumer<PublicField> scalarFieldWriter,
+            PublicField field) {
+        Matcher match = LIST_ITEM.matcher(field.key());
+        if (!match.matches()) {
+            scalarFieldWriter.accept(field);
+            return;
+        }
+        groupListItem(grouped, match, field.value());
+    }
+
+    private static void appendListBlocks(
+            StringBuilder yaml,
+            Map<String, LinkedHashMap<Integer, LinkedHashMap<String, String>>> grouped) {
+        grouped.forEach((name, items) -> appendListBlock(yaml, name, items));
     }
 
     private static void groupListItem(
@@ -36,7 +47,13 @@ final class BracketIndexedFields {
             Matcher match,
             String value) {
         String field = match.group(1);
-        int index = Integer.parseInt(match.group(2));
+        int index;
+        try {
+            index = Integer.parseInt(match.group(2));
+        } catch (NumberFormatException failure) {
+            throw new IllegalStateException(
+                    "List index exceeds integer range for field key '" + match.group(0) + "'", failure);
+        }
         String subfield = match.group(3);
         grouped.computeIfAbsent(field, ignored -> new LinkedHashMap<>())
                 .computeIfAbsent(index, ignored -> new LinkedHashMap<>())
@@ -51,9 +68,17 @@ final class BracketIndexedFields {
 
     private static void appendListItem(StringBuilder yaml, Map<String, String> item) {
         if (item.containsKey("")) {
-            yaml.append("  - ").append(YamlScalar.doubleQuoted(item.get(""))).append('\n');
+            appendScalarListItem(yaml, item);
             return;
         }
+        appendStructuredListItem(yaml, item);
+    }
+
+    private static void appendScalarListItem(StringBuilder yaml, Map<String, String> item) {
+        yaml.append("  - ").append(YamlScalar.doubleQuoted(item.get(""))).append('\n');
+    }
+
+    private static void appendStructuredListItem(StringBuilder yaml, Map<String, String> item) {
         boolean first = true;
         for (Map.Entry<String, String> member : item.entrySet()) {
             yaml.append(first ? "  - " : "    ")

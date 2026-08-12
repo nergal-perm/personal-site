@@ -315,6 +315,17 @@ class FilesystemManagedSiteInstallerTest {
     }
 
     @Test
+    void renderRejectsListIndexThatExceedsIntegerRangeWithItsFieldKey() {
+        String fieldKey = "relations[2147483648].name";
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> BracketIndexedFields.render(
+                        List.of(PublicField.of(fieldKey, "value")), ignored -> { }));
+
+        assertTrue(failure.getMessage().contains(fieldKey));
+    }
+
+    @Test
     void installPreservesExistingFilesInSharedLocaleDirectories() throws Exception {
         Path existingRu = siteRoot.resolve("src/content/blog/ru/existing.md");
         Path existingEn = siteRoot.resolve("src/content/blog/en/existing.md");
