@@ -246,6 +246,7 @@ final class ClaimSourceShape {
             }
             if (value.startsWith("\"") || value.endsWith("\"")
                     || value.startsWith("'") || value.endsWith("'")
+                    || value.startsWith("!")
                     || value.startsWith("[") || value.startsWith("{")
                     || Set.of("", "null", "~", "true", "false").contains(value)
                     || YAML_NUMBER.matcher(value).matches()) {

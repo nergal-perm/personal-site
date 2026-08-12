@@ -241,6 +241,17 @@ class ClaimPublicationKindTest {
     }
 
     @Test
+    void sourceScalarsRejectYamlTags() {
+        AdmittedPublication result = admitClaimWith("""
+                sources:
+                  - attestation: !!int 1
+                    confidence: !tag high
+                """);
+
+        assertStructuredFieldBlocked(result, "sources", "site claimSource shape");
+    }
+
+    @Test
     void relationshipEntriesRequireLabels() {
         AdmittedPublication result = admitClaimWith("""
                 supports:
