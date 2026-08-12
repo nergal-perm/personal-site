@@ -343,6 +343,53 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void prepareMusicAlbumInstallsTranslatedFieldsAndInvariantStructuredData() {
+        VaultRelativePath path = VaultRelativePath.of("music/kind-of-blue.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ALBUM));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "Translated album body.",
+                        albumFields(
+                                "Kind of Blue",
+                                "A valid English album description.",
+                                "A modal jazz record.",
+                                "Blue note.")),
+                workspace,
+                ApprovedSnapshotWorkspace.createNull(),
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, workspace.installed().size());
+        NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
+        assertEquals(PublicationIdentity.of("music", "album", "kind-of-blue"), installed.identity());
+        assertEquals(albumFields(
+                "Kind of Blue",
+                "A valid album description.",
+                "A modal jazz record.",
+                "Blue note."), installed.ruFields());
+        assertEquals(albumFields(
+                "Kind of Blue",
+                "A valid English album description.",
+                "A modal jazz record.",
+                "Blue note."), installed.enFields());
+        String expectedStructuredData = albumStructuredData(
+                "Miles Davis",
+                "Kind of Blue",
+                "1959-08-17",
+                "https://example.test/kind-of-blue",
+                "https://bandcamp.test/embed/kind-of-blue",
+                List.of("jazz", "modal"));
+        assertEquals(expectedStructuredData, installed.structuredData());
+        assertEquals(ContentHash.sha256Hex(expectedStructuredData),
+                installed.referenceMap().structuredDataHash());
+    }
+
+    @Test
     void changedBookInvariantMetadataSkipsApprovedMirrorAndBuildsFreshCandidate() {
         PublicationIdentity identity = PublicationIdentity.of("bibliography", "book", "the-lean-startup");
         String ruBody = "# The Lean Startup\n\nA reading note body.";
@@ -403,6 +450,9 @@ class PrepareHandlerTest {
         PublicationIdentity identity = PublicationIdentity.of("music", "album", "kind-of-blue");
         String ruBody = "# Kind of Blue\n\nAn album body.";
         String enBody = "Translated album body.";
+        String currentAlbum = VALID_ALBUM.replace(
+                "https://bandcamp.test/embed/kind-of-blue",
+                "https://bandcamp.test/embed/updated-kind-of-blue");
         List<PublicField> russianFields = albumFields(
                 "Kind of Blue", "A valid album description.", "A modal jazz record.", "Blue note.");
         List<PublicField> englishFields = albumFields(
@@ -411,8 +461,8 @@ class PrepareHandlerTest {
                 "Miles Davis", "Kind of Blue", "1959-08-17", "https://example.test/kind-of-blue",
                 "https://bandcamp.test/embed/kind-of-blue", List.of("jazz", "modal"));
         String currentStructuredData = albumStructuredData(
-                "Kamasi Washington", "The Epic", "2015-05-29", "https://example.test/the-epic",
-                "https://bandcamp.test/embed/the-epic", List.of("contemporary-jazz", "experimental"));
+                "Miles Davis", "Kind of Blue", "1959-08-17", "https://example.test/kind-of-blue",
+                "https://bandcamp.test/embed/updated-kind-of-blue", List.of("jazz", "modal"));
         ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
         approved.install(identity, CandidateSnapshot.of(
                 ruBody, enBody, russianFields, englishFields, approvedStructuredData,
@@ -430,7 +480,7 @@ class PrepareHandlerTest {
 
         BridgeResponse response = handler.prepare(
                 path,
-                VaultReader.createNull(Map.of(path, CHANGED_ALBUM)),
+                VaultReader.createNull(Map.of(path, currentAlbum)),
                 VaultAssetReader.createNull());
 
         assertTrue(response.ok());
