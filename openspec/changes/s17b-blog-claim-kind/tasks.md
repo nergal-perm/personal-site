@@ -305,7 +305,7 @@ public final class PublicFieldsCodec {
 
 **Design context:** proposal.md's acceptance criterion and `prob-20260811-f60fe262`'s acceptance text: one `blog/claim` fixture (non-blank `statement`, at least one populated relationship array) completes prepare → approve → release → site install through the same handlers already proven for essay/note, and the installed site file carries `statement` and the relationship data.
 
-- [ ] 6.1 Write `BlogClaimAcceptanceTest` following `BlogNoteAcceptanceTest`'s in-memory-null-adapter style through prepare/approve/release, PLUS a real `FilesystemManagedSiteInstaller` install step (use `@TempDir`) asserting the installed `ru/{publicId}.md` frontmatter contains `statement: "..."` and the rendered relationship-array YAML. A representative fixture note:
+- [x] 6.1 Write `BlogClaimAcceptanceTest` following `BlogNoteAcceptanceTest`'s in-memory-null-adapter style through prepare/approve/release, PLUS a real `FilesystemManagedSiteInstaller` install step (use `@TempDir`) asserting the installed `ru/{publicId}.md` frontmatter contains `statement: "..."` and the rendered relationship-array YAML. A representative fixture note:
 
 ```yaml
 ---
@@ -328,7 +328,7 @@ Body prose discussing the claim.
 
 Assert: `prepare` succeeds and resolves to `PublicationIdentity.of("blog", "claim", "latency-budget-is-fiction")`; `mark-reviewed` succeeds and the approved snapshot is readable; `build-from-review` succeeds; a real `FilesystemManagedSiteInstaller.install(...)` against the approved snapshot writes `ru/latency-budget-is-fiction.md` whose frontmatter contains the `statement` line and a `supports:` YAML block with the fixture's label/target.
 
-- [ ] 6.2 Run `mvn -q test -Dtest=BlogClaimAcceptanceTest` — confirm it fails at admission (`ClaimPublicationKind` does not exist yet / `PublicationKinds.installed()` does not include `claim` yet). This is the RED step — do not proceed to section 7 without seeing this fail for the right reason (kind not found), not a compile error or an unrelated failure.
+- [x] 6.2 Run `mvn -q test -Dtest=BlogClaimAcceptanceTest` — confirm it fails at admission (`ClaimPublicationKind` does not exist yet / `PublicationKinds.installed()` does not include `claim` yet). This is the RED step — do not proceed to section 7 without seeing this fail for the right reason (kind not found), not a compile error or an unrelated failure.
 
 ## 7. Implement `ClaimPublicationKind` (GREEN)
 
@@ -339,7 +339,7 @@ Assert: `prepare` succeeds and resolves to `PublicationIdentity.of("blog", "clai
 
 **Design context (design.md D5):** `ClaimPublicationKind.admit(...)` validates identity + non-blank `statement` (relationship arrays/`sources` optional — no validation beyond well-formed YAML-safe strings), builds `[title, description, statement]` `PublicField`s, and renders `supports`/`opposes`/`assumes`/`refines`/`contradicts`/`sources` into one `structuredData` YAML fragment via `YamlScalar.doubleQuoted(...)` — using `MarkdownNote`'s existing frontmatter-array-reading capability (check `MarkdownNote`'s current API for reading a list-of-maps field; extend it minimally if it does not yet support one, following the same non-null-tolerant style `frontmatter.string(key)` already uses).
 
-- [ ] 7.1 Create `ClaimPublicationKind`:
+- [x] 7.1 Create `ClaimPublicationKind`:
 
 ```java
 package dev.eugene.publicationexporter.admission;
@@ -419,13 +419,13 @@ public final class ClaimPublicationKind implements PublicationKind {
 
 (This is a shape sketch, not literal final code — implement `appendRelationshipArray`/`appendSourcesArray` and the constructor-method boilerplate following `EssayPublicationKind`/`NotePublicationKind`'s exact existing style. `AdmittedPublication.accepted(...)`'s signature changes from section 5's `structuredData()` addition — confirm the exact parameter order/overload you land on there before writing this call.)
 
-- [ ] 7.2 Register `ClaimPublicationKind` in `PublicationKinds.installed()`: `List.of(new EssayPublicationKind(), new NotePublicationKind(), new ClaimPublicationKind())`.
+- [x] 7.2 Register `ClaimPublicationKind` in `PublicationKinds.installed()`: `List.of(new EssayPublicationKind(), new NotePublicationKind(), new ClaimPublicationKind())`.
 
-- [ ] 7.3 Write `ClaimPublicationKindTest` (mirror `NotePublicationKindTest`): accepted fixture with `statement` + relationship arrays; blocked fixture missing `statement`; accepted fixture with zero populated relationship arrays (per `spec.md`'s `ADM-04` scenario — relationships stay optional).
+- [x] 7.3 Write `ClaimPublicationKindTest` (mirror `NotePublicationKindTest`): accepted fixture with `statement` + relationship arrays; blocked fixture missing `statement`; accepted fixture with zero populated relationship arrays (per `spec.md`'s `ADM-04` scenario — relationships stay optional).
 
-- [ ] 7.4 Run `mvn -q test -Dtest=BlogClaimAcceptanceTest` (from section 6) — confirm GREEN: admission, prepare, approve, release, and site install all succeed, and the installed file's frontmatter contains `statement` and the rendered `supports:` block.
+- [x] 7.4 Run `mvn -q test -Dtest=BlogClaimAcceptanceTest` (from section 6) — confirm GREEN: admission, prepare, approve, release, and site install all succeed, and the installed file's frontmatter contains `statement` and the rendered `supports:` block.
 
-- [ ] 7.5 Run `mvn -q test` — full suite green, including every essay/note acceptance test untouched by this section.
+- [x] 7.5 Run `mvn -q test` — full suite green, including every essay/note acceptance test untouched by this section.
 
 ## 8. Contract conformance, reflect-config check, and full-suite verification
 

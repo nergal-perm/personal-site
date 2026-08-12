@@ -2,6 +2,8 @@ package dev.eugene.publicationexporter.note;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -152,6 +154,36 @@ class MarkdownNoteTest {
                 """);
 
         assertFalse(frontmatter.flag("publish"));
+    }
+
+    @Test
+    void parsesAnOrderedListOfScalarMaps() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                supports:
+                  - label: First claim
+                    target: first-claim
+                  - label: "Second: claim"
+                ---
+                """);
+
+        assertEquals(
+                List.of(
+                        Map.of("label", "First claim", "target", "first-claim"),
+                        Map.of("label", "Second: claim")),
+                frontmatter.listOfMaps("supports"));
+    }
+
+    @Test
+    void absentAndExplicitlyEmptyMapListsAreEmpty() {
+        MarkdownNote frontmatter = MarkdownNote.parse("""
+                ---
+                supports: []
+                ---
+                """);
+
+        assertEquals(List.of(), frontmatter.listOfMaps("supports"));
+        assertEquals(List.of(), frontmatter.listOfMaps("opposes"));
     }
 
     @Test

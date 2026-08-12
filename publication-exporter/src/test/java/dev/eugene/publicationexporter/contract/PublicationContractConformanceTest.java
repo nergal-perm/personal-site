@@ -27,7 +27,10 @@ class PublicationContractConformanceTest {
     @MethodSource("allAdmissionFixtures")
     void contractVerdictAgreesWithFixtureAndRuntimeValidator(EssayPublicationKindFixture fixture) {
         MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
-        KindContract essayKind = new PublicationContractWriter().write().kinds().get(0);
+        KindContract essayKind = new PublicationContractWriter().write().kinds().stream()
+                .filter(kind -> kind.collection().equals("blog") && kind.contentType().equals("essay"))
+                .findFirst()
+                .orElseThrow();
 
         boolean contractAccepts = contractAccepts(essayKind, note);
         VaultRelativePath path = VaultRelativePath.of("blog/" + fixture.name() + ".md");
@@ -89,7 +92,7 @@ class PublicationContractConformanceTest {
                         ---
                         publish: true
                         publicCollection: blog
-                        publicContentType: claim
+                        publicContentType: book
                         publicId: my-essay
                         id: 8f2c-my-essay
                         title: My Essay

@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.admission;
 
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.reference.PublicField;
 
 import java.util.List;
 import java.util.Objects;
@@ -11,18 +12,16 @@ public final class AdmittedPublication {
     private final PublicationKind kind;
     private final PublicationIdentity identity;
     private final String sourceId;
-    private final String title;
-    private final String description;
+    private final List<PublicField> fields;
     private final String structuredData;
     private final List<Diagnostic> diagnostics;
 
     private AdmittedPublication(PublicationKind kind, PublicationIdentity identity, String sourceId,
-            String title, String description, String structuredData, List<Diagnostic> diagnostics) {
+            List<PublicField> fields, String structuredData, List<Diagnostic> diagnostics) {
         this.kind = kind;
         this.identity = identity;
         this.sourceId = sourceId;
-        this.title = title;
-        this.description = description;
+        this.fields = List.copyOf(fields);
         this.structuredData = structuredData;
         this.diagnostics = List.copyOf(diagnostics);
     }
@@ -35,12 +34,22 @@ public final class AdmittedPublication {
     public static AdmittedPublication accepted(
             PublicationKind kind, PublicationIdentity identity, String sourceId, String title, String description,
             String structuredData) {
+        return accepted(
+                kind,
+                identity,
+                sourceId,
+                List.of(PublicField.of("title", title), PublicField.of("description", description)),
+                structuredData);
+    }
+
+    public static AdmittedPublication accepted(
+            PublicationKind kind, PublicationIdentity identity, String sourceId,
+            List<PublicField> fields, String structuredData) {
         return new AdmittedPublication(
                 Objects.requireNonNull(kind, "kind"),
                 Objects.requireNonNull(identity, "identity"),
                 Objects.requireNonNull(sourceId, "sourceId"),
-                Objects.requireNonNull(title, "title"),
-                Objects.requireNonNull(description, "description"),
+                Objects.requireNonNull(fields, "fields"),
                 Objects.requireNonNull(structuredData, "structuredData"),
                 List.of());
     }
@@ -49,7 +58,7 @@ public final class AdmittedPublication {
         if (diagnostics.isEmpty()) {
             throw new IllegalArgumentException("blocked() requires at least one diagnostic");
         }
-        return new AdmittedPublication(null, null, null, null, null, null, diagnostics);
+        return new AdmittedPublication(null, null, null, List.of(), "", diagnostics);
     }
 
     public boolean accepted() {
@@ -69,11 +78,15 @@ public final class AdmittedPublication {
     }
 
     public String title() {
-        return title;
+        return requiredField("title");
     }
 
     public String description() {
-        return description;
+        return requiredField("description");
+    }
+
+    public List<PublicField> fields() {
+        return fields;
     }
 
     public String structuredData() {
@@ -93,20 +106,24 @@ public final class AdmittedPublication {
             return false;
         }
         return Objects.equals(kind, that.kind) && Objects.equals(identity, that.identity)
-                && Objects.equals(sourceId, that.sourceId) && Objects.equals(title, that.title)
-                && Objects.equals(description, that.description)
+                && Objects.equals(sourceId, that.sourceId) && fields.equals(that.fields)
                 && Objects.equals(structuredData, that.structuredData) && diagnostics.equals(that.diagnostics);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(kind, identity, sourceId, title, description, structuredData, diagnostics);
+        return Objects.hash(kind, identity, sourceId, fields, structuredData, diagnostics);
     }
 
     @Override
     public String toString() {
         return "AdmittedPublication[kind=" + kind + ", identity=" + identity + ", sourceId=" + sourceId
-                + ", title=" + title + ", description=" + description + ", structuredData=" + structuredData
+                + ", fields=" + fields + ", structuredData=" + structuredData
                 + ", diagnostics=" + diagnostics + "]";
+    }
+
+    private String requiredField(String key) {
+        return PublicField.value(fields, key)
+                .orElseThrow(() -> new IllegalStateException("Admitted publication has no " + key + " field."));
     }
 }

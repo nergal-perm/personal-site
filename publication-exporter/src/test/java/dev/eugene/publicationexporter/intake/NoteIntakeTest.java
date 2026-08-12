@@ -49,7 +49,7 @@ class NoteIntakeTest {
 
     @Test
     void unsupportedContentTypeIsBlocked() {
-        String wrongContentType = VALID_ESSAY.replace("publicContentType: essay", "publicContentType: claim");
+        String wrongContentType = VALID_ESSAY.replace("publicContentType: essay", "publicContentType: book");
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         NoteIntake.Result result = intake.admit(path, VaultReader.createNull(Map.of(path, wrongContentType)));
 

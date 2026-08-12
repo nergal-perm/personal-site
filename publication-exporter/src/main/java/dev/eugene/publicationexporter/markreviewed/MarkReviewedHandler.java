@@ -252,8 +252,7 @@ public final class MarkReviewedHandler {
     }
 
     private static List<PublicField> fieldsOf(NoteIntake.Result intake) {
-        return List.of(PublicField.of("title", intake.title()),
-                PublicField.of("description", intake.description()));
+        return intake.fields();
     }
 
     private static BridgeResponse candidateLookupFailure(String message) {

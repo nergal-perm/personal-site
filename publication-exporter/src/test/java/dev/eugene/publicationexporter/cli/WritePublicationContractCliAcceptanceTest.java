@@ -38,7 +38,7 @@ class WritePublicationContractCliAcceptanceTest {
     }
 
     @Test
-    void contractDescribesTheEssayAndNoteKinds() throws Exception {
+    void contractDescribesTheInstalledKinds() throws Exception {
         int exitCode = new CommandLine(new Main()).execute("write-publication-contract");
 
         assertEquals(0, exitCode);
@@ -46,8 +46,8 @@ class WritePublicationContractCliAcceptanceTest {
         assertEquals(1, contract.get("contractVersion").asInt());
 
         JsonNode kinds = contract.get("kinds");
-        assertEquals(2, kinds.size());
-        JsonNode essayKind = kinds.get(0);
+        assertEquals(3, kinds.size());
+        JsonNode essayKind = kindNamed(kinds, "essay");
         assertEquals("blog", essayKind.get("collection").asText());
         assertEquals("essay", essayKind.get("contentType").asText());
         assertTrue(essayKind.get("structuredBody").isEmpty());
@@ -68,7 +68,7 @@ class WritePublicationContractCliAcceptanceTest {
         assertFieldNamed(requiredFields, "title", field -> assertTrue(field.get("nonBlank").asBoolean()));
         assertFieldNamed(requiredFields, "description", field -> assertTrue(field.get("nonBlank").asBoolean()));
 
-        JsonNode noteKind = kinds.get(1);
+        JsonNode noteKind = kindNamed(kinds, "note");
         assertEquals("blog", noteKind.get("collection").asText());
         assertEquals("note", noteKind.get("contentType").asText());
         assertTrue(noteKind.get("structuredBody").isEmpty());
@@ -110,6 +110,16 @@ class WritePublicationContractCliAcceptanceTest {
             }
         }
         fail("No required field named " + name + " in " + requiredFields);
+    }
+
+    private JsonNode kindNamed(JsonNode kinds, String contentType) {
+        for (JsonNode kind : kinds) {
+            if (kind.get("contentType").asText().equals(contentType)) {
+                return kind;
+            }
+        }
+        fail("No kind named " + contentType + " in " + kinds);
+        return null;
     }
 
     private JsonNode soleJsonValueOnStdout() throws Exception {

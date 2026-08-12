@@ -200,19 +200,19 @@ class InspectPublicationHandlerTest {
 
     @Test
     void essayWithUnsupportedContentTypeIsBlocked() {
-        String claimNote = """
+        String unsupportedNote = """
                 ---
                 publish: true
                 publicCollection: blog
-                publicContentType: claim
-                publicId: my-claim
-                id: 8f2c-my-claim
+                publicContentType: book
+                publicId: my-book
+                id: 8f2c-my-book
                 title: My Essay
                 description: A valid description.
                 ---
                 """;
-        VaultRelativePath path = VaultRelativePath.of("blog/my-claim.md");
-        VaultReader vaultReader = VaultReader.createNull(Map.of(path, claimNote));
+        VaultRelativePath path = VaultRelativePath.of("blog/my-book.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, unsupportedNote));
 
         BridgeResponse response = handler.inspect(path, vaultReader);
 

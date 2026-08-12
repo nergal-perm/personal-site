@@ -7,6 +7,7 @@ import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.note.MarkdownNote;
+import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 
@@ -131,6 +132,10 @@ public final class NoteIntake {
 
         public String description() {
             return admission.description();
+        }
+
+        public List<PublicField> fields() {
+            return admission.fields();
         }
 
         public String structuredData() {

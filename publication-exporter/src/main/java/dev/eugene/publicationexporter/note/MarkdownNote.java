@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.note;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -11,13 +13,17 @@ public final class MarkdownNote {
     private static final String DELIMITER = "---";
 
     private final Map<String, FrontmatterScalar> frontmatterValues;
+    private final Map<String, List<Map<String, String>>> frontmatterMapLists;
     private final String body;
     private final String originalSource;
     private final HeaderState headerState;
 
-    private MarkdownNote(Map<String, FrontmatterScalar> frontmatterValues, String body,
-            String originalSource, HeaderState headerState) {
+    private MarkdownNote(
+            Map<String, FrontmatterScalar> frontmatterValues,
+            Map<String, List<Map<String, String>>> frontmatterMapLists,
+            String body, String originalSource, HeaderState headerState) {
         this.frontmatterValues = Map.copyOf(frontmatterValues);
+        this.frontmatterMapLists = immutableMapLists(frontmatterMapLists);
         this.body = Objects.requireNonNull(body, "body");
         this.originalSource = Objects.requireNonNull(originalSource, "originalSource");
         this.headerState = Objects.requireNonNull(headerState, "headerState");
@@ -27,14 +33,14 @@ public final class MarkdownNote {
         Objects.requireNonNull(noteSource, "noteSource");
         List<String> lines = noteSource.lines().toList();
         if (!startsWithFrontmatterDelimiter(lines)) {
-            return new MarkdownNote(Map.of(), noteSource, noteSource, HeaderState.ABSENT);
+            return new MarkdownNote(Map.of(), Map.of(), noteSource, noteSource, HeaderState.ABSENT);
         }
         Optional<ParsedHeader> header = parseHeader(lines);
         if (header.isEmpty()) {
-            return new MarkdownNote(Map.of(), noteSource, noteSource, HeaderState.MALFORMED);
+            return new MarkdownNote(Map.of(), Map.of(), noteSource, noteSource, HeaderState.MALFORMED);
         }
         ParsedHeader parsed = header.get();
-        return new MarkdownNote(parsed.values(),
+        return new MarkdownNote(parsed.values(), parsed.mapLists(),
                 bodyAfter(noteSource, parsed.closingDelimiterLineIndex()), noteSource, HeaderState.PRESENT);
     }
 
@@ -142,6 +148,11 @@ public final class MarkdownNote {
                 .flatMap(FrontmatterScalar::stringValue);
     }
 
+    public List<Map<String, String>> listOfMaps(String key) {
+        Objects.requireNonNull(key, "key");
+        return frontmatterMapLists.getOrDefault(key, List.of());
+    }
+
     public boolean flag(String key) {
         return Optional.ofNullable(frontmatterValues.get(key))
                 .map(FrontmatterScalar::isBareTrue)
@@ -160,27 +171,128 @@ public final class MarkdownNote {
         return !lines.isEmpty() && DELIMITER.equals(lines.get(0).strip());
     }
 
-    private record ParsedHeader(Map<String, FrontmatterScalar> values, int closingDelimiterLineIndex) {
+    private record ParsedHeader(
+            Map<String, FrontmatterScalar> values,
+            Map<String, List<Map<String, String>>> mapLists,
+            int closingDelimiterLineIndex) {
         private ParsedHeader {
         }
 
-        private static ParsedHeader of(Map<String, FrontmatterScalar> values, int closingDelimiterLineIndex) {
-            return new ParsedHeader(values, closingDelimiterLineIndex);
+        private static ParsedHeader of(
+                Map<String, FrontmatterScalar> values,
+                Map<String, List<Map<String, String>>> mapLists,
+                int closingDelimiterLineIndex) {
+            return new ParsedHeader(values, mapLists, closingDelimiterLineIndex);
         }
     }
 
     private static Optional<ParsedHeader> parseHeader(List<String> lines) {
         Map<String, FrontmatterScalar> values = new LinkedHashMap<>();
-        for (int index = 1; index < lines.size(); index++) {
+        Map<String, List<Map<String, String>>> mapLists = new LinkedHashMap<>();
+        int index = 1;
+        while (index < lines.size()) {
             String line = lines.get(index);
             if (DELIMITER.equals(line.strip())) {
-                return Optional.of(ParsedHeader.of(values, index));
+                return Optional.of(ParsedHeader.of(values, mapLists, index));
             }
-            if (!addKeyValue(values, line)) {
+            Optional<FrontmatterLine> parsedLine = FrontmatterLine.parse(line);
+            if (parsedLine.isEmpty() || containsKey(values, mapLists, parsedLine.get().key())) {
                 return Optional.empty();
             }
+            FrontmatterLine frontmatterLine = parsedLine.get();
+            if (frontmatterLine.emptyList()) {
+                mapLists.put(frontmatterLine.key(), List.of());
+                index++;
+                continue;
+            }
+            if (frontmatterLine.startsMapList(lines, index + 1)) {
+                Optional<ParsedMapList> parsedMapList = parseMapList(lines, index + 1);
+                if (parsedMapList.isEmpty()) {
+                    return Optional.empty();
+                }
+                mapLists.put(frontmatterLine.key(), parsedMapList.get().entries());
+                index = parsedMapList.get().nextLineIndex();
+                continue;
+            }
+            Optional<FrontmatterScalar> value = FrontmatterScalar.parse(frontmatterLine.token());
+            if (value.isEmpty()) {
+                return Optional.empty();
+            }
+            values.put(frontmatterLine.key(), value.get());
+            index++;
         }
         return Optional.empty();
+    }
+
+    private static Optional<ParsedMapList> parseMapList(List<String> lines, int firstLineIndex) {
+        List<Map<String, String>> entries = new ArrayList<>();
+        Map<String, String> currentEntry = null;
+        int itemIndent = -1;
+        int index = firstLineIndex;
+        while (index < lines.size() && indentation(lines.get(index)) > 0) {
+            String line = lines.get(index);
+            int indent = indentation(line);
+            String content = line.substring(indent);
+            if (content.startsWith("- ")) {
+                if (currentEntry != null) {
+                    entries.add(immutableMap(currentEntry));
+                }
+                currentEntry = new LinkedHashMap<>();
+                itemIndent = indent;
+                if (!addMapEntry(currentEntry, content.substring(2))) {
+                    return Optional.empty();
+                }
+            } else if (currentEntry == null || indent <= itemIndent || !addMapEntry(currentEntry, content)) {
+                return Optional.empty();
+            }
+            index++;
+        }
+        if (currentEntry == null) {
+            return Optional.empty();
+        }
+        entries.add(immutableMap(currentEntry));
+        return Optional.of(new ParsedMapList(List.copyOf(entries), index));
+    }
+
+    private static boolean addMapEntry(Map<String, String> entry, String line) {
+        Optional<FrontmatterLine> parsed = FrontmatterLine.parseContent(line);
+        if (parsed.isEmpty() || parsed.get().token().isEmpty() || entry.containsKey(parsed.get().key())) {
+            return false;
+        }
+        Optional<String> value = FrontmatterScalar.parse(parsed.get().token())
+                .flatMap(FrontmatterScalar::stringValue);
+        if (value.isEmpty()) {
+            return false;
+        }
+        entry.put(parsed.get().key(), value.get());
+        return true;
+    }
+
+    private static int indentation(String line) {
+        int indentation = 0;
+        while (indentation < line.length() && line.charAt(indentation) == ' ') {
+            indentation++;
+        }
+        return indentation;
+    }
+
+    private static boolean containsKey(
+            Map<String, FrontmatterScalar> values,
+            Map<String, List<Map<String, String>>> mapLists,
+            String key) {
+        return values.containsKey(key) || mapLists.containsKey(key);
+    }
+
+    private static Map<String, List<Map<String, String>>> immutableMapLists(
+            Map<String, List<Map<String, String>>> mapLists) {
+        Map<String, List<Map<String, String>>> copied = new LinkedHashMap<>();
+        mapLists.forEach((key, entries) -> copied.put(
+                key, entries.stream().map(MarkdownNote::immutableMap).toList()));
+        return Collections.unmodifiableMap(copied);
+    }
+
+    private static Map<String, String> immutableMap(Map<String, String> values) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(values));
     }
 
     private static String bodyAfter(String noteSource, int closingDelimiterLineIndex) {
@@ -209,21 +321,37 @@ public final class MarkdownNote {
         return offset;
     }
 
-    private static boolean addKeyValue(Map<String, FrontmatterScalar> values, String line) {
-        int colon = line.indexOf(':');
-        if (colon < 0) {
-            return false;
+    private record FrontmatterLine(String key, String token) {
+
+        private static Optional<FrontmatterLine> parse(String line) {
+            return indentation(line) == 0 ? parseContent(line) : Optional.empty();
         }
-        String key = line.substring(0, colon).strip();
-        if (key.isEmpty()) {
-            return false;
+
+        private static Optional<FrontmatterLine> parseContent(String line) {
+            int colon = line.indexOf(':');
+            if (colon < 0) {
+                return Optional.empty();
+            }
+            String key = line.substring(0, colon).strip();
+            if (key.isEmpty()) {
+                return Optional.empty();
+            }
+            return Optional.of(new FrontmatterLine(key, line.substring(colon + 1).strip()));
         }
-        Optional<FrontmatterScalar> value = FrontmatterScalar.parse(line.substring(colon + 1).strip());
-        if (value.isEmpty() || values.containsKey(key)) {
-            return false;
+
+        private boolean emptyList() {
+            return "[]".equals(token);
         }
-        values.put(key, value.get());
-        return true;
+
+        private boolean startsMapList(List<String> lines, int nextLineIndex) {
+            return token.isEmpty()
+                    && nextLineIndex < lines.size()
+                    && indentation(lines.get(nextLineIndex)) > 0
+                    && lines.get(nextLineIndex).stripLeading().startsWith("- ");
+        }
+    }
+
+    private record ParsedMapList(List<Map<String, String>> entries, int nextLineIndex) {
     }
 
     public enum HeaderState {
