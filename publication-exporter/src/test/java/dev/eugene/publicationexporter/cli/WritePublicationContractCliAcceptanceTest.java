@@ -142,6 +142,30 @@ class WritePublicationContractCliAcceptanceTest {
         assertEquals(8, requiredClaimFields.size());
         assertFieldNamed(requiredClaimFields, "statement", field ->
                 assertTrue(field.get("nonBlank").asBoolean()));
+
+        JsonNode conceptKind = kindNamed(kinds, "concept");
+        assertEquals("concepts", conceptKind.get("collection").asText());
+        assertEquals("concept", conceptKind.get("contentType").asText());
+        assertTrue(conceptKind.get("structuredBody").isEmpty());
+        JsonNode optionalConceptFields = conceptKind.get("optionalFields");
+        assertEquals(3, optionalConceptFields.size());
+        List<String> optionalConceptFieldNames = new ArrayList<>();
+        for (JsonNode field : optionalConceptFields) {
+            optionalConceptFieldNames.add(field.get("name").asText());
+        }
+        assertEquals(List.of("notThis", "examples", "relations"), optionalConceptFieldNames);
+        assertFieldNamed(optionalConceptFields, "notThis", field -> {
+            assertEquals("STRING", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalConceptFields, "examples", field -> {
+            assertEquals("STRING_LIST", field.get("type").asText());
+            assertTrue(field.get("nonBlank").asBoolean());
+        });
+        assertFieldNamed(optionalConceptFields, "relations", field -> {
+            assertEquals("STRUCTURED_LIST", field.get("type").asText());
+            assertEquals(List.of("name", "relation"), jsonStrings(field.get("structuredMembers")));
+        });
     }
 
     @Test
@@ -174,6 +198,14 @@ class WritePublicationContractCliAcceptanceTest {
         }
         fail("No kind named " + contentType + " in " + kinds);
         return null;
+    }
+
+    private List<String> jsonStrings(JsonNode values) {
+        List<String> result = new ArrayList<>();
+        for (JsonNode value : values) {
+            result.add(value.asText());
+        }
+        return result;
     }
 
     private JsonNode soleJsonValueOnStdout() throws Exception {
