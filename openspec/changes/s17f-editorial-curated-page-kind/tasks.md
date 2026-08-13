@@ -18,7 +18,7 @@ Global constraints for every task:
 
 This task is a **behavior-preserving extraction** for all six existing kinds. No existing acceptance fixture's expected output changes. Do this task first and run the full suite at the end before touching anything else — it is the foundation every later task's `FilesystemManagedSiteInstaller` interaction depends on.
 
-- [ ] 1.1 Create `ManagedArtifact`, an immutable value type describing one locale's rendered site payload:
+- [x] 1.1 Create `ManagedArtifact`, an immutable value type describing one locale's rendered site payload:
 
   ```java
   package dev.eugene.publicationexporter.admission;
@@ -78,7 +78,7 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
   }
   ```
 
-- [ ] 1.2 Add the default `projectManagedArtifact` method to `PublicationKind`, moving `FilesystemManagedSiteInstaller`'s current `frontmatter(...)`/`markdownFile(...)` logic in verbatim as private static helpers of the interface (Java 17 permits private interface methods). This reproduces today's exact byte-for-byte Markdown+frontmatter output for every kind that does not override it:
+- [x] 1.2 Add the default `projectManagedArtifact` method to `PublicationKind`, moving `FilesystemManagedSiteInstaller`'s current `frontmatter(...)`/`markdownFile(...)` logic in verbatim as private static helpers of the interface (Java 17 permits private interface methods). This reproduces today's exact byte-for-byte Markdown+frontmatter output for every kind that does not override it:
 
   ```java
   package dev.eugene.publicationexporter.admission;
@@ -152,7 +152,7 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
 
   Note the exact reassembly: the original `frontmatter(...)` returned only the `---\n...---\n` block and the caller (`writeLocaleFile`) concatenated `frontmatter(...) + body` separately. `markdownContent` above inlines both, producing the identical concatenated string — verify this by keeping every existing `FilesystemManagedSiteInstallerTest` assertion unchanged and green (they assert on the fully installed file's content, so a reassembly mistake fails loudly).
 
-- [ ] 1.3 Widen `BracketIndexedFields` from package-private to `public` (one-word change, no other modification — it already only exposes one static method `render(...)`, unaffected by the visibility change since every existing caller stays in-package):
+- [x] 1.3 Widen `BracketIndexedFields` from package-private to `public` (one-word change, no other modification — it already only exposes one static method `render(...)`, unaffected by the visibility change since every existing caller stays in-package):
 
   ```java
   // before:
@@ -161,7 +161,7 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
   public final class BracketIndexedFields {
   ```
 
-- [ ] 1.4 Refactor `FilesystemManagedSiteInstaller`: add a `PublicationKinds` field via a new secondary constructor, keep the existing single-arg constructor as a shortcut delegating to it (SBPP-BEH-04 Shortcut Constructor Method — zero existing call sites anywhere in the codebase need to change), and replace the three call sites that used the removed `markdownFile(...)`/`frontmatter(...)`/hardcoded collision-line logic with kind lookups:
+- [x] 1.4 Refactor `FilesystemManagedSiteInstaller`: add a `PublicationKinds` field via a new secondary constructor, keep the existing single-arg constructor as a shortcut delegating to it (SBPP-BEH-04 Shortcut Constructor Method — zero existing call sites anywhere in the codebase need to change), and replace the three call sites that used the removed `markdownFile(...)`/`frontmatter(...)`/hardcoded collision-line logic with kind lookups:
 
   ```java
   // Add imports:
@@ -286,13 +286,13 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
 
   Keep every other method (`recoverIfNeeded`, `ensurePayloadRoots`, locking, backup/rollback, `resolveWithinSiteRoot`, etc.) exactly as-is — none of them depend on the artifact shape, only on `Path` destinations, which remain `Path` throughout.
 
-- [ ] 1.5 Run `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemManagedSiteInstallerTest` and confirm every existing test (essay, note, claim, book, concept, album) still passes unchanged. Then run the complete `mvn -f publication-exporter/pom.xml test` and confirm no regression anywhere. If any existing assertion fails, the extraction introduced a byte-level difference — fix the extraction, do not adjust the test.
+- [x] 1.5 Run `mvn -f publication-exporter/pom.xml test -Dtest=FilesystemManagedSiteInstallerTest` and confirm every existing test (essay, note, claim, book, concept, album) still passes unchanged. Then run the complete `mvn -f publication-exporter/pom.xml test` and confirm no regression anywhere. If any existing assertion fails, the extraction introduced a byte-level difference — fix the extraction, do not adjust the test.
 
 ## Task 2 — `EnglishCandidateValidator`: blank body is only a worker failure when the source had one
 
 **Files:** `publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/EnglishCandidateValidator.java` (modify), `publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/EnglishCandidateValidatorTest.java` (extend — create if it does not already exist as a dedicated file; if validator coverage currently lives inside `PrepareHandlerTest`, add the new case there instead, matching existing convention).
 
-- [ ] 2.1 Write the failing test first: `validate("", "", List.of(PublicField.of("title", "")))` — wait, a blank *field* is still always a failure; the new behavior only concerns `enBody`. Write: given `ruBody = ""` and `enBody = ""` (both blank) and non-blank fields, `validate` returns `Result.ok()` with no body diagnostic (previously this would have failed with `"Translation worker produced a blank body."` even though there was never anything to translate). Also keep/add a case proving the check still fires: given `ruBody` non-blank and `enBody = ""`, `validate` still returns an invalid `Result` containing `"Translation worker produced a blank body."`.
+- [x] 2.1 Write the failing test first: `validate("", "", List.of(PublicField.of("title", "")))` — wait, a blank *field* is still always a failure; the new behavior only concerns `enBody`. Write: given `ruBody = ""` and `enBody = ""` (both blank) and non-blank fields, `validate` returns `Result.ok()` with no body diagnostic (previously this would have failed with `"Translation worker produced a blank body."` even though there was never anything to translate). Also keep/add a case proving the check still fires: given `ruBody` non-blank and `enBody = ""`, `validate` still returns an invalid `Result` containing `"Translation worker produced a blank body."`.
 
   ```java
   @Test
@@ -312,9 +312,9 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
   }
   ```
 
-- [ ] 2.2 Run the new test file/method and confirm the first case currently FAILS (with the pre-fix code) and the second currently PASSES — this proves the test actually exercises the gap being fixed.
+- [x] 2.2 Run the new test file/method and confirm the first case currently FAILS (with the pre-fix code) and the second currently PASSES — this proves the test actually exercises the gap being fixed.
 
-- [ ] 2.3 Fix `blankFieldDiagnostics` to accept `ruBody` and gate the body check on it being non-blank; update its one call site inside `validate(String, List, String, List)`:
+- [x] 2.3 Fix `blankFieldDiagnostics` to accept `ruBody` and gate the body check on it being non-blank; update its one call site inside `validate(String, List, String, List)`:
 
   ```java
   // in validate(...):
@@ -335,7 +335,7 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
   }
   ```
 
-- [ ] 2.4 Run `mvn -f publication-exporter/pom.xml test -Dtest=EnglishCandidateValidatorTest,PrepareHandlerTest` (adjust the test class name to wherever step 2.1's test actually landed) and confirm both new cases pass, then run the complete `mvn -f publication-exporter/pom.xml test` and confirm zero regressions — every existing kind's `ruBody` is non-blank in its fixtures, so this change cannot alter any existing test's outcome.
+- [x] 2.4 Run `mvn -f publication-exporter/pom.xml test -Dtest=EnglishCandidateValidatorTest,PrepareHandlerTest` (adjust the test class name to wherever step 2.1's test actually landed) and confirm both new cases pass, then run the complete `mvn -f publication-exporter/pom.xml test` and confirm zero regressions — every existing kind's `ruBody` is non-blank in its fixtures, so this change cannot alter any existing test's outcome.
 
 ## Task 3 — `AboutPageBody` parser and `CuratedPagePublicationKind`
 
@@ -787,7 +787,7 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
 
 **Sequencing note:** Task 3 deliberately left `CuratedPagePublicationKind` using the inherited (Markdown) `projectManagedArtifact` default from Task 1, since Task 3 was scoped to admission only. This task adds the real JSON override first (4.1), before any test in this task or Task 5 can exercise JSON installation — Task 4.2's own test requires the override to exist.
 
-- [ ] 4.1 Add the `projectManagedArtifact` override to `CuratedPagePublicationKind`:
+- [x] 4.1 Add the `projectManagedArtifact` override to `CuratedPagePublicationKind`:
 
   ```java
   @Override
@@ -867,15 +867,15 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
 
   Note `structuredData.contains("\"searchable\":true")` is a pragmatic read of the fixed two-key literal `structuredDataFrom` writes in Task 3 — acceptable because both producer and consumer are the same class family and the shape is deliberately fixed and tested end-to-end here; do not generalize this into a JSON-parsing round trip unless a second field is ever added to `structuredData` for this kind.
 
-- [ ] 4.2 Extend `PublicationContractConformanceTest`'s shared fixture table with `editorial/curated_page` cases, reusing `CuratedPagePublicationKindFixtures.all()` exactly as every sibling kind already does (copy the `conceptContractVerdictAgreesWithFixtureAndRuntimeValidator`-shaped method, renamed for curated pages). This kind's contract has a non-empty `structuredBody` list for the first time — if the conformance harness has never exercised that field before, verify it actually compares `contract().structuredBody()` against something (if it currently ignores `structuredBody` entirely, that is fine and expected: `structuredBody` is documentation for authoring tools, not an input the runtime validator re-derives, since `AboutPageBody.parse` already independently enforces the same sections — do not invent a redundant cross-check between the two representations unless a real drift is found).
+- [x] 4.2 Extend `PublicationContractConformanceTest`'s shared fixture table with `editorial/curated_page` cases, reusing `CuratedPagePublicationKindFixtures.all()` exactly as every sibling kind already does (copy the `conceptContractVerdictAgreesWithFixtureAndRuntimeValidator`-shaped method, renamed for curated pages). This kind's contract has a non-empty `structuredBody` list for the first time — if the conformance harness has never exercised that field before, verify it actually compares `contract().structuredBody()` against something (if it currently ignores `structuredBody` entirely, that is fine and expected: `structuredBody` is documentation for authoring tools, not an input the runtime validator re-derives, since `AboutPageBody.parse` already independently enforces the same sections — do not invent a redundant cross-check between the two representations unless a real drift is found).
 
-- [ ] 4.3 Add a `FilesystemManagedSiteInstallerTest` case proving `editorial/curated_page` installs as JSON, not Markdown, using the 4.1 override: build an approved `CandidateSnapshot` with `ruBody`/`enBody` both `""`, `ruFields`/`enFields` matching `CuratedPagePublicationKind`'s translated-field shape (title, summary, eyebrow, lead, one principle's title/text, colophon) in RU and EN, and `structuredData` equal to `{"searchable":true,"type":"about"}`. Call `new FilesystemManagedSiteInstaller(siteRoot).install(identity, approved)` with `identity = PublicationIdentity.of("editorial", "curated_page", "about")`. Assert: `siteRoot.resolve("src/data/pages/ru/about.json")` and `.../en/about.json` both exist (not `src/content/editorial/...`); each parses as valid JSON (use the project's existing JSON test-parsing convention — check how `CheckContentGateContractTest` or `SiteReleaseManifest` tests parse JSON for the established pattern) containing `"id":"about"`, `"type":"about"`, `"language":"ru"`/`"en"` respectively, the RU/EN translated field values, and `"searchable":true`; assert the file contains no `topics`/`links` key at all (proving the earlier topics/links scope-narrowing decision is enforced, not just documented).
+- [x] 4.3 Add a `FilesystemManagedSiteInstallerTest` case proving `editorial/curated_page` installs as JSON, not Markdown, using the 4.1 override: build an approved `CandidateSnapshot` with `ruBody`/`enBody` both `""`, `ruFields`/`enFields` matching `CuratedPagePublicationKind`'s translated-field shape (title, summary, eyebrow, lead, one principle's title/text, colophon) in RU and EN, and `structuredData` equal to `{"searchable":true,"type":"about"}`. Call `new FilesystemManagedSiteInstaller(siteRoot).install(identity, approved)` with `identity = PublicationIdentity.of("editorial", "curated_page", "about")`. Assert: `siteRoot.resolve("src/data/pages/ru/about.json")` and `.../en/about.json` both exist (not `src/content/editorial/...`); each parses as valid JSON (use the project's existing JSON test-parsing convention — check how `CheckContentGateContractTest` or `SiteReleaseManifest` tests parse JSON for the established pattern) containing `"id":"about"`, `"type":"about"`, `"language":"ru"`/`"en"` respectively, the RU/EN translated field values, and `"searchable":true`; assert the file contains no `topics`/`links` key at all (proving the earlier topics/links scope-narrowing decision is enforced, not just documented).
 
-- [ ] 4.4 Add a case proving the collision guard works for the new JSON path shape too: install `editorial/curated_page` `about` at a site root, then attempt to install a different identity that would resolve to the same relative path with a different `collisionMarkerLine` (construct this directly against `FilesystemManagedSiteInstaller`, not through a second real kind — no second curated-page-shaped kind exists yet to collide with in this exporter edition, so this test exercises the guard mechanically: pre-seed `src/data/pages/ru/about.json` by hand with a JSON file lacking any `"contentType"`-prefixed line vs one with a mismatched value, matching how the existing Markdown collision tests are structured against `CrossKindAddressCollisionAcceptanceTest`/`FilesystemManagedSiteInstallerTest`'s existing collision cases — read one of those first and mirror its exact setup shape).
+- [x] 4.4 Add a case proving the collision guard works for the new JSON path shape too: install `editorial/curated_page` `about` at a site root, then attempt to install a different identity that would resolve to the same relative path with a different `collisionMarkerLine` (construct this directly against `FilesystemManagedSiteInstaller`, not through a second real kind — no second curated-page-shaped kind exists yet to collide with in this exporter edition, so this test exercises the guard mechanically: pre-seed `src/data/pages/ru/about.json` by hand with a JSON file lacking any `"contentType"`-prefixed line vs one with a mismatched value, matching how the existing Markdown collision tests are structured against `CrossKindAddressCollisionAcceptanceTest`/`FilesystemManagedSiteInstallerTest`'s existing collision cases — read one of those first and mirror its exact setup shape).
 
-- [ ] 4.5 Add a `PrepareHandlerTest` fixture proving invariant `structuredData` changes (e.g. `publicSearchable` flipping from unset to `true`) force a new candidate requiring review rather than being silently treated as unchanged — this is generic, already-proven machinery (`CandidateSnapshot`/`ReferenceMap` already hash `structuredData` for every kind), so this task should need zero further production changes beyond 4.1, only a fixture proving the existing mechanism already covers curated pages the same way it covers every other kind's invariant metadata.
+- [x] 4.5 Add a `PrepareHandlerTest` fixture proving invariant `structuredData` changes (e.g. `publicSearchable` flipping from unset to `true`) force a new candidate requiring review rather than being silently treated as unchanged — this is generic, already-proven machinery (`CandidateSnapshot`/`ReferenceMap` already hash `structuredData` for every kind), so this task should need zero further production changes beyond 4.1, only a fixture proving the existing mechanism already covers curated pages the same way it covers every other kind's invariant metadata.
 
-- [ ] 4.6 Run `mvn -f publication-exporter/pom.xml test -Dtest=PublicationContractConformanceTest,FilesystemManagedSiteInstallerTest,CuratedPagePublicationKindTest,PrepareHandlerTest` and confirm all pass, with zero production changes needed beyond 4.1 (if a production change turns out to be needed anywhere else in this task, stop and treat it as a real design gap — the artifact-projection seam from Task 1 plus 4.1's override are expected to already fully cover this).
+- [x] 4.6 Run `mvn -f publication-exporter/pom.xml test -Dtest=PublicationContractConformanceTest,FilesystemManagedSiteInstallerTest,CuratedPagePublicationKindTest,PrepareHandlerTest` and confirm all pass, with zero production changes needed beyond 4.1 (if a production change turns out to be needed anywhere else in this task, stop and treat it as a real design gap — the artifact-projection seam from Task 1 plus 4.1's override are expected to already fully cover this).
 
 ## Task 5 — End-to-end slice proof
 

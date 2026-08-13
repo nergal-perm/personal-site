@@ -47,7 +47,11 @@ final class PublicNoteIndex {
             ambiguousStems.add(stem);
             return;
         }
-        routes.put(stem, "/" + intake.kind().routePrefix() + "/" + intake.identity().publicId() + "/");
+        String routePrefix = intake.kind().routePrefix();
+        String route = routePrefix == null
+                ? "/" + intake.identity().publicId() + "/"
+                : "/" + routePrefix + "/" + intake.identity().publicId() + "/";
+        routes.put(stem, route);
     }
 
     private static String filenameStem(VaultRelativePath path) {

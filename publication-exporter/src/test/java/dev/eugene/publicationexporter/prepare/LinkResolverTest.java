@@ -122,6 +122,60 @@ final class LinkResolverTest {
     }
 
     @Test
+    void fromBuildsCollectionlessRouteForAnAdmittedCuratedAboutPage() {
+        String sourceNote = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: source-note
+                id: source-note
+                title: Source note
+                description: A valid description.
+                ---
+                See [[about]].""";
+        String aboutPage = """
+                ---
+                publish: true
+                publicCollection: editorial
+                publicContentType: curated_page
+                publicId: about
+                editorialPage: about
+                id: source-about
+                title: About
+                ---
+                ## Кратко
+
+                Кратко.
+
+                ## Eyebrow
+
+                Бровь.
+
+                ## Лид
+
+                Лид.
+
+                ## Принципы
+
+                ### Первый
+
+                Принцип.
+
+                ## Колофон
+
+                Колофон.""";
+        PublicNoteIndex index = PublicNoteIndex.from(
+                VaultReader.createNull(Map.of(
+                        VaultRelativePath.of("blog/Source note.md"), sourceNote,
+                        VaultRelativePath.of("editorial/about.md"), aboutPage)),
+                new NoteIntake(PublicationKinds.installed()));
+
+        assertEquals("See [about](/about/).", resolvedBodyOrFail("See [[about]].", index));
+        assertEquals("/about/", index.routeFor("about").orElseThrow());
+    }
+
+    @Test
     void filenameStemCollisionAcrossTwoDirectoriesFallsBackToTheSafeLabelForBothNotes() {
         String noteInBlog = """
                 ---
