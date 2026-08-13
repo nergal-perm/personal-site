@@ -2,12 +2,16 @@
 id: prob-20260813-s17f-slice-implementation-session-2026-08-13-gov-d48f3e37
 kind: ProblemCard
 version: 1
-status: active
+status: addressed
 title: S17f — editorial/curated_page kind and the G7 grammar-freeze gate (ADM-03, ADM-04, PCM-02, PCM-06)
 context: Governed by the greenfield exporter slice plan (openspec/implementation-plan.md), sub-problem of prob-20260803-fe9b3011. Follows S17e (music/album, prob-20260812-dfdb5d68, archived as 2026-08-13-s17e-music-album-kind), the last of the six slices in the S17a-S17f content-kind ladder. Unlike S17a-e, editorial/curated_page's structured body is not one uniform field set: legacy exporter-java/src/main/java/dev/eugene/astroexport/editorial/EditorialParser.java implements nine distinct page-type grammars (home, essays, claims, notes, music, library, concepts, now, about) keyed by frontmatter `editorialPage`, each with its own required Markdown sections/inline fields (H2/H3 headings, `Field::` inline syntax, wikilinks, bullet lists). The live site already consumes this kind's output as generated static JSON at site/src/data/pages/{ru,en}/*.json (e.g. about.json), rendered by dedicated views (site/src/views/AboutPage.astro, NowPage.astro) and routed via site/src/pages/{ru,en}/about.astro etc. — not an Astro content collection like blog/bibliography/music/concepts. The plan's own G7 gate ("Freeze current editorial grammar as one edition or version it independently") is explicitly required before this slice and is currently undecided. publication-admission/spec.md already contains placeholder scenario text mentioning "editorial page" from earlier kind-ladder edits (ADM-03/ADM-04 enumeration scenarios), but no editorial-specific scenario, PublicationKind, or release projection exists yet.
+
+## Resolution
+
+Addressed via openspec/changes/archive/2026-08-13-s17f-editorial-curated-page-kind/. G7 was decided (dec-20260813-88dd478e): the nine-page-type editorial grammar is frozen as one contract edition; only `editorialPage: about` is implemented this slice, with the other eight page keys named and rejected as "not yet supported." Implemented via subagent-driven-development (5 tasks, Codex Companion Tasks — Sol for the artifact-projection extraction, Luna for the rest, Spark for the isolated EnglishCandidateValidator fix), per-task 4-way parallel review with fix loops (real findings caught and fixed: byte-identical Markdown preservation across the projection-seam extraction, duplicate/out-of-order heading and paragraph-preservation bugs in the new AboutPageBody parser matching the exporter-java compatibility oracle, a collision-marker spoofing regression from an over-broad `.contains()` fix later corrected to safe pretty-printed exact-line matching, and thin end-to-end assertion coverage). The final whole-branch review (GPT 5.6 Sol, xhigh effort) found one real cross-task integration bug scoped review could not have caught — `CuratedPagePublicationKind.routePrefix()`'s deliberate `null` (curated pages have no shared route-prefix convention) was concatenated unconditionally by `PublicNoteIndex`, resolving any `[[about]]` vault wikilink to the broken route `/null/about/` — fixed in one round, re-reviewed "Addressed — ready for archival." Full suite green (802/802, `mvn -f publication-exporter/pom.xml test`, up from a 763 baseline). 12 commits on master since baseline.
 mode: standard
 created_at: 2026-08-13T03:28:03Z
-updated_at: 2026-08-13T03:28:03Z
+updated_at: 2026-08-13T05:58:11Z
 ---
 
 # S17f — editorial/curated_page kind and the G7 grammar-freeze gate (ADM-03, ADM-04, PCM-02, PCM-06)
