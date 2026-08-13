@@ -47,6 +47,8 @@ class FilesystemManagedSiteInstallerTest {
             PublicationIdentity.of("music", "album", "kind-of-blue");
     private static final PublicationIdentity CURATED_PAGE_IDENTITY =
             PublicationIdentity.of("editorial", "curated_page", "about");
+    private static final PublicationIdentity COLLIDING_NOTE_IDENTITY =
+            PublicationIdentity.of("blog", "note", "my-essay");
     private static final PublicationIdentity OTHER_IDENTITY =
             PublicationIdentity.of("blog", "essay", "another-essay");
     private static final CandidateSnapshot SNAPSHOT = LegacyCandidateSnapshotFixture.of(
@@ -119,6 +121,21 @@ class FilesystemManagedSiteInstallerTest {
             ReferenceMap.empty(OTHER_IDENTITY, "other-ru-hash", "other-en-hash",
                     "other-ru-title-hash", "other-en-title-hash",
                     "other-ru-description-hash", "other-en-description-hash"));
+    private static final CandidateSnapshot ESSAY_SNAPSHOT_WITH_NOTE_MARKER_TEXT =
+            LegacyCandidateSnapshotFixture.of(
+                    "This article discusses the literal field contentType: \"note\".",
+                    "This English article discusses the literal field contentType: \"note\".",
+                    "RU essay title", "EN essay title", "RU essay description.",
+                    "EN essay description.",
+                    ReferenceMap.empty(IDENTITY, "spoof-ru-hash", "spoof-en-hash",
+                            "spoof-ru-title-hash", "spoof-en-title-hash",
+                            "spoof-ru-description-hash", "spoof-en-description-hash"));
+    private static final CandidateSnapshot COLLIDING_NOTE_SNAPSHOT = LegacyCandidateSnapshotFixture.of(
+            "# RU note body", "# EN note body", "RU note title", "EN note title",
+            "RU note description.", "EN note description.",
+            ReferenceMap.empty(COLLIDING_NOTE_IDENTITY, "collision-ru-hash", "collision-en-hash",
+                    "collision-ru-title-hash", "collision-en-title-hash",
+                    "collision-ru-description-hash", "collision-en-description-hash"));
 
     @TempDir
     Path siteRoot;
@@ -446,6 +463,20 @@ class FilesystemManagedSiteInstallerTest {
         assertFalse(Files.exists(siteRoot.resolve("src/content/editorial/ru/about.md")));
         assertFalse(Files.exists(siteRoot.resolve("src/content/editorial/en/about.md")));
 
+        assertEquals("""
+                {
+                  "id" : "about",
+                  "type" : "about",
+                  "contentType" : "curated_page",
+                  "language" : "ru",
+                  "title" : "RU about title",
+                  "summary" : "RU summary",
+                  "eyebrow" : "RU eyebrow",
+                  "lead" : "RU lead",
+                  "principles" : [ [ "RU principle title", "RU principle text" ] ],
+                  "colophon" : "RU colophon",
+                  "searchable" : true
+                }""", Files.readString(ruFile));
         assertCuratedPageJson(new ObjectMapper().readTree(Files.readString(ruFile)), "ru", ruFields);
         assertCuratedPageJson(new ObjectMapper().readTree(Files.readString(enFile)), "en", enFields);
     }
@@ -457,13 +488,28 @@ class FilesystemManagedSiteInstallerTest {
         installer.install(CURATED_PAGE_IDENTITY, approved);
 
         Path ruFile = siteRoot.resolve("src/data/pages/ru/about.json");
-        Files.writeString(ruFile, "{\"id\":\"about\",\"contentType\":\"other\"}");
+        Files.writeString(ruFile, "{\n"
+                + "  \"id\" : \"about\",\n"
+                + "  \"contentType\" : \"other\"\n"
+                + "}\n");
         Path provenance = siteRoot.resolve(".astro-export/release-provenance.json");
         Files.writeString(provenance, SiteReleaseManifest.computeOver(siteRoot, List.of(
                 "public/assets/vault", "src/content", "src/data/pages")).toCanonicalJson());
 
         assertThrows(ManagedSiteKindCollisionException.class,
                 () -> installer.install(CURATED_PAGE_IDENTITY, approved));
+    }
+
+    @Test
+    void markdownBodyTextCannotSpoofAnotherKindsCollisionMarker() throws Exception {
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+
+        installer.install(IDENTITY, ESSAY_SNAPSHOT_WITH_NOTE_MARKER_TEXT);
+
+        assertThrows(ManagedSiteKindCollisionException.class,
+                () -> installer.install(COLLIDING_NOTE_IDENTITY, COLLIDING_NOTE_SNAPSHOT));
+        assertTrue(Files.readString(siteRoot.resolve("src/content/blog/ru/my-essay.md"))
+                .contains("contentType: \"note\""));
     }
 
     private static void assertCuratedPageJson(JsonNode page, String locale, List<PublicField> fields) {

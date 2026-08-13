@@ -31,7 +31,7 @@ final class CuratedPageJson {
             document.put("principles", principlesFrom(fields));
             document.put("colophon", fieldValue(fields, "colophon"));
             document.put("searchable", structuredData.contains("\"searchable\":true"));
-            return MAPPER.writeValueAsString(document);
+            return MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(document);
         } catch (com.fasterxml.jackson.core.JsonProcessingException impossible) {
             throw new IllegalStateException("Curated page JSON serialization failed", impossible);
         }

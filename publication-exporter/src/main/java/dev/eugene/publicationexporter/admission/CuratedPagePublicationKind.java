@@ -37,10 +37,15 @@ public final class CuratedPagePublicationKind implements PublicationKind {
         boolean isRu = "ru".equals(locale);
         List<PublicField> fields = isRu ? approved.ruFields() : approved.enFields();
         String json = CuratedPageJson.render(identity, fields, approved.structuredData(), locale);
+        String collisionMarkerLine = json.lines()
+                .filter(line -> line.contains("\"contentType\""))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "Curated page JSON has no contentType collision marker"));
         return ManagedArtifact.of(
                 "src/data/pages/" + locale + "/" + identity.publicId() + ".json",
                 json,
-                "\"contentType\":\"" + contentType() + "\"");
+                collisionMarkerLine);
     }
 
     @Override

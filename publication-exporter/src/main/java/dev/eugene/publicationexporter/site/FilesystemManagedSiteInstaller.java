@@ -107,8 +107,11 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         } catch (IOException unreadable) {
             return;
         }
-        boolean matchesIncomingKind = lines.stream().anyMatch(line -> line.contains(collisionMarkerLine));
-        boolean hasAnyMarkerLine = lines.stream().anyMatch(line -> line.contains("contentType"));
+        boolean matchesIncomingKind = lines.stream().anyMatch(collisionMarkerLine::equals);
+        boolean hasAnyMarkerLine = lines.stream().anyMatch(candidateLine -> {
+            String stripped = candidateLine.strip();
+            return stripped.startsWith("contentType") || stripped.startsWith("\"contentType\"");
+        });
         if (hasAnyMarkerLine && !matchesIncomingKind) {
             throw new ManagedSiteKindCollisionException(identity, resolved);
         }
