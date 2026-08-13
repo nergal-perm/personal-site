@@ -78,6 +78,18 @@ An admitted source note SHALL have `publicCollection`, a lowercase-slug `publicI
 - **THEN** it is admitted as the `music/album` kind, not any `blog/*`, `bibliography/book`, or `concepts/concept` kind
 - **AND** an essay, note, claim, book, or concept fixture admitted in the same run is unaffected and still resolves to its own kind
 
+#### Scenario: An editorial/curated_page (about) fixture is admitted as a distinct kind from blog, bibliography, music, and concepts kinds
+- **GIVEN** a selected note with `publicCollection: editorial`, `publicContentType: curated_page`, a valid `publicId` equal to `editorialPage`, `editorialPage: about`, `id`, and `title`
+- **WHEN** its publication contract is evaluated
+- **THEN** it is admitted as the `editorial/curated_page` kind, not any `blog/*`, `bibliography/book`, `music/album`, or `concepts/concept` kind
+- **AND** an essay, note, claim, book, album, or concept fixture admitted in the same run is unaffected and still resolves to its own kind
+
+#### Scenario: An editorial/curated_page fixture with an unsupported page key is blocked, not admitted
+- **GIVEN** a selected note with `publicCollection: editorial`, `publicContentType: curated_page`, and `editorialPage` set to one of the eight legacy page keys other than `about` (`home`, `essays`, `claims`, `notes`, `music`, `library`, `concepts`, `now`)
+- **WHEN** its publication contract is evaluated
+- **THEN** the note is blocked with a diagnostic naming `editorialPage` and stating that only `about` is currently supported
+- **AND** it is not admitted as `editorial/curated_page` or any other kind
+
 #### Scenario: Ambiguous or incomplete identity is blocked
 - **GIVEN** a selected note with missing identity fields, an invalid public ID, an unsupported collection/content-type pair, or a duplicate publication identity
 - **WHEN** its publication contract is evaluated
@@ -88,7 +100,7 @@ An admitted source note SHALL have `publicCollection`, a lowercase-slug `publicI
 The exporter SHALL validate the required metadata and structured body sections for the selected publication kind before content preparation or release.
 
 #### Scenario: Kind-specific contract is complete
-- **GIVEN** a selected book with a non-empty `authors` list and no `selectedQuote`, an album with `artist`, `work`, `context`, `association`, and any combination of optional `format`, `listenFor`, `care`, `releaseDate`, `genreTags`, `streamingUrl`, and `bandcampEmbedUrl`, a concept with `id`, `title`, and `description` and any combination of optional `notThis`, `relations`, and `examples`, an editorial page with an allowed page key and valid structured body, a note with `id`, `title`, and `description` and no required structured body, a claim with `id`, `title`, `description`, and a non-blank `statement`, or an essay with title and description
+- **GIVEN** a selected book with a non-empty `authors` list and no `selectedQuote`, an album with `artist`, `work`, `context`, and `association`, a concept with `id`, `title`, and `description` and any combination of optional `notThis`, `relations`, and `examples`, an `about` curated editorial page with `editorialPage: about`, `id`, `title`, and a structured body containing exactly one `## Кратко` section, one `## Eyebrow` section, one `## Лид` section, a `## Принципы` section with at least one `### `-headed principle, and one `## Колофон` section, a note with `id`, `title`, and `description` and no required structured body, a claim with `id`, `title`, `description`, and a non-blank `statement`, or an essay with title and description
 - **WHEN** the note is validated
 - **THEN** the kind-specific contract passes
 
@@ -169,6 +181,25 @@ The exporter SHALL validate the required metadata and structured body sections f
 - **WHEN** the note is validated
 - **THEN** the kind-specific contract passes, since every field beyond the required set is optional per `site/src/content.config.ts`'s declared `music` schema
 
+#### Scenario: editorial/curated_page (about) requires editorialPage, id, and title, but no description
+- **GIVEN** a selected `editorial/curated_page` fixture with `editorialPage: about` but a missing or blank `id` or `title`
+- **WHEN** the note is validated
+- **THEN** the kind-specific contract fails
+- **AND** the diagnostic names `editorial/curated_page` and the missing requirement
+- **AND** a fixture with valid `editorialPage`, `id`, and `title` but no `description` field is not blocked for that reason, since `editorial/curated_page` has no `description` requirement — its body's `## Кратко` section supplies the equivalent public summary
+
+#### Scenario: editorial/curated_page (about) body grammar is incomplete
+- **GIVEN** a selected `editorial/curated_page` (`about`) fixture whose body is missing its `## Кратко`, `## Eyebrow`, `## Лид`, `## Принципы`, or `## Колофон` section, or whose `## Принципы` section contains zero `### `-headed principles
+- **WHEN** the note is validated
+- **THEN** processing is blocked before translation or release
+- **AND** the diagnostic names the missing or empty section
+
+#### Scenario: editorial/curated_page (about) publicId must equal editorialPage
+- **GIVEN** a selected `editorial/curated_page` fixture whose `publicId` does not equal its `editorialPage` value
+- **WHEN** the note is validated
+- **THEN** the kind-specific contract fails
+- **AND** the diagnostic names `publicId`
+
 ### Requirement: ADM-05 Validate the bounded request, not unrelated notes
 
 Note-scoped commands SHALL validate the requested selected note and its direct safety dependencies without making unrelated invalid vault notes a blocker.
@@ -188,7 +219,7 @@ Note-scoped commands SHALL validate the requested selected note and its direct s
 
 ### Requirement: ADM-06 Export the publication contract for authoring tools
 
-The exporter SHALL expose a deterministic, machine-readable publication contract describing supported kinds, required fields, allowed values, and structured-body requirements. The contract is a standalone JSON document (`contractVersion` plus one entry per supported kind) returned by the `write-publication-contract` command; it is not wrapped in the `BridgeResponse` schema-v2 envelope used by note-scoped commands, since a contract has no operation outcome (no `ok`/`status`/`diagnostics`/`identity`) — it is a declarative description of what a valid publication looks like. For each kind, the contract states: its `collection`/`contentType` pair; each required frontmatter field with its expected type, and where applicable an explicit allowed-value list (e.g. `publicCollection` must be `"blog"`) or a documented pattern (e.g. `publicId` must match the lowercase route-slug pattern); its optional fields and their shape; and its structured-body requirements. For the kinds implemented after this slice, those requirements remain empty (`blog/essay`, `blog/note`, `blog/claim`, `bibliography/book`, `concepts/concept`, and `music/album`), because every implemented kind's supported fields live in frontmatter.
+The exporter SHALL expose a deterministic, machine-readable publication contract describing supported kinds, required fields, allowed values, and structured-body requirements. The contract is a standalone JSON document (`contractVersion` plus one entry per supported kind) returned by the `write-publication-contract` command; it is not wrapped in the `BridgeResponse` schema-v2 envelope used by note-scoped commands, since a contract has no operation outcome (no `ok`/`status`/`diagnostics`/`identity`) — it is a declarative description of what a valid publication looks like. For each kind, the contract states: its `collection`/`contentType` pair; each required frontmatter field with its expected type, and where applicable an explicit allowed-value list (e.g. `publicCollection` must be `"blog"`) or a documented pattern (e.g. `publicId` must match the lowercase route-slug pattern); its optional fields and their shape; and its structured-body requirements. For `blog/essay`, `blog/note`, `blog/claim`, `bibliography/book`, `concepts/concept`, and `music/album`, those requirements remain empty, because each of those kinds' supported fields live entirely in frontmatter. `editorial/curated_page` is the first kind whose structured-body requirements are non-empty, naming its required sections (`## Кратко`, `## Eyebrow`, `## Лид`, `## Принципы` with at least one principle, `## Колофон`) rather than leaving that part of the contract empty.
 
 #### Scenario: Contract is requested twice
 - **GIVEN** the same exporter edition and no contract changes
@@ -197,11 +228,10 @@ The exporter SHALL expose a deterministic, machine-readable publication contract
 - **AND** the normalization is: stable per-kind field order, kinds sorted by `(collection, contentType)`, no timestamp or environment-dependent value in the document
 
 #### Scenario: Contract describes every installed kind
-- **GIVEN** the exporter edition implements `blog/essay`, `blog/note`, `blog/claim`, `bibliography/book`, `concepts/concept`, and `music/album`
+- **GIVEN** the exporter edition implements `blog/essay`, `blog/note`, `blog/claim`, `bibliography/book`, `concepts/concept`, `music/album`, and `editorial/curated_page`
 - **WHEN** the publication contract is requested
 - **THEN** the contract lists exactly one entry per installed kind, sorted by `(collection, contentType)`
 - **AND** each entry's required fields match that kind's own `PublicationKind` implementation's enforced fields, with their actual allowed values, type, or pattern
-- **AND** each entry's structured-body requirements are empty, since no implemented kind in this slice requires a structured body section
 
 #### Scenario: Contract describes blog/claim's required statement field
 - **GIVEN** the exporter edition implements `blog/claim`
@@ -229,6 +259,13 @@ The exporter SHALL expose a deterministic, machine-readable publication contract
 - **THEN** the `music/album` entry's required fields include `artist`, `work`, `context`, and `association` as non-blank string requirements, alongside the shared identity fields (`publish`, `publicCollection`, `publicContentType`, `publicId`, `id`, `title`, `description`)
 - **AND** the entry's optional fields document `format` and `care` as optional non-blank strings, `releaseDate`, `streamingUrl`, and `bandcampEmbedUrl` as optional non-blank strings, `listenFor` as an optional non-blank string list, and `genreTags` as an optional non-blank string list
 - **AND** its structured-body requirements remain empty
+
+#### Scenario: Contract describes editorial/curated_page's required fields and structured-body requirement
+- **GIVEN** the exporter edition implements `editorial/curated_page`
+- **WHEN** the publication contract is requested
+- **THEN** the `editorial/curated_page` entry's required fields include `editorialPage` (allowed value `about` for this edition) alongside the shared identity fields (`publish`, `publicCollection`, `publicContentType`, `publicId`, `id`, `title`), and no `description` requirement
+- **AND** the entry's structured-body requirements name its five required sections and the minimum-one-principle rule
+- **AND** its optional fields document `publicSearchable` as an optional boolean — `topics`/`links` are not part of this kind's contract, matching every other implemented kind, none of which declares them either
 
 #### Scenario: Validator and published contract disagree
 - **GIVEN** a fixture accepted by the published contract but rejected by runtime validation, or the reverse

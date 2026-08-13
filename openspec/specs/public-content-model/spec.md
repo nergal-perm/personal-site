@@ -66,6 +66,13 @@ Each manifest entry SHALL contain common public fields plus the normalized field
 - **AND** it carries the invariant fields `artist`, `work`, `releaseDate`, `genreTags`, `streamingUrl`, `bandcampEmbedUrl`, and the kind's own literal `reviewType: album` marker in deterministic canonical form
 - **AND** it contains no book-only, claim-only, note-only, essay-only, or concept-only fields, and no undeclared private or workflow fields
 
+#### Scenario: editorial/curated_page (about) projects to a JSON page artifact, not a Markdown content-collection entry
+- **GIVEN** an admitted `editorial/curated_page` (`about`) fixture satisfying its kind contract
+- **WHEN** its manifest entry and release artifact are built
+- **THEN** the entry uses the curated-page route policy (`/{locale}/about/`, the site's dedicated non-`src/content` route)
+- **AND** the release artifact is one JSON document per locale at `src/data/pages/{locale}/about.json`, field-compatible with the shape the site's `registry.ts` `fromPage()` already reads (`id`, `type`, `language`, `title`, `summary`, `searchable`, plus this kind's own `eyebrow`, `lead`, `principles`, `colophon`), not a Markdown file with YAML frontmatter — `topics` and `links` are omitted, matching every other implemented kind in this exporter edition, none of which populate those fields yet (`registry.ts`'s `fromPage()` and `fromContent()` already default both to `[]` when absent, so omission is safe for the site build)
+- **AND** it contains no book-only, claim-only, note-only, essay-only, album-only, or concept-only fields, and no undeclared private or workflow fields
+
 #### Scenario: Unsupported value reaches projection
 - **GIVEN** a selected note with an unsupported field value or malformed structured body that escaped an earlier check
 - **WHEN** manifest projection evaluates it
@@ -207,6 +214,13 @@ An English candidate SHALL preserve invariant identity and structured fields, in
 - **WHEN** preparation evaluates the approved baseline
 - **THEN** it creates a new candidate requiring review instead of mirroring the approved snapshot
 - **AND** if the same invariant metadata changes while translation is in progress, preparation returns stale and installs no candidate
+
+#### Scenario: editorial/curated_page (about) English candidate translates prose and principle titles, keeps invariant metadata
+- **GIVEN** an `editorial/curated_page` (`about`) Russian candidate with its `summary`, `eyebrow`, `lead`, `colophon`, and an ordered list of `principles` (each a title/text pair), and its worker-produced English candidate sharing the same identity and `searchable`
+- **WHEN** translation validation runs
+- **THEN** it is accepted only when the English candidate preserves `searchable` exactly, and has the same number of `principles` entries in the same order
+- **AND** `summary`, `eyebrow`, `lead`, `colophon`, and both the title and text of every `principles` entry are validated as translated prose fields, not opaque copied metadata
+- **AND** an English candidate that adds, removes, or reorders any `principles` entry is blocked as structurally misaligned
 
 #### Scenario: Translation changes an invariant or route locale
 - **GIVEN** an English candidate with altered identity, missing or duplicate fields, stale source provenance, or an internal `/ru/` route
