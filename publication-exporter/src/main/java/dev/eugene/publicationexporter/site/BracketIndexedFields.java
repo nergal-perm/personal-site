@@ -9,14 +9,14 @@ import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class BracketIndexedFields {
+public final class BracketIndexedFields {
 
     private static final Pattern LIST_ITEM = Pattern.compile("^(\\w+)\\[(\\d+)\\](?:\\.(\\w+))?$");
 
     private BracketIndexedFields() {
     }
 
-    static String render(List<PublicField> fields, Consumer<PublicField> scalarFieldWriter) {
+    public static String render(List<PublicField> fields, Consumer<PublicField> scalarFieldWriter) {
         StringBuilder yaml = new StringBuilder();
         LinkedHashMap<String, LinkedHashMap<Integer, LinkedHashMap<String, String>>> grouped = new LinkedHashMap<>();
         fields.forEach(field -> dispatchField(grouped, scalarFieldWriter, field));

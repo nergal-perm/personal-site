@@ -1,8 +1,10 @@
 package dev.eugene.publicationexporter.site;
 
+import dev.eugene.publicationexporter.admission.ManagedArtifact;
+import dev.eugene.publicationexporter.admission.PublicationKind;
+import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
-import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.fs.StagedDirectoryInstall;
 
 import java.io.IOException;
@@ -29,10 +31,16 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     private static final Path MANAGED_BACKUP_ROOT = Path.of(".astro-export/managed-backups");
 
     private final StagedDirectoryInstall stagedInstall;
+    private final PublicationKinds publicationKinds;
 
     public FilesystemManagedSiteInstaller(Path siteRoot) {
+        this(siteRoot, PublicationKinds.installed());
+    }
+
+    public FilesystemManagedSiteInstaller(Path siteRoot, PublicationKinds publicationKinds) {
         this.stagedInstall = StagedDirectoryInstall.rootedAtCanonical(
                 canonicalizeThroughNearestExistingAncestor(Objects.requireNonNull(siteRoot, "siteRoot")));
+        this.publicationKinds = Objects.requireNonNull(publicationKinds, "publicationKinds");
     }
 
     @Override
@@ -44,14 +52,18 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     public ManagedSiteInstallOutcome installWithOutcome(
             PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
         requireInstallationInputs(identity, approvedSnapshot);
-        Path ruDestination = markdownFile(identity, "ru");
-        Path enDestination = markdownFile(identity, "en");
+        requireIdentityConfinement(identity);
+        PublicationKind kind = requireKind(identity);
+        ManagedArtifact ruArtifact = kind.projectManagedArtifact(identity, approvedSnapshot, "ru");
+        ManagedArtifact enArtifact = kind.projectManagedArtifact(identity, approvedSnapshot, "en");
+        Path ruDestination = destinationFile(ruArtifact);
+        Path enDestination = destinationFile(enArtifact);
         return withInstallationLock(identity, () -> {
             boolean recovered = recoverIfNeeded(ruDestination, enDestination);
-            requireNoKindCollision(identity, ruDestination);
-            requireNoKindCollision(identity, enDestination);
+            requireNoKindCollision(identity, ruDestination, ruArtifact.collisionMarkerLine());
+            requireNoKindCollision(identity, enDestination, enArtifact.collisionMarkerLine());
             try {
-                installFromStaging(identity, approvedSnapshot, ruDestination, enDestination);
+                installFromStaging(ruArtifact, enArtifact, ruDestination, enDestination);
             } catch (RuntimeException failure) {
                 if (recovered) {
                     throw ManagedSiteInstallationFailedAfterRecoveryException.afterRecovery(failure);
@@ -64,11 +76,11 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         });
     }
 
-    private void installFromStaging(PublicationIdentity identity, CandidateSnapshot approvedSnapshot,
+    private void installFromStaging(ManagedArtifact ruArtifact, ManagedArtifact enArtifact,
             Path ruDestination, Path enDestination) {
         Path staging = createStagingDirectory();
         try {
-            stageLocaleFiles(staging, identity, approvedSnapshot);
+            stageLocaleFiles(staging, ruArtifact, enArtifact);
             installManagedGeneration(staging, ruDestination, enDestination);
         } catch (IOException error) {
             throw new UncheckedIOException(error);
@@ -80,25 +92,24 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
     /**
      * The real destination path is keyed by (collection, locale, publicId) only, so a different
      * kind sharing that triple would otherwise silently overwrite this one's site file on
-     * replace. Every file this adapter writes carries its own {@code contentType} frontmatter
-     * line (see {@link #frontmatter}), so the existing file's kind is checked against the
-     * incoming one before any write happens.
+     * replace. The artifact identifies its exact kind-marker line, so the existing file's kind
+     * is checked against the incoming one before any write happens.
      */
-    private void requireNoKindCollision(PublicationIdentity identity, Path destination) {
+    private void requireNoKindCollision(
+            PublicationIdentity identity, Path destination, String collisionMarkerLine) {
         Path resolved = resolveWithinSiteRoot(destination);
         if (!Files.isRegularFile(resolved, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
-        String expectedContentTypeLine = "contentType: " + YamlScalar.doubleQuoted(identity.publicContentType());
         List<String> lines;
         try {
             lines = Files.readAllLines(resolved, StandardCharsets.UTF_8);
         } catch (IOException unreadable) {
             return;
         }
-        boolean matchesIncomingKind = lines.stream().anyMatch(expectedContentTypeLine::equals);
-        boolean hasAnyContentTypeLine = lines.stream().anyMatch(line -> line.startsWith("contentType: "));
-        if (hasAnyContentTypeLine && !matchesIncomingKind) {
+        boolean matchesIncomingKind = lines.stream().anyMatch(collisionMarkerLine::equals);
+        boolean hasAnyMarkerLine = lines.stream().anyMatch(line -> line.startsWith("contentType"));
+        if (hasAnyMarkerLine && !matchesIncomingKind) {
             throw new ManagedSiteKindCollisionException(identity, resolved);
         }
     }
@@ -107,6 +118,13 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
             PublicationIdentity identity, CandidateSnapshot approvedSnapshot) {
         Objects.requireNonNull(identity, "identity");
         Objects.requireNonNull(approvedSnapshot, "approvedSnapshot");
+    }
+
+    private void requireIdentityConfinement(PublicationIdentity identity) {
+        resolveWithinSiteRoot(stagedInstall.canonicalRoot()
+                .resolve(identity.publicCollection())
+                .resolve(identity.publicId())
+                .normalize());
     }
 
     private Path createStagingDirectory() {
@@ -120,15 +138,14 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
     }
 
-    private void stageLocaleFiles(
-            Path staging, PublicationIdentity identity, CandidateSnapshot approvedSnapshot) throws IOException {
-        writeLocaleFile(staging, identity, approvedSnapshot, "ru", approvedSnapshot.ruBody());
-        writeLocaleFile(staging, identity, approvedSnapshot, "en", approvedSnapshot.enBody());
+    private void stageLocaleFiles(Path staging, ManagedArtifact ruArtifact, ManagedArtifact enArtifact)
+            throws IOException {
+        writeLocaleFile(staging, ruArtifact, "ru");
+        writeLocaleFile(staging, enArtifact, "en");
     }
 
-    private void writeLocaleFile(Path staging, PublicationIdentity identity,
-            CandidateSnapshot approvedSnapshot, String locale, String body) throws IOException {
-        writeStagedFile(staging, locale + ".md", frontmatter(identity, approvedSnapshot, locale) + body);
+    private void writeLocaleFile(Path staging, ManagedArtifact artifact, String locale) throws IOException {
+        writeStagedFile(staging, locale + ".md", artifact.content());
     }
 
     private void installManagedGeneration(Path staging, Path ruDestination, Path enDestination) throws IOException {
@@ -407,13 +424,15 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         return SiteReleaseManifest.computeOver(stagedInstall.canonicalRoot(), PAYLOAD_ROOTS, ignored);
     }
 
-    private Path markdownFile(PublicationIdentity identity, String locale) {
-        return stagedInstall.canonicalRoot()
-                .resolve("src/content")
-                .resolve(identity.publicCollection())
-                .resolve(locale)
-                .resolve(identity.publicId() + ".md")
-                .normalize();
+    private Path destinationFile(ManagedArtifact artifact) {
+        return stagedInstall.canonicalRoot().resolve(artifact.relativePath()).normalize();
+    }
+
+    private PublicationKind requireKind(PublicationIdentity identity) {
+        return publicationKinds.forIdentity(identity.publicCollection(), identity.publicContentType())
+                .orElseThrow(() -> new IllegalStateException(
+                        "No installed PublicationKind for " + identity.publicCollection()
+                                + "/" + identity.publicContentType()));
     }
 
     private Path manifestPath() {
@@ -463,28 +482,4 @@ public final class FilesystemManagedSiteInstaller implements ManagedSiteInstalle
         }
     }
 
-    private static String frontmatter(PublicationIdentity identity, CandidateSnapshot approved, String locale) {
-        boolean isRu = "ru".equals(locale);
-        StringBuilder yaml = new StringBuilder("---\n");
-        appendYamlString(yaml, "id", identity.publicId());
-        List<PublicField> fields = isRu ? approved.ruFields() : approved.enFields();
-        yaml.append(BracketIndexedFields.render(fields, field -> appendYamlString(yaml, field.key(), field.value())));
-        yaml.append("publish: true\n");
-        appendYamlString(yaml, "contentType", identity.publicContentType());
-        appendYamlString(yaml, "language", locale);
-        appendYamlString(yaml, "sourceLanguage", "ru");
-        appendYamlString(yaml, "sourceHash", approved.referenceMap().ruHash());
-        appendYamlString(yaml, "translationStatus", isRu ? "source" : "generated");
-        if (!isRu) {
-            appendYamlString(yaml, "translationOf", identity.publicId());
-        }
-        if (!approved.structuredData().isBlank()) {
-            yaml.append(approved.structuredData());
-        }
-        return yaml.append("---\n").toString();
-    }
-
-    private static void appendYamlString(StringBuilder yaml, String key, String value) {
-        yaml.append(key).append(": ").append(YamlScalar.doubleQuoted(value)).append('\n');
-    }
 }
