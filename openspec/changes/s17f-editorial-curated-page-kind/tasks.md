@@ -881,7 +881,7 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
 
 **Files:** `publication-exporter/src/test/java/dev/eugene/publicationexporter/CuratedPageAcceptanceTest.java` (create, modeled on `ConceptAcceptanceTest.java`), `publication-exporter/src/test/java/dev/eugene/publicationexporter/cli/WritePublicationContractCliAcceptanceTest.java` (extend).
 
-- [ ] 5.1 Write `CuratedPageAcceptanceTest.aboutPageCompletesAdmissionThroughSiteInstallation()`, following `ConceptAcceptanceTest`'s exact handler-level shape (this project's established convention for end-to-end kind fixtures — not CLI-process-level):
+- [x] 5.1 Write `CuratedPageAcceptanceTest.aboutPageCompletesAdmissionThroughSiteInstallation()`, following `ConceptAcceptanceTest`'s exact handler-level shape (this project's established convention for end-to-end kind fixtures — not CLI-process-level):
 
   ```java
   package dev.eugene.publicationexporter;
@@ -1020,8 +1020,8 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
 
   Adjust the exact JSON assertion substrings once Task 4.1's `projectManagedArtifact` override and `CuratedPageJson` (already merged before this task runs) determine the final serialized key names and quoting; the shape above is the expected contract, not a guess to leave unverified.
 
-- [ ] 5.2 Run `CuratedPageAcceptanceTest`, fix any assertion/serialization mismatch against the actual output (do not adjust the test to match a wrong output — re-derive the expected JSON from the real `about.json` fixture read during design if in doubt).
+- [x] 5.2 Run `CuratedPageAcceptanceTest`, fix any assertion/serialization mismatch against the actual output (do not adjust the test to match a wrong output — re-derive the expected JSON from the real `about.json` fixture read during design if in doubt).
 
-- [ ] 5.3 Extend `write-publication-contract` CLI acceptance coverage so the emitted contract includes `editorial/curated_page`, with `editorialPage` in its required-fields section (allowed value `about`) and no `description` requirement, matching the established per-kind assertion pattern already used for the other five kinds in that same test.
+- [x] 5.3 Extend `write-publication-contract` CLI acceptance coverage so the emitted contract includes `editorial/curated_page`, with `editorialPage` in its required-fields section (allowed value `about`) and no `description` requirement, matching the established per-kind assertion pattern already used for the other five kinds in that same test.
 
-- [ ] 5.4 Run the focused suites touched by this slice first (`AboutPageBodyTest`, `CuratedPagePublicationKindTest`, `PublicationContractConformanceTest`, `FilesystemManagedSiteInstallerTest`, `EnglishCandidateValidatorTest`, `CuratedPageAcceptanceTest`, the extended contract CLI test), then run the complete `mvn -f publication-exporter/pom.xml test` and confirm it is green (baseline was 763 tests; expect that count plus every new test added across Tasks 1-4). Keep the `tasks.md` checkboxes aligned with the verified outcome — check off only tasks whose tests actually pass, not tasks believed complete.
+- [x] 5.4 Run the focused suites touched by this slice first (`AboutPageBodyTest`, `CuratedPagePublicationKindTest`, `PublicationContractConformanceTest`, `FilesystemManagedSiteInstallerTest`, `EnglishCandidateValidatorTest`, `CuratedPageAcceptanceTest`, the extended contract CLI test), then run the complete `mvn -f publication-exporter/pom.xml test` and confirm it is green (baseline was 763 tests; expect that count plus every new test added across Tasks 1-4). Keep the `tasks.md` checkboxes aligned with the verified outcome — check off only tasks whose tests actually pass, not tasks believed complete.

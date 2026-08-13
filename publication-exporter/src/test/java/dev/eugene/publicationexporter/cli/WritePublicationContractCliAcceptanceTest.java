@@ -192,6 +192,22 @@ class WritePublicationContractCliAcceptanceTest {
             assertEquals(List.of("name", "relation"), jsonStrings(field.get("structuredMembers")));
         });
 
+        JsonNode curatedPageKind = kindNamed(kinds, "curated_page");
+        assertEquals("editorial", curatedPageKind.get("collection").asText());
+        assertEquals("curated_page", curatedPageKind.get("contentType").asText());
+        JsonNode requiredCuratedPageFields = curatedPageKind.get("requiredFields");
+        List<String> requiredCuratedPageFieldNames = new ArrayList<>();
+        for (JsonNode field : requiredCuratedPageFields) {
+            requiredCuratedPageFieldNames.add(field.get("name").asText());
+        }
+        assertEquals(List.of(
+                "publish", "publicCollection", "publicContentType", "publicId", "editorialPage", "id", "title"),
+                requiredCuratedPageFieldNames);
+        assertFieldNamed(requiredCuratedPageFields, "editorialPage", field -> {
+            assertEquals("STRING", field.get("type").asText());
+            assertEquals("about", field.get("allowedValues").get(0).asText());
+        });
+
         JsonNode albumKind = kindNamed(kinds, "album");
         assertEquals("music", albumKind.get("collection").asText());
         assertEquals("album", albumKind.get("contentType").asText());
