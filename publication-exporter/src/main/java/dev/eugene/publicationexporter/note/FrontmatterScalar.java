@@ -41,6 +41,19 @@ final class FrontmatterScalar {
         return !quoted && "true".equals(value);
     }
 
+    Optional<Boolean> booleanValue() {
+        if (quoted) {
+            return Optional.empty();
+        }
+        if ("true".equalsIgnoreCase(value)) {
+            return Optional.of(true);
+        }
+        if ("false".equalsIgnoreCase(value)) {
+            return Optional.of(false);
+        }
+        return Optional.empty();
+    }
+
     Optional<String> stringValue() {
         if (!quoted && isYamlNullOrBoolean()) {
             return Optional.empty();

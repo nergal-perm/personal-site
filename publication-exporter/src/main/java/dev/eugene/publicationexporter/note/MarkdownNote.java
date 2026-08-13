@@ -199,6 +199,11 @@ public final class MarkdownNote {
                 .orElse(false);
     }
 
+    public Optional<Boolean> booleanValue(String key) {
+        return Optional.ofNullable(frontmatterValues.get(key))
+                .flatMap(FrontmatterScalar::booleanValue);
+    }
+
     public String body() {
         return body;
     }

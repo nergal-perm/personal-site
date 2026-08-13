@@ -10,6 +10,7 @@ import dev.eugene.publicationexporter.reference.PublicField;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Pattern;
 
@@ -45,7 +46,7 @@ public final class CuratedPagePublicationKind implements PublicationKind {
         }
         String sourceId = requireNonBlank(note, "id", diagnostics);
         String title = requireNonBlank(note, "title", diagnostics);
-        boolean searchable = note.flag("publicSearchable");
+        boolean searchable = publicSearchable(note, diagnostics);
         AboutPageBody body = parseBodyOrRecordDiagnostic(note, diagnostics);
 
         if (!diagnostics.isEmpty()) {
@@ -72,8 +73,8 @@ public final class CuratedPagePublicationKind implements PublicationKind {
                         FieldContract.allowedValue("editorialPage", FieldContract.Type.STRING, SUPPORTED_PAGE_KEY),
                         FieldContract.nonBlank("id"),
                         FieldContract.nonBlank("title")),
-                List.of(FieldContract.nonBlank("publicSearchable")),
-                List.of("description"),
+                List.of(FieldContract.optionalBoolean("publicSearchable")),
+                List.of(),
                 List.of(
                         "## Кратко (summary)",
                         "## Eyebrow (eyebrow)",
@@ -99,6 +100,18 @@ public final class CuratedPagePublicationKind implements PublicationKind {
 
     private String structuredDataFrom(boolean searchable) {
         return "{\"searchable\":" + searchable + ",\"type\":\"about\"}";
+    }
+
+    private boolean publicSearchable(MarkdownNote note, List<Diagnostic> diagnostics) {
+        if (note.structuredField("publicSearchable") == MarkdownNote.StructuredField.ABSENT) {
+            return false;
+        }
+        Optional<Boolean> value = note.booleanValue("publicSearchable");
+        if (value.isEmpty()) {
+            diagnostics.add(Diagnostic.blocking("publicSearchable", "must be a YAML boolean"));
+            return false;
+        }
+        return value.get();
     }
 
     private AboutPageBody parseBodyOrRecordDiagnostic(MarkdownNote note, List<Diagnostic> diagnostics) {

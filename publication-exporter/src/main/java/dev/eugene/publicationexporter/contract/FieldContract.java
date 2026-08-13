@@ -46,6 +46,10 @@ public final class FieldContract {
         return new FieldContract(name, Type.STRING, null, null, true, null);
     }
 
+    public static FieldContract optionalBoolean(String name) {
+        return new FieldContract(name, Type.BOOLEAN, null, null, false, null);
+    }
+
     public static FieldContract nonBlankStringList(String name) {
         return new FieldContract(name, Type.STRING_LIST, null, null, true, null);
     }

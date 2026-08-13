@@ -78,6 +78,39 @@ public final class CuratedPagePublicationKindFixtures {
 
                         Колофон.
                         """),
+                CuratedPagePublicationKindFixture.blocked("publicSearchableIsNotBoolean", """
+                        ---
+                        publish: true
+                        publicCollection: editorial
+                        publicContentType: curated_page
+                        publicId: about
+                        editorialPage: about
+                        id: source-about-invalid-searchable
+                        title: About Invalid Searchable
+                        publicSearchable: not-a-boolean
+                        ---
+                        ## Кратко
+
+                        Кратко.
+
+                        ## Eyebrow
+
+                        Бровь.
+
+                        ## Лид
+
+                        Лид.
+
+                        ## Принципы
+
+                        ### Первый
+
+                        Принцип.
+
+                        ## Колофон
+
+                        Колофон.
+                        """),
                 CuratedPagePublicationKindFixture.blocked("knownUnsupportedPageKey", """
                         ---
                         publish: true

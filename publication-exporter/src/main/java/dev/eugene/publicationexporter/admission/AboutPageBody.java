@@ -53,7 +53,7 @@ public final class AboutPageBody {
     private static String requiredSection(List<String> lines, String heading) {
         int start = sectionStart(lines, heading);
         int end = nextH2Or(lines, start + 1, lines.size());
-        String text = joinNonBlank(lines.subList(start + 1, end));
+        String text = joinProse(lines.subList(start + 1, end));
         if (text.isBlank()) {
             throw new MalformedBodyException("## " + heading + " must contain non-empty prose");
         }
@@ -61,40 +61,71 @@ public final class AboutPageBody {
     }
 
     private static List<Principle> requiredPrinciples(List<String> lines) {
+        List<String> section = principlesSection(lines);
+        List<Principle> principles = collectPrinciples(section);
+        requireAtLeastOnePrinciple(principles);
+        return principles;
+    }
+
+    private static List<String> principlesSection(List<String> lines) {
         int start = sectionStart(lines, "Принципы");
         int end = nextH2Or(lines, start + 1, lines.size());
+        return lines.subList(start + 1, end);
+    }
+
+    private static List<Principle> collectPrinciples(List<String> section) {
         List<Principle> principles = new ArrayList<>();
-        List<String> section = lines.subList(start + 1, end);
         int index = 0;
         while (index < section.size()) {
-            String line = section.get(index);
-            if (line.startsWith("### ")) {
-                String title = line.substring(4).strip();
+            if (isPrincipleHeading(section.get(index))) {
                 int principleEnd = nextH3Or(section, index + 1, section.size());
-                String text = joinNonBlank(section.subList(index + 1, principleEnd));
-                if (title.isBlank() || text.isBlank()) {
-                    throw new MalformedBodyException("## Принципы subsection must have a non-blank heading and prose");
-                }
-                principles.add(new Principle(title, text));
+                principles.add(parsePrinciple(section, index, principleEnd));
                 index = principleEnd;
             } else {
                 index++;
             }
         }
+        return principles;
+    }
+
+    private static boolean isPrincipleHeading(String line) {
+        return line.startsWith("### ");
+    }
+
+    private static Principle parsePrinciple(List<String> section, int start, int end) {
+        String title = section.get(start).substring(4).strip();
+        String text = joinProse(section.subList(start + 1, end));
+        return validatedPrinciple(title, text);
+    }
+
+    private static Principle validatedPrinciple(String title, String text) {
+        if (title.isBlank() || text.isBlank()) {
+            throw new MalformedBodyException("## Принципы subsection must have a non-blank heading and prose");
+        }
+        return new Principle(title, text);
+    }
+
+    private static void requireAtLeastOnePrinciple(List<Principle> principles) {
         if (principles.isEmpty()) {
             throw new MalformedBodyException("## Принципы must contain at least one ### subsection");
         }
-        return principles;
     }
 
     private static int sectionStart(List<String> lines, String heading) {
         String marker = "## " + heading;
+        int start = -1;
         for (int i = 0; i < lines.size(); i++) {
             if (lines.get(i).strip().equals(marker)) {
-                return i;
+                if (start >= 0) {
+                    throw new MalformedBodyException("Duplicate required heading `" + marker + "`");
+                }
+                start = i;
             }
         }
-        throw new MalformedBodyException("Missing required heading `" + marker + "`");
+        if (start < 0) {
+            throw new MalformedBodyException("Missing required heading `" + marker + "`");
+        }
+        return start;
     }
 
     private static int nextH2Or(List<String> lines, int from, int fallback) {
@@ -115,12 +146,25 @@ public final class AboutPageBody {
         return fallback;
     }
 
-    private static String joinNonBlank(List<String> lines) {
-        return lines.stream()
-                .filter(line -> !line.isBlank())
-                .map(String::strip)
-                .reduce((a, b) -> a + " " + b)
-                .orElse("");
+    private static String joinProse(List<String> lines) {
+        List<String> paragraphs = new ArrayList<>();
+        List<String> current = new ArrayList<>();
+        for (String line : lines) {
+            if (line.isBlank()) {
+                finishParagraph(paragraphs, current);
+            } else {
+                current.add(line.strip());
+            }
+        }
+        finishParagraph(paragraphs, current);
+        return String.join("\n\n", paragraphs);
+    }
+
+    private static void finishParagraph(List<String> paragraphs, List<String> current) {
+        if (!current.isEmpty()) {
+            paragraphs.add(String.join(" ", current));
+            current.clear();
+        }
     }
 
     public record Principle(String title, String text) {

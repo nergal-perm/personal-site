@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.admission;
 
 import dev.eugene.publicationexporter.bridge.Diagnostic;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.contract.FieldContract;
 import dev.eugene.publicationexporter.note.MarkdownNote;
 import dev.eugene.publicationexporter.reference.PublicField;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,25 @@ class CuratedPagePublicationKindTest {
 
         assertTrue(result.accepted(), result.diagnostics().toString());
         assertEquals("{\"searchable\":true,\"type\":\"about\"}", result.structuredData());
+    }
+
+    @Test
+    void nonBooleanPublicSearchableIsBlockedWithNamedDiagnostic() {
+        AdmittedPublication result = admission.admit(MarkdownNote.parse(validNote("publicSearchable: not-a-boolean\n")));
+
+        assertTrue(blockedFields(result).contains("publicSearchable"));
+        assertTrue(result.diagnostics().stream().anyMatch(diagnostic ->
+                diagnostic.message().contains("must be a YAML boolean")));
+    }
+
+    @Test
+    void contractDescribesOptionalBooleanAndDoesNotBlockDescription() {
+        FieldContract searchable = admission.contract().optionalFields().get(0);
+
+        assertEquals("publicSearchable", searchable.name());
+        assertEquals(FieldContract.Type.BOOLEAN, searchable.type());
+        assertNull(searchable.allowedValues());
+        assertTrue(admission.contract().blockedFields().isEmpty());
     }
 
     @Test

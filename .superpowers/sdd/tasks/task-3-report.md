@@ -29,3 +29,29 @@ Implement the Task 3 `editorial/curated_page` admission slice for the `about` pa
 - `graphify update .` was attempted after the code changes but failed with macOS `Operation not permitted`; the source graph may need a later refresh.
 - Maven continues to emit the repository's existing JUnit temporary-directory symlink cleanup warnings; they did not cause test failures.
 - The inherited Markdown projection is intentionally unchanged and is not suitable for site installation of curated-page JSON until Task 5.
+
+## Review-fix report
+
+### Fixed
+
+- `AboutPageBody` now rejects a second occurrence of any required H2 heading and names the duplicated heading in `MalformedBodyException`.
+- About-page prose now follows the G7 editorial compatibility shape: consecutive non-blank lines join with one space and separate paragraphs join with `\n\n` for summary, eyebrow, lead, colophon, and principle text.
+- `requiredPrinciples` is composed from named section slicing, principle collection, heading recognition, boundary discovery, prose parsing, validation, and cardinality helpers.
+- `CuratedPagePublicationKind` now rejects present non-boolean `publicSearchable` values with a field diagnostic, represents the field as an optional BOOLEAN in its contract, and no longer claims `description` is blocked.
+- Added typed boolean parsing to the Markdown frontmatter boundary without changing the existing `flag` behavior used by shared publish admission.
+
+### New and changed tests
+
+- `AboutPageBodyTest`: parameterized duplicate-heading rejection for all five required headings, plus multi-paragraph preservation across every prose field and both principles.
+- `CuratedPagePublicationKindTest`: invalid `publicSearchable` diagnostic and optional-BOOLEAN/no-blocked-description contract assertions.
+- `CuratedPagePublicationKindFixtures`: blocked `publicSearchable: not-a-boolean` fixture.
+
+### Verification counts
+
+- Before this fix: 781 passed, 0 failures, 0 errors (the pre-fix full-suite count recorded above).
+- Focused after-fix verification: 27 passed, 0 failures, 0 errors in `AboutPageBodyTest`, `CuratedPagePublicationKindTest`, and `FieldContractTest`.
+- After this fix: `mvn -f publication-exporter/pom.xml test` — 790 passed, 0 failures, 0 errors.
+
+### Verification concern
+
+- `graphify update .` was attempted after the source changes but remains blocked by macOS `Operation not permitted` during graph rebuild; the graph may need a later refresh.
