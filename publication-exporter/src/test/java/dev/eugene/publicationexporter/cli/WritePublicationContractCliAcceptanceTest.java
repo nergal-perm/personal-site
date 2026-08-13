@@ -48,13 +48,14 @@ class WritePublicationContractCliAcceptanceTest {
         assertEquals(1, contract.get("contractVersion").asInt());
 
         JsonNode kinds = contract.get("kinds");
-        assertEquals(6, kinds.size());
+        assertEquals(7, kinds.size());
         List<String> kindNames = new ArrayList<>();
         for (JsonNode kind : kinds) {
             kindNames.add(kind.get("collection").asText() + "/" + kind.get("contentType").asText());
         }
         assertEquals(List.of(
-                "bibliography/book", "blog/claim", "blog/essay", "blog/note", "concepts/concept", "music/album"),
+                "bibliography/book", "blog/claim", "blog/essay", "blog/note", "concepts/concept",
+                "editorial/curated_page", "music/album"),
                 kindNames);
 
         JsonNode bookKind = kindNamed(kinds, "book");

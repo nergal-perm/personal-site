@@ -22,7 +22,8 @@ public final class PublicationKinds {
                         new ClaimPublicationKind(),
                         new BookPublicationKind(),
                         new ConceptPublicationKind(),
-                        new AlbumPublicationKind()));
+                        new AlbumPublicationKind(),
+                        new CuratedPagePublicationKind()));
     }
 
     public Optional<PublicationKind> forIdentity(String collection, String contentType) {
