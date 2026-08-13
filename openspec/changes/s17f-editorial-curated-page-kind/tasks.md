@@ -781,19 +781,101 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
 
 - [x] 3.6 Run `mvn -f publication-exporter/pom.xml test -Dtest=AboutPageBodyTest,CuratedPagePublicationKindTest` and confirm all pass. Run the full `mvn -f publication-exporter/pom.xml test` once to confirm no existing kind's suite regressed.
 
-## Task 4 — Contract conformance and JSON site-projection coverage
+## Task 4 — JSON artifact projection, contract conformance, and site-projection coverage
 
-**Files:** `publication-exporter/src/test/java/dev/eugene/publicationexporter/contract/PublicationContractConformanceTest.java` (extend), `publication-exporter/src/test/java/dev/eugene/publicationexporter/site/FilesystemManagedSiteInstallerTest.java` (extend), `publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/PrepareHandlerTest.java` (extend).
+**Files:** `publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/CuratedPagePublicationKind.java` (modify — add `projectManagedArtifact` override), `publication-exporter/src/main/java/dev/eugene/publicationexporter/admission/CuratedPageJson.java` (create), `publication-exporter/src/test/java/dev/eugene/publicationexporter/contract/PublicationContractConformanceTest.java` (extend), `publication-exporter/src/test/java/dev/eugene/publicationexporter/site/FilesystemManagedSiteInstallerTest.java` (extend), `publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/PrepareHandlerTest.java` (extend).
 
-- [ ] 4.1 Extend `PublicationContractConformanceTest`'s shared fixture table with `editorial/curated_page` cases, reusing `CuratedPagePublicationKindFixtures.all()` exactly as every sibling kind already does (copy the `conceptContractVerdictAgreesWithFixtureAndRuntimeValidator`-shaped method, renamed for curated pages). This kind's contract has a non-empty `structuredBody` list for the first time — if the conformance harness has never exercised that field before, verify it actually compares `contract().structuredBody()` against something (if it currently ignores `structuredBody` entirely, that is fine and expected: `structuredBody` is documentation for authoring tools, not an input the runtime validator re-derives, since `AboutPageBody.parse` already independently enforces the same sections — do not invent a redundant cross-check between the two representations unless a real drift is found).
+**Sequencing note:** Task 3 deliberately left `CuratedPagePublicationKind` using the inherited (Markdown) `projectManagedArtifact` default from Task 1, since Task 3 was scoped to admission only. This task adds the real JSON override first (4.1), before any test in this task or Task 5 can exercise JSON installation — Task 4.2's own test requires the override to exist.
 
-- [ ] 4.2 Add a `FilesystemManagedSiteInstallerTest` case proving `editorial/curated_page` installs as JSON, not Markdown: build an approved `CandidateSnapshot` with `ruBody`/`enBody` both `""`, `ruFields`/`enFields` matching `CuratedPagePublicationKind`'s translated-field shape (title, summary, eyebrow, lead, one principle's title/text, colophon) in RU and EN, and `structuredData` equal to `{"searchable":true,"type":"about"}`. Call `new FilesystemManagedSiteInstaller(siteRoot).install(identity, approved)` with `identity = PublicationIdentity.of("editorial", "curated_page", "about")`. Assert: `siteRoot.resolve("src/data/pages/ru/about.json")` and `.../en/about.json` both exist (not `src/content/editorial/...`); each parses as valid JSON (use the project's existing JSON test-parsing convention — check how `CheckContentGateContractTest` or `SiteReleaseManifest` tests parse JSON for the established pattern) containing `"id":"about"`, `"type":"about"`, `"language":"ru"`/`"en"` respectively, the RU/EN translated field values, and `"searchable":true`; assert the file contains no `topics`/`links` key at all (proving the earlier topics/links scope-narrowing decision is enforced, not just documented).
+- [ ] 4.1 Add the `projectManagedArtifact` override to `CuratedPagePublicationKind`:
 
-- [ ] 4.3 Add a case proving the collision guard works for the new JSON path shape too: install `editorial/curated_page` `about` at a site root, then attempt to install a different identity that would resolve to the same relative path with a different `collisionMarkerLine` (construct this directly against `FilesystemManagedSiteInstaller`, not through a second real kind — no second curated-page-shaped kind exists yet to collide with in this exporter edition, so this test exercises the guard mechanically: pre-seed `src/data/pages/ru/about.json` by hand with a JSON file lacking any `"contentType"`-prefixed line vs one with a mismatched value, matching how the existing Markdown collision tests are structured against `CrossKindAddressCollisionAcceptanceTest`/`FilesystemManagedSiteInstallerTest`'s existing collision cases — read one of those first and mirror its exact setup shape).
+  ```java
+  @Override
+  public ManagedArtifact projectManagedArtifact(
+          PublicationIdentity identity, CandidateSnapshot approved, String locale) {
+      boolean isRu = "ru".equals(locale);
+      List<PublicField> fields = isRu ? approved.ruFields() : approved.enFields();
+      String json = CuratedPageJson.render(identity, fields, approved.structuredData(), locale);
+      return ManagedArtifact.of(
+              "src/data/pages/" + locale + "/" + identity.publicId() + ".json",
+              json,
+              "\"contentType\":\"" + contentType() + "\"");
+  }
+  ```
 
-- [ ] 4.4 Add a `PrepareHandlerTest` fixture proving invariant `structuredData` changes (e.g. `publicSearchable` flipping from unset to `true`) force a new candidate requiring review rather than being silently treated as unchanged — this is generic, already-proven machinery (`CandidateSnapshot`/`ReferenceMap` already hash `structuredData` for every kind), so this task should need zero production changes, only a fixture proving the existing mechanism already covers curated pages the same way it covers every other kind's invariant metadata.
+  Implement `CuratedPageJson` (new, `admission` package, package-visible is enough — only `CuratedPagePublicationKind` calls it) using Jackson's `ObjectMapper`/`LinkedHashMap` to guarantee stable key order, matching this project's established `write-publication-contract` convention of serializing a typed value rather than hand-building JSON strings for anything beyond a two-key literal:
 
-- [ ] 4.5 Run `mvn -f publication-exporter/pom.xml test -Dtest=PublicationContractConformanceTest,FilesystemManagedSiteInstallerTest,CuratedPagePublicationKindTest,PrepareHandlerTest` and confirm all pass, with zero production changes needed beyond what Task 1/3 already made (if a production change turns out to be needed here, stop and treat it as a real design gap — the artifact-projection seam from Task 1 is expected to already fully cover this).
+  ```java
+  package dev.eugene.publicationexporter.admission;
+
+  import com.fasterxml.jackson.databind.ObjectMapper;
+  import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+  import dev.eugene.publicationexporter.reference.PublicField;
+
+  import java.util.ArrayList;
+  import java.util.LinkedHashMap;
+  import java.util.List;
+  import java.util.Map;
+
+  final class CuratedPageJson {
+
+      private static final ObjectMapper MAPPER = new ObjectMapper();
+
+      private CuratedPageJson() {
+      }
+
+      static String render(PublicationIdentity identity, List<PublicField> fields, String structuredData,
+              String locale) {
+          try {
+              Map<String, Object> document = new LinkedHashMap<>();
+              document.put("id", identity.publicId());
+              document.put("type", "about");
+              document.put("language", locale);
+              document.put("title", fieldValue(fields, "title"));
+              document.put("summary", fieldValue(fields, "summary"));
+              document.put("eyebrow", fieldValue(fields, "eyebrow"));
+              document.put("lead", fieldValue(fields, "lead"));
+              document.put("principles", principlesFrom(fields));
+              document.put("colophon", fieldValue(fields, "colophon"));
+              document.put("searchable", structuredData.contains("\"searchable\":true"));
+              return MAPPER.writeValueAsString(document);
+          } catch (com.fasterxml.jackson.core.JsonProcessingException impossible) {
+              throw new IllegalStateException("Curated page JSON serialization failed", impossible);
+          }
+      }
+
+      private static String fieldValue(List<PublicField> fields, String key) {
+          return PublicField.value(fields, key).orElse("");
+      }
+
+      private static List<List<String>> principlesFrom(List<PublicField> fields) {
+          List<List<String>> principles = new ArrayList<>();
+          int index = 0;
+          while (true) {
+              String title = PublicField.value(fields, "principles[" + index + "].title").orElse(null);
+              if (title == null) {
+                  break;
+              }
+              String text = PublicField.value(fields, "principles[" + index + "].text").orElse("");
+              principles.add(List.of(title, text));
+              index++;
+          }
+          return principles;
+      }
+  }
+  ```
+
+  Note `structuredData.contains("\"searchable\":true")` is a pragmatic read of the fixed two-key literal `structuredDataFrom` writes in Task 3 — acceptable because both producer and consumer are the same class family and the shape is deliberately fixed and tested end-to-end here; do not generalize this into a JSON-parsing round trip unless a second field is ever added to `structuredData` for this kind.
+
+- [ ] 4.2 Extend `PublicationContractConformanceTest`'s shared fixture table with `editorial/curated_page` cases, reusing `CuratedPagePublicationKindFixtures.all()` exactly as every sibling kind already does (copy the `conceptContractVerdictAgreesWithFixtureAndRuntimeValidator`-shaped method, renamed for curated pages). This kind's contract has a non-empty `structuredBody` list for the first time — if the conformance harness has never exercised that field before, verify it actually compares `contract().structuredBody()` against something (if it currently ignores `structuredBody` entirely, that is fine and expected: `structuredBody` is documentation for authoring tools, not an input the runtime validator re-derives, since `AboutPageBody.parse` already independently enforces the same sections — do not invent a redundant cross-check between the two representations unless a real drift is found).
+
+- [ ] 4.3 Add a `FilesystemManagedSiteInstallerTest` case proving `editorial/curated_page` installs as JSON, not Markdown, using the 4.1 override: build an approved `CandidateSnapshot` with `ruBody`/`enBody` both `""`, `ruFields`/`enFields` matching `CuratedPagePublicationKind`'s translated-field shape (title, summary, eyebrow, lead, one principle's title/text, colophon) in RU and EN, and `structuredData` equal to `{"searchable":true,"type":"about"}`. Call `new FilesystemManagedSiteInstaller(siteRoot).install(identity, approved)` with `identity = PublicationIdentity.of("editorial", "curated_page", "about")`. Assert: `siteRoot.resolve("src/data/pages/ru/about.json")` and `.../en/about.json` both exist (not `src/content/editorial/...`); each parses as valid JSON (use the project's existing JSON test-parsing convention — check how `CheckContentGateContractTest` or `SiteReleaseManifest` tests parse JSON for the established pattern) containing `"id":"about"`, `"type":"about"`, `"language":"ru"`/`"en"` respectively, the RU/EN translated field values, and `"searchable":true`; assert the file contains no `topics`/`links` key at all (proving the earlier topics/links scope-narrowing decision is enforced, not just documented).
+
+- [ ] 4.4 Add a case proving the collision guard works for the new JSON path shape too: install `editorial/curated_page` `about` at a site root, then attempt to install a different identity that would resolve to the same relative path with a different `collisionMarkerLine` (construct this directly against `FilesystemManagedSiteInstaller`, not through a second real kind — no second curated-page-shaped kind exists yet to collide with in this exporter edition, so this test exercises the guard mechanically: pre-seed `src/data/pages/ru/about.json` by hand with a JSON file lacking any `"contentType"`-prefixed line vs one with a mismatched value, matching how the existing Markdown collision tests are structured against `CrossKindAddressCollisionAcceptanceTest`/`FilesystemManagedSiteInstallerTest`'s existing collision cases — read one of those first and mirror its exact setup shape).
+
+- [ ] 4.5 Add a `PrepareHandlerTest` fixture proving invariant `structuredData` changes (e.g. `publicSearchable` flipping from unset to `true`) force a new candidate requiring review rather than being silently treated as unchanged — this is generic, already-proven machinery (`CandidateSnapshot`/`ReferenceMap` already hash `structuredData` for every kind), so this task should need zero further production changes beyond 4.1, only a fixture proving the existing mechanism already covers curated pages the same way it covers every other kind's invariant metadata.
+
+- [ ] 4.6 Run `mvn -f publication-exporter/pom.xml test -Dtest=PublicationContractConformanceTest,FilesystemManagedSiteInstallerTest,CuratedPagePublicationKindTest,PrepareHandlerTest` and confirm all pass, with zero production changes needed beyond 4.1 (if a production change turns out to be needed anywhere else in this task, stop and treat it as a real design gap — the artifact-projection seam from Task 1 plus 4.1's override are expected to already fully cover this).
 
 ## Task 5 — End-to-end slice proof
 
@@ -936,90 +1018,10 @@ This task is a **behavior-preserving extraction** for all six existing kinds. No
   }
   ```
 
-  Adjust the exact JSON assertion substrings once Task 3's `translatedFields`/Task 1's `projectManagedArtifact` override (to be added to `CuratedPagePublicationKind` in this task — see 5.2) determine the final serialized key names and quoting; the shape above is the expected contract, not a guess to leave unverified.
+  Adjust the exact JSON assertion substrings once Task 4.1's `projectManagedArtifact` override and `CuratedPageJson` (already merged before this task runs) determine the final serialized key names and quoting; the shape above is the expected contract, not a guess to leave unverified.
 
-- [ ] 5.2 This is the one place `CuratedPagePublicationKind` must override `projectManagedArtifact` (Task 3 only wrote admission/contract; the JSON rendering itself belongs here since it is the acceptance test that proves the full path). Add to `CuratedPagePublicationKind`:
+- [ ] 5.2 Run `CuratedPageAcceptanceTest`, fix any assertion/serialization mismatch against the actual output (do not adjust the test to match a wrong output — re-derive the expected JSON from the real `about.json` fixture read during design if in doubt).
 
-  ```java
-  @Override
-  public ManagedArtifact projectManagedArtifact(
-          PublicationIdentity identity, CandidateSnapshot approved, String locale) {
-      boolean isRu = "ru".equals(locale);
-      List<PublicField> fields = isRu ? approved.ruFields() : approved.enFields();
-      String json = CuratedPageJson.render(identity, fields, approved.structuredData(), locale);
-      return ManagedArtifact.of(
-              "src/data/pages/" + locale + "/" + identity.publicId() + ".json",
-              json,
-              "\"contentType\":\"" + contentType() + "\"");
-  }
-  ```
+- [ ] 5.3 Extend `write-publication-contract` CLI acceptance coverage so the emitted contract includes `editorial/curated_page`, with `editorialPage` in its required-fields section (allowed value `about`) and no `description` requirement, matching the established per-kind assertion pattern already used for the other five kinds in that same test.
 
-  Implement `CuratedPageJson` (new, `admission` package, package-visible is enough — only `CuratedPagePublicationKind` calls it) using Jackson's `ObjectMapper`/`LinkedHashMap` to guarantee stable key order, matching this project's established `write-publication-contract` convention of serializing a typed value rather than hand-building JSON strings for anything beyond a two-key literal:
-
-  ```java
-  package dev.eugene.publicationexporter.admission;
-
-  import com.fasterxml.jackson.databind.ObjectMapper;
-  import dev.eugene.publicationexporter.bridge.PublicationIdentity;
-  import dev.eugene.publicationexporter.reference.PublicField;
-
-  import java.util.ArrayList;
-  import java.util.LinkedHashMap;
-  import java.util.List;
-  import java.util.Map;
-
-  final class CuratedPageJson {
-
-      private static final ObjectMapper MAPPER = new ObjectMapper();
-
-      private CuratedPageJson() {
-      }
-
-      static String render(PublicationIdentity identity, List<PublicField> fields, String structuredData,
-              String locale) {
-          try {
-              Map<String, Object> document = new LinkedHashMap<>();
-              document.put("id", identity.publicId());
-              document.put("type", "about");
-              document.put("language", locale);
-              document.put("title", fieldValue(fields, "title"));
-              document.put("summary", fieldValue(fields, "summary"));
-              document.put("eyebrow", fieldValue(fields, "eyebrow"));
-              document.put("lead", fieldValue(fields, "lead"));
-              document.put("principles", principlesFrom(fields));
-              document.put("colophon", fieldValue(fields, "colophon"));
-              document.put("searchable", structuredData.contains("\"searchable\":true"));
-              return MAPPER.writeValueAsString(document);
-          } catch (com.fasterxml.jackson.core.JsonProcessingException impossible) {
-              throw new IllegalStateException("Curated page JSON serialization failed", impossible);
-          }
-      }
-
-      private static String fieldValue(List<PublicField> fields, String key) {
-          return PublicField.value(fields, key).orElse("");
-      }
-
-      private static List<List<String>> principlesFrom(List<PublicField> fields) {
-          List<List<String>> principles = new ArrayList<>();
-          int index = 0;
-          while (true) {
-              String title = PublicField.value(fields, "principles[" + index + "].title").orElse(null);
-              if (title == null) {
-                  break;
-              }
-              String text = PublicField.value(fields, "principles[" + index + "].text").orElse("");
-              principles.add(List.of(title, text));
-              index++;
-          }
-          return principles;
-      }
-  }
-  ```
-
-  Note `structuredData.contains("\"searchable\":true")` is a pragmatic read of the fixed two-key literal `structuredDataFrom` writes in Task 3 — acceptable because both producer and consumer are the same class family and the shape is deliberately fixed and tested end-to-end here; do not generalize this into a JSON-parsing round trip unless a second field is ever added to `structuredData` for this kind.
-
-- [ ] 5.3 Run `CuratedPageAcceptanceTest`, fix any assertion/serialization mismatch against the actual output (do not adjust the test to match a wrong output — re-derive the expected JSON from the real `about.json` fixture read during design if in doubt).
-
-- [ ] 5.4 Extend `write-publication-contract` CLI acceptance coverage so the emitted contract includes `editorial/curated_page`, with `editorialPage` in its required-fields section (allowed value `about`) and no `description` requirement, matching the established per-kind assertion pattern already used for the other five kinds in that same test.
-
-- [ ] 5.5 Run the focused suites touched by this slice first (`AboutPageBodyTest`, `CuratedPagePublicationKindTest`, `PublicationContractConformanceTest`, `FilesystemManagedSiteInstallerTest`, `EnglishCandidateValidatorTest`, `CuratedPageAcceptanceTest`, the extended contract CLI test), then run the complete `mvn -f publication-exporter/pom.xml test` and confirm it is green (baseline was 763 tests; expect that count plus every new test added across Tasks 1-5). Keep the `tasks.md` checkboxes aligned with the verified outcome — check off only tasks whose tests actually pass, not tasks believed complete.
+- [ ] 5.4 Run the focused suites touched by this slice first (`AboutPageBodyTest`, `CuratedPagePublicationKindTest`, `PublicationContractConformanceTest`, `FilesystemManagedSiteInstallerTest`, `EnglishCandidateValidatorTest`, `CuratedPageAcceptanceTest`, the extended contract CLI test), then run the complete `mvn -f publication-exporter/pom.xml test` and confirm it is green (baseline was 763 tests; expect that count plus every new test added across Tasks 1-4). Keep the `tasks.md` checkboxes aligned with the verified outcome — check off only tasks whose tests actually pass, not tasks believed complete.

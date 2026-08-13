@@ -118,6 +118,42 @@ class PrepareHandlerTest {
 
             An album body.""";
 
+    private static final String VALID_CURATED_PAGE_BODY = """
+            ## Кратко
+
+            Кратко.
+
+            ## Eyebrow
+
+            Бровь.
+
+            ## Лид
+
+            Лид.
+
+            ## Принципы
+
+            ### Первый
+
+            Принцип.
+
+            ## Колофон
+
+            Колофон.
+            """;
+
+    private static final String VALID_CURATED_PAGE = """
+            ---
+            publish: true
+            publicCollection: editorial
+            publicContentType: curated_page
+            publicId: about
+            editorialPage: about
+            id: source-about
+            title: About
+            ---
+            """ + VALID_CURATED_PAGE_BODY;
+
     private static final String CHANGED_ALBUM = """
             ---
             publish: true
@@ -487,6 +523,45 @@ class PrepareHandlerTest {
         assertEquals("ready_for_review", response.status());
         assertEquals(1, worker.requested().size(),
                 "an album invariant metadata edit must take the translation/review path, not mirror approval");
+        assertEquals(currentStructuredData, workspace.installed().get(0).structuredData());
+        assertEquals(ContentHash.sha256Hex(currentStructuredData),
+                workspace.installed().get(0).referenceMap().structuredDataHash());
+    }
+
+    @Test
+    void changedCuratedPageSearchabilityBuildsFreshCandidate() {
+        PublicationIdentity identity = PublicationIdentity.of("editorial", "curated_page", "about");
+        String approvedStructuredData = "{\"searchable\":false,\"type\":\"about\"}";
+        String currentStructuredData = "{\"searchable\":true,\"type\":\"about\"}";
+        List<PublicField> russianFields = curatedPageFields("About");
+        List<PublicField> englishFields = curatedPageFields("About (EN)");
+        ApprovedSnapshotWorkspace approved = ApprovedSnapshotWorkspace.createNull();
+        approved.install(identity, CandidateSnapshot.of(
+                VALID_CURATED_PAGE_BODY, "Translated curated page body.", russianFields, englishFields,
+                approvedStructuredData,
+                referenceMap(identity, VALID_CURATED_PAGE_BODY, "Translated curated page body.",
+                        russianFields, englishFields, approvedStructuredData)));
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("Translated curated page body.", englishFields));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        VaultRelativePath path = VaultRelativePath.of("editorial/about.md");
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace,
+                approved,
+                WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path,
+                VaultReader.createNull(Map.of(path, VALID_CURATED_PAGE.replace(
+                        "title: About\n", "title: About\npublicSearchable: true\n"))),
+                VaultAssetReader.createNull());
+
+        assertTrue(response.ok(), response.toString());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, worker.requested().size(),
+                "changing curated-page structuredData must build a fresh candidate");
         assertEquals(currentStructuredData, workspace.installed().get(0).structuredData());
         assertEquals(ContentHash.sha256Hex(currentStructuredData),
                 workspace.installed().get(0).referenceMap().structuredDataHash());
@@ -2141,6 +2216,17 @@ class PrepareHandlerTest {
                 PublicField.of("care", "Listen with headphones."),
                 PublicField.of("listenFor[0]", "modal harmony"),
                 PublicField.of("listenFor[1]", "ensemble interaction"));
+    }
+
+    private static List<PublicField> curatedPageFields(String title) {
+        return List.of(
+                PublicField.of("title", title),
+                PublicField.of("summary", "Summary."),
+                PublicField.of("eyebrow", "Eyebrow."),
+                PublicField.of("lead", "Lead."),
+                PublicField.of("principles[0].title", "Principle"),
+                PublicField.of("principles[0].text", "Principle text."),
+                PublicField.of("colophon", "Colophon."));
     }
 
     private static List<PublicField> claimFields(String title, String description, String statement) {

@@ -8,6 +8,8 @@ import dev.eugene.publicationexporter.admission.ConceptPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.ConceptPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.ClaimPublicationKindFixtures;
+import dev.eugene.publicationexporter.admission.CuratedPagePublicationKindFixture;
+import dev.eugene.publicationexporter.admission.CuratedPagePublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixture;
 import dev.eugene.publicationexporter.admission.EssayPublicationKindFixtures;
 import dev.eugene.publicationexporter.admission.NotePublicationKindFixture;
@@ -26,6 +28,7 @@ import java.util.stream.Stream;
 import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class PublicationContractConformanceTest {
 
@@ -147,6 +150,28 @@ class PublicationContractConformanceTest {
         assertEquals(contractAccepts, runtimeAccepts, "contract/runtime agreement for " + fixture.name());
     }
 
+    @ParameterizedTest(name = "editorial/curated_page {0}")
+    @MethodSource("allCuratedPageAdmissionFixtures")
+    void curatedPageContractVerdictAgreesWithFixtureAndRuntimeValidator(
+            CuratedPagePublicationKindFixture fixture) {
+        MarkdownNote note = MarkdownNote.parse(fixture.noteSource());
+        KindContract curatedPageKind = new PublicationContractWriter().write().kinds().stream()
+                .filter(kind -> kind.collection().equals("editorial")
+                        && kind.contentType().equals("curated_page"))
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException(
+                        "publicCollection/publicContentType is not a supported publication kind"));
+
+        boolean contractAccepts = contractAccepts(curatedPageKind, note);
+        VaultRelativePath path = VaultRelativePath.of("editorial/" + fixture.name() + ".md");
+        boolean runtimeAccepts = intake.admit(path, VaultReader.createNull(Map.of(path, fixture.noteSource())))
+                .accepted();
+
+        assertEquals(fixture.expectedAccepted(), runtimeAccepts, "runtime verdict for " + fixture.name());
+        assertTrue(contractAccepts || !runtimeAccepts,
+                "an accepted runtime fixture must satisfy the represented contract fields: " + fixture.name());
+    }
+
     private static Stream<NotePublicationKindFixture> allNoteAdmissionFixtures() {
         return NotePublicationKindFixtures.all().stream();
     }
@@ -165,6 +190,10 @@ class PublicationContractConformanceTest {
 
     private static Stream<AlbumPublicationKindFixture> allAlbumAdmissionFixtures() {
         return AlbumPublicationKindFixtures.all().stream();
+    }
+
+    private static Stream<CuratedPagePublicationKindFixture> allCuratedPageAdmissionFixtures() {
+        return CuratedPagePublicationKindFixtures.all().stream();
     }
 
     private static Stream<EssayPublicationKindFixture> allAdmissionFixtures() {
@@ -244,11 +273,18 @@ class PublicationContractConformanceTest {
 
     private boolean fieldSatisfied(FieldContract field, MarkdownNote note) {
         return switch (field.type()) {
-            case BOOLEAN -> field.allowedValues().contains(String.valueOf(note.flag(field.name())));
+            case BOOLEAN -> booleanFieldSatisfied(field, note);
             case STRING -> stringFieldSatisfied(field, note.string(field.name()).orElse(null));
             case STRING_LIST -> stringListFieldSatisfied(field, note.listOfScalars(field.name()));
             case STRUCTURED_LIST -> structuredListFieldSatisfied(field, note.listOfMaps(field.name()));
         };
+    }
+
+    private boolean booleanFieldSatisfied(FieldContract field, MarkdownNote note) {
+        if (field.allowedValues() == null) {
+            return note.booleanValue(field.name()).isPresent();
+        }
+        return field.allowedValues().contains(String.valueOf(note.flag(field.name())));
     }
 
     private boolean stringFieldSatisfied(FieldContract field, String value) {

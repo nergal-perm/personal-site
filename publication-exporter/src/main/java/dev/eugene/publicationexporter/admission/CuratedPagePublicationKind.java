@@ -32,6 +32,18 @@ public final class CuratedPagePublicationKind implements PublicationKind {
     }
 
     @Override
+    public ManagedArtifact projectManagedArtifact(
+            PublicationIdentity identity, CandidateSnapshot approved, String locale) {
+        boolean isRu = "ru".equals(locale);
+        List<PublicField> fields = isRu ? approved.ruFields() : approved.enFields();
+        String json = CuratedPageJson.render(identity, fields, approved.structuredData(), locale);
+        return ManagedArtifact.of(
+                "src/data/pages/" + locale + "/" + identity.publicId() + ".json",
+                json,
+                "\"contentType\":\"" + contentType() + "\"");
+    }
+
+    @Override
     public String routePrefix() {
         return null;
     }

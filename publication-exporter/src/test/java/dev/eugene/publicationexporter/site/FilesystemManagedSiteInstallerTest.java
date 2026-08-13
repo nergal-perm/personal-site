@@ -1,5 +1,7 @@
 package dev.eugene.publicationexporter.site;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
@@ -43,6 +45,8 @@ class FilesystemManagedSiteInstallerTest {
             PublicationIdentity.of("concepts", "concept", "bounded-context");
     private static final PublicationIdentity ALBUM_IDENTITY =
             PublicationIdentity.of("music", "album", "kind-of-blue");
+    private static final PublicationIdentity CURATED_PAGE_IDENTITY =
+            PublicationIdentity.of("editorial", "curated_page", "about");
     private static final PublicationIdentity OTHER_IDENTITY =
             PublicationIdentity.of("blog", "essay", "another-essay");
     private static final CandidateSnapshot SNAPSHOT = LegacyCandidateSnapshotFixture.of(
@@ -402,6 +406,106 @@ class FilesystemManagedSiteInstallerTest {
                 + "---\n"
                 + "# EN concept body", Files.readString(
                         siteRoot.resolve("src/content/concepts/en/bounded-context.md"), StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void installProjectsCuratedPageAsTranslatedJsonWithoutTopicsOrLinks() throws Exception {
+        List<PublicField> ruFields = List.of(
+                PublicField.of("title", "RU about title"),
+                PublicField.of("summary", "RU summary"),
+                PublicField.of("eyebrow", "RU eyebrow"),
+                PublicField.of("lead", "RU lead"),
+                PublicField.of("principles[0].title", "RU principle title"),
+                PublicField.of("principles[0].text", "RU principle text"),
+                PublicField.of("colophon", "RU colophon"));
+        List<PublicField> enFields = List.of(
+                PublicField.of("title", "EN about title"),
+                PublicField.of("summary", "EN summary"),
+                PublicField.of("eyebrow", "EN eyebrow"),
+                PublicField.of("lead", "EN lead"),
+                PublicField.of("principles[0].title", "EN principle title"),
+                PublicField.of("principles[0].text", "EN principle text"),
+                PublicField.of("colophon", "EN colophon"));
+        String structuredData = "{\"searchable\":true,\"type\":\"about\"}";
+        CandidateSnapshot approved = CandidateSnapshot.of(
+                "", "", ruFields, enFields, structuredData,
+                ReferenceMap.empty(
+                        CURATED_PAGE_IDENTITY,
+                        ContentHash.sha256Hex(""),
+                        ContentHash.sha256Hex(""),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                        ContentHash.sha256Hex(structuredData)));
+
+        new FilesystemManagedSiteInstaller(siteRoot).install(CURATED_PAGE_IDENTITY, approved);
+
+        Path ruFile = siteRoot.resolve("src/data/pages/ru/about.json");
+        Path enFile = siteRoot.resolve("src/data/pages/en/about.json");
+        assertTrue(Files.exists(ruFile));
+        assertTrue(Files.exists(enFile));
+        assertFalse(Files.exists(siteRoot.resolve("src/content/editorial/ru/about.md")));
+        assertFalse(Files.exists(siteRoot.resolve("src/content/editorial/en/about.md")));
+
+        assertCuratedPageJson(new ObjectMapper().readTree(Files.readString(ruFile)), "ru", ruFields);
+        assertCuratedPageJson(new ObjectMapper().readTree(Files.readString(enFile)), "en", enFields);
+    }
+
+    @Test
+    void curatedPageJsonCollisionGuardRejectsMismatchedExistingMarker() throws Exception {
+        CandidateSnapshot approved = curatedPageSnapshot();
+        FilesystemManagedSiteInstaller installer = new FilesystemManagedSiteInstaller(siteRoot);
+        installer.install(CURATED_PAGE_IDENTITY, approved);
+
+        Path ruFile = siteRoot.resolve("src/data/pages/ru/about.json");
+        Files.writeString(ruFile, "{\"id\":\"about\",\"contentType\":\"other\"}");
+        Path provenance = siteRoot.resolve(".astro-export/release-provenance.json");
+        Files.writeString(provenance, SiteReleaseManifest.computeOver(siteRoot, List.of(
+                "public/assets/vault", "src/content", "src/data/pages")).toCanonicalJson());
+
+        assertThrows(ManagedSiteKindCollisionException.class,
+                () -> installer.install(CURATED_PAGE_IDENTITY, approved));
+    }
+
+    private static void assertCuratedPageJson(JsonNode page, String locale, List<PublicField> fields) {
+        assertTrue(page.isObject());
+        assertEquals("about", page.get("id").asText());
+        assertEquals("about", page.get("type").asText());
+        assertEquals("curated_page", page.get("contentType").asText());
+        assertEquals(locale, page.get("language").asText());
+        assertEquals(PublicField.value(fields, "title").orElseThrow(), page.get("title").asText());
+        assertEquals(PublicField.value(fields, "summary").orElseThrow(), page.get("summary").asText());
+        assertEquals(PublicField.value(fields, "eyebrow").orElseThrow(), page.get("eyebrow").asText());
+        assertEquals(PublicField.value(fields, "lead").orElseThrow(), page.get("lead").asText());
+        assertEquals(PublicField.value(fields, "colophon").orElseThrow(), page.get("colophon").asText());
+        assertEquals(1, page.get("principles").size());
+        assertEquals(PublicField.value(fields, "principles[0].title").orElseThrow(),
+                page.get("principles").get(0).get(0).asText());
+        assertEquals(PublicField.value(fields, "principles[0].text").orElseThrow(),
+                page.get("principles").get(0).get(1).asText());
+        assertTrue(page.get("searchable").asBoolean());
+        assertFalse(page.has("topics"));
+        assertFalse(page.has("links"));
+    }
+
+    private static CandidateSnapshot curatedPageSnapshot() {
+        List<PublicField> fields = List.of(
+                PublicField.of("title", "About"),
+                PublicField.of("summary", "Summary"),
+                PublicField.of("eyebrow", "Eyebrow"),
+                PublicField.of("lead", "Lead"),
+                PublicField.of("principles[0].title", "Principle"),
+                PublicField.of("principles[0].text", "Principle text"),
+                PublicField.of("colophon", "Colophon"));
+        String structuredData = "{\"searchable\":true,\"type\":\"about\"}";
+        return CandidateSnapshot.of(
+                "", "", fields, fields, structuredData,
+                ReferenceMap.empty(
+                        CURATED_PAGE_IDENTITY,
+                        ContentHash.sha256Hex(""),
+                        ContentHash.sha256Hex(""),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(fields)),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(fields)),
+                        ContentHash.sha256Hex(structuredData)));
     }
 
     @Test
