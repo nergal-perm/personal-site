@@ -38,7 +38,7 @@ public final class EnglishCandidateValidator {
 
         List<String> diagnostics = new ArrayList<>();
         diagnostics.addAll(translatedFieldStructureDiagnostics(ruFields, enFields));
-        diagnostics.addAll(blankFieldDiagnostics(enBody, enFields));
+        diagnostics.addAll(blankFieldDiagnostics(ruBody, enBody, enFields));
         diagnostics.addAll(internalRouteDiagnostics(enBody, enFields));
         diagnostics.addAll(droppedUrlDiagnostics(ruBody, ruFields, enBody, enFields));
         diagnostics.addAll(droppedAssetReferenceDiagnostics(ruBody, ruFields, enBody, enFields));
@@ -60,9 +60,9 @@ public final class EnglishCandidateValidator {
         return fields.stream().map(PublicField::key).toList();
     }
 
-    private static List<String> blankFieldDiagnostics(String enBody, List<PublicField> enFields) {
+    private static List<String> blankFieldDiagnostics(String ruBody, String enBody, List<PublicField> enFields) {
         List<String> diagnostics = new ArrayList<>();
-        if (enBody.isBlank()) {
+        if (!ruBody.isBlank() && enBody.isBlank()) {
             diagnostics.add("Translation worker produced a blank body.");
         }
         for (PublicField field : enFields) {

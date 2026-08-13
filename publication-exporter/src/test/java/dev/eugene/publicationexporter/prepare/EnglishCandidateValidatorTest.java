@@ -42,6 +42,22 @@ class EnglishCandidateValidatorTest {
     }
 
     @Test
+    void blankSourceAndTranslatedBodyIsNotAWorkerFailure() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "", List.of(PublicField.of("title", "Заголовок")),
+                "", List.of(PublicField.of("title", "Title")));
+        assertTrue(result.valid(), result.diagnostics().toString());
+    }
+
+    @Test
+    void blankTranslatedBodyIsStillAWorkerFailureWhenSourceHadContent() {
+        EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
+                "Русский текст.", List.of(PublicField.of("title", "Заголовок")),
+                "", List.of(PublicField.of("title", "Title")));
+        assertTrue(result.diagnostics().contains("Translation worker produced a blank body."));
+    }
+
+    @Test
     void rejectsBlankTitle() {
         EnglishCandidateValidator.Result result = EnglishCandidateValidator.validate(
                 "Текст", "Body", fields("  ", "Description"));
