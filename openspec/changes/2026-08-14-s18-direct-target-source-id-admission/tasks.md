@@ -374,7 +374,7 @@ void listAllNotePathsIncludesPrivateNotesThatListPublishCandidatesExcludes() {
 cd publication-exporter && mvn -q test 2>&1 | tail -150
 ```
 
-- [ ] 2.6 Commit.
+- [x] 2.6 Commit.
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/vault/VaultReader.java \
@@ -878,7 +878,7 @@ cd publication-exporter && mvn -q -Dtest=PrepareHandlerTest test 2>&1 | tail -15
 cd publication-exporter && mvn -q -Dtest=LinkResolverTest,PrepareHandlerTest test 2>&1 | tail -150
 ```
 
-- [ ] 3.11 Commit.
+- [x] 3.11 Commit.
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/PublicNoteIndex.java \
@@ -1025,7 +1025,7 @@ final class DirectTargetIdentityCheckTest {
 cd publication-exporter && mvn -q -Dtest=PrivateNoteIdentityIndexTest,DirectTargetIdentityCheckTest,PrepareHandlerTest,LinkResolverTest test 2>&1 | tail -150
 ```
 
-- [ ] 4.4 Commit.
+- [x] 4.4 Commit.
 
 ```bash
 git add publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/PrivateNoteIdentityIndexTest.java \

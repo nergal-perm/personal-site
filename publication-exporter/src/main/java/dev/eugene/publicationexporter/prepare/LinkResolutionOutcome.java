@@ -1,6 +1,8 @@
 package dev.eugene.publicationexporter.prepare;
 
 import java.util.Objects;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.Set;
 import java.util.function.BiFunction;
 import java.util.function.Function;
@@ -27,7 +29,8 @@ final class ResolvedLinks implements LinkResolutionOutcome {
 
     ResolvedLinks(String body, Set<String> privateTargetStems) {
         this.body = Objects.requireNonNull(body, "body");
-        this.privateTargetStems = Set.copyOf(Objects.requireNonNull(privateTargetStems, "privateTargetStems"));
+        this.privateTargetStems = Collections.unmodifiableSet(
+                new LinkedHashSet<>(Objects.requireNonNull(privateTargetStems, "privateTargetStems")));
     }
 
     @Override

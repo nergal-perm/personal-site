@@ -968,6 +968,104 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void prepareWithNoPrivateTargetsSkipsPrivateIdentityScanForUnrelatedUnreadableNote() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath otherUnreadablePath = VaultRelativePath.of("private-area/Secret Draft.md");
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return notePath.equals(path) || notePath.equals(otherUnreadablePath);
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                if (notePath.equals(otherUnreadablePath)) {
+                    throw new UncheckedIOException(new IOException("unrelated private note unreadable"));
+                }
+                return VALID_ESSAY;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of(path);
+            }
+
+            @Override
+            public List<VaultRelativePath> listAllNotePaths() {
+                return List.of(path, otherUnreadablePath);
+            }
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals("ready_for_review", response.status());
+        assertEquals(1, workspace.installed().size());
+    }
+
+    @Test
+    void privateIdentityLookupNoSuchElementExceptionIsReturnedAsBlockedResponse() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath privateTargetPath = VaultRelativePath.of("private-area/Secret Draft.md");
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return notePath.equals(path) || notePath.equals(privateTargetPath);
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                if (notePath.equals(privateTargetPath)) {
+                    throw new NoSuchElementException("private target disappeared");
+                }
+                return """
+                        ---
+                        publish: true
+                        publicCollection: blog
+                        publicContentType: essay
+                        publicId: my-essay
+                        id: 8f2c-my-essay
+                        title: My Essay
+                        description: A valid description.
+                        ---
+                        # My Essay
+
+                        See [[private-area/Secret Draft]].""";
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of(path);
+            }
+
+            @Override
+            public List<VaultRelativePath> listAllNotePaths() {
+                return List.of(path, privateTargetPath);
+            }
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("private-notes", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("private target disappeared"));
+        assertTrue(workspace.installed().isEmpty());
+        assertTrue(worker.requested().isEmpty());
+    }
+
+    @Test
     void initialAssetResolutionIoFailureReturnsBlockedResponseWithoutInstallingCandidate() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(

@@ -86,10 +86,14 @@ public final class PrepareHandler {
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
             String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
             String sourceStem, String sourceId, Set<String> privateTargetStems) {
+        if (privateTargetStems.isEmpty()) {
+            return prepareAfterAssetResolution(
+                    notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader);
+        }
         PrivateNoteIdentityIndex identityIndex;
         try {
             identityIndex = PrivateNoteIdentityIndex.from(vaultReader);
-        } catch (UncheckedIOException failure) {
+        } catch (UncheckedIOException | NoSuchElementException failure) {
             return privateIdentityLookupFailure(failure);
         }
         return DirectTargetIdentityCheck.verify(sourceStem, sourceId, privateTargetStems, identityIndex)
@@ -389,9 +393,27 @@ public final class PrepareHandler {
     }
 
     private static BridgeResponse privateIdentityLookupFailure(UncheckedIOException failure) {
+        return privateIdentityLookupFailure((RuntimeException) failure);
+    }
+
+    private static BridgeResponse privateIdentityLookupFailure(NoSuchElementException failure) {
+        return privateIdentityLookupFailure((RuntimeException) failure);
+    }
+
+    private static BridgeResponse privateIdentityLookupFailure(RuntimeException failure) {
         return BridgeResponse.blocked(COMMAND,
                 Diagnostic.blocking(
-                        "private-notes", IoFailureMessages.describe("Private note identity lookup failed", failure)));
+                        "private-notes", privateIdentityLookupFailureMessage(failure)));
+    }
+
+    private static String privateIdentityLookupFailureMessage(RuntimeException failure) {
+        if (failure instanceof UncheckedIOException ioFailure) {
+            return IoFailureMessages.describe("Private note identity lookup failed", ioFailure);
+        }
+        String detail = failure.getMessage();
+        return detail == null || detail.isBlank()
+                ? "Private note identity lookup failed."
+                : "Private note identity lookup failed: " + detail;
     }
 
     private static BridgeResponse assetResolutionLookupFailure(UncheckedIOException failure) {

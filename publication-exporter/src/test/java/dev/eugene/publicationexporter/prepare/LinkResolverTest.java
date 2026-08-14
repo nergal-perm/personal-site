@@ -56,6 +56,17 @@ final class LinkResolverTest {
     }
 
     @Test
+    void resolvePreservesSourceOrderForUnresolvedPrivateTargetStems() {
+        String body = "See [[Черновик]] then [[Черновик 2]].";
+
+        Set<String> privateTargetStems = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
+                (resolved, stems) -> stems,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
+
+        assertEquals(java.util.List.of("Черновик", "Черновик 2"), java.util.List.copyOf(privateTargetStems));
+    }
+
+    @Test
     void resolveCollectsTheStemOfAPathQualifiedUnresolvedPlainLinkAsAPrivateTargetStem() {
         String body = "See [[private-area/Secret Draft]].";
 
