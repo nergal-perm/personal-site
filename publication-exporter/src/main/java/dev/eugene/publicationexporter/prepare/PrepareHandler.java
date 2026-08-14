@@ -86,7 +86,12 @@ public final class PrepareHandler {
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
             String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
             String sourceStem, String sourceId, Set<String> privateTargetStems) {
-        PrivateNoteIdentityIndex identityIndex = PrivateNoteIdentityIndex.from(vaultReader);
+        PrivateNoteIdentityIndex identityIndex;
+        try {
+            identityIndex = PrivateNoteIdentityIndex.from(vaultReader);
+        } catch (UncheckedIOException failure) {
+            return privateIdentityLookupFailure(failure);
+        }
         return DirectTargetIdentityCheck.verify(sourceStem, sourceId, privateTargetStems, identityIndex)
                 .resolve(
                         () -> prepareAfterAssetResolution(
@@ -381,6 +386,12 @@ public final class PrepareHandler {
         return BridgeResponse.blocked(COMMAND,
                 Diagnostic.blocking(
                         "known-notes", IoFailureMessages.describe("Known note lookup failed", failure)));
+    }
+
+    private static BridgeResponse privateIdentityLookupFailure(UncheckedIOException failure) {
+        return BridgeResponse.blocked(COMMAND,
+                Diagnostic.blocking(
+                        "private-notes", IoFailureMessages.describe("Private note identity lookup failed", failure)));
     }
 
     private static BridgeResponse assetResolutionLookupFailure(UncheckedIOException failure) {

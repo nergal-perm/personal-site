@@ -71,7 +71,7 @@ public final class LinkResolver {
         if (isEmbed) {
             return Optional.of(lastPathSegment(target));
         }
-        privateTargetStems.add(target);
+        privateTargetStems.add(lastPathSegment(target));
         output.append(label);
         return Optional.empty();
     }

@@ -56,6 +56,17 @@ final class LinkResolverTest {
     }
 
     @Test
+    void resolveCollectsTheStemOfAPathQualifiedUnresolvedPlainLinkAsAPrivateTargetStem() {
+        String body = "See [[private-area/Secret Draft]].";
+
+        Set<String> privateTargetStems = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
+                (resolved, stems) -> stems,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
+
+        assertEquals(Set.of("Secret Draft"), privateTargetStems);
+    }
+
+    @Test
     void unresolvedLinkWithAPathUsesOnlyTheLastSegmentAsItsSafeLabel() {
         assertEquals("See Secret Draft.",
                 resolvedBodyOrFail("See [[private-area/Secret Draft]].", new PublicNoteIndex(Map.of())));
