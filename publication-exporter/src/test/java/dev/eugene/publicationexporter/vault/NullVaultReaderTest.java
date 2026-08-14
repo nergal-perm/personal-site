@@ -77,4 +77,17 @@ class NullVaultReaderTest {
 
         assertEquals(List.of(published), vaultReader.listPublishCandidates());
     }
+
+    @Test
+    void listAllNotePathsIncludesPrivateNotesThatListPublishCandidatesExcludes() {
+        VaultRelativePath publicPath = VaultRelativePath.of("public.md");
+        VaultRelativePath privatePath = VaultRelativePath.of("private.md");
+        VaultReader reader = VaultReader.createNull(Map.of(
+                publicPath, "---\npublish: true\n---\nPublic.",
+                privatePath, "---\npublish: false\n---\nPrivate."));
+
+        List<VaultRelativePath> all = reader.listAllNotePaths();
+
+        assertEquals(List.of(privatePath, publicPath), all);
+    }
 }

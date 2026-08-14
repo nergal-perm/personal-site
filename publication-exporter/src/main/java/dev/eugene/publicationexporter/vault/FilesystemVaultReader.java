@@ -42,15 +42,29 @@ final class FilesystemVaultReader implements VaultReader {
 
     @Override
     public List<VaultRelativePath> listPublishCandidates() {
+        return listMarkdownFiles().stream()
+                .filter(this::hasPublishTrueFlag)
+                .map(ConfinedCandidate::originalPath)
+                .map(this::toVaultRelativePath)
+                .sorted(Comparator.comparing(VaultRelativePath::value))
+                .toList();
+    }
+
+    @Override
+    public List<VaultRelativePath> listAllNotePaths() {
+        return listMarkdownFiles().stream()
+                .map(ConfinedCandidate::originalPath)
+                .map(this::toVaultRelativePath)
+                .sorted(Comparator.comparing(VaultRelativePath::value))
+                .toList();
+    }
+
+    private List<ConfinedCandidate> listMarkdownFiles() {
         try (var paths = Files.walk(canonicalVaultRoot)) {
             return paths.filter(Files::isRegularFile)
                     .filter(path -> path.getFileName().toString().endsWith(".md"))
                     .map(this::confinedCandidate)
                     .flatMap(Optional::stream)
-                    .filter(this::hasPublishTrueFlag)
-                    .map(ConfinedCandidate::originalPath)
-                    .map(this::toVaultRelativePath)
-                    .sorted(Comparator.comparing(VaultRelativePath::value))
                     .toList();
         } catch (IOException error) {
             throw new UncheckedIOException(error);

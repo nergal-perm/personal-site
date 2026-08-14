@@ -47,6 +47,15 @@ final class NullVaultReader implements VaultReader {
                 .toList();
     }
 
+    @Override
+    public List<VaultRelativePath> listAllNotePaths() {
+        return sourceByPath.entrySet().stream()
+                .filter(entry -> entry.getKey().endsWith(".md"))
+                .map(entry -> VaultRelativePath.of(entry.getKey()))
+                .sorted(Comparator.comparing(VaultRelativePath::value))
+                .toList();
+    }
+
     private static Map<VaultRelativePath, String> defaultToEmptySource(VaultRelativePath... paths) {
         Map<VaultRelativePath, String> notesBySource = new LinkedHashMap<>();
         Arrays.stream(paths).forEach(path -> notesBySource.put(path, ""));

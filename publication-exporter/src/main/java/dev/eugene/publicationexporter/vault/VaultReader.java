@@ -12,6 +12,10 @@ public interface VaultReader {
 
     List<VaultRelativePath> listPublishCandidates();
 
+    default List<VaultRelativePath> listAllNotePaths() {
+        return listPublishCandidates();
+    }
+
     static VaultReader create(Path vaultRoot) {
         return new FilesystemVaultReader(vaultRoot);
     }

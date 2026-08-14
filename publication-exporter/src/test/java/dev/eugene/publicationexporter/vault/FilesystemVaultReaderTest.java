@@ -144,6 +144,18 @@ class FilesystemVaultReaderTest {
     }
 
     @Test
+    void listAllNotePathsIncludesPrivateNotesThatListPublishCandidatesExcludes() throws Exception {
+        writeNote(vaultRoot, "public.md", "---\npublish: true\n---\nPublic.");
+        writeNote(vaultRoot, "private.md", "---\npublish: false\n---\nPrivate.");
+        VaultReader reader = VaultReader.create(vaultRoot);
+
+        List<VaultRelativePath> all = reader.listAllNotePaths();
+
+        assertEquals(2, all.size());
+        assertTrue(all.contains(VaultRelativePath.of("private.md")));
+    }
+
+    @Test
     void listPublishCandidatesSkipsUndecodableMarkdownAndReturnsValidCandidates() throws Exception {
         writeNote(vaultRoot, "blog/my-essay.md", "---\npublish: true\n---\nBody.");
         Path corrupt = vaultRoot.resolve("blog/corrupt.md");
