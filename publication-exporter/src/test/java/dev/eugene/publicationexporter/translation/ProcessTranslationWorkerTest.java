@@ -133,7 +133,7 @@ class ProcessTranslationWorkerTest {
     @Test
     void timeoutIsReportedAsFailure() {
         ProcessTranslationWorker worker = processWorker(
-                (workdir, prompt) -> List.of("sh", "-c", "sleep 5"), Duration.ofMillis(200));
+                (workdir, prompt) -> List.of("sleep", "5"), Duration.ofMillis(200));
 
         TranslationOutcome result = worker.translate(
                 TranslationJob.forSource("ignored", TranslationResults.fields("ignored title", "ignored description")),
