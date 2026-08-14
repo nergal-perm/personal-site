@@ -1,12 +1,14 @@
 package dev.eugene.publicationexporter.prepare;
 
 import java.util.Objects;
+import java.util.Set;
+import java.util.function.BiFunction;
 import java.util.function.Function;
 
 public sealed interface LinkResolutionOutcome permits ResolvedLinks, BlockedTransclusion {
 
-    static LinkResolutionOutcome resolved(String body) {
-        return new ResolvedLinks(body);
+    static LinkResolutionOutcome resolved(String body, Set<String> privateTargetStems) {
+        return new ResolvedLinks(body, privateTargetStems);
     }
 
     static LinkResolutionOutcome blockedTransclusion(String target) {
@@ -14,23 +16,26 @@ public sealed interface LinkResolutionOutcome permits ResolvedLinks, BlockedTran
     }
 
     <T> T resolve(
-            Function<String, T> onResolved,
+            BiFunction<String, Set<String>, T> onResolved,
             Function<String, T> onBlockedTransclusion);
 }
 
 final class ResolvedLinks implements LinkResolutionOutcome {
 
     private final String body;
+    private final Set<String> privateTargetStems;
 
-    ResolvedLinks(String body) {
+    ResolvedLinks(String body, Set<String> privateTargetStems) {
         this.body = Objects.requireNonNull(body, "body");
+        this.privateTargetStems = Set.copyOf(Objects.requireNonNull(privateTargetStems, "privateTargetStems"));
     }
 
     @Override
-    public <T> T resolve(Function<String, T> onResolved, Function<String, T> onBlockedTransclusion) {
+    public <T> T resolve(
+            BiFunction<String, Set<String>, T> onResolved, Function<String, T> onBlockedTransclusion) {
         Objects.requireNonNull(onResolved, "onResolved");
         Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
-        return onResolved.apply(body);
+        return onResolved.apply(body, privateTargetStems);
     }
 }
 
@@ -43,7 +48,8 @@ final class BlockedTransclusion implements LinkResolutionOutcome {
     }
 
     @Override
-    public <T> T resolve(Function<String, T> onResolved, Function<String, T> onBlockedTransclusion) {
+    public <T> T resolve(
+            BiFunction<String, Set<String>, T> onResolved, Function<String, T> onBlockedTransclusion) {
         Objects.requireNonNull(onResolved, "onResolved");
         Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
         return onBlockedTransclusion.apply(target);

@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -20,7 +21,7 @@ final class LinkResolverTest {
 
     private static String resolvedBodyOrFail(String body, PublicNoteIndex knownNotes) {
         return LinkResolver.resolve(body, knownNotes).resolve(
-                resolved -> resolved,
+                (resolved, privateTargetStems) -> resolved,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
     }
 
@@ -39,8 +40,19 @@ final class LinkResolverTest {
         LinkResolutionOutcome outcome = LinkResolver.resolve("See [[My Note]].", index);
 
         assertEquals("See [My Note](/notes/my-note/).", outcome.resolve(
-                resolved -> resolved,
+                (resolved, privateTargetStems) -> resolved,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+    }
+
+    @Test
+    void resolveCollectsTheStemOfEveryUnresolvedPlainLinkAsAPrivateTargetStem() {
+        String body = "See [[Черновик]] and [[Заметка о времени]].";
+
+        Set<String> privateTargetStems = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
+                (resolved, stems) -> stems,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
+
+        assertEquals(Set.of("Черновик"), privateTargetStems);
     }
 
     @Test
@@ -93,7 +105,7 @@ final class LinkResolverTest {
         String body = "![[Черновик]]";
 
         String blockedTarget = LinkResolver.resolve(body, noKnownNotes).resolve(
-                resolved -> fail("Expected a blocked transclusion but resolution succeeded: " + resolved),
+                (resolved, privateTargetStems) -> fail("Expected a blocked transclusion but resolution succeeded: " + resolved),
                 target -> target);
 
         assertEquals("Черновик", blockedTarget);

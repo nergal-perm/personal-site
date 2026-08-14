@@ -3,6 +3,8 @@ package dev.eugene.publicationexporter.prepare;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 public final class LinkResolver {
 
@@ -13,6 +15,7 @@ public final class LinkResolver {
 
     public static LinkResolutionOutcome resolve(String body, PublicNoteIndex knownNotes) {
         StringBuilder output = new StringBuilder(body.length());
+        Set<String> privateTargetStems = new LinkedHashSet<>();
         int cursor = 0;
         while (cursor < body.length()) {
             ProtectedRegionScanner.ProtectedSpan protectedSpan = ProtectedRegionScanner.nextProtectedSpan(body, cursor);
@@ -20,7 +23,8 @@ public final class LinkResolver {
             if (protectedSpanBeforeLink(protectedSpan, link)) {
                 cursor = copyProtectedSpan(body, output, cursor, protectedSpan);
             } else if (link != null) {
-                Optional<String> blockedTarget = appendLink(body, output, cursor, link, knownNotes);
+                Optional<String> blockedTarget = appendLink(
+                        body, output, cursor, link, knownNotes, privateTargetStems);
                 if (blockedTarget.isPresent()) {
                     return LinkResolutionOutcome.blockedTransclusion(blockedTarget.get());
                 }
@@ -30,7 +34,7 @@ public final class LinkResolver {
             }
         }
         output.append(body, cursor, body.length());
-        return LinkResolutionOutcome.resolved(output.toString());
+        return LinkResolutionOutcome.resolved(output.toString(), privateTargetStems);
     }
 
     private static Matcher nextLink(String body, int cursor) {
@@ -49,7 +53,8 @@ public final class LinkResolver {
     }
 
     private static Optional<String> appendLink(
-            String body, StringBuilder output, int cursor, Matcher link, PublicNoteIndex knownNotes) {
+            String body, StringBuilder output, int cursor, Matcher link, PublicNoteIndex knownNotes,
+            Set<String> privateTargetStems) {
         output.append(body, cursor, link.start());
         boolean isEmbed = !link.group(1).isEmpty();
         String target = link.group(2).strip();
@@ -66,6 +71,7 @@ public final class LinkResolver {
         if (isEmbed) {
             return Optional.of(lastPathSegment(target));
         }
+        privateTargetStems.add(target);
         output.append(label);
         return Optional.empty();
     }

@@ -1949,6 +1949,145 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void prepareBlocksWhenADirectPrivateTargetHasNoSourceId() {
+        String privateTargetWithoutId = """
+                ---
+                publish: false
+                publicCollection: blog
+                publicContentType: essay
+                publicId: draft
+                title: Черновик
+                description: A valid description.
+                ---
+                # Черновик
+
+                Not yet public.""";
+        String referrer = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Смотрите также [[Черновик]].""";
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath privateTargetPath = VaultRelativePath.of("blog/Черновик.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, referrer, privateTargetPath, privateTargetWithoutId));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(referrerPath, referrer));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()), worker, workspace,
+                ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertTrue(worker.requested().isEmpty());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void prepareBlocksWhenADirectPrivateTargetSharesTheSourcesOwnSourceId() {
+        String referrer = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Смотрите также [[Черновик]].""";
+        String privateTargetWithDuplicateId = """
+                ---
+                publish: false
+                publicCollection: blog
+                publicContentType: essay
+                publicId: draft
+                id: 8f2c-my-essay
+                title: Черновик
+                description: A valid description.
+                ---
+                # Черновик
+
+                Not yet public.""";
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath privateTargetPath = VaultRelativePath.of("blog/Черновик.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, referrer, privateTargetPath, privateTargetWithDuplicateId));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", fields("EN title", "EN description.")));
+        NullWorkflowStatusEditor editor = new NullWorkflowStatusEditor(Map.of(referrerPath, referrer));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()), worker, workspace,
+                ApprovedSnapshotWorkspace.createNull(), editor);
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertTrue(worker.requested().isEmpty());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void prepareSucceedsWhenDirectPrivateTargetsHaveUniqueSourceIds() {
+        String referrer = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: my-essay
+                id: 8f2c-my-essay
+                title: My Essay
+                description: A valid description.
+                ---
+                # My Essay
+
+                Смотрите также [[Черновик]].""";
+        String privateTarget = """
+                ---
+                publish: false
+                publicCollection: blog
+                publicContentType: essay
+                publicId: draft
+                id: 4c1b-draft
+                title: Черновик
+                description: A valid description.
+                ---
+                # Черновик
+
+                Not yet public.""";
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath privateTargetPath = VaultRelativePath.of("blog/Черновик.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, referrer, privateTargetPath, privateTarget));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("EN body", fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        assertEquals(1, workspace.installed().size());
+    }
+
+    @Test
     void blockedTransclusionDiagnosticUsesOnlyTheLastPathSegment() {
         String referrer = essayWithBody("![[private-area/Черновик]]");
         VaultRelativePath referrerPath = VaultRelativePath.of("blog/my-essay.md");

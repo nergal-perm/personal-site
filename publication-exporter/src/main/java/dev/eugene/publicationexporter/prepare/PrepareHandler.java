@@ -32,6 +32,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -70,12 +71,27 @@ public final class PrepareHandler {
         } catch (UncheckedIOException failure) {
             return knownNotesLookupFailure(failure);
         }
+        String sourceStem = PublicNoteIndex.filenameStem(notePath);
+        String sourceId = intake.frontmatterString("id").orElseThrow();
         return MarkdownNormalizer.normalize(intake.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        resolvedBody -> prepareAfterAssetResolution(
-                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader),
+                        (resolvedBody, privateTargetStems) -> prepareAfterIdentityCheck(
+                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader,
+                                sourceStem, sourceId, privateTargetStems),
                         PrepareHandler::transclusionBlockedFailure),
                 position -> unclosedCommentFailure(position));
+    }
+
+    private BridgeResponse prepareAfterIdentityCheck(
+            VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
+            String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
+            String sourceStem, String sourceId, Set<String> privateTargetStems) {
+        PrivateNoteIdentityIndex identityIndex = PrivateNoteIdentityIndex.from(vaultReader);
+        return DirectTargetIdentityCheck.verify(sourceStem, sourceId, privateTargetStems, identityIndex)
+                .resolve(
+                        () -> prepareAfterAssetResolution(
+                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader),
+                        PrepareHandler::directTargetIdentityBlockedFailure);
     }
 
     private BridgeResponse prepareAfterAssetResolution(
@@ -286,7 +302,8 @@ public final class PrepareHandler {
         }
         return MarkdownNormalizer.normalize(current.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        resolvedBody -> AssetResolver.resolve(resolvedBody, vaultAssetReader).resolve(
+                        (resolvedBody, ignoredPrivateTargetStems) -> AssetResolver.resolve(
+                                resolvedBody, vaultAssetReader).resolve(
                                 (assetResolvedBody, ignoredAssets) ->
                                         sourceFingerprintMatches(job, assetResolvedBody, fieldsOf(current))
                                                 && expectedStructuredData.equals(current.structuredData())
@@ -380,6 +397,10 @@ public final class PrepareHandler {
     private static BridgeResponse transclusionBlockedFailure(String target) {
         return BridgeResponse.translationFailed(COMMAND,
                 Diagnostic.blocking("candidate", "Transclusion target \"" + target + "\" is not a public note."));
+    }
+
+    private static BridgeResponse directTargetIdentityBlockedFailure(String reason) {
+        return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("semantic-references", reason));
     }
 
     private static BridgeResponse assetBlockedFailure(String reference) {

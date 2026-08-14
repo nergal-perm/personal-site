@@ -54,7 +54,7 @@ final class PublicNoteIndex {
         routes.put(stem, route);
     }
 
-    private static String filenameStem(VaultRelativePath path) {
+    static String filenameStem(VaultRelativePath path) {
         String value = path.value();
         int lastSlash = value.lastIndexOf('/');
         String fileName = lastSlash >= 0 ? value.substring(lastSlash + 1) : value;
