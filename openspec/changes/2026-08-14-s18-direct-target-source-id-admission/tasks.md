@@ -53,7 +53,7 @@ fixture that already exists in the file.
 - `NullTranslationWorker.requested()` and `NullCandidateWorkspace.installed()` — already exist, used to
   prove no job/candidate mutation happened.
 
-- [ ] 1.1 Write a failing test: a direct private target that has no `id` frontmatter blocks `prepare` as
+- [x] 1.1 Write a failing test: a direct private target that has no `id` frontmatter blocks `prepare` as
       `metadata_blocked`, before any translation job is requested or candidate installed.
 
 ```java
@@ -110,7 +110,7 @@ void prepareBlocksWhenADirectPrivateTargetHasNoSourceId() {
   (design.md's ordering decision), mirroring how S13's own tests proved link resolution runs before
   translation.
 
-- [ ] 1.2 Write a failing test: a direct private target whose `id` duplicates the source's own `id` blocks
+- [x] 1.2 Write a failing test: a direct private target whose `id` duplicates the source's own `id` blocks
       `prepare` the same way.
 
 ```java
@@ -163,7 +163,7 @@ void prepareBlocksWhenADirectPrivateTargetSharesTheSourcesOwnSourceId() {
 }
 ```
 
-- [ ] 1.3 Write a failing test: direct private targets with unique, valid source IDs do not block
+- [x] 1.3 Write a failing test: direct private targets with unique, valid source IDs do not block
       `prepare` — the explicit positive-path proof for this slice's new check (existing S13 tests already
       incidentally exercise a similar shape, but none of them assert this new check by name).
 
@@ -213,7 +213,7 @@ void prepareSucceedsWhenDirectPrivateTargetsHaveUniqueSourceIds() {
 }
 ```
 
-- [ ] 1.4 Run the three new tests and confirm they fail for the expected reason (the check does not exist
+- [x] 1.4 Run the three new tests and confirm they fail for the expected reason (the check does not exist
       yet, so 1.1 and 1.2 currently succeed instead of blocking — not a compile error, since nothing in the
       test references a not-yet-existing type).
 
@@ -239,7 +239,7 @@ first — they may have evolved since this task list was written.
 - Modify: `publication-exporter/src/test/java/dev/eugene/publicationexporter/vault/FilesystemVaultReaderTest.java`
 - Modify: `publication-exporter/src/test/java/dev/eugene/publicationexporter/vault/NullVaultReaderTest.java`
 
-- [ ] 2.1 Add the defaulted method to `VaultReader.java`:
+- [x] 2.1 Add the defaulted method to `VaultReader.java`:
 
 ```java
 public interface VaultReader {
@@ -272,7 +272,7 @@ public interface VaultReader {
 }
 ```
 
-- [ ] 2.2 Refactor `FilesystemVaultReader.java`'s `listPublishCandidates()` to share its walk with a new
+- [x] 2.2 Refactor `FilesystemVaultReader.java`'s `listPublishCandidates()` to share its walk with a new
       `listAllNotePaths()` override. Extract the walk+confinement+`.md`-filter+sort pipeline into a private
       `listMarkdownFiles()` helper returning `List<ConfinedCandidate>`, so neither listing re-implements
       confinement:
@@ -314,7 +314,7 @@ public interface VaultReader {
   above replaces it entirely. Everything else in the file (`confinedCandidate`, `hasPublishTrueFlag`,
   `toVaultRelativePath`, `resolveWithinVault`, etc.) is unchanged.
 
-- [ ] 2.3 Add the override to `NullVaultReader.java`, the unfiltered sibling of its existing
+- [x] 2.3 Add the override to `NullVaultReader.java`, the unfiltered sibling of its existing
       `listPublishCandidates()`:
 
 ```java
@@ -328,7 +328,7 @@ public interface VaultReader {
     }
 ```
 
-- [ ] 2.4 Add one test to each existing adapter test file proving the new listing includes private notes
+- [x] 2.4 Add one test to each existing adapter test file proving the new listing includes private notes
       the old one excludes. Read each file's existing test for `listPublishCandidates()` first and match its
       fixture-building style exactly (temp-directory writes for `FilesystemVaultReaderTest`, in-memory map
       for `NullVaultReaderTest`).
@@ -367,7 +367,7 @@ void listAllNotePathsIncludesPrivateNotesThatListPublishCandidatesExcludes() {
   Adjust `temporaryRoot`/`@TempDir` field names to match whatever `FilesystemVaultReaderTest.java` already
   uses if different from this sketch — read the file first per this section's header instruction.
 
-- [ ] 2.5 Run the full suite and confirm nothing regresses (the three section-1 tests are still red, for
+- [x] 2.5 Run the full suite and confirm nothing regresses (the three section-1 tests are still red, for
       the same reason as before — nothing yet calls `listAllNotePaths()` from `prepare`).
 
 ```bash
@@ -397,7 +397,7 @@ git commit -m "feat(exporter): add VaultReader.listAllNotePaths() for private-no
 - Modify: `publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/PrepareHandler.java`
 - Modify: `publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/LinkResolverTest.java`
 
-- [ ] 3.1 Make `PublicNoteIndex.filenameStem` reusable by `PrivateNoteIdentityIndex` and by `PrepareHandler`
+- [x] 3.1 Make `PublicNoteIndex.filenameStem` reusable by `PrivateNoteIdentityIndex` and by `PrepareHandler`
       (for computing the source note's own stem): drop its `private` modifier so it is package-private.
       Read the current file first — only this one modifier changes:
 
@@ -407,7 +407,7 @@ git commit -m "feat(exporter): add VaultReader.listAllNotePaths() for private-no
 
   (was `private static String filenameStem(...)` — everything else in `PublicNoteIndex.java` is unchanged.)
 
-- [ ] 3.2 Create `PrivateNoteIdentityIndex.java`. It is built once per `prepare()` call from
+- [x] 3.2 Create `PrivateNoteIdentityIndex.java`. It is built once per `prepare()` call from
       `vaultReader.listAllNotePaths()`, exactly mirroring `PublicNoteIndex.from(...)`'s shape and its
       ambiguous-stem-drops-silently precedent (two files sharing a stem resolve to "not found" here too,
       not a new blocking case — scope-pins.md is explicit this is deliberate, not an oversight):
@@ -470,7 +470,7 @@ record TargetIdentity(Optional<String> sourceId) {
   `TargetIdentity` is a top-level package-private record in the same file, matching how
   `LinkResolutionOutcome.java` already holds `ResolvedLinks`/`BlockedTransclusion` alongside its interface.
 
-- [ ] 3.3 Widen `LinkResolutionOutcome.java` to also carry the private-target stems a resolution collected.
+- [x] 3.3 Widen `LinkResolutionOutcome.java` to also carry the private-target stems a resolution collected.
       Read the current file first (reproduced in full below as of this task list's writing — confirm it
       still matches before editing):
 
@@ -532,7 +532,7 @@ final class BlockedTransclusion implements LinkResolutionOutcome {
 }
 ```
 
-- [ ] 3.4 Update `LinkResolver.java` to collect the stem of every *plain* (non-embed) link whose target is
+- [x] 3.4 Update `LinkResolver.java` to collect the stem of every *plain* (non-embed) link whose target is
       not in `knownNotes` — the existing safe-label branch — into a `Set<String>` threaded through the walk,
       and pass it to `LinkResolutionOutcome.resolved(...)`. Read the current file first (reproduced in full
       below; confirm it still matches before editing):
@@ -637,7 +637,7 @@ public final class LinkResolver {
   added to `privateTargetStems`, matching design.md's note that unresolved embeds already fail closed via
   `blockedTransclusion` before this check could run.
 
-- [ ] 3.5 Create `DirectTargetIdentityOutcome.java`, the same sealed-outcome idiom as
+- [x] 3.5 Create `DirectTargetIdentityOutcome.java`, the same sealed-outcome idiom as
       `LinkResolutionOutcome`/`SourceFreshnessOutcome`:
 
 ```java
@@ -687,7 +687,7 @@ final class IdentityBlocked implements DirectTargetIdentityOutcome {
 }
 ```
 
-- [ ] 3.6 Create `DirectTargetIdentityCheck.java` — a pure function (design.md's cohesion call: it owns
+- [x] 3.6 Create `DirectTargetIdentityCheck.java` — a pure function (design.md's cohesion call: it owns
       exactly one responsibility, comparing already-resolved identities, and depends on nothing but its
       arguments, matching `LinkResolver`/`AssetResolver`'s existing static-utility shape in this package):
 
@@ -743,7 +743,7 @@ final class DirectTargetIdentityCheck {
   never reaches identity comparison at all, so it can never spuriously collide with the `sourceId` already
   seeded into `seenSourceIds`.
 
-- [ ] 3.7 Wire everything into `PrepareHandler.java`. Read the current file in full first (its exact shape
+- [x] 3.7 Wire everything into `PrepareHandler.java`. Read the current file in full first (its exact shape
       may have shifted since this task list was written). Three things change: `prepare(...)` computes the
       source's own stem/id and gains the new check right after `LinkResolver.resolve` succeeds;
       `sourceFreshness(...)`'s `LinkResolver.resolve(...).resolve(...)` call gains the now-required second
@@ -827,13 +827,13 @@ final class DirectTargetIdentityCheck {
     }
 ```
 
-- [ ] 3.8 Run `PrepareHandlerTest` and confirm every test passes, including the three written in section 1.
+- [x] 3.8 Run `PrepareHandlerTest` and confirm every test passes, including the three written in section 1.
 
 ```bash
 cd publication-exporter && mvn -q -Dtest=PrepareHandlerTest test 2>&1 | tail -150
 ```
 
-- [ ] 3.9 Update `LinkResolverTest.java`'s `resolvedBodyOrFail` helper and the one direct `.resolve(...)`
+- [x] 3.9 Update `LinkResolverTest.java`'s `resolvedBodyOrFail` helper and the one direct `.resolve(...)`
       call site for the new two-argument `onResolved` callback. Read the current file first (its full
       current content is reproduced above in this plan's research, at the point design.md's "LinkResolver /
       LinkResolutionOutcome" section was written — confirm it still matches):
@@ -872,7 +872,7 @@ cd publication-exporter && mvn -q -Dtest=PrepareHandlerTest test 2>&1 | tail -15
 
   Add `import java.util.Set;` to this test file's imports if not already present.
 
-- [ ] 3.10 Run `LinkResolverTest` and `PrepareHandlerTest` together, confirm both green.
+- [x] 3.10 Run `LinkResolverTest` and `PrepareHandlerTest` together, confirm both green.
 
 ```bash
 cd publication-exporter && mvn -q -Dtest=LinkResolverTest,PrepareHandlerTest test 2>&1 | tail -150
@@ -904,7 +904,7 @@ two *different* targets (not source-vs-target, already covered by 1.2).
 - Create: `publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/PrivateNoteIdentityIndexTest.java`
 - Create: `publication-exporter/src/test/java/dev/eugene/publicationexporter/prepare/DirectTargetIdentityCheckTest.java`
 
-- [ ] 4.1 Write and verify all of the following tests in `PrivateNoteIdentityIndexTest.java`:
+- [x] 4.1 Write and verify all of the following tests in `PrivateNoteIdentityIndexTest.java`:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -966,7 +966,7 @@ final class PrivateNoteIdentityIndexTest {
 }
 ```
 
-- [ ] 4.2 Write and verify all of the following tests in `DirectTargetIdentityCheckTest.java`:
+- [x] 4.2 Write and verify all of the following tests in `DirectTargetIdentityCheckTest.java`:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -1018,7 +1018,7 @@ final class DirectTargetIdentityCheckTest {
 }
 ```
 
-- [ ] 4.3 Run the two new test classes together with `PrepareHandlerTest` and `LinkResolverTest`, confirm
+- [x] 4.3 Run the two new test classes together with `PrepareHandlerTest` and `LinkResolverTest`, confirm
       all green.
 
 ```bash
@@ -1035,7 +1035,7 @@ git commit -m "test(exporter): add narrow coverage for private identity index an
 
 ## 5. Full-suite verification
 
-- [ ] 5.1 Run the complete `publication-exporter` test suite and confirm every test passes. Baseline going
+- [x] 5.1 Run the complete `publication-exporter` test suite and confirm every test passes. Baseline going
       into this slice is 802 tests, all green (confirmed 2026-08-14 immediately before this slice began,
       after fixing an unrelated dash-vs-bash timeout-test portability bug — see commit `dbd818b`).
 
@@ -1044,13 +1044,13 @@ cd publication-exporter && mvn -q test 2>&1 | tail -150
 grep -h "Tests run" target/surefire-reports/*.txt | awk -F'[ ,]+' '{tests+=$3; fail+=$5; err+=$7; skip+=$9} END {print "Tests run:", tests, "Failures:", fail, "Errors:", err, "Skipped:", skip}'
 ```
 
-- [ ] 5.2 Run the OpenSpec strict validation for this change and confirm it passes.
+- [x] 5.2 Run the OpenSpec strict validation for this change and confirm it passes.
 
 ```bash
 cd /home/eugene/Dev/personal-site && openspec validate --changes 2026-08-14-s18-direct-target-source-id-admission --strict
 ```
 
-- [ ] 5.3 Refresh the graphify code graph (project convention after any code change).
+- [x] 5.3 Refresh the graphify code graph (project convention after any code change).
 
 ```bash
 cd /home/eugene/Dev/personal-site/publication-exporter && graphify update .
