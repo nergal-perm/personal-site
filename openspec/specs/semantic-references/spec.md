@@ -16,7 +16,7 @@ Every selected source note and every directly referenced private target SHALL ha
 #### Scenario: Required source ID is absent or duplicated
 - **GIVEN** the selected source or a direct private target lacks a source ID or shares one with another note
 - **WHEN** semantic preparation is requested
-- **THEN** processing is blocked as `metadata_blocked` before candidate mutation
+- **THEN** processing is blocked as `metadata_blocked` before a translation job is requested or a candidate is mutated
 - **AND** no path-derived identity is allocated
 
 ### Requirement: SEM-02 Assign stable occurrence references in source order
