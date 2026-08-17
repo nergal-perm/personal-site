@@ -4,6 +4,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 final class OccurrenceLabelMarkers {
@@ -40,29 +41,42 @@ final class OccurrenceLabelMarkers {
         Set<Integer> seen = new HashSet<>();
         int cursor = 0;
         while (cursor < delimitedBody.length()) {
-            char candidate = delimitedBody.charAt(cursor);
-            if (!isOpenMarker(candidate)) {
-                cursor++;
-                continue;
-            }
-            int index = candidate - MARKER_RANGE_START;
-            int close = delimitedBody.indexOf(closeMarker(index), cursor + 1);
-            if (close < 0) {
-                cursor++;
-                continue;
-            }
-            if (!seen.add(index)) {
-                // A repeated index means the translation duplicated this occurrence's marker
-                // pair; there's no way to tell which copy is authoritative, so it must not be
-                // treated as present exactly once.
-                spans.remove(index);
-                cursor = close + 1;
-                continue;
-            }
-            spans.put(index, delimitedBody.substring(cursor + 1, close));
-            cursor = close + 1;
+            MarkerScan found = nextIndexedSpan(delimitedBody, cursor);
+            found.span().ifPresent(span -> recordSpan(spans, seen, span));
+            cursor = found.nextCursor();
         }
         return spans;
+    }
+
+    private static MarkerScan nextIndexedSpan(String delimitedBody, int cursor) {
+        char candidate = delimitedBody.charAt(cursor);
+        if (!isOpenMarker(candidate)) {
+            return new MarkerScan(cursor + 1, Optional.empty());
+        }
+        int index = candidate - MARKER_RANGE_START;
+        int close = delimitedBody.indexOf(closeMarker(index), cursor + 1);
+        if (close < 0) {
+            return new MarkerScan(cursor + 1, Optional.empty());
+        }
+        String label = delimitedBody.substring(cursor + 1, close);
+        return new MarkerScan(close + 1, Optional.of(new IndexedSpan(index, label)));
+    }
+
+    private static void recordSpan(Map<Integer, String> spans, Set<Integer> seen, IndexedSpan span) {
+        if (!seen.add(span.index())) {
+            // A repeated index means the translation duplicated this occurrence's marker pair;
+            // there's no way to tell which copy is authoritative, so it must not be treated as
+            // present exactly once.
+            spans.remove(span.index());
+            return;
+        }
+        spans.put(span.index(), span.label());
+    }
+
+    private record MarkerScan(int nextCursor, Optional<IndexedSpan> span) {
+    }
+
+    private record IndexedSpan(int index, String label) {
     }
 
     static String strip(String delimitedBody) {

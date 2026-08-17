@@ -80,22 +80,29 @@ public final class PrepareHandler {
         String sourceStem = PublicNoteIndex.filenameStem(notePath);
         String sourceId = intake.frontmatterString("id").orElseThrow();
         return MarkdownNormalizer.normalize(intake.body()).resolve(
-                normalizedBody -> {
-                    AssetResolutionOutcome assetOutcome;
-                    try {
-                        assetOutcome = AssetResolver.resolve(normalizedBody, vaultAssetReader);
-                    } catch (UncheckedIOException failure) {
-                        return assetResolutionLookupFailure(failure);
-                    }
-                    return assetOutcome.resolve(
-                            (assetResolvedBody, assets) -> LinkResolver.resolve(assetResolvedBody, knownNotes).resolve(
-                                    (resolvedBody, occurrences) -> prepareAfterIdentityCheck(
-                                            notePath, vaultReader, intake, resolvedBody, assets, knownNotes,
-                                            vaultAssetReader, sourceStem, sourceId, occurrences),
-                                    PrepareHandler::transclusionBlockedFailure),
-                            PrepareHandler::assetBlockedFailure);
-                },
+                normalizedBody -> resolveAssetsThenLinks(
+                        notePath, vaultReader, intake, normalizedBody, knownNotes, vaultAssetReader,
+                        sourceStem, sourceId),
                 position -> unclosedCommentFailure(position));
+    }
+
+    private BridgeResponse resolveAssetsThenLinks(
+            VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
+            String normalizedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
+            String sourceStem, String sourceId) {
+        AssetResolutionOutcome assetOutcome;
+        try {
+            assetOutcome = AssetResolver.resolve(normalizedBody, vaultAssetReader);
+        } catch (UncheckedIOException failure) {
+            return assetResolutionLookupFailure(failure);
+        }
+        return assetOutcome.resolve(
+                (assetResolvedBody, assets) -> LinkResolver.resolve(assetResolvedBody, knownNotes).resolve(
+                        (resolvedBody, occurrences) -> prepareAfterIdentityCheck(
+                                notePath, vaultReader, intake, resolvedBody, assets, knownNotes,
+                                vaultAssetReader, sourceStem, sourceId, occurrences),
+                        PrepareHandler::transclusionBlockedFailure),
+                PrepareHandler::assetBlockedFailure);
     }
 
     private BridgeResponse prepareAfterIdentityCheck(
