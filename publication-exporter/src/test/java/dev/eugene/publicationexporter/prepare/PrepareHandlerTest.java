@@ -1459,6 +1459,33 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void prepareBlocksWhenDuplicateInventedIndicesWouldOtherwiseCancelOutToNothing() {
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("private/target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[target]]."),
+                targetPath, essayWithIdentity("target", "src-target", "Target")));
+        // Only index 0 is assigned. The translation adds a duplicated, unassigned index 1 pair —
+        // recordSpan() removes both copies from the spans map (leaving it looking exactly like
+        // the assigned {0}), so the key-set comparison alone can't catch this; only the malformed
+        // flag can.
+        String translated = OccurrenceLabelMarkers.openMarker(0) + "A" + OccurrenceLabelMarkers.closeMarker(0)
+                + OccurrenceLabelMarkers.openMarker(1) + "B1" + OccurrenceLabelMarkers.closeMarker(1)
+                + OccurrenceLabelMarkers.openMarker(1) + "B2" + OccurrenceLabelMarkers.closeMarker(1);
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(translated, fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void prepareBlocksWhenTranslationDuplicatesAnOccurrenceIndex() {
         String firstTarget = essayWithIdentity("first-target", "src-first", "First Target");
         String secondTarget = essayWithIdentity("second-target", "src-second", "Second Target");

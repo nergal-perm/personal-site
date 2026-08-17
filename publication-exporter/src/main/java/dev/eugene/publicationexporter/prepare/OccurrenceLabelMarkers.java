@@ -43,8 +43,11 @@ final class OccurrenceLabelMarkers {
         int cursor = 0;
         while (cursor < delimitedBody.length()) {
             MarkerScan found = nextIndexedSpan(delimitedBody, cursor);
-            found.span().ifPresent(span -> recordSpan(spans, seen, span));
-            malformed = malformed || found.malformed();
+            boolean tainted = found.malformed();
+            if (found.span().isPresent()) {
+                tainted = tainted || !recordSpan(spans, seen, found.span().get());
+            }
+            malformed = malformed || tainted;
             cursor = found.nextCursor();
         }
         return new ScanResult(spans, malformed);
@@ -53,7 +56,11 @@ final class OccurrenceLabelMarkers {
     private static MarkerScan nextIndexedSpan(String delimitedBody, int cursor) {
         char candidate = delimitedBody.charAt(cursor);
         if (!isOpenMarker(candidate)) {
-            return new MarkerScan(cursor + 1, Optional.empty(), false);
+            // An orphan close marker (or any other reserved character reached outside of a
+            // matched pair — matched pairs jump the cursor past their own close marker) means a
+            // reserved character exists in the body that isn't accounted for by exactly one
+            // recorded pair, so it taints the scan the same as a nested/unterminated span would.
+            return new MarkerScan(cursor + 1, Optional.empty(), isReservedCharacter(candidate));
         }
         int index = candidate - MARKER_RANGE_START;
         char expectedClose = closeMarker(index);
@@ -83,15 +90,19 @@ final class OccurrenceLabelMarkers {
         return -1;
     }
 
-    private static void recordSpan(Map<Integer, String> spans, Set<Integer> seen, IndexedSpan span) {
+    /**
+     * Records a well-formed span, returning false (tainting the whole scan as malformed) if its
+     * index was already seen — there's no way to tell which copy is authoritative, so a
+     * duplicated index must not be treated as present exactly once, and the duplication itself
+     * is evidence the translation's marker structure can't be trusted.
+     */
+    private static boolean recordSpan(Map<Integer, String> spans, Set<Integer> seen, IndexedSpan span) {
         if (!seen.add(span.index())) {
-            // A repeated index means the translation duplicated this occurrence's marker pair;
-            // there's no way to tell which copy is authoritative, so it must not be treated as
-            // present exactly once.
             spans.remove(span.index());
-            return;
+            return false;
         }
         spans.put(span.index(), span.label());
+        return true;
     }
 
     private record MarkerScan(int nextCursor, Optional<IndexedSpan> span, boolean malformed) {

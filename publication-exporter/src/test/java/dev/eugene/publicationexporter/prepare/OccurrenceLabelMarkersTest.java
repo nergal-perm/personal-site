@@ -59,7 +59,7 @@ class OccurrenceLabelMarkersTest {
     }
 
     @Test
-    void scanOmitsAnIndexThatAppearsMoreThanOnce() {
+    void scanOmitsAnIndexThatAppearsMoreThanOnceAndFlagsMalformed() {
         String delimited = OccurrenceLabelMarkers.openMarker(0) + "first copy"
                 + OccurrenceLabelMarkers.closeMarker(0) + " and "
                 + OccurrenceLabelMarkers.openMarker(0) + "second copy"
@@ -70,7 +70,30 @@ class OccurrenceLabelMarkersTest {
         OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan(delimited);
 
         assertEquals(Map.of(1, "unique"), scanned.spans());
-        assertFalse(scanned.malformed());
+        assertTrue(scanned.malformed());
+    }
+
+    @Test
+    void scanFlagsMalformedForAnOrphanCloseMarkerWithNoMatchingOpen() {
+        String delimited = OccurrenceLabelMarkers.closeMarker(0) + "Before "
+                + OccurrenceLabelMarkers.openMarker(0) + "Target EN" + OccurrenceLabelMarkers.closeMarker(0);
+
+        OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan(delimited);
+
+        assertEquals(Map.of(0, "Target EN"), scanned.spans());
+        assertTrue(scanned.malformed());
+    }
+
+    @Test
+    void scanFlagsMalformedWhenDuplicateInventedIndicesCancelOutToNothing() {
+        String delimited = OccurrenceLabelMarkers.openMarker(0) + "A" + OccurrenceLabelMarkers.closeMarker(0)
+                + OccurrenceLabelMarkers.openMarker(1) + "B1" + OccurrenceLabelMarkers.closeMarker(1)
+                + OccurrenceLabelMarkers.openMarker(1) + "B2" + OccurrenceLabelMarkers.closeMarker(1);
+
+        OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan(delimited);
+
+        assertEquals(Map.of(0, "A"), scanned.spans());
+        assertTrue(scanned.malformed());
     }
 
     @Test
