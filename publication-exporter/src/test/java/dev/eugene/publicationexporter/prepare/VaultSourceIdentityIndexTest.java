@@ -11,11 +11,11 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-final class PrivateNoteIdentityIndexTest {
+final class VaultSourceIdentityIndexTest {
 
     @Test
     void identityForReturnsEmptyWhenNoFileMatchesTheStem() {
-        PrivateNoteIdentityIndex index = PrivateNoteIdentityIndex.from(VaultReader.createNull());
+        VaultSourceIdentityIndex index = VaultSourceIdentityIndex.from(VaultReader.createNull());
 
         assertTrue(index.identityFor("Nonexistent").isEmpty());
     }
@@ -28,7 +28,7 @@ final class PrivateNoteIdentityIndexTest {
                 VaultRelativePath.of("blog/Draft.md"), noteInBlog,
                 VaultRelativePath.of("archive/Draft.md"), noteInArchive));
 
-        PrivateNoteIdentityIndex index = PrivateNoteIdentityIndex.from(vaultReader);
+        VaultSourceIdentityIndex index = VaultSourceIdentityIndex.from(vaultReader);
 
         assertTrue(index.identityFor("Draft").isEmpty());
     }
@@ -38,7 +38,7 @@ final class PrivateNoteIdentityIndexTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(
                 VaultRelativePath.of("blog/Draft.md"), "---\npublish: false\n---\nNo id."));
 
-        PrivateNoteIdentityIndex index = PrivateNoteIdentityIndex.from(vaultReader);
+        VaultSourceIdentityIndex index = VaultSourceIdentityIndex.from(vaultReader);
 
         TargetIdentity identity = index.identityFor("Draft").orElseThrow();
         assertEquals(Optional.empty(), identity.sourceId());
@@ -49,7 +49,7 @@ final class PrivateNoteIdentityIndexTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(
                 VaultRelativePath.of("blog/Draft.md"), "---\npublish: false\nid: 4c1b-draft\n---\nBody."));
 
-        PrivateNoteIdentityIndex index = PrivateNoteIdentityIndex.from(vaultReader);
+        VaultSourceIdentityIndex index = VaultSourceIdentityIndex.from(vaultReader);
 
         TargetIdentity identity = index.identityFor("Draft").orElseThrow();
         assertEquals(Optional.of("4c1b-draft"), identity.sourceId());

@@ -10,7 +10,7 @@ final class DirectTargetIdentityCheck {
     }
 
     static DirectTargetIdentityOutcome verify(
-            String sourceStem, String sourceId, Set<String> targetStems, PrivateNoteIdentityIndex index) {
+            String sourceStem, String sourceId, Set<String> targetStems, VaultSourceIdentityIndex index) {
         Set<String> seenSourceIds = new HashSet<>();
         seenSourceIds.add(sourceId);
         for (String targetStem : targetStems) {
@@ -26,7 +26,7 @@ final class DirectTargetIdentityCheck {
     }
 
     private static Optional<DirectTargetIdentityOutcome> checkTarget(
-            String targetStem, PrivateNoteIdentityIndex index, Set<String> seenSourceIds) {
+            String targetStem, VaultSourceIdentityIndex index, Set<String> seenSourceIds) {
         Optional<TargetIdentity> identity = index.identityFor(targetStem);
         if (identity.isEmpty()) {
             return Optional.empty();

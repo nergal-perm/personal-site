@@ -14,7 +14,7 @@ final class DirectTargetIdentityCheckTest {
 
     @Test
     void selfLinkIsExcludedFromComparisonAgainstTheSourcesOwnId() {
-        PrivateNoteIdentityIndex index = PrivateNoteIdentityIndex.from(VaultReader.createNull(Map.of(
+        VaultSourceIdentityIndex index = VaultSourceIdentityIndex.from(VaultReader.createNull(Map.of(
                 VaultRelativePath.of("blog/My Essay.md"), "---\npublish: true\nid: 8f2c-my-essay\n---\nBody.")));
 
         DirectTargetIdentityOutcome outcome = DirectTargetIdentityCheck.verify(
@@ -25,7 +25,7 @@ final class DirectTargetIdentityCheckTest {
 
     @Test
     void twoDistinctTargetsSharingAnIdWithEachOtherAreBlocked() {
-        PrivateNoteIdentityIndex index = PrivateNoteIdentityIndex.from(VaultReader.createNull(Map.of(
+        VaultSourceIdentityIndex index = VaultSourceIdentityIndex.from(VaultReader.createNull(Map.of(
                 VaultRelativePath.of("blog/Target One.md"), "---\npublish: false\nid: shared\n---\nOne.",
                 VaultRelativePath.of("blog/Target Two.md"), "---\npublish: false\nid: shared\n---\nTwo.")));
 
@@ -37,7 +37,7 @@ final class DirectTargetIdentityCheckTest {
 
     @Test
     void aTargetStemWithNoMatchingVaultFileIsSkippedRatherThanBlocked() {
-        PrivateNoteIdentityIndex index = PrivateNoteIdentityIndex.from(VaultReader.createNull());
+        VaultSourceIdentityIndex index = VaultSourceIdentityIndex.from(VaultReader.createNull());
 
         DirectTargetIdentityOutcome outcome = DirectTargetIdentityCheck.verify(
                 "My Essay", "8f2c-my-essay", Set.of("Typo Target"), index);

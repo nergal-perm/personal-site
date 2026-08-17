@@ -92,26 +92,35 @@ public final class PrepareHandler {
                 .filter(occurrence -> occurrence.route().isEmpty())
                 .map(LinkOccurrence::targetStem)
                 .collect(Collectors.toCollection(LinkedHashSet::new));
-        if (privateTargetStems.isEmpty()) {
+        OccurrenceContext occurrenceContext;
+        if (occurrences.isEmpty()) {
+            occurrenceContext = OccurrenceContext.empty();
             return prepareAfterAssetResolution(
-                    notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader);
+                    notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader, occurrenceContext);
         }
-        PrivateNoteIdentityIndex identityIndex;
+        VaultSourceIdentityIndex identityIndex;
         try {
-            identityIndex = PrivateNoteIdentityIndex.from(vaultReader);
+            identityIndex = VaultSourceIdentityIndex.from(vaultReader);
         } catch (UncheckedIOException | NoSuchElementException failure) {
             return privateIdentityLookupFailure(failure);
+        }
+        occurrenceContext = new OccurrenceContext(occurrences, Optional.of(identityIndex));
+        if (privateTargetStems.isEmpty()) {
+            return prepareAfterAssetResolution(
+                    notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader, occurrenceContext);
         }
         return DirectTargetIdentityCheck.verify(sourceStem, sourceId, privateTargetStems, identityIndex)
                 .resolve(
                         () -> prepareAfterAssetResolution(
-                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader),
+                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader,
+                                occurrenceContext),
                         PrepareHandler::directTargetIdentityBlockedFailure);
     }
 
     private BridgeResponse prepareAfterAssetResolution(
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
-            String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
+            String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
+            OccurrenceContext occurrenceContext) {
         AssetResolutionOutcome outcome;
         try {
             outcome = AssetResolver.resolve(resolvedBody, vaultAssetReader);
@@ -120,14 +129,14 @@ public final class PrepareHandler {
         }
         return outcome.resolve(
                 (assetResolvedBody, assets) -> prepareNormalizedEssay(notePath, vaultReader,
-                        intake, assetResolvedBody, assets, knownNotes, vaultAssetReader),
+                        intake, assetResolvedBody, assets, knownNotes, vaultAssetReader, occurrenceContext),
                 PrepareHandler::assetBlockedFailure);
     }
 
     private BridgeResponse prepareNormalizedEssay(
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
             String normalizedBody, List<CandidateAsset> assets, PublicNoteIndex knownNotes,
-            VaultAssetReader vaultAssetReader) {
+            VaultAssetReader vaultAssetReader, OccurrenceContext occurrenceContext) {
         ApprovedBaselineLookup approved = lookupApprovedBaseline(intake, normalizedBody);
         if (approved.failed()) {
             return approved.failureResponse();
@@ -136,7 +145,7 @@ public final class PrepareHandler {
             return mirrorApprovedCandidate(intake.identity(), approved.snapshot().get(), assets);
         }
         return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody, assets,
-                knownNotes, vaultAssetReader);
+                knownNotes, vaultAssetReader, occurrenceContext);
     }
 
     private ApprovedBaselineLookup lookupApprovedBaseline(NoteIntake.Result intake, String normalizedBody) {
@@ -171,13 +180,14 @@ public final class PrepareHandler {
     private BridgeResponse prepareWithInstallLock(
             VaultRelativePath notePath, VaultReader vaultReader,
             NoteIntake.Result intake, String normalizedBody, List<CandidateAsset> assets,
-            PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
+            PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
+            OccurrenceContext occurrenceContext) {
         ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());
         installLock.lock();
         try {
             return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
                     intake.sourceHash(), normalizedBody, fieldsOf(intake), intake.structuredData(), assets,
-                    knownNotes, vaultAssetReader);
+                    knownNotes, vaultAssetReader, occurrenceContext);
         } finally {
             installLock.unlock();
         }
@@ -224,12 +234,14 @@ public final class PrepareHandler {
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String sourceHash,
             String ruBody, List<PublicField> ruFields, String structuredData, List<CandidateAsset> assets,
-            PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
+            PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
+            OccurrenceContext occurrenceContext) {
         TranslationJob job = TranslationJob.forSource(ruBody, ruFields);
         return translateCandidate(job, ruBody, ruFields).resolve(
                 translation -> prepareTranslatedEssay(
                         notePath, vaultReader, identity, sourceHash,
-                        ruBody, ruFields, structuredData, assets, job, translation, knownNotes, vaultAssetReader),
+                        ruBody, ruFields, structuredData, assets, job, translation, knownNotes, vaultAssetReader,
+                        occurrenceContext),
                 failure -> {
                     recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
                     return translationFailure(failure);
@@ -241,7 +253,8 @@ public final class PrepareHandler {
             PublicationIdentity identity, String sourceHash,
             String ruBody, List<PublicField> ruFields, String structuredData,
             List<CandidateAsset> assets, TranslationJob job,
-            EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader) {
+            EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
+            OccurrenceContext occurrenceContext) {
         String enBody = translation.body();
         List<PublicField> enFields = translation.fields();
 
@@ -420,6 +433,19 @@ public final class PrepareHandler {
         return detail == null || detail.isBlank()
                 ? "Private note identity lookup failed."
                 : "Private note identity lookup failed: " + detail;
+    }
+
+    private record OccurrenceContext(
+            List<LinkOccurrence> occurrences, Optional<VaultSourceIdentityIndex> identityIndex) {
+
+        private OccurrenceContext {
+            occurrences = List.copyOf(Objects.requireNonNull(occurrences, "occurrences"));
+            identityIndex = Objects.requireNonNull(identityIndex, "identityIndex");
+        }
+
+        private static OccurrenceContext empty() {
+            return new OccurrenceContext(List.of(), Optional.empty());
+        }
     }
 
     private static BridgeResponse assetResolutionLookupFailure(UncheckedIOException failure) {

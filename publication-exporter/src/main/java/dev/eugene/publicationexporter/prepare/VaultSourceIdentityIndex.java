@@ -11,16 +11,16 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 
-final class PrivateNoteIdentityIndex {
+final class VaultSourceIdentityIndex {
 
     private final Map<String, TargetIdentity> identitiesByFilenameStem;
 
-    PrivateNoteIdentityIndex(Map<String, TargetIdentity> identitiesByFilenameStem) {
+    VaultSourceIdentityIndex(Map<String, TargetIdentity> identitiesByFilenameStem) {
         this.identitiesByFilenameStem =
                 Map.copyOf(Objects.requireNonNull(identitiesByFilenameStem, "identitiesByFilenameStem"));
     }
 
-    static PrivateNoteIdentityIndex from(VaultReader vaultReader) {
+    static VaultSourceIdentityIndex from(VaultReader vaultReader) {
         Objects.requireNonNull(vaultReader, "vaultReader");
         Map<String, TargetIdentity> identities = new LinkedHashMap<>();
         Set<String> ambiguousStems = new HashSet<>();
@@ -28,7 +28,7 @@ final class PrivateNoteIdentityIndex {
             registerOrMarkAmbiguous(vaultReader, path, identities, ambiguousStems);
         }
         ambiguousStems.forEach(identities::remove);
-        return new PrivateNoteIdentityIndex(identities);
+        return new VaultSourceIdentityIndex(identities);
     }
 
     Optional<TargetIdentity> identityFor(String filenameStem) {
