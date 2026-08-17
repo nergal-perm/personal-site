@@ -67,6 +67,17 @@ class OccurrenceLabelMarkersTest {
     }
 
     @Test
+    void scanTreatsAnIndexAsAbsentWhenAnotherMarkerIsNestedInsideIt() {
+        String delimited = OccurrenceLabelMarkers.openMarker(0) + "A "
+                + OccurrenceLabelMarkers.openMarker(1) + "B" + OccurrenceLabelMarkers.closeMarker(1)
+                + OccurrenceLabelMarkers.closeMarker(0);
+
+        Map<Integer, String> scanned = OccurrenceLabelMarkers.scan(delimited);
+
+        assertEquals(Map.of(1, "B"), scanned);
+    }
+
+    @Test
     void stripRemovesDelimitersButKeepsContent() {
         String delimited = "As he wrote " + OccurrenceLabelMarkers.openMarker(0) + "Grandpa Shvedov"
                 + OccurrenceLabelMarkers.closeMarker(0) + " today.";

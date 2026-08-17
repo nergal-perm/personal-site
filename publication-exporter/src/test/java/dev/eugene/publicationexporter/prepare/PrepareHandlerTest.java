@@ -1457,6 +1457,28 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void prepareBlocksWhenTranslationProducesABlankOccurrenceLabel() {
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("private/target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[target]]."),
+                targetPath, essayWithIdentity("target", "src-target", "Target")));
+        String translated = "See " + OccurrenceLabelMarkers.openMarker(0)
+                + OccurrenceLabelMarkers.closeMarker(0) + ".";
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(translated, fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void sourceReservedPrivateUseCharacterBlocksInsteadOfBeingStripped() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         String source = essayWithBody("Literal reserved character: \uE000.");
@@ -1472,6 +1494,30 @@ class PrepareHandlerTest {
         assertFalse(response.ok());
         assertEquals("translation_failed", response.status());
         assertTrue(response.diagnostics().get(0).message().contains("reserved private-use-area"));
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void prepareBlocksInsteadOfCrashingWhenOccurrenceCountExceedsTheTrackingLimit() {
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("private/target.md");
+        StringBuilder body = new StringBuilder();
+        for (int i = 0; i <= OccurrenceLabelMarkers.MAX_OCCURRENCES; i++) {
+            body.append("[[target]] ");
+        }
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody(body.toString()),
+                targetPath, essayWithIdentity("target", "src-target", "Target")));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("English body.", fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
         assertTrue(workspace.installed().isEmpty());
     }
 
@@ -2468,7 +2514,7 @@ class PrepareHandlerTest {
     }
 
     @Test
-    void privateTargetWithoutSourceIdIsExcludedFromOccurrenceTracking() {
+    void privateTargetWithoutSourceIdBlocksPreparation() {
         String privateTargetWithoutId = """
                 ---
                 publish: false
@@ -2508,10 +2554,10 @@ class PrepareHandlerTest {
 
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
 
-        assertTrue(response.ok(), response.toString());
-        assertEquals(1, worker.requested().size());
-        assertEquals(1, workspace.installed().size());
-        assertTrue(workspace.installed().get(0).referenceMap().occurrences().isEmpty());
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertTrue(worker.requested().isEmpty());
+        assertTrue(workspace.installed().isEmpty());
     }
 
     @Test

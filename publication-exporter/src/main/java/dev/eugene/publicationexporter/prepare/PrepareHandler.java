@@ -148,10 +148,12 @@ public final class PrepareHandler {
 
     private static List<LinkOccurrence> eligibleOccurrences(
             List<LinkOccurrence> occurrences, VaultSourceIdentityIndex identityIndex) {
+        // Only excludes targets with no vault identity at all (broken/typo links, which
+        // scope-pins.md says stay plain text). A target that DOES exist but lacks a source ID
+        // must stay eligible so it reaches DirectTargetIdentityCheck, which blocks preparation
+        // for that case per SEM-01 rather than silently treating it as absent.
         return occurrences.stream()
-                .filter(occurrence -> identityIndex.identityFor(occurrence.targetStem())
-                        .flatMap(TargetIdentity::sourceId)
-                        .isPresent())
+                .filter(occurrence -> identityIndex.identityFor(occurrence.targetStem()).isPresent())
                 .toList();
     }
 
@@ -263,6 +265,12 @@ public final class PrepareHandler {
             return candidateFailure(
                     "Source note contains a reserved private-use-area character used internally for occurrence tracking.");
         }
+        if (occurrenceContext.occurrences().size() > OccurrenceLabelMarkers.MAX_OCCURRENCES) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
+            return candidateFailure("Source note has too many semantic occurrences to track ("
+                    + occurrenceContext.occurrences().size() + " > "
+                    + OccurrenceLabelMarkers.MAX_OCCURRENCES + ").");
+        }
         OccurrenceAssignmentLookup assignmentLookup = assignOccurrences(identity, occurrenceContext);
         if (assignmentLookup.failed()) {
             return assignmentLookup.failureResponse();
@@ -336,6 +344,11 @@ public final class PrepareHandler {
         String enBody = OccurrenceLabelMarkers.strip(translation.body());
         List<PublicField> enFields = translation.fields();
         List<Occurrence> occurrences = occurrencesWithEnglishLabels(assignedRu, enSpans);
+        if (anyOccurrenceLabelIsBlank(occurrences)) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
+            return BridgeResponse.translationFailed(COMMAND, Diagnostic.blocking(
+                    "candidate", "Translated candidate produced a blank label for a semantic occurrence."));
+        }
 
         EnglishCandidateValidator.Result validation = validateEnglishCandidate(
                 ruBody, ruFields, enBody, enFields);
@@ -371,6 +384,11 @@ public final class PrepareHandler {
                 PrepareHandler::unclosedCommentFailure,
                 PrepareHandler::transclusionBlockedFailure,
                 PrepareHandler::assetBlockedFailure);
+    }
+
+    private static boolean anyOccurrenceLabelIsBlank(List<Occurrence> occurrences) {
+        return occurrences.stream()
+                .anyMatch(occurrence -> occurrence.ruLabel().isBlank() || occurrence.enLabel().isBlank());
     }
 
     private static boolean translatedBodyDivergesFromAssignedOccurrences(

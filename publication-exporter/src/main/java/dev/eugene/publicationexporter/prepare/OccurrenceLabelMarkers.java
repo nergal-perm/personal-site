@@ -54,12 +54,31 @@ final class OccurrenceLabelMarkers {
             return new MarkerScan(cursor + 1, Optional.empty());
         }
         int index = candidate - MARKER_RANGE_START;
-        int close = delimitedBody.indexOf(closeMarker(index), cursor + 1);
+        char expectedClose = closeMarker(index);
+        int close = closeMarkerPositionIfWellFormed(delimitedBody, cursor + 1, expectedClose);
         if (close < 0) {
+            // Either there's no matching close marker at all, or another marker character
+            // appears nested inside before it — in both cases the structure is malformed, so
+            // this open marker is not consumed as a real pair; only advance past it and let the
+            // scan continue linearly, so any well-formed marker inside the malformed span can
+            // still be found on its own.
             return new MarkerScan(cursor + 1, Optional.empty());
         }
         String label = delimitedBody.substring(cursor + 1, close);
         return new MarkerScan(close + 1, Optional.of(new IndexedSpan(index, label)));
+    }
+
+    private static int closeMarkerPositionIfWellFormed(String delimitedBody, int from, char expectedClose) {
+        for (int i = from; i < delimitedBody.length(); i++) {
+            char c = delimitedBody.charAt(i);
+            if (c == expectedClose) {
+                return i;
+            }
+            if (isReservedCharacter(c)) {
+                return -1;
+            }
+        }
+        return -1;
     }
 
     private static void recordSpan(Map<Integer, String> spans, Set<Integer> seen, IndexedSpan span) {
