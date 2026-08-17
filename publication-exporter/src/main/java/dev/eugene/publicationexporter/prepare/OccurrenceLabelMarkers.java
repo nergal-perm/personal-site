@@ -1,8 +1,10 @@
 package dev.eugene.publicationexporter.prepare;
 
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 final class OccurrenceLabelMarkers {
 
@@ -35,6 +37,7 @@ final class OccurrenceLabelMarkers {
 
     static Map<Integer, String> scan(String delimitedBody) {
         Map<Integer, String> spans = new LinkedHashMap<>();
+        Set<Integer> seen = new HashSet<>();
         int cursor = 0;
         while (cursor < delimitedBody.length()) {
             char candidate = delimitedBody.charAt(cursor);
@@ -46,6 +49,14 @@ final class OccurrenceLabelMarkers {
             int close = delimitedBody.indexOf(closeMarker(index), cursor + 1);
             if (close < 0) {
                 cursor++;
+                continue;
+            }
+            if (!seen.add(index)) {
+                // A repeated index means the translation duplicated this occurrence's marker
+                // pair; there's no way to tell which copy is authoritative, so it must not be
+                // treated as present exactly once.
+                spans.remove(index);
+                cursor = close + 1;
                 continue;
             }
             spans.put(index, delimitedBody.substring(cursor + 1, close));

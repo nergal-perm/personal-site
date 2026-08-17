@@ -53,6 +53,20 @@ class OccurrenceLabelMarkersTest {
     }
 
     @Test
+    void scanOmitsAnIndexThatAppearsMoreThanOnce() {
+        String delimited = OccurrenceLabelMarkers.openMarker(0) + "first copy"
+                + OccurrenceLabelMarkers.closeMarker(0) + " and "
+                + OccurrenceLabelMarkers.openMarker(0) + "second copy"
+                + OccurrenceLabelMarkers.closeMarker(0) + ", then "
+                + OccurrenceLabelMarkers.openMarker(1) + "unique"
+                + OccurrenceLabelMarkers.closeMarker(1) + ".";
+
+        Map<Integer, String> scanned = OccurrenceLabelMarkers.scan(delimited);
+
+        assertEquals(Map.of(1, "unique"), scanned);
+    }
+
+    @Test
     void stripRemovesDelimitersButKeepsContent() {
         String delimited = "As he wrote " + OccurrenceLabelMarkers.openMarker(0) + "Grandpa Shvedov"
                 + OccurrenceLabelMarkers.closeMarker(0) + " today.";

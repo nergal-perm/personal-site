@@ -1427,6 +1427,36 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void prepareBlocksWhenTranslationDuplicatesAnOccurrenceIndex() {
+        String firstTarget = essayWithIdentity("first-target", "src-first", "First Target");
+        String secondTarget = essayWithIdentity("second-target", "src-second", "Second Target");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath firstPath = VaultRelativePath.of("private/first-target.md");
+        VaultRelativePath secondPath = VaultRelativePath.of("private/second-target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[first-target]] then [[second-target]]."),
+                firstPath, firstTarget,
+                secondPath, secondTarget));
+        String translated = OccurrenceLabelMarkers.openMarker(0) + "First EN"
+                + OccurrenceLabelMarkers.closeMarker(0) + " and "
+                + OccurrenceLabelMarkers.openMarker(0) + "First EN again"
+                + OccurrenceLabelMarkers.closeMarker(0) + " and "
+                + OccurrenceLabelMarkers.openMarker(1) + "Second EN"
+                + OccurrenceLabelMarkers.closeMarker(1) + ".";
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(translated, fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void sourceReservedPrivateUseCharacterBlocksInsteadOfBeingStripped() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         String source = essayWithBody("Literal reserved character: \uE000.");
