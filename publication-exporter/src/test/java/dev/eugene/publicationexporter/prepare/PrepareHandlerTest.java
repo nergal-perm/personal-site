@@ -911,7 +911,7 @@ class PrepareHandlerTest {
     }
 
     @Test
-    void privateIdentityLookupIoFailureReturnsBlockedResponseWithoutInstallingCandidate() {
+    void sourceIdentityLookupIoFailureReturnsBlockedResponseWithoutInstallingCandidate() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultRelativePath privateTargetPath = VaultRelativePath.of("private-area/Secret Draft.md");
         VaultReader vaultReader = new VaultReader() {
@@ -961,8 +961,52 @@ class PrepareHandlerTest {
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
-        assertEquals("private-notes", response.diagnostics().get(0).field());
+        assertEquals("source-identity", response.diagnostics().get(0).field());
         assertTrue(response.diagnostics().get(0).message().contains("private target unreadable"));
+        assertTrue(workspace.installed().isEmpty());
+        assertTrue(worker.requested().isEmpty());
+    }
+
+    @Test
+    void sourceIdentityLookupIoFailureForPublicOnlyLinkReturnsBlockedResponseWithoutInstallingCandidate() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultRelativePath publicTargetPath = VaultRelativePath.of("blog/public-target.md");
+        String source = essayWithBody("See [[public-target]].");
+        String publicTarget = VALID_ESSAY.replace("my-essay", "public-target");
+        VaultReader vaultReader = new VaultReader() {
+            @Override
+            public boolean exists(VaultRelativePath notePath) {
+                return notePath.equals(path) || notePath.equals(publicTargetPath);
+            }
+
+            @Override
+            public String readSource(VaultRelativePath notePath) {
+                return notePath.equals(publicTargetPath) ? publicTarget : source;
+            }
+
+            @Override
+            public List<VaultRelativePath> listPublishCandidates() {
+                return List.of(path, publicTargetPath);
+            }
+
+            @Override
+            public List<VaultRelativePath> listAllNotePaths() {
+                throw new UncheckedIOException(new IOException("source identity enumeration unavailable"));
+            }
+        };
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success("EN", fields("Translated title", "Translated description.")));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker, workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("source-identity", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("source identity enumeration unavailable"));
         assertTrue(workspace.installed().isEmpty());
         assertTrue(worker.requested().isEmpty());
     }
@@ -1009,7 +1053,7 @@ class PrepareHandlerTest {
     }
 
     @Test
-    void privateIdentityLookupNoSuchElementExceptionIsReturnedAsBlockedResponse() {
+    void sourceIdentityLookupNoSuchElementExceptionIsReturnedAsBlockedResponse() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultRelativePath privateTargetPath = VaultRelativePath.of("private-area/Secret Draft.md");
         VaultReader vaultReader = new VaultReader() {
@@ -1059,7 +1103,7 @@ class PrepareHandlerTest {
 
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
-        assertEquals("private-notes", response.diagnostics().get(0).field());
+        assertEquals("source-identity", response.diagnostics().get(0).field());
         assertTrue(response.diagnostics().get(0).message().contains("private target disappeared"));
         assertTrue(workspace.installed().isEmpty());
         assertTrue(worker.requested().isEmpty());

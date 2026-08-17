@@ -102,7 +102,7 @@ public final class PrepareHandler {
         try {
             identityIndex = VaultSourceIdentityIndex.from(vaultReader);
         } catch (UncheckedIOException | NoSuchElementException failure) {
-            return privateIdentityLookupFailure(failure);
+            return vaultSourceIdentityLookupFailure(failure);
         }
         occurrenceContext = new OccurrenceContext(occurrences, Optional.of(identityIndex));
         if (privateTargetStems.isEmpty()) {
@@ -411,28 +411,28 @@ public final class PrepareHandler {
                         "known-notes", IoFailureMessages.describe("Known note lookup failed", failure)));
     }
 
-    private static BridgeResponse privateIdentityLookupFailure(UncheckedIOException failure) {
-        return privateIdentityLookupFailure((RuntimeException) failure);
+    private static BridgeResponse vaultSourceIdentityLookupFailure(UncheckedIOException failure) {
+        return vaultSourceIdentityLookupFailure((RuntimeException) failure);
     }
 
-    private static BridgeResponse privateIdentityLookupFailure(NoSuchElementException failure) {
-        return privateIdentityLookupFailure((RuntimeException) failure);
+    private static BridgeResponse vaultSourceIdentityLookupFailure(NoSuchElementException failure) {
+        return vaultSourceIdentityLookupFailure((RuntimeException) failure);
     }
 
-    private static BridgeResponse privateIdentityLookupFailure(RuntimeException failure) {
+    private static BridgeResponse vaultSourceIdentityLookupFailure(RuntimeException failure) {
         return BridgeResponse.blocked(COMMAND,
                 Diagnostic.blocking(
-                        "private-notes", privateIdentityLookupFailureMessage(failure)));
+                        "source-identity", vaultSourceIdentityLookupFailureMessage(failure)));
     }
 
-    private static String privateIdentityLookupFailureMessage(RuntimeException failure) {
+    private static String vaultSourceIdentityLookupFailureMessage(RuntimeException failure) {
         if (failure instanceof UncheckedIOException ioFailure) {
-            return IoFailureMessages.describe("Private note identity lookup failed", ioFailure);
+            return IoFailureMessages.describe("Source identity lookup failed", ioFailure);
         }
         String detail = failure.getMessage();
         return detail == null || detail.isBlank()
-                ? "Private note identity lookup failed."
-                : "Private note identity lookup failed: " + detail;
+                ? "Source identity lookup failed."
+                : "Source identity lookup failed: " + detail;
     }
 
     private record OccurrenceContext(
