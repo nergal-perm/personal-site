@@ -1,16 +1,14 @@
 package dev.eugene.publicationexporter.prepare;
 
 import java.util.Objects;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
+import java.util.List;
 import java.util.function.BiFunction;
 import java.util.function.Function;
 
 public sealed interface LinkResolutionOutcome permits ResolvedLinks, BlockedTransclusion {
 
-    static LinkResolutionOutcome resolved(String body, Set<String> privateTargetStems) {
-        return new ResolvedLinks(body, privateTargetStems);
+    static LinkResolutionOutcome resolved(String body, List<LinkOccurrence> occurrences) {
+        return new ResolvedLinks(body, occurrences);
     }
 
     static LinkResolutionOutcome blockedTransclusion(String target) {
@@ -18,27 +16,27 @@ public sealed interface LinkResolutionOutcome permits ResolvedLinks, BlockedTran
     }
 
     <T> T resolve(
-            BiFunction<String, Set<String>, T> onResolved,
+            BiFunction<String, List<LinkOccurrence>, T> onResolved,
             Function<String, T> onBlockedTransclusion);
 }
 
 final class ResolvedLinks implements LinkResolutionOutcome {
 
     private final String body;
-    private final Set<String> privateTargetStems;
+    private final List<LinkOccurrence> occurrences;
 
-    ResolvedLinks(String body, Set<String> privateTargetStems) {
+    ResolvedLinks(String body, List<LinkOccurrence> occurrences) {
         this.body = Objects.requireNonNull(body, "body");
-        this.privateTargetStems = Collections.unmodifiableSet(
-                new LinkedHashSet<>(Objects.requireNonNull(privateTargetStems, "privateTargetStems")));
+        this.occurrences = List.copyOf(Objects.requireNonNull(occurrences, "occurrences"));
     }
 
     @Override
     public <T> T resolve(
-            BiFunction<String, Set<String>, T> onResolved, Function<String, T> onBlockedTransclusion) {
+            BiFunction<String, List<LinkOccurrence>, T> onResolved,
+            Function<String, T> onBlockedTransclusion) {
         Objects.requireNonNull(onResolved, "onResolved");
         Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
-        return onResolved.apply(body, privateTargetStems);
+        return onResolved.apply(body, occurrences);
     }
 }
 
@@ -52,7 +50,8 @@ final class BlockedTransclusion implements LinkResolutionOutcome {
 
     @Override
     public <T> T resolve(
-            BiFunction<String, Set<String>, T> onResolved, Function<String, T> onBlockedTransclusion) {
+            BiFunction<String, List<LinkOccurrence>, T> onResolved,
+            Function<String, T> onBlockedTransclusion) {
         Objects.requireNonNull(onResolved, "onResolved");
         Objects.requireNonNull(onBlockedTransclusion, "onBlockedTransclusion");
         return onBlockedTransclusion.apply(target);

@@ -4,13 +4,17 @@ import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
+import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
 
@@ -21,7 +25,7 @@ final class LinkResolverTest {
 
     private static String resolvedBodyOrFail(String body, PublicNoteIndex knownNotes) {
         return LinkResolver.resolve(body, knownNotes).resolve(
-                (resolved, privateTargetStems) -> resolved,
+                (resolved, ignoredOccurrences) -> resolved,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
     }
 
@@ -40,41 +44,68 @@ final class LinkResolverTest {
         LinkResolutionOutcome outcome = LinkResolver.resolve("See [[My Note]].", index);
 
         assertEquals("See [My Note](/notes/my-note/).", outcome.resolve(
-                (resolved, privateTargetStems) -> resolved,
+                (resolved, ignoredOccurrences) -> resolved,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+    }
+
+    @Test
+    void resolvedOutcomeReportsOccurrencesInSourceOrderForPublicAndPrivateTargets() {
+        PublicNoteIndex knownNotes = PublicNoteIndex.from(
+                VaultReader.createNull(Map.of(
+                        VaultRelativePath.of("blog/public-essay.md"),
+                        "---\npublish: true\npublicCollection: blog\npublicContentType: essay\npublicId: pub-1\nid: pub-1\ntitle: Public\ndescription: d\n---\nBody.")),
+                new NoteIntake(PublicationKinds.installed()));
+        String body = "See [[private-note]] and also [[public-essay]].";
+
+        List<LinkOccurrence> occurrences = LinkResolver.resolve(body, knownNotes).resolve(
+                (resolvedBody, seen) -> seen,
+                target -> fail("expected resolved links, got blocked transclusion: " + target));
+
+        assertEquals(2, occurrences.size());
+        assertEquals("private-note", occurrences.get(0).targetStem());
+        assertTrue(occurrences.get(0).route().isEmpty());
+        assertEquals("public-essay", occurrences.get(1).targetStem());
+        assertEquals(Optional.of("/essays/pub-1/"), occurrences.get(1).route());
     }
 
     @Test
     void resolveCollectsTheStemOfEveryUnresolvedPlainLinkAsAPrivateTargetStem() {
         String body = "See [[Черновик]] and [[Заметка о времени]].";
 
-        Set<String> privateTargetStems = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
-                (resolved, stems) -> stems,
+        List<LinkOccurrence> occurrences = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
+                (resolved, seenOccurrences) -> seenOccurrences,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
 
-        assertEquals(Set.of("Черновик"), privateTargetStems);
+        assertEquals(Set.of("Черновик"), occurrences.stream()
+                .filter(occurrence -> occurrence.route().isEmpty())
+                .map(LinkOccurrence::targetStem)
+                .collect(Collectors.toSet()));
     }
 
     @Test
     void resolvePreservesSourceOrderForUnresolvedPrivateTargetStems() {
         String body = "See [[Черновик]] then [[Черновик 2]].";
 
-        Set<String> privateTargetStems = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
-                (resolved, stems) -> stems,
+        List<LinkOccurrence> occurrences = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
+                (resolved, seenOccurrences) -> seenOccurrences,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
 
-        assertEquals(java.util.List.of("Черновик", "Черновик 2"), java.util.List.copyOf(privateTargetStems));
+        assertEquals(List.of("Черновик", "Черновик 2"), occurrences.stream()
+                .map(LinkOccurrence::targetStem)
+                .toList());
     }
 
     @Test
     void resolveCollectsTheStemOfAPathQualifiedUnresolvedPlainLinkAsAPrivateTargetStem() {
         String body = "See [[private-area/Secret Draft]].";
 
-        Set<String> privateTargetStems = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
-                (resolved, stems) -> stems,
+        List<LinkOccurrence> occurrences = LinkResolver.resolve(body, ONE_PUBLIC_NOTE).resolve(
+                (resolved, seenOccurrences) -> seenOccurrences,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
 
-        assertEquals(Set.of("Secret Draft"), privateTargetStems);
+        assertEquals(Set.of("Secret Draft"), occurrences.stream()
+                .map(LinkOccurrence::targetStem)
+                .collect(Collectors.toSet()));
     }
 
     @Test
@@ -127,7 +158,7 @@ final class LinkResolverTest {
         String body = "![[Черновик]]";
 
         String blockedTarget = LinkResolver.resolve(body, noKnownNotes).resolve(
-                (resolved, privateTargetStems) -> fail("Expected a blocked transclusion but resolution succeeded: " + resolved),
+                (resolved, ignoredOccurrences) -> fail("Expected a blocked transclusion but resolution succeeded: " + resolved),
                 target -> target);
 
         assertEquals("Черновик", blockedTarget);

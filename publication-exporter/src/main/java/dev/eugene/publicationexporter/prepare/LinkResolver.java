@@ -1,10 +1,10 @@
 package dev.eugene.publicationexporter.prepare;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.LinkedHashSet;
-import java.util.Set;
 
 public final class LinkResolver {
 
@@ -15,7 +15,7 @@ public final class LinkResolver {
 
     public static LinkResolutionOutcome resolve(String body, PublicNoteIndex knownNotes) {
         StringBuilder output = new StringBuilder(body.length());
-        Set<String> privateTargetStems = new LinkedHashSet<>();
+        List<LinkOccurrence> occurrences = new ArrayList<>();
         int cursor = 0;
         while (cursor < body.length()) {
             ProtectedRegionScanner.ProtectedSpan protectedSpan = ProtectedRegionScanner.nextProtectedSpan(body, cursor);
@@ -24,7 +24,7 @@ public final class LinkResolver {
                 cursor = copyProtectedSpan(body, output, cursor, protectedSpan);
             } else if (link != null) {
                 Optional<String> blockedTarget = appendLink(
-                        body, output, cursor, link, knownNotes, privateTargetStems);
+                        body, output, cursor, link, knownNotes, occurrences);
                 if (blockedTarget.isPresent()) {
                     return LinkResolutionOutcome.blockedTransclusion(blockedTarget.get());
                 }
@@ -34,7 +34,7 @@ public final class LinkResolver {
             }
         }
         output.append(body, cursor, body.length());
-        return LinkResolutionOutcome.resolved(output.toString(), privateTargetStems);
+        return LinkResolutionOutcome.resolved(output.toString(), occurrences);
     }
 
     private static Matcher nextLink(String body, int cursor) {
@@ -54,7 +54,7 @@ public final class LinkResolver {
 
     private static Optional<String> appendLink(
             String body, StringBuilder output, int cursor, Matcher link, PublicNoteIndex knownNotes,
-            Set<String> privateTargetStems) {
+            List<LinkOccurrence> occurrences) {
         output.append(body, cursor, link.start());
         boolean isEmbed = !link.group(1).isEmpty();
         String target = link.group(2).strip();
@@ -65,14 +65,21 @@ public final class LinkResolver {
         }
         Optional<String> route = knownNotes.routeFor(target);
         if (route.isPresent()) {
-            output.append('[').append(label).append("](").append(route.get()).append(')');
+            output.append('[');
+            int spanStart = output.length();
+            output.append(label);
+            int spanEnd = output.length();
+            output.append("](").append(route.get()).append(')');
+            occurrences.add(new LinkOccurrence(lastPathSegment(target), label, route, spanStart, spanEnd));
             return Optional.empty();
         }
         if (isEmbed) {
             return Optional.of(lastPathSegment(target));
         }
-        privateTargetStems.add(lastPathSegment(target));
+        int spanStart = output.length();
         output.append(label);
+        int spanEnd = output.length();
+        occurrences.add(new LinkOccurrence(lastPathSegment(target), label, Optional.empty(), spanStart, spanEnd));
         return Optional.empty();
     }
 

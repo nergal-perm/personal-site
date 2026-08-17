@@ -29,6 +29,7 @@ import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
 import java.io.UncheckedIOException;
 import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -36,6 +37,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.stream.Collectors;
 
 public final class PrepareHandler {
 
@@ -75,9 +77,9 @@ public final class PrepareHandler {
         String sourceId = intake.frontmatterString("id").orElseThrow();
         return MarkdownNormalizer.normalize(intake.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        (resolvedBody, privateTargetStems) -> prepareAfterIdentityCheck(
+                        (resolvedBody, occurrences) -> prepareAfterIdentityCheck(
                                 notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader,
-                                sourceStem, sourceId, privateTargetStems),
+                                sourceStem, sourceId, occurrences),
                         PrepareHandler::transclusionBlockedFailure),
                 position -> unclosedCommentFailure(position));
     }
@@ -85,7 +87,11 @@ public final class PrepareHandler {
     private BridgeResponse prepareAfterIdentityCheck(
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
             String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
-            String sourceStem, String sourceId, Set<String> privateTargetStems) {
+            String sourceStem, String sourceId, List<LinkOccurrence> occurrences) {
+        Set<String> privateTargetStems = occurrences.stream()
+                .filter(occurrence -> occurrence.route().isEmpty())
+                .map(LinkOccurrence::targetStem)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         if (privateTargetStems.isEmpty()) {
             return prepareAfterAssetResolution(
                     notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader);
@@ -311,7 +317,7 @@ public final class PrepareHandler {
         }
         return MarkdownNormalizer.normalize(current.body()).resolve(
                 normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        (resolvedBody, ignoredPrivateTargetStems) -> AssetResolver.resolve(
+                        (resolvedBody, ignoredOccurrences) -> AssetResolver.resolve(
                                 resolvedBody, vaultAssetReader).resolve(
                                 (assetResolvedBody, ignoredAssets) ->
                                         sourceFingerprintMatches(job, assetResolvedBody, fieldsOf(current))
