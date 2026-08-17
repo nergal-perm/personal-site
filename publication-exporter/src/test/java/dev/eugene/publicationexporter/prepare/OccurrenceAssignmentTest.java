@@ -8,7 +8,9 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class OccurrenceAssignmentTest {
 
@@ -32,9 +34,23 @@ class OccurrenceAssignmentTest {
 
         List<OccurrenceAssignment.AssignedOccurrence> assigned = OccurrenceAssignment.assign(
                 List.of(current), Map.of("new-target", "src-new"), List.of());
+        List<OccurrenceAssignment.AssignedOccurrence> assignedAgain = OccurrenceAssignment.assign(
+                List.of(current), Map.of("new-target", "src-new"), List.of());
 
         assertEquals(1, assigned.size());
+        assertFalse(assigned.get(0).id().isBlank());
+        assertNotEquals(assigned.get(0).id(), assignedAgain.get(0).id());
         assertEquals("src-new", assigned.get(0).targetSourceId());
+    }
+
+    @Test
+    void returnsAnImmutableAssignmentList() {
+        LinkOccurrence current = new LinkOccurrence("target", "Target", Optional.empty(), 0, 10);
+
+        List<OccurrenceAssignment.AssignedOccurrence> assigned = OccurrenceAssignment.assign(
+                List.of(current), Map.of("target", "src-target"), List.of());
+
+        assertThrows(UnsupportedOperationException.class, () -> assigned.add(null));
     }
 
     @Test

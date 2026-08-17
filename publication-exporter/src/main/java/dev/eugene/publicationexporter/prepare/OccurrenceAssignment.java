@@ -18,32 +18,31 @@ final class OccurrenceAssignment {
             Map<String, String> targetSourceIdsByStem,
             List<Occurrence> previousOccurrences) {
         List<AssignedOccurrence> assigned = new ArrayList<>();
-        boolean reuse = true;
+        boolean priorOccurrenceCorrespondenceIntact = true;
         for (int index = 0; index < ruOccurrences.size(); index++) {
             LinkOccurrence current = ruOccurrences.get(index);
             String targetSourceId = targetSourceIdsByStem.get(current.targetStem());
+            boolean correspondsToPriorOccurrence = correspondsToPriorOccurrence(
+                    index, targetSourceId, previousOccurrences);
+            String occurrenceId = priorOccurrenceCorrespondenceIntact && correspondsToPriorOccurrence
+                    ? previousOccurrences.get(index).id()
+                    : freshOccurrenceId();
             assigned.add(new AssignedOccurrence(
-                    idFor(index, targetSourceId, previousOccurrences, reuse), index, targetSourceId, current.label()));
-            if (reuse && idForNotReused(index, targetSourceId, previousOccurrences)) {
-                reuse = false;
-            }
+                    occurrenceId, index, targetSourceId, current.label()));
+            priorOccurrenceCorrespondenceIntact =
+                    priorOccurrenceCorrespondenceIntact && correspondsToPriorOccurrence;
         }
-        return assigned;
+        return List.copyOf(assigned);
     }
 
-    private static String idFor(int index, String targetSourceId, List<Occurrence> previousOccurrences, boolean reuse) {
-        if (!reuse || index >= previousOccurrences.size()) {
-            return UUID.randomUUID().toString();
-        }
-        Occurrence previous = previousOccurrences.get(index);
-        return previous.targetSourceId().equals(targetSourceId) ? previous.id() : UUID.randomUUID().toString();
+    private static boolean correspondsToPriorOccurrence(
+            int index, String targetSourceId, List<Occurrence> previousOccurrences) {
+        return index < previousOccurrences.size()
+                && previousOccurrences.get(index).targetSourceId().equals(targetSourceId);
     }
 
-    private static boolean idForNotReused(int index, String targetSourceId, List<Occurrence> previousOccurrences) {
-        if (index >= previousOccurrences.size()) {
-            return true;
-        }
-        return !previousOccurrences.get(index).targetSourceId().equals(targetSourceId);
+    private static String freshOccurrenceId() {
+        return UUID.randomUUID().toString();
     }
 
     record AssignedOccurrence(String id, int order, String targetSourceId, String ruLabel) {
