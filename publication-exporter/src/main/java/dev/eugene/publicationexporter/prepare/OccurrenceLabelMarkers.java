@@ -36,36 +36,38 @@ final class OccurrenceLabelMarkers {
         return delimited.toString();
     }
 
-    static Map<Integer, String> scan(String delimitedBody) {
+    static ScanResult scan(String delimitedBody) {
         Map<Integer, String> spans = new LinkedHashMap<>();
         Set<Integer> seen = new HashSet<>();
+        boolean malformed = false;
         int cursor = 0;
         while (cursor < delimitedBody.length()) {
             MarkerScan found = nextIndexedSpan(delimitedBody, cursor);
             found.span().ifPresent(span -> recordSpan(spans, seen, span));
+            malformed = malformed || found.malformed();
             cursor = found.nextCursor();
         }
-        return spans;
+        return new ScanResult(spans, malformed);
     }
 
     private static MarkerScan nextIndexedSpan(String delimitedBody, int cursor) {
         char candidate = delimitedBody.charAt(cursor);
         if (!isOpenMarker(candidate)) {
-            return new MarkerScan(cursor + 1, Optional.empty());
+            return new MarkerScan(cursor + 1, Optional.empty(), false);
         }
         int index = candidate - MARKER_RANGE_START;
         char expectedClose = closeMarker(index);
         int close = closeMarkerPositionIfWellFormed(delimitedBody, cursor + 1, expectedClose);
         if (close < 0) {
             // Either there's no matching close marker at all, or another marker character
-            // appears nested inside before it — in both cases the structure is malformed, so
-            // this open marker is not consumed as a real pair; only advance past it and let the
-            // scan continue linearly, so any well-formed marker inside the malformed span can
-            // still be found on its own.
-            return new MarkerScan(cursor + 1, Optional.empty());
+            // appears nested inside before it. Either way this open marker's span is malformed:
+            // it's not consumed as a real pair (only advance past it, so a well-formed marker
+            // nested inside can still be found independently), and the whole scan is tainted —
+            // a later coincidentally-clean pair for the same index must not "launder" this away.
+            return new MarkerScan(cursor + 1, Optional.empty(), true);
         }
         String label = delimitedBody.substring(cursor + 1, close);
-        return new MarkerScan(close + 1, Optional.of(new IndexedSpan(index, label)));
+        return new MarkerScan(close + 1, Optional.of(new IndexedSpan(index, label)), false);
     }
 
     private static int closeMarkerPositionIfWellFormed(String delimitedBody, int from, char expectedClose) {
@@ -92,10 +94,17 @@ final class OccurrenceLabelMarkers {
         spans.put(span.index(), span.label());
     }
 
-    private record MarkerScan(int nextCursor, Optional<IndexedSpan> span) {
+    private record MarkerScan(int nextCursor, Optional<IndexedSpan> span, boolean malformed) {
     }
 
     private record IndexedSpan(int index, String label) {
+    }
+
+    record ScanResult(Map<Integer, String> spans, boolean malformed) {
+
+        ScanResult {
+            spans = Map.copyOf(spans);
+        }
     }
 
     static String strip(String delimitedBody) {

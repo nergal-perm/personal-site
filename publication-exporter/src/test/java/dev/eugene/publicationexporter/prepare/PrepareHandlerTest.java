@@ -1427,6 +1427,38 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void prepareBlocksWhenANestedMalformedMarkerIsFollowedByAnUnrelatedCleanReplacement() {
+        String firstTarget = essayWithIdentity("first-target", "src-first", "First Target");
+        String secondTarget = essayWithIdentity("second-target", "src-second", "Second Target");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath firstPath = VaultRelativePath.of("private/first-target.md");
+        VaultRelativePath secondPath = VaultRelativePath.of("private/second-target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[first-target]] then [[second-target]]."),
+                firstPath, firstTarget,
+                secondPath, secondTarget));
+        // A nested, malformed open(0)/close(0) pair (with open(1)/close(1) smuggled inside it) is
+        // followed by a completely separate, well-formed open(0)/close(0) pair — so the recovered
+        // spans map alone would look complete for indices {0, 1}. The malformed structure must
+        // still block the whole translation rather than being "laundered" by the later clean pair.
+        String translated = OccurrenceLabelMarkers.openMarker(0) + "A "
+                + OccurrenceLabelMarkers.openMarker(1) + "B" + OccurrenceLabelMarkers.closeMarker(1)
+                + OccurrenceLabelMarkers.closeMarker(0)
+                + OccurrenceLabelMarkers.openMarker(0) + "C" + OccurrenceLabelMarkers.closeMarker(0);
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(translated, fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void prepareBlocksWhenTranslationDuplicatesAnOccurrenceIndex() {
         String firstTarget = essayWithIdentity("first-target", "src-first", "First Target");
         String secondTarget = essayWithIdentity("second-target", "src-second", "Second Target");

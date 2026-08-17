@@ -7,6 +7,8 @@ import java.util.Map;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OccurrenceLabelMarkersTest {
 
@@ -42,14 +44,18 @@ class OccurrenceLabelMarkersTest {
                 + OccurrenceLabelMarkers.openMarker(0) + "Grandpa Shvedov"
                 + OccurrenceLabelMarkers.closeMarker(0) + ".";
 
-        Map<Integer, String> scanned = OccurrenceLabelMarkers.scan(delimited);
+        OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan(delimited);
 
-        assertEquals(Map.of(0, "Grandpa Shvedov", 1, "public essay"), scanned);
+        assertEquals(Map.of(0, "Grandpa Shvedov", 1, "public essay"), scanned.spans());
+        assertFalse(scanned.malformed());
     }
 
     @Test
     void scanReturnsEmptyMapWhenNoDelimitersPresent() {
-        assertEquals(Map.of(), OccurrenceLabelMarkers.scan("Plain prose, no markers."));
+        OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan("Plain prose, no markers.");
+
+        assertEquals(Map.of(), scanned.spans());
+        assertFalse(scanned.malformed());
     }
 
     @Test
@@ -61,20 +67,39 @@ class OccurrenceLabelMarkersTest {
                 + OccurrenceLabelMarkers.openMarker(1) + "unique"
                 + OccurrenceLabelMarkers.closeMarker(1) + ".";
 
-        Map<Integer, String> scanned = OccurrenceLabelMarkers.scan(delimited);
+        OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan(delimited);
 
-        assertEquals(Map.of(1, "unique"), scanned);
+        assertEquals(Map.of(1, "unique"), scanned.spans());
+        assertFalse(scanned.malformed());
     }
 
     @Test
-    void scanTreatsAnIndexAsAbsentWhenAnotherMarkerIsNestedInsideIt() {
+    void scanFlagsMalformedWhenAnotherMarkerIsNestedInsideAnOccurrenceSpan() {
         String delimited = OccurrenceLabelMarkers.openMarker(0) + "A "
                 + OccurrenceLabelMarkers.openMarker(1) + "B" + OccurrenceLabelMarkers.closeMarker(1)
                 + OccurrenceLabelMarkers.closeMarker(0);
 
-        Map<Integer, String> scanned = OccurrenceLabelMarkers.scan(delimited);
+        OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan(delimited);
 
-        assertEquals(Map.of(1, "B"), scanned);
+        assertEquals(Map.of(1, "B"), scanned.spans());
+        assertTrue(scanned.malformed());
+    }
+
+    @Test
+    void scanStaysMalformedEvenWhenALaterCleanPairReplacesTheRejectedIndex() {
+        // A rejected (nested) open(0) is followed later by a completely separate, well-formed
+        // open(0)/close(0) pair. Taken in isolation the recovered spans map could look complete
+        // for assigned indices {0, 1} — but the malformed flag must still be set, so the caller
+        // doesn't let this "launder" the earlier corruption into an apparently-clean result.
+        String delimited = OccurrenceLabelMarkers.openMarker(0) + "A "
+                + OccurrenceLabelMarkers.openMarker(1) + "B" + OccurrenceLabelMarkers.closeMarker(1)
+                + OccurrenceLabelMarkers.closeMarker(0)
+                + OccurrenceLabelMarkers.openMarker(0) + "C" + OccurrenceLabelMarkers.closeMarker(0);
+
+        OccurrenceLabelMarkers.ScanResult scanned = OccurrenceLabelMarkers.scan(delimited);
+
+        assertEquals(Map.of(0, "C", 1, "B"), scanned.spans());
+        assertTrue(scanned.malformed());
     }
 
     @Test

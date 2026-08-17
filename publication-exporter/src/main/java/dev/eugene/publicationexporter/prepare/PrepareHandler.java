@@ -334,8 +334,8 @@ public final class PrepareHandler {
             List<CandidateAsset> assets, TranslationJob job,
             EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
             List<OccurrenceAssignment.AssignedOccurrence> assignedRu) {
-        Map<Integer, String> enSpans = OccurrenceLabelMarkers.scan(translation.body());
-        if (translatedBodyDivergesFromAssignedOccurrences(enSpans, assignedRu)) {
+        OccurrenceLabelMarkers.ScanResult enScan = OccurrenceLabelMarkers.scan(translation.body());
+        if (translatedBodyDivergesFromAssignedOccurrences(enScan, assignedRu)) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, Diagnostic.blocking(
                     "candidate", "Translated candidate reordered or invented semantic occurrences."));
@@ -343,7 +343,7 @@ public final class PrepareHandler {
         String ruBody = OccurrenceLabelMarkers.strip(delimitedRuBody);
         String enBody = OccurrenceLabelMarkers.strip(translation.body());
         List<PublicField> enFields = translation.fields();
-        List<Occurrence> occurrences = occurrencesWithEnglishLabels(assignedRu, enSpans);
+        List<Occurrence> occurrences = occurrencesWithEnglishLabels(assignedRu, enScan.spans());
         if (anyOccurrenceLabelIsBlank(occurrences)) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, Diagnostic.blocking(
@@ -392,13 +392,16 @@ public final class PrepareHandler {
     }
 
     private static boolean translatedBodyDivergesFromAssignedOccurrences(
-            Map<Integer, String> translatedSpans,
+            OccurrenceLabelMarkers.ScanResult translatedScan,
             List<OccurrenceAssignment.AssignedOccurrence> assignedRussianOccurrences) {
+        if (translatedScan.malformed()) {
+            return true;
+        }
         Set<Integer> assignedIndices = new LinkedHashSet<>();
         for (int i = 0; i < assignedRussianOccurrences.size(); i++) {
             assignedIndices.add(i);
         }
-        return !translatedSpans.keySet().equals(assignedIndices);
+        return !translatedScan.spans().keySet().equals(assignedIndices);
     }
 
     private static List<Occurrence> occurrencesWithEnglishLabels(
