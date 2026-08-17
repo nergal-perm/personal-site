@@ -11,6 +11,7 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -1164,6 +1165,108 @@ class PrepareHandlerTest {
     }
 
     @Test
+    void preparingALinkedEssayInstallsANonEmptyOccurrenceMap() {
+        String target = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: target-essay
+                id: src-target-1
+                title: Target Essay
+                description: A target.
+                ---
+                Target body.""";
+        String referrer = essayWithBody("See [[target-essay]].");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("blog/target-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(referrerPath, referrer, targetPath, target));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "As he wrote, see [Target Essay](/essays/target-essay/).",
+                        fields("Translated title", "Translated description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
+        List<Occurrence> occurrences = installed.referenceMap().occurrences();
+        assertEquals(1, occurrences.size());
+        assertEquals(0, occurrences.get(0).order());
+        assertEquals("src-target-1", occurrences.get(0).targetSourceId());
+        assertEquals("target-essay", occurrences.get(0).ruLabel());
+        assertEquals("Target Essay", occurrences.get(0).enLabel());
+    }
+
+    @Test
+    void reprepareReusesThePriorOccurrenceIdWhenNothingChanged() {
+        String target = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: target-essay
+                id: src-target-2
+                title: Target Essay
+                description: A target.
+                ---
+                Target body.""";
+        String referrer = essayWithBody("See [[target-essay]].");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("blog/target-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(referrerPath, referrer, targetPath, target));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "As he wrote, see [Target Essay](/essays/target-essay/).",
+                        fields("Translated title", "Translated description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+        String firstOccurrenceId = workspace.installed().get(0).referenceMap().occurrences().get(0).id();
+
+        handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+        String secondOccurrenceId = workspace.installed().get(1).referenceMap().occurrences().get(0).id();
+
+        assertEquals(firstOccurrenceId, secondOccurrenceId);
+    }
+
+    @Test
+    void prepareBlocksWhenTranslationInventsOrDropsAnOccurrence() {
+        String target = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: target-essay
+                id: src-target-3
+                title: Target Essay
+                description: A target.
+                ---
+                Target body.""";
+        String referrer = essayWithBody("See [[target-essay]].");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("blog/target-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(referrerPath, referrer, targetPath, target));
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "As he wrote, nothing here at all.",
+                        fields("Translated title", "Translated description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
     void validEssayInstallsOneCandidateAndReturnsReadyForReview() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
@@ -2052,7 +2155,9 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
+                TranslationWorker.createNull(
+                        "See [Time note](/essays/notes-on-time/) and Draft.",
+                        fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
@@ -2087,7 +2192,9 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
+                TranslationWorker.createNull(
+                        "See [My Note](/notes/my-note/).",
+                        fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(essayPath, vaultReader, VaultAssetReader.createNull());
@@ -2277,7 +2384,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("EN body", fields("EN title", "EN description.")),
+                TranslationWorker.createNull("See Draft.", fields("EN title", "EN description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());

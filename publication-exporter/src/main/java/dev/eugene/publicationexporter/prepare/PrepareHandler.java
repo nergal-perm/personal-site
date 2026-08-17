@@ -13,6 +13,7 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -28,8 +29,11 @@ import dev.eugene.publicationexporter.workflow.WorkflowState;
 import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
 import java.io.UncheckedIOException;
-import java.util.List;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Optional;
@@ -236,27 +240,60 @@ public final class PrepareHandler {
             String ruBody, List<PublicField> ruFields, String structuredData, List<CandidateAsset> assets,
             PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
             OccurrenceContext occurrenceContext) {
+        List<OccurrenceAssignment.AssignedOccurrence> assignedRu = assignOccurrences(
+                identity, occurrenceContext);
+        String delimitedRuBody = OccurrenceLabelMarkers.delimit(
+                ruBody, occurrenceContext.occurrences());
         TranslationJob job = TranslationJob.forSource(ruBody, ruFields);
-        return translateCandidate(job, ruBody, ruFields).resolve(
+        return translateCandidate(job, delimitedRuBody, ruFields).resolve(
                 translation -> prepareTranslatedEssay(
                         notePath, vaultReader, identity, sourceHash,
-                        ruBody, ruFields, structuredData, assets, job, translation, knownNotes, vaultAssetReader,
-                        occurrenceContext),
+                        delimitedRuBody, ruFields, structuredData, assets, job, translation, knownNotes, vaultAssetReader,
+                        assignedRu),
                 failure -> {
                     recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
                     return translationFailure(failure);
                 });
     }
 
+    private List<OccurrenceAssignment.AssignedOccurrence> assignOccurrences(
+            PublicationIdentity identity, OccurrenceContext occurrenceContext) {
+        if (occurrenceContext.occurrences().isEmpty()) {
+            return List.of();
+        }
+        VaultSourceIdentityIndex identityIndex = occurrenceContext.identityIndex().orElseThrow();
+        Map<String, String> targetSourceIdsByStem = new LinkedHashMap<>();
+        for (LinkOccurrence occurrence : occurrenceContext.occurrences()) {
+            targetSourceIdsByStem.put(
+                    occurrence.targetStem(),
+                    identityIndex.identityFor(occurrence.targetStem())
+                            .flatMap(TargetIdentity::sourceId)
+                            .orElseThrow());
+        }
+        List<Occurrence> previous = candidateWorkspace.read(identity)
+                .map(snapshot -> snapshot.referenceMap().occurrences())
+                .orElse(List.of());
+        return OccurrenceAssignment.assign(
+                occurrenceContext.occurrences(), targetSourceIdsByStem, previous);
+    }
+
     private BridgeResponse prepareTranslatedEssay(
             VaultRelativePath notePath, VaultReader vaultReader,
             PublicationIdentity identity, String sourceHash,
-            String ruBody, List<PublicField> ruFields, String structuredData,
+            String delimitedRuBody, List<PublicField> ruFields, String structuredData,
             List<CandidateAsset> assets, TranslationJob job,
             EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
-            OccurrenceContext occurrenceContext) {
-        String enBody = translation.body();
+            List<OccurrenceAssignment.AssignedOccurrence> assignedRu) {
+        List<String> enSpans = OccurrenceLabelMarkers.scan(translation.body());
+        if (enSpans.size() != assignedRu.size()) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
+            return BridgeResponse.translationFailed(COMMAND, Diagnostic.blocking(
+                    "candidate", "Translated candidate reordered or invented semantic occurrences."));
+        }
+        String ruBody = OccurrenceLabelMarkers.strip(delimitedRuBody);
+        String enBody = OccurrenceLabelMarkers.strip(translation.body());
         List<PublicField> enFields = translation.fields();
+        List<Occurrence> occurrences = occurrencesWithEnglishLabels(assignedRu, enSpans);
 
         EnglishCandidateValidator.Result validation = validateEnglishCandidate(
                 ruBody, ruFields, enBody, enFields);
@@ -275,7 +312,7 @@ public final class PrepareHandler {
         return freshness.resolve(
                 currentSourceHash -> {
                     ReferenceMap referenceMap = buildReferenceMap(
-                            identity, ruBody, enBody, ruFields, enFields, structuredData);
+                            identity, ruBody, enBody, ruFields, enFields, structuredData, occurrences);
                     BridgeResponse response = installCandidate(identity, ruBody, enBody, ruFields, enFields,
                             structuredData, referenceMap, assets);
                     if (response.ok()) {
@@ -292,6 +329,17 @@ public final class PrepareHandler {
                 PrepareHandler::unclosedCommentFailure,
                 PrepareHandler::transclusionBlockedFailure,
                 PrepareHandler::assetBlockedFailure);
+    }
+
+    private static List<Occurrence> occurrencesWithEnglishLabels(
+            List<OccurrenceAssignment.AssignedOccurrence> assignedRu, List<String> enLabels) {
+        List<Occurrence> occurrences = new ArrayList<>();
+        for (int i = 0; i < assignedRu.size(); i++) {
+            OccurrenceAssignment.AssignedOccurrence ru = assignedRu.get(i);
+            occurrences.add(new Occurrence(
+                    ru.id(), ru.order(), ru.targetSourceId(), ru.ruLabel(), enLabels.get(i)));
+        }
+        return List.copyOf(occurrences);
     }
 
     private void recordWorkflowStatus(VaultRelativePath notePath, String sourceHash, String status) {
@@ -355,13 +403,15 @@ public final class PrepareHandler {
 
     private static ReferenceMap buildReferenceMap(
             PublicationIdentity identity, String ruBody, String enBody,
-            List<PublicField> ruFields, List<PublicField> enFields, String structuredData) {
-        return ReferenceMap.empty(
+            List<PublicField> ruFields, List<PublicField> enFields, String structuredData,
+            List<Occurrence> occurrences) {
+        return ReferenceMap.of(
                 identity,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
                 ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
                 ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
-                ContentHash.sha256Hex(structuredData));
+                ContentHash.sha256Hex(structuredData),
+                occurrences);
     }
 
     private BridgeResponse installCandidate(
