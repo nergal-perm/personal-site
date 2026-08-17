@@ -80,27 +80,33 @@ public final class PrepareHandler {
         String sourceStem = PublicNoteIndex.filenameStem(notePath);
         String sourceId = intake.frontmatterString("id").orElseThrow();
         return MarkdownNormalizer.normalize(intake.body()).resolve(
-                normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        (resolvedBody, occurrences) -> prepareAfterIdentityCheck(
-                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader,
-                                sourceStem, sourceId, occurrences),
-                        PrepareHandler::transclusionBlockedFailure),
+                normalizedBody -> {
+                    AssetResolutionOutcome assetOutcome;
+                    try {
+                        assetOutcome = AssetResolver.resolve(normalizedBody, vaultAssetReader);
+                    } catch (UncheckedIOException failure) {
+                        return assetResolutionLookupFailure(failure);
+                    }
+                    return assetOutcome.resolve(
+                            (assetResolvedBody, assets) -> LinkResolver.resolve(assetResolvedBody, knownNotes).resolve(
+                                    (resolvedBody, occurrences) -> prepareAfterIdentityCheck(
+                                            notePath, vaultReader, intake, resolvedBody, assets, knownNotes,
+                                            vaultAssetReader, sourceStem, sourceId, occurrences),
+                                    PrepareHandler::transclusionBlockedFailure),
+                            PrepareHandler::assetBlockedFailure);
+                },
                 position -> unclosedCommentFailure(position));
     }
 
     private BridgeResponse prepareAfterIdentityCheck(
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
-            String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
+            String resolvedBody, List<CandidateAsset> assets, PublicNoteIndex knownNotes,
+            VaultAssetReader vaultAssetReader,
             String sourceStem, String sourceId, List<LinkOccurrence> occurrences) {
-        Set<String> privateTargetStems = occurrences.stream()
-                .filter(occurrence -> occurrence.route().isEmpty())
-                .map(LinkOccurrence::targetStem)
-                .collect(Collectors.toCollection(LinkedHashSet::new));
-        OccurrenceContext occurrenceContext;
         if (occurrences.isEmpty()) {
-            occurrenceContext = OccurrenceContext.empty();
-            return prepareAfterAssetResolution(
-                    notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader, occurrenceContext);
+            return prepareNormalizedEssay(
+                    notePath, vaultReader, intake, resolvedBody, assets, knownNotes, vaultAssetReader,
+                    OccurrenceContext.empty());
         }
         VaultSourceIdentityIndex identityIndex;
         try {
@@ -108,33 +114,38 @@ public final class PrepareHandler {
         } catch (UncheckedIOException | NoSuchElementException failure) {
             return vaultSourceIdentityLookupFailure(failure);
         }
-        occurrenceContext = new OccurrenceContext(occurrences, Optional.of(identityIndex));
+        List<LinkOccurrence> eligibleOccurrences = eligibleOccurrences(occurrences, identityIndex);
+        if (eligibleOccurrences.isEmpty()) {
+            return prepareNormalizedEssay(
+                    notePath, vaultReader, intake, resolvedBody, assets, knownNotes, vaultAssetReader,
+                    OccurrenceContext.empty());
+        }
+        Set<String> privateTargetStems = eligibleOccurrences.stream()
+                .filter(occurrence -> occurrence.route().isEmpty())
+                .map(LinkOccurrence::targetStem)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
+        OccurrenceContext occurrenceContext =
+                new OccurrenceContext(eligibleOccurrences, Optional.of(identityIndex));
         if (privateTargetStems.isEmpty()) {
-            return prepareAfterAssetResolution(
-                    notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader, occurrenceContext);
+            return prepareNormalizedEssay(
+                    notePath, vaultReader, intake, resolvedBody, assets, knownNotes, vaultAssetReader,
+                    occurrenceContext);
         }
         return DirectTargetIdentityCheck.verify(sourceStem, sourceId, privateTargetStems, identityIndex)
                 .resolve(
-                        () -> prepareAfterAssetResolution(
-                                notePath, vaultReader, intake, resolvedBody, knownNotes, vaultAssetReader,
-                                occurrenceContext),
+                        () -> prepareNormalizedEssay(
+                                notePath, vaultReader, intake, resolvedBody, assets, knownNotes,
+                                vaultAssetReader, occurrenceContext),
                         PrepareHandler::directTargetIdentityBlockedFailure);
     }
 
-    private BridgeResponse prepareAfterAssetResolution(
-            VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
-            String resolvedBody, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
-            OccurrenceContext occurrenceContext) {
-        AssetResolutionOutcome outcome;
-        try {
-            outcome = AssetResolver.resolve(resolvedBody, vaultAssetReader);
-        } catch (UncheckedIOException failure) {
-            return assetResolutionLookupFailure(failure);
-        }
-        return outcome.resolve(
-                (assetResolvedBody, assets) -> prepareNormalizedEssay(notePath, vaultReader,
-                        intake, assetResolvedBody, assets, knownNotes, vaultAssetReader, occurrenceContext),
-                PrepareHandler::assetBlockedFailure);
+    private static List<LinkOccurrence> eligibleOccurrences(
+            List<LinkOccurrence> occurrences, VaultSourceIdentityIndex identityIndex) {
+        return occurrences.stream()
+                .filter(occurrence -> identityIndex.identityFor(occurrence.targetStem())
+                        .flatMap(TargetIdentity::sourceId)
+                        .isPresent())
+                .toList();
     }
 
     private BridgeResponse prepareNormalizedEssay(
@@ -240,8 +251,16 @@ public final class PrepareHandler {
             String ruBody, List<PublicField> ruFields, String structuredData, List<CandidateAsset> assets,
             PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
             OccurrenceContext occurrenceContext) {
-        List<OccurrenceAssignment.AssignedOccurrence> assignedRu = assignOccurrences(
-                identity, occurrenceContext);
+        if (OccurrenceLabelMarkers.containsReservedCharacters(ruBody)) {
+            recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
+            return candidateFailure(
+                    "Source note contains a reserved private-use-area character used internally for occurrence tracking.");
+        }
+        OccurrenceAssignmentLookup assignmentLookup = assignOccurrences(identity, occurrenceContext);
+        if (assignmentLookup.failed()) {
+            return assignmentLookup.failureResponse();
+        }
+        List<OccurrenceAssignment.AssignedOccurrence> assignedRu = assignmentLookup.assignedOccurrences();
         String delimitedRuBody = OccurrenceLabelMarkers.delimit(
                 ruBody, occurrenceContext.occurrences());
         TranslationJob job = TranslationJob.forSource(ruBody, ruFields);
@@ -256,16 +275,22 @@ public final class PrepareHandler {
                 });
     }
 
-    private List<OccurrenceAssignment.AssignedOccurrence> assignOccurrences(
+    private OccurrenceAssignmentLookup assignOccurrences(
             PublicationIdentity identity, OccurrenceContext occurrenceContext) {
         List<LinkOccurrence> occurrences = occurrenceContext.occurrences();
         if (occurrences.isEmpty()) {
-            return List.of();
+            return OccurrenceAssignmentLookup.found(List.of());
         }
         Map<String, String> targetSourceIdsByStem = buildTargetSourceIdsByStem(
                 occurrences, occurrenceContext.identityIndex().orElseThrow());
-        List<Occurrence> previousOccurrences = previousOccurrencesFor(identity);
-        return OccurrenceAssignment.assign(occurrences, targetSourceIdsByStem, previousOccurrences);
+        try {
+            List<Occurrence> previousOccurrences = previousOccurrencesFor(identity);
+            return OccurrenceAssignmentLookup.found(
+                    OccurrenceAssignment.assign(occurrences, targetSourceIdsByStem, previousOccurrences));
+        } catch (UncheckedIOException failure) {
+            return OccurrenceAssignmentLookup.failed(candidateFailure(
+                    IoFailureMessages.describe("Candidate lookup failed", failure)));
+        }
     }
 
     private static Map<String, String> buildTargetSourceIdsByStem(
@@ -294,7 +319,7 @@ public final class PrepareHandler {
             List<CandidateAsset> assets, TranslationJob job,
             EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
             List<OccurrenceAssignment.AssignedOccurrence> assignedRu) {
-        List<String> enSpans = OccurrenceLabelMarkers.scan(translation.body());
+        Map<Integer, String> enSpans = OccurrenceLabelMarkers.scan(translation.body());
         if (translatedBodyDivergesFromAssignedOccurrences(enSpans, assignedRu)) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, Diagnostic.blocking(
@@ -342,13 +367,17 @@ public final class PrepareHandler {
     }
 
     private static boolean translatedBodyDivergesFromAssignedOccurrences(
-            List<String> translatedSpans,
+            Map<Integer, String> translatedSpans,
             List<OccurrenceAssignment.AssignedOccurrence> assignedRussianOccurrences) {
-        return translatedSpans.size() != assignedRussianOccurrences.size();
+        Set<Integer> assignedIndices = new LinkedHashSet<>();
+        for (int i = 0; i < assignedRussianOccurrences.size(); i++) {
+            assignedIndices.add(i);
+        }
+        return !translatedSpans.keySet().equals(assignedIndices);
     }
 
     private static List<Occurrence> occurrencesWithEnglishLabels(
-            List<OccurrenceAssignment.AssignedOccurrence> assignedRu, List<String> enLabels) {
+            List<OccurrenceAssignment.AssignedOccurrence> assignedRu, Map<Integer, String> enLabels) {
         List<Occurrence> occurrences = new ArrayList<>();
         for (int i = 0; i < assignedRu.size(); i++) {
             OccurrenceAssignment.AssignedOccurrence ru = assignedRu.get(i);
@@ -393,16 +422,16 @@ public final class PrepareHandler {
             return SourceFreshnessOutcome.stale();
         }
         return MarkdownNormalizer.normalize(current.body()).resolve(
-                normalizedBody -> LinkResolver.resolve(normalizedBody, knownNotes).resolve(
-                        (resolvedBody, ignoredOccurrences) -> AssetResolver.resolve(
-                                resolvedBody, vaultAssetReader).resolve(
-                                (assetResolvedBody, ignoredAssets) ->
-                                        sourceFingerprintMatches(job, assetResolvedBody, fieldsOf(current))
+                normalizedBody -> AssetResolver.resolve(normalizedBody, vaultAssetReader).resolve(
+                        (assetResolvedBody, ignoredAssets) -> LinkResolver.resolve(
+                                assetResolvedBody, knownNotes).resolve(
+                                (resolvedBody, ignoredOccurrences) ->
+                                        sourceFingerprintMatches(job, resolvedBody, fieldsOf(current))
                                                 && expectedStructuredData.equals(current.structuredData())
                                                 ? SourceFreshnessOutcome.matches(current.sourceHash())
                                                 : SourceFreshnessOutcome.stale(),
-                                SourceFreshnessOutcome::assetBlocked),
-                        SourceFreshnessOutcome::blockedTransclusion),
+                                SourceFreshnessOutcome::blockedTransclusion),
+                        SourceFreshnessOutcome::assetBlocked),
                 SourceFreshnessOutcome::unclosedComment);
     }
 
@@ -548,6 +577,32 @@ public final class PrepareHandler {
 
         private static ApprovedBaselineLookup failed(BridgeResponse failure) {
             return new ApprovedBaselineLookup(Optional.empty(), Optional.of(failure));
+        }
+
+        private boolean failed() {
+            return failure.isPresent();
+        }
+
+        private BridgeResponse failureResponse() {
+            return failure.orElseThrow();
+        }
+    }
+
+    private record OccurrenceAssignmentLookup(
+            List<OccurrenceAssignment.AssignedOccurrence> assignedOccurrences,
+            Optional<BridgeResponse> failure) {
+
+        private OccurrenceAssignmentLookup {
+            assignedOccurrences = List.copyOf(assignedOccurrences);
+        }
+
+        private static OccurrenceAssignmentLookup found(
+                List<OccurrenceAssignment.AssignedOccurrence> assignedOccurrences) {
+            return new OccurrenceAssignmentLookup(assignedOccurrences, Optional.empty());
+        }
+
+        private static OccurrenceAssignmentLookup failed(BridgeResponse failure) {
+            return new OccurrenceAssignmentLookup(List.of(), Optional.of(failure));
         }
 
         private boolean failed() {

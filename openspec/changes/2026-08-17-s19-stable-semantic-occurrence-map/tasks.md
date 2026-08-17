@@ -80,7 +80,7 @@ of sketching them inline.
 - Produces: `public record Occurrence(String id, int order, String targetSourceId, String ruLabel, String enLabel)`
   (public, `reference` package — Jackson-serialized, consumed across packages).
 
-- [ ] 1.1 Write `OccurrenceTest.java`:
+- [x] 1.1 Write `OccurrenceTest.java`:
 
 ```java
 package dev.eugene.publicationexporter.reference;
@@ -119,10 +119,10 @@ class OccurrenceTest {
 }
 ```
 
-- [ ] 1.2 Run `mvn -q -Dtest=OccurrenceTest test` from `publication-exporter/`. Expected: FAIL (class
+- [x] 1.2 Run `mvn -q -Dtest=OccurrenceTest test` from `publication-exporter/`. Expected: FAIL (class
       `Occurrence` does not exist).
 
-- [ ] 1.3 Write `Occurrence.java`. A `record`'s canonical constructor is where `Objects.requireNonNull`
+- [x] 1.3 Write `Occurrence.java`. A `record`'s canonical constructor is where `Objects.requireNonNull`
       guard clauses go — Java records don't null-check by default, so this is not optional boilerplate:
 
 ```java
@@ -141,7 +141,7 @@ public record Occurrence(String id, int order, String targetSourceId, String ruL
 }
 ```
 
-- [ ] 1.4 Write `LinkOccurrence.java` (no test file — it is an internal carrier consumed and exercised
+- [x] 1.4 Write `LinkOccurrence.java` (no test file — it is an internal carrier consumed and exercised
       entirely through `LinkResolverTest` and `PrepareHandlerTest` in later tasks, matching this codebase's
       existing convention of not unit-testing plain internal records separately from their producer/consumer):
 
@@ -161,9 +161,9 @@ record LinkOccurrence(String targetStem, String label, Optional<String> route, i
 }
 ```
 
-- [ ] 1.5 Run `mvn -q -Dtest=OccurrenceTest test` from `publication-exporter/`. Expected: PASS.
+- [x] 1.5 Run `mvn -q -Dtest=OccurrenceTest test` from `publication-exporter/`. Expected: PASS.
 
-- [ ] 1.6 Commit:
+- [x] 1.6 Commit:
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/LinkOccurrence.java \
@@ -199,7 +199,7 @@ regression is easy to bisect.
 - Produces: `LinkResolutionOutcome.resolved(String body, List<LinkOccurrence> occurrences)`;
   `<T> T resolve(BiFunction<String, List<LinkOccurrence>, T> onResolved, Function<String, T> onBlockedTransclusion)`.
 
-- [ ] 2.1 In `LinkResolverTest.java`, add a failing test proving occurrences are reported in source order,
+- [x] 2.1 In `LinkResolverTest.java`, add a failing test proving occurrences are reported in source order,
       one per plain wikilink, for both a public and a private target in the same body:
 
 ```java
@@ -229,11 +229,11 @@ void resolvedOutcomeReportsOccurrencesInSourceOrderForPublicAndPrivateTargets() 
       shape but copy the file's real helper methods/constants if it already has them (e.g. a
       `publicNoteIndexWith(...)` helper).
 
-- [ ] 2.2 Run `mvn -q -Dtest=LinkResolverTest test` from `publication-exporter/`. Expected: FAIL (compile
+- [x] 2.2 Run `mvn -q -Dtest=LinkResolverTest test` from `publication-exporter/`. Expected: FAIL (compile
       error — `LinkOccurrence` unused / wrong type, or the new test doesn't compile against the still-`Set`
       signature).
 
-- [ ] 2.3 Widen `LinkResolutionOutcome.java`: change every `Set<String> privateTargetStems` to
+- [x] 2.3 Widen `LinkResolutionOutcome.java`: change every `Set<String> privateTargetStems` to
       `List<LinkOccurrence> occurrences` (imports: replace `java.util.Set`/`LinkedHashSet` usage as needed
       with `java.util.List`; keep the sealed-interface shape and both variant classes' structure identical
       otherwise — this is a type substitution, not a redesign):
@@ -276,7 +276,7 @@ final class ResolvedLinks implements LinkResolutionOutcome {
 
       (`BlockedTransclusion` is unchanged — it never carried occurrence data.)
 
-- [ ] 2.4 Widen `LinkResolver.java`'s `resolve`/`appendLink` to build an ordered `List<LinkOccurrence>`
+- [x] 2.4 Widen `LinkResolver.java`'s `resolve`/`appendLink` to build an ordered `List<LinkOccurrence>`
       instead of a `Set<String>`, recording each occurrence's span in `output` at the point its label text
       is written (needed by Task 6's `OccurrenceLabelMarkers`):
 
@@ -341,11 +341,11 @@ private static Optional<String> appendLink(
       `labelFor`, `lastPathSegment`, `nextLink`, `protectedSpanBeforeLink`, `copyProtectedSpan` are
       unchanged — do not touch them.
 
-- [ ] 2.5 Run `mvn -q -Dtest=LinkResolverTest test` from `publication-exporter/`. Expected: PASS, including
+- [x] 2.5 Run `mvn -q -Dtest=LinkResolverTest test` from `publication-exporter/`. Expected: PASS, including
       every pre-existing `LinkResolverTest` case (they assert on `resolvedBody`'s characters, which this
       task does not change).
 
-- [ ] 2.6 Fix every remaining compile error from the widened signature (`PrepareHandler.prepare()`,
+- [x] 2.6 Fix every remaining compile error from the widened signature (`PrepareHandler.prepare()`,
       `PrepareHandler.sourceFreshness()`, any `PrepareHandlerTest`/`DirectTargetIdentityCheckTest` fixture
       that constructs `LinkResolutionOutcome.resolved(...)` or destructures a `resolve(...)` call). For each
       call site, change the lambda's second parameter type from `Set<String>` to `List<LinkOccurrence>`. In
@@ -364,10 +364,10 @@ Set<String> privateTargetStems = occurrences.stream()
       `sourceFreshness`'s lambda already ignores its second parameter (`ignoredPrivateTargetStems` today) —
       rename it `ignoredOccurrences` and leave the type change as the only edit there.
 
-- [ ] 2.7 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions. This
+- [x] 2.7 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions. This
       is the checkpoint the global constraints block requires — do not proceed to Task 3 with any red test.
 
-- [ ] 2.8 Commit:
+- [x] 2.8 Commit:
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/LinkResolver.java \
@@ -399,20 +399,20 @@ reviewable on its own diff.
   `Optional<TargetIdentity> identityFor(String filenameStem)` — identical signatures to today, new class
   name only. `record TargetIdentity(Optional<String> sourceId)` is unchanged.
 
-- [ ] 3.1 There is no new failing test for this task — it is a behavior-preserving rename, verified by the
+- [x] 3.1 There is no new failing test for this task — it is a behavior-preserving rename, verified by the
       existing (renamed) test file continuing to pass unchanged. Rename the file and class:
       `git mv publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/PrivateNoteIdentityIndex.java publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/VaultSourceIdentityIndex.java`,
       then change `final class PrivateNoteIdentityIndex` to `final class VaultSourceIdentityIndex` and its
       constructor name to match. `TargetIdentity` (the trailing record in the same file) is unchanged.
 
-- [ ] 3.2 `git mv` the test file the same way and replace every `PrivateNoteIdentityIndex` reference with
+- [x] 3.2 `git mv` the test file the same way and replace every `PrivateNoteIdentityIndex` reference with
       `VaultSourceIdentityIndex` inside it.
 
-- [ ] 3.3 In `PrepareHandler.java` and `DirectTargetIdentityCheck.java`, replace every remaining
+- [x] 3.3 In `PrepareHandler.java` and `DirectTargetIdentityCheck.java`, replace every remaining
       `PrivateNoteIdentityIndex` reference with `VaultSourceIdentityIndex` (type only — variable names like
       `identityIndex` stay as-is, they were never type-derived).
 
-- [ ] 3.4 In `PrepareHandler.prepareAfterIdentityCheck(...)`, change the build condition from
+- [x] 3.4 In `PrepareHandler.prepareAfterIdentityCheck(...)`, change the build condition from
       `if (privateTargetStems.isEmpty())` to `if (occurrences.isEmpty())`, and build
       `VaultSourceIdentityIndex` unconditionally whenever occurrences exist (today it is built only inside
       the non-empty-private-stems branch). Restructure so that: (a) the index is built once whenever
@@ -441,11 +441,11 @@ record OccurrenceContext(List<LinkOccurrence> occurrences, Optional<VaultSourceI
       `prepareAdmittedEssay` as one additional parameter (replacing the now-unused bare `occurrences`
       parameter from Task 2's threading, if you introduced one there — collapse to this single carrier).
 
-- [ ] 3.5 Run `mvn -q test` from `publication-exporter/`. Expected: PASS, 0 regressions — this task changes
+- [x] 3.5 Run `mvn -q test` from `publication-exporter/`. Expected: PASS, 0 regressions — this task changes
       *when* the index is built (now also for public-only-link notes) but not what `DirectTargetIdentityCheck`
       does with it, so no existing assertion should change.
 
-- [ ] 3.6 Commit:
+- [x] 3.6 Commit:
 
 ```bash
 git add -A publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/ \
@@ -475,7 +475,7 @@ here that Task 7 then plugs into `PrepareHandler`.
   `ReferenceMapCodec.read(json)` throws `ReferenceMapCodecException` (new, extends `RuntimeException`) on
   duplicate occurrence IDs, out-of-order `order` values, or malformed occurrence fields.
 
-- [ ] 4.1 Replace `ReferenceMapTest.occurrencesIsAlwaysEmpty` (it locks in the old stub — this is a
+- [x] 4.1 Replace `ReferenceMapTest.occurrencesIsAlwaysEmpty` (it locks in the old stub — this is a
       deliberate, expected test change, not a regression) with tests proving `occurrences()` returns exactly
       what was constructed, and that the empty-map factories still produce an empty list:
 
@@ -500,12 +500,12 @@ void occurrencesReturnsConstructedListInOrder() {
 }
 ```
 
-- [ ] 4.2 Run `mvn -q -Dtest=ReferenceMapTest test` from `publication-exporter/`. Expected: FAIL
+- [x] 4.2 Run `mvn -q -Dtest=ReferenceMapTest test` from `publication-exporter/`. Expected: FAIL
       (`occurrencesIsAlwaysEmpty` no longer exists as a method to fail against — the new
       `occurrencesReturnsConstructedListInOrder` fails to compile: no `ReferenceMap.of(...)` overload
       taking a `List<Occurrence>` exists yet).
 
-- [ ] 4.3 Widen `ReferenceMap.java`: add an `occurrences` field, the `of(...)` factory, and make both
+- [x] 4.3 Widen `ReferenceMap.java`: add an `occurrences` field, the `of(...)` factory, and make both
       `empty(...)` overloads delegate to it with `List.of()`:
 
 ```java
@@ -552,9 +552,9 @@ public List<Occurrence> occurrences() {
       Add `occurrences` to `equals`/`hashCode`/`toString` alongside the existing hash fields, matching this
       class's existing full-value-equality style.
 
-- [ ] 4.4 Run `mvn -q -Dtest=ReferenceMapTest test` from `publication-exporter/`. Expected: PASS.
+- [x] 4.4 Run `mvn -q -Dtest=ReferenceMapTest test` from `publication-exporter/`. Expected: PASS.
 
-- [ ] 4.5 In `ReferenceMapCodecTest.java`, rename `writeProducesTheDeclaredSchemaVersionIdentityHashesAndEmptyOccurrences`
+- [x] 4.5 In `ReferenceMapCodecTest.java`, rename `writeProducesTheDeclaredSchemaVersionIdentityHashesAndEmptyOccurrences`
       to keep asserting the empty case (no behavior change there — still pass `List.of()`), and add new
       failing tests for the non-empty case and the validation scenarios SEM-03 names:
 
@@ -620,10 +620,10 @@ private static String referenceMapJsonWithOccurrences(String occurrencesJson) {
 
       (Add `import static org.junit.jupiter.api.Assertions.assertThrows;` if not already present.)
 
-- [ ] 4.6 Run `mvn -q -Dtest=ReferenceMapCodecTest test` from `publication-exporter/`. Expected: FAIL
+- [x] 4.6 Run `mvn -q -Dtest=ReferenceMapCodecTest test` from `publication-exporter/`. Expected: FAIL
       (`ReferenceMapCodecException` does not exist; `occurrences` array is still always empty on write).
 
-- [ ] 4.7 Create `ReferenceMapCodecException.java`:
+- [x] 4.7 Create `ReferenceMapCodecException.java`:
 
 ```java
 package dev.eugene.publicationexporter.reference;
@@ -636,7 +636,7 @@ public final class ReferenceMapCodecException extends RuntimeException {
 }
 ```
 
-- [ ] 4.8 Widen `ReferenceMapCodec.java` to write real occurrences and validate them on read:
+- [x] 4.8 Widen `ReferenceMapCodec.java` to write real occurrences and validate them on read:
 
 ```java
 public static ReferenceMap read(String json) {
@@ -692,11 +692,11 @@ private static List<Occurrence> occurrencesFrom(JsonNode occurrencesNode) {
       running 4.9 below rather than assuming — if field names don't match, add `@JsonProperty` per component
       the same way `ReferenceMap`'s own accessors do).
 
-- [ ] 4.9 Run `mvn -q -Dtest=ReferenceMapCodecTest test` from `publication-exporter/`. Expected: PASS.
+- [x] 4.9 Run `mvn -q -Dtest=ReferenceMapCodecTest test` from `publication-exporter/`. Expected: PASS.
 
-- [ ] 4.10 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions.
+- [x] 4.10 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions.
 
-- [ ] 4.11 Commit:
+- [x] 4.11 Commit:
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/reference/ \
@@ -719,7 +719,7 @@ Pure, stateless function implementing scope-pins.md's "same target source ID at 
 - Produces: `static List<AssignedOccurrence> assign(List<LinkOccurrence> ruOccurrences, Map<String, String> targetSourceIdsByStem, List<Occurrence> previousOccurrences)`;
   `record AssignedOccurrence(String id, int order, String targetSourceId, String ruLabel)`.
 
-- [ ] 5.1 Write `OccurrenceAssignmentTest.java`:
+- [x] 5.1 Write `OccurrenceAssignmentTest.java`:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -795,10 +795,10 @@ class OccurrenceAssignmentTest {
       1's `occ-b` is NOT reused even though its own target source ID still matches — reuse is positional,
       not any-position lookup.)
 
-- [ ] 5.2 Run `mvn -q -Dtest=OccurrenceAssignmentTest test` from `publication-exporter/`. Expected: FAIL
+- [x] 5.2 Run `mvn -q -Dtest=OccurrenceAssignmentTest test` from `publication-exporter/`. Expected: FAIL
       (class does not exist).
 
-- [ ] 5.3 Write `OccurrenceAssignment.java`:
+- [x] 5.3 Write `OccurrenceAssignment.java`:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -849,12 +849,12 @@ final class OccurrenceAssignment {
 }
 ```
 
-- [ ] 5.4 Run `mvn -q -Dtest=OccurrenceAssignmentTest test` from `publication-exporter/`. Expected: PASS.
+- [x] 5.4 Run `mvn -q -Dtest=OccurrenceAssignmentTest test` from `publication-exporter/`. Expected: PASS.
 
-- [ ] 5.5 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions (this
+- [x] 5.5 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions (this
       class is not wired into `PrepareHandler` yet — that is Task 7).
 
-- [ ] 5.6 Commit:
+- [x] 5.6 Commit:
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/OccurrenceAssignment.java \
@@ -880,7 +880,7 @@ produce the final installed body. This task builds and unit-tests the mechanism 
 - Produces: `static String delimit(String resolvedBody, List<LinkOccurrence> occurrences)`;
   `static List<String> scan(String delimitedBody)`; `static String strip(String delimitedBody)`.
 
-- [ ] 6.1 Write `OccurrenceLabelMarkersTest.java`:
+- [x] 6.1 Write `OccurrenceLabelMarkersTest.java`:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -940,10 +940,10 @@ class OccurrenceLabelMarkersTest {
 }
 ```
 
-- [ ] 6.2 Run `mvn -q -Dtest=OccurrenceLabelMarkersTest test` from `publication-exporter/`. Expected: FAIL
+- [x] 6.2 Run `mvn -q -Dtest=OccurrenceLabelMarkersTest test` from `publication-exporter/`. Expected: FAIL
       (class does not exist).
 
-- [ ] 6.3 Write `OccurrenceLabelMarkers.java`:
+- [x] 6.3 Write `OccurrenceLabelMarkers.java`:
 
 ```java
 package dev.eugene.publicationexporter.prepare;
@@ -1004,11 +1004,11 @@ final class OccurrenceLabelMarkers {
 }
 ```
 
-- [ ] 6.4 Run `mvn -q -Dtest=OccurrenceLabelMarkersTest test` from `publication-exporter/`. Expected: PASS.
+- [x] 6.4 Run `mvn -q -Dtest=OccurrenceLabelMarkersTest test` from `publication-exporter/`. Expected: PASS.
 
-- [ ] 6.5 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions.
+- [x] 6.5 Run `mvn -q test` from `publication-exporter/` (whole suite). Expected: PASS, 0 regressions.
 
-- [ ] 6.6 Commit:
+- [x] 6.6 Commit:
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/OccurrenceLabelMarkers.java \
@@ -1033,7 +1033,7 @@ fail against every piece built in Tasks 1–6, since none of it is wired into `P
 - Produces: `PrepareHandler.buildReferenceMap(..., List<Occurrence> occurrences)` (was: no occurrences
   parameter); no change to `PrepareHandler`'s public `prepare(...)` signature.
 
-- [ ] 7.1 Read the existing constructor and `prepare(...)` call-site convention before writing anything —
+- [x] 7.1 Read the existing constructor and `prepare(...)` call-site convention before writing anything —
       match exactly (from this file, confirmed at the earlier research pass):
 
 ```java
@@ -1056,7 +1056,7 @@ BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.cr
       for a second `prepare()` call, since `install(...)` appends rather than replaces; `workspace.installed()`
       stays empty when `prepare` is expected to block before installing).
 
-- [ ] 7.2 Add the first failing acceptance test: a referrer linking to one already-admitted public target
+- [x] 7.2 Add the first failing acceptance test: a referrer linking to one already-admitted public target
       installs a candidate whose `references.json` carries exactly one non-empty occurrence, bound to the
       target's source ID and RU/EN labels:
 
@@ -1101,7 +1101,7 @@ void preparingALinkedEssayInstallsANonEmptyOccurrenceMap() {
       their exact existing shape; do not redefine them. `workspace.installed().get(0)` is this file's
       existing convention for retrieving what a `prepare()` call installed, e.g. lines 356, 404, 1139.)
 
-- [ ] 7.3 Add the second failing acceptance test: reusing the same referrer/target unchanged across two
+- [x] 7.3 Add the second failing acceptance test: reusing the same referrer/target unchanged across two
       `prepare` calls reuses the occurrence ID:
 
 ```java
@@ -1139,7 +1139,7 @@ void reprepareReusesThePriorOccurrenceIdWhenNothingChanged() {
 }
 ```
 
-- [ ] 7.4 Add the third failing acceptance test: TRP-05's divergence scenario — a worker whose translation
+- [x] 7.4 Add the third failing acceptance test: TRP-05's divergence scenario — a worker whose translation
       drops an occurrence marker is rejected before installation:
 
 ```java
@@ -1174,13 +1174,13 @@ void prepareBlocksWhenTranslationInventsOrDropsAnOccurrence() {
 }
 ```
 
-- [ ] 7.5 Run `mvn -q -Dtest=PrepareHandlerTest test` from `publication-exporter/`. Expected: FAIL — the new
+- [x] 7.5 Run `mvn -q -Dtest=PrepareHandlerTest test` from `publication-exporter/`. Expected: FAIL — the new
       tests fail (occurrences still empty / not wired); `validEssayInstallsOneCandidateAndReturnsReadyForReview`'s
       existing `assertTrue(installed.referenceMap().occurrences().isEmpty())` assertion should still PASS
       unchanged (its fixture has no links) — if it now fails, something in Tasks 2–4 broke the no-link path;
       stop and fix that before continuing.
 
-- [ ] 7.6 Wire `PrepareHandler.prepareAdmittedEssay`/`prepareTranslatedEssay`: build the delimited RU body,
+- [x] 7.6 Wire `PrepareHandler.prepareAdmittedEssay`/`prepareTranslatedEssay`: build the delimited RU body,
       pass it as the translate-call argument (keeping `TranslationJob.forSource(ruBody, ...)` on the plain
       body, per design.md's invariant), validate the returned body's delimited-span count against the
       assigned RU occurrences, strip delimiters from both bodies, and pass the labeled occurrence list into
@@ -1232,7 +1232,7 @@ private List<OccurrenceAssignment.AssignedOccurrence> assignOccurrences(
       design.md's `OccurrenceAssignment` section for why an unresolvable identity cannot occur here. Import
       `java.util.LinkedHashMap`.)
 
-- [ ] 7.7 Wire `prepareTranslatedEssay`: validate the translated body's occurrence spans against
+- [x] 7.7 Wire `prepareTranslatedEssay`: validate the translated body's occurrence spans against
       `assignedRu`, strip delimiters from both bodies, extract `enLabel` per occurrence, and build the final
       `List<Occurrence>` for `buildReferenceMap`:
 
@@ -1322,14 +1322,14 @@ private static ReferenceMap buildReferenceMap(
       `try`/`catch` wrapper to accept the delimited body as its `ruBody` argument name (no signature change
       needed there — it already takes a plain `String ruBody`).
 
-- [ ] 7.8 Run `mvn -q -Dtest=PrepareHandlerTest test` from `publication-exporter/`. Expected: PASS, including
+- [x] 7.8 Run `mvn -q -Dtest=PrepareHandlerTest test` from `publication-exporter/`. Expected: PASS, including
       all three new tests and every pre-existing test in this file (2600+ lines) unchanged.
 
-- [ ] 7.9 Run `mvn -q test` from `publication-exporter/` (whole suite, all modules). Expected: PASS, 0
+- [x] 7.9 Run `mvn -q test` from `publication-exporter/` (whole suite, all modules). Expected: PASS, 0
       regressions. This is the slice's real acceptance gate — do not consider the slice done until this is
       green.
 
-- [ ] 7.10 Commit:
+- [x] 7.10 Commit:
 
 ```bash
 git add publication-exporter/src/main/java/dev/eugene/publicationexporter/prepare/PrepareHandler.java \
@@ -1341,11 +1341,11 @@ git commit -m "Wire occurrence assignment and TRP-05 validation into PrepareHand
 
 ## 8. Final full-suite verification
 
-- [ ] 8.1 From `publication-exporter/`, run `mvn -q test` and confirm exit code 0 and no output beyond
+- [x] 8.1 From `publication-exporter/`, run `mvn -q test` and confirm exit code 0 and no output beyond
       Maven's own warnings (matching this repo's baseline — see this file's global constraints block for
       the pre-slice count).
-- [ ] 8.2 `git status` — confirm no unintended files are staged or modified (in particular, nothing under
+- [x] 8.2 `git status` — confirm no unintended files are staged or modified (in particular, nothing under
       `exporter-java/`).
-- [ ] 8.3 Report the final test count and confirm every task above is checked off. Do not archive the
+- [x] 8.3 Report the final test count and confirm every task above is checked off. Do not archive the
       OpenSpec change or touch Haft artifacts — those are the orchestrating session's job, not this task
       list's.

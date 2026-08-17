@@ -9,6 +9,7 @@ import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
+import dev.eugene.publicationexporter.reference.ReferenceMapCodecException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -382,7 +383,8 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         requireWithinReviewRoot(referencesPath);
         try {
             return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
-        } catch (UncheckedIOException | IllegalArgumentException | NullPointerException invalidReferenceMap) {
+        } catch (UncheckedIOException | ReferenceMapCodecException | IllegalArgumentException
+                | NullPointerException invalidReferenceMap) {
             throw new IOException("references.json is invalid", invalidReferenceMap);
         }
     }

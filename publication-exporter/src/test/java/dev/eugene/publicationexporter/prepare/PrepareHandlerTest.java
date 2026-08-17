@@ -1183,8 +1183,8 @@ class PrepareHandlerTest {
         VaultReader vaultReader = VaultReader.createNull(Map.of(referrerPath, referrer, targetPath, target));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullTranslationWorker worker = new NullTranslationWorker(TranslationOutcome.success(
-                "As he wrote, see [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "Target Essay"
-                        + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/essays/target-essay/).",
+                "As he wrote, see [" + OccurrenceLabelMarkers.openMarker(0) + "Target Essay"
+                        + OccurrenceLabelMarkers.closeMarker(0) + "](/essays/target-essay/).",
                 fields("Translated title", "Translated description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
@@ -1202,12 +1202,12 @@ class PrepareHandlerTest {
         assertEquals("target-essay", occurrences.get(0).ruLabel());
         assertEquals("Target Essay", occurrences.get(0).enLabel());
         String requestedRuBody = worker.requested().get(0).ruBody();
-        assertTrue(requestedRuBody.indexOf(OccurrenceLabelMarkers.DELIMITER_OPEN) >= 0);
-        assertTrue(requestedRuBody.indexOf(OccurrenceLabelMarkers.DELIMITER_CLOSE) >= 0);
-        assertFalse(installed.ruBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_OPEN)));
-        assertFalse(installed.ruBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_CLOSE)));
-        assertFalse(installed.enBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_OPEN)));
-        assertFalse(installed.enBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_CLOSE)));
+        assertTrue(requestedRuBody.indexOf(OccurrenceLabelMarkers.openMarker(0)) >= 0);
+        assertTrue(requestedRuBody.indexOf(OccurrenceLabelMarkers.closeMarker(0)) >= 0);
+        assertFalse(installed.ruBody().contains(String.valueOf(OccurrenceLabelMarkers.openMarker(0))));
+        assertFalse(installed.ruBody().contains(String.valueOf(OccurrenceLabelMarkers.closeMarker(0))));
+        assertFalse(installed.enBody().contains(String.valueOf(OccurrenceLabelMarkers.openMarker(0))));
+        assertFalse(installed.enBody().contains(String.valueOf(OccurrenceLabelMarkers.closeMarker(0))));
     }
 
     @Test
@@ -1231,8 +1231,8 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "As he wrote, see [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "Target Essay"
-                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/essays/target-essay/).",
+                        "As he wrote, see [" + OccurrenceLabelMarkers.openMarker(0) + "Target Essay"
+                                + OccurrenceLabelMarkers.closeMarker(0) + "](/essays/target-essay/).",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -1273,6 +1273,175 @@ class PrepareHandlerTest {
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
 
         assertFalse(response.ok());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void brokenWikilinkIsPlainTextAndDoesNotBecomeAnOccurrence() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        String resolvedBody = "See missing-target unchanged.";
+        String source = essayWithBody("See [[missing-target]] unchanged.");
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(resolvedBody, fields("EN title", "EN description.")));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()), worker, workspace,
+                ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path, VaultReader.createNull(Map.of(path, source)), VaultAssetReader.createNull());
+
+        assertTrue(response.ok(), response.toString());
+        NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
+        assertEquals(resolvedBody, installed.ruBody());
+        assertEquals(resolvedBody, installed.enBody());
+        assertTrue(installed.referenceMap().occurrences().isEmpty());
+        assertFalse(OccurrenceLabelMarkers.containsReservedCharacters(worker.requested().get(0).ruBody()));
+    }
+
+    @Test
+    void mixedBrokenAndResolvableLinksTrackOnlyTheResolvableTarget() {
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("private/real-target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[missing-target|Missing]] and [[real-target|Real RU]]."),
+                targetPath, essayWithIdentity("real-target", "src-real", "Real Target")));
+        String translated = "See Missing and " + OccurrenceLabelMarkers.openMarker(0) + "Real EN"
+                + OccurrenceLabelMarkers.closeMarker(0) + ".";
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(translated, fields("EN title", "EN description.")));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok(), response.toString());
+        NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
+        assertEquals("See Missing and Real RU.", installed.ruBody());
+        assertEquals("See Missing and Real EN.", installed.enBody());
+        assertEquals(1, installed.referenceMap().occurrences().size());
+        Occurrence occurrence = installed.referenceMap().occurrences().get(0);
+        assertEquals("src-real", occurrence.targetSourceId());
+        assertEquals("Real RU", occurrence.ruLabel());
+        assertEquals("Real EN", occurrence.enLabel());
+    }
+
+    @Test
+    void corruptExistingCandidateReferenceMapReturnsBlockedResponseOnReprepare() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("corrupt-candidate-reprepare");
+        CandidateWorkspace workspace = CandidateWorkspace.create(reviewRoot);
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("private/real-target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[real-target]]."),
+                targetPath, essayWithIdentity("real-target", "src-real", "Real Target")));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(
+                        "See " + OccurrenceLabelMarkers.openMarker(0) + "Real Target"
+                                + OccurrenceLabelMarkers.closeMarker(0) + ".",
+                        fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+        BridgeResponse initial = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+        assertTrue(initial.ok(), initial.toString());
+        Path referencesPath = reviewRoot.resolve("blog/my-essay/candidate/references.json");
+        String validReferences = Files.readString(referencesPath, StandardCharsets.UTF_8);
+        int occurrencesField = validReferences.indexOf("\"occurrences\":");
+        Files.writeString(
+                referencesPath,
+                validReferences.substring(0, occurrencesField)
+                        + "\"occurrences\":\"wrong-type\"}",
+                StandardCharsets.UTF_8);
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Candidate lookup failed"));
+    }
+
+    @Test
+    void reorderedTranslatedSpansKeepEnglishLabelsPairedByOccurrenceIndex() {
+        String firstTarget = essayWithIdentity("first-target", "src-first", "First Target");
+        String secondTarget = essayWithIdentity("second-target", "src-second", "Second Target");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath firstPath = VaultRelativePath.of("private/first-target.md");
+        VaultRelativePath secondPath = VaultRelativePath.of("private/second-target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[first-target|First RU]] then [[second-target|Second RU]]."),
+                firstPath, firstTarget,
+                secondPath, secondTarget));
+        String translated = "See " + OccurrenceLabelMarkers.openMarker(1) + "Second EN"
+                + OccurrenceLabelMarkers.closeMarker(1) + " before "
+                + OccurrenceLabelMarkers.openMarker(0) + "First EN"
+                + OccurrenceLabelMarkers.closeMarker(0) + ".";
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(translated, fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok(), response.toString());
+        List<Occurrence> occurrences = workspace.installed().get(0).referenceMap().occurrences();
+        assertEquals(2, occurrences.size());
+        assertEquals("src-first", occurrences.get(0).targetSourceId());
+        assertEquals("First RU", occurrences.get(0).ruLabel());
+        assertEquals("First EN", occurrences.get(0).enLabel());
+        assertEquals("src-second", occurrences.get(1).targetSourceId());
+        assertEquals("Second RU", occurrences.get(1).ruLabel());
+        assertEquals("Second EN", occurrences.get(1).enLabel());
+    }
+
+    @Test
+    void prepareBlocksWhenTranslationDropsAnAssignedIndexAndInventsAnotherAtTheSameCount() {
+        String firstTarget = essayWithIdentity("first-target", "src-first", "First Target");
+        String secondTarget = essayWithIdentity("second-target", "src-second", "Second Target");
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath firstPath = VaultRelativePath.of("private/first-target.md");
+        VaultRelativePath secondPath = VaultRelativePath.of("private/second-target.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("See [[first-target]] then [[second-target]]."),
+                firstPath, firstTarget,
+                secondPath, secondTarget));
+        String translated = OccurrenceLabelMarkers.openMarker(0) + "First EN"
+                + OccurrenceLabelMarkers.closeMarker(0) + " and "
+                + OccurrenceLabelMarkers.openMarker(2) + "Invented EN"
+                + OccurrenceLabelMarkers.closeMarker(2) + ".";
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull(translated, fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(workspace.installed().isEmpty());
+    }
+
+    @Test
+    void sourceReservedPrivateUseCharacterBlocksInsteadOfBeingStripped() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        String source = essayWithBody("Literal reserved character: \uE000.");
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("English body.", fields("EN title", "EN description.")),
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path, VaultReader.createNull(Map.of(path, source)), VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertEquals("translation_failed", response.status());
+        assertTrue(response.diagnostics().get(0).message().contains("reserved private-use-area"));
         assertTrue(workspace.installed().isEmpty());
     }
 
@@ -2166,10 +2335,10 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "See [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "Time note"
-                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/essays/notes-on-time/) and "
-                                + OccurrenceLabelMarkers.DELIMITER_OPEN + "Draft"
-                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + ".",
+                        "See [" + OccurrenceLabelMarkers.openMarker(0) + "Time note"
+                                + OccurrenceLabelMarkers.closeMarker(0) + "](/essays/notes-on-time/) and "
+                                + OccurrenceLabelMarkers.openMarker(1) + "Draft"
+                                + OccurrenceLabelMarkers.closeMarker(1) + ".",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -2206,8 +2375,8 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "See [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "My Note"
-                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/notes/my-note/).",
+                        "See [" + OccurrenceLabelMarkers.openMarker(0) + "My Note"
+                                + OccurrenceLabelMarkers.closeMarker(0) + "](/notes/my-note/).",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -2269,7 +2438,7 @@ class PrepareHandlerTest {
     }
 
     @Test
-    void prepareBlocksWhenADirectPrivateTargetHasNoSourceId() {
+    void privateTargetWithoutSourceIdIsExcludedFromOccurrenceTracking() {
         String privateTargetWithoutId = """
                 ---
                 publish: false
@@ -2309,10 +2478,10 @@ class PrepareHandlerTest {
 
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
 
-        assertFalse(response.ok());
-        assertEquals("metadata_blocked", response.status());
-        assertTrue(worker.requested().isEmpty());
-        assertTrue(workspace.installed().isEmpty());
+        assertTrue(response.ok(), response.toString());
+        assertEquals(1, worker.requested().size());
+        assertEquals(1, workspace.installed().size());
+        assertTrue(workspace.installed().get(0).referenceMap().occurrences().isEmpty());
     }
 
     @Test
@@ -2399,8 +2568,8 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "See " + OccurrenceLabelMarkers.DELIMITER_OPEN + "Draft"
-                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + ".",
+                        "See " + OccurrenceLabelMarkers.openMarker(0) + "Draft"
+                                + OccurrenceLabelMarkers.closeMarker(0) + ".",
                         fields("EN title", "EN description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -2430,7 +2599,7 @@ class PrepareHandlerTest {
     }
 
     @Test
-    void assetEmbedIsResolvedAfterLinkResolution() {
+    void assetEmbedIsResolvedBeforeLinkResolution() {
         String essay = """
                 ---
                 publish: true
@@ -2464,6 +2633,48 @@ class PrepareHandlerTest {
         assertTrue(response.ok());
         assertEquals("# My Essay\n\n![diagram](" + expectedReference + ")\n\nMore prose.",
                 workspace.installed().get(0).ruBody());
+    }
+
+    @Test
+    void assetEmbedBeforeSemanticLinkKeepsOccurrenceSpanAlignedToResolvedBody() {
+        byte[] imageBytes = "asset-before-link".getBytes(StandardCharsets.UTF_8);
+        String digest = ContentHash.sha256Hex(imageBytes);
+        String assetReference = "/assets/vault/" + digest + ".png";
+        VaultRelativePath referrerPath = VaultRelativePath.of("blog/referrer.md");
+        VaultRelativePath targetPath = VaultRelativePath.of("private/target-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(
+                referrerPath, essayWithBody("![[diagram.png]]\n\nSee [[target-essay|Target RU]]."),
+                targetPath, essayWithIdentity("target-essay", "src-target", "Target Essay")));
+        String translated = "![diagram](" + assetReference + ")\n\nSee "
+                + OccurrenceLabelMarkers.openMarker(0) + "Target EN"
+                + OccurrenceLabelMarkers.closeMarker(0) + ".";
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(
+                TranslationOutcome.success(translated, fields("EN title", "EN description.")));
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                worker,
+                workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                referrerPath, vaultReader,
+                VaultAssetReader.createNull(Map.of("diagram.png", imageBytes)));
+
+        assertTrue(response.ok(), response.toString());
+        NullCandidateWorkspace.InstalledCandidate installed = workspace.installed().get(0);
+        assertEquals("![diagram](" + assetReference + ")\n\nSee Target RU.", installed.ruBody());
+        assertEquals("![diagram](" + assetReference + ")\n\nSee Target EN.", installed.enBody());
+        assertEquals(1, installed.referenceMap().occurrences().size());
+        Occurrence occurrence = installed.referenceMap().occurrences().get(0);
+        assertEquals("src-target", occurrence.targetSourceId());
+        assertEquals("Target RU", occurrence.ruLabel());
+        assertEquals("Target EN", occurrence.enLabel());
+        assertEquals(1, installed.assets().size());
+        assertEquals(digest + ".png", installed.assets().get(0).publicName());
+        assertEquals("![diagram](" + assetReference + ")\n\nSee "
+                        + OccurrenceLabelMarkers.openMarker(0) + "Target RU"
+                        + OccurrenceLabelMarkers.closeMarker(0) + ".",
+                worker.requested().get(0).ruBody());
     }
 
     @Test
@@ -2629,6 +2840,20 @@ class PrepareHandlerTest {
                 description: A valid description.
                 ---
                 """ + body;
+    }
+
+    private static String essayWithIdentity(String publicId, String sourceId, String title) {
+        return """
+                ---
+                publish: false
+                publicCollection: blog
+                publicContentType: essay
+                publicId: %s
+                id: %s
+                title: %s
+                description: A valid description.
+                ---
+                Target body.""".formatted(publicId, sourceId, title);
     }
 
     private static String bookWithTranslatedField(String field, String value) {

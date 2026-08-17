@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.ReferenceMapCodec;
+import dev.eugene.publicationexporter.reference.ReferenceMapCodecException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -175,7 +176,11 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
 
     private ReferenceMap readReferenceMap(Path referencesPath) throws IOException {
         requireWithinReviewRoot(referencesPath);
-        return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
+        try {
+            return ReferenceMapCodec.read(Files.readString(referencesPath, StandardCharsets.UTF_8));
+        } catch (ReferenceMapCodecException invalidReferenceMap) {
+            throw new IOException("references.json is invalid", invalidReferenceMap);
+        }
     }
 
     private List<PublicField> readPublicFields(Path fieldsPath, String fileLabel) throws IOException {

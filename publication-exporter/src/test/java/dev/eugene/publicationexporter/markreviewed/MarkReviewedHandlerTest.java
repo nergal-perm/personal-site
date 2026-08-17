@@ -25,6 +25,8 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -104,6 +106,37 @@ class MarkReviewedHandlerTest {
         assertFalse(response.ok());
         assertEquals("metadata_blocked", response.status());
         assertEquals("No candidate exists to approve.", response.diagnostics().get(0).message());
+    }
+
+    @Test
+    void malformedCandidateReferenceMapReturnsBlockedResponse() throws Exception {
+        Path reviewRoot = temporaryRoot.resolve("malformed-candidate");
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewRoot);
+        candidateWorkspace.install(
+                identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.",
+                matchingReferenceMap(
+                        ESSAY_BODY, "EN body", "My Essay", "EN title",
+                        "A valid description.", "EN description."));
+        Path referencesPath = reviewRoot.resolve("blog/my-essay/candidate/references.json");
+        Files.writeString(
+                referencesPath,
+                Files.readString(referencesPath, StandardCharsets.UTF_8)
+                        .replace("\"occurrences\":[]", "\"occurrences\":\"wrong-type\""),
+                StandardCharsets.UTF_8);
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.markReviewed(
+                path, VaultReader.createNull(Map.of(path, VALID_ESSAY)));
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("candidate", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("Candidate lookup failed"));
     }
 
     @Test

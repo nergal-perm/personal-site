@@ -1,5 +1,6 @@
 package dev.eugene.publicationexporter.reference;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,7 +15,8 @@ import java.util.Set;
 
 public final class ReferenceMapCodec {
 
-    private static final ObjectMapper MAPPER = new ObjectMapper();
+    private static final ObjectMapper MAPPER =
+            new ObjectMapper().enable(JsonParser.Feature.STRICT_DUPLICATE_DETECTION);
 
     private ReferenceMapCodec() {
     }
