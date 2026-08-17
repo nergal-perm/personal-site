@@ -36,20 +36,26 @@ class ReferenceMapCodecTest {
     @Test
     void writeProducesOccurrencesInOrder() throws Exception {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
-        Occurrence occurrence = new Occurrence("occ-1", 0, "src-a", "ru-label", "en-label");
+        Occurrence first = new Occurrence("occ-1", 0, "src-a", "ru-label-a", "en-label-a");
+        Occurrence second = new Occurrence("occ-2", 1, "src-b", "ru-label-b", "en-label-b");
         ReferenceMap map = ReferenceMap.of(
                 identity, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash",
-                List.of(occurrence));
+                List.of(first, second));
 
         String json = ReferenceMapCodec.write(map);
         JsonNode occurrences = new ObjectMapper().readTree(json).get("occurrences");
 
-        assertEquals(1, occurrences.size());
+        assertEquals(2, occurrences.size());
         assertEquals("occ-1", occurrences.get(0).get("id").asText());
         assertEquals(0, occurrences.get(0).get("order").asInt());
         assertEquals("src-a", occurrences.get(0).get("targetSourceId").asText());
-        assertEquals("ru-label", occurrences.get(0).get("ruLabel").asText());
-        assertEquals("en-label", occurrences.get(0).get("enLabel").asText());
+        assertEquals("ru-label-a", occurrences.get(0).get("ruLabel").asText());
+        assertEquals("en-label-a", occurrences.get(0).get("enLabel").asText());
+        assertEquals("occ-2", occurrences.get(1).get("id").asText());
+        assertEquals(1, occurrences.get(1).get("order").asInt());
+        assertEquals("src-b", occurrences.get(1).get("targetSourceId").asText());
+        assertEquals("ru-label-b", occurrences.get(1).get("ruLabel").asText());
+        assertEquals("en-label-b", occurrences.get(1).get("enLabel").asText());
     }
 
     @Test

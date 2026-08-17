@@ -59,23 +59,27 @@ public final class ReferenceMapCodec {
             if (!seenIds.add(id)) {
                 throw new ReferenceMapCodecException("Duplicate occurrence id \"" + id + "\".");
             }
-            JsonNode orderNode = node.get("order");
-            if (orderNode == null || !orderNode.isIntegralNumber() || !orderNode.canConvertToInt()) {
-                throw new ReferenceMapCodecException("Occurrence \"" + id + "\" has an invalid order.");
-            }
-            int order = orderNode.asInt();
-            if (order != expectedOrder) {
-                throw new ReferenceMapCodecException(
-                        "Occurrence \"" + id + "\" has order " + order + " but position " + expectedOrder + ".");
-            }
-            occurrences.add(new Occurrence(
-                    id, order,
-                    requiredText(node, "targetSourceId"),
-                    requiredText(node, "ruLabel"),
-                    requiredText(node, "enLabel")));
+            occurrences.add(occurrenceFrom(node, id, expectedOrder));
             expectedOrder++;
         }
         return occurrences;
+    }
+
+    private static Occurrence occurrenceFrom(JsonNode node, String id, int expectedOrder) {
+        JsonNode orderNode = node.get("order");
+        if (orderNode == null || !orderNode.isIntegralNumber() || !orderNode.canConvertToInt()) {
+            throw new ReferenceMapCodecException("Occurrence \"" + id + "\" has an invalid order.");
+        }
+        int order = orderNode.asInt();
+        if (order != expectedOrder) {
+            throw new ReferenceMapCodecException(
+                    "Occurrence \"" + id + "\" has order " + order + " but position " + expectedOrder + ".");
+        }
+        return new Occurrence(
+                id, order,
+                requiredText(node, "targetSourceId"),
+                requiredText(node, "ruLabel"),
+                requiredText(node, "enLabel"));
     }
 
     private static String requiredText(JsonNode node, String field) {
