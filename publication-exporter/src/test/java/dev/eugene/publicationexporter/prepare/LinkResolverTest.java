@@ -138,6 +138,20 @@ final class LinkResolverTest {
     }
 
     @Test
+    void embedOfAPublicNoteRendersAsALinkButDoesNotProduceAnOccurrence() {
+        String body = "![[Заметка о времени]]";
+
+        LinkResolutionOutcome outcome = LinkResolver.resolve(body, ONE_PUBLIC_NOTE);
+
+        assertEquals("[Заметка о времени](/essays/notes-on-time/)", outcome.resolve(
+                (resolved, ignoredOccurrences) -> resolved,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+        assertEquals(List.of(), outcome.resolve(
+                (ignoredResolved, occurrences) -> occurrences,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+    }
+
+    @Test
     void linkLikeTextInsideInlineCodeIsNeverResolved() {
         String body = "Example: `[[Заметка о времени]]` is wiki-link syntax.";
 

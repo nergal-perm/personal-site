@@ -70,7 +70,9 @@ public final class LinkResolver {
             output.append(label);
             int spanEnd = output.length();
             output.append("](").append(route.get()).append(')');
-            occurrences.add(new LinkOccurrence(lastPathSegment(target), label, route, spanStart, spanEnd));
+            if (!isEmbed) {
+                occurrences.add(new LinkOccurrence(lastPathSegment(target), label, route, spanStart, spanEnd));
+            }
             return Optional.empty();
         }
         if (isEmbed) {
