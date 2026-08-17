@@ -1182,11 +1182,13 @@ class PrepareHandlerTest {
         VaultRelativePath targetPath = VaultRelativePath.of("blog/target-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(referrerPath, referrer, targetPath, target));
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        NullTranslationWorker worker = new NullTranslationWorker(TranslationOutcome.success(
+                "As he wrote, see [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "Target Essay"
+                        + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/essays/target-essay/).",
+                fields("Translated title", "Translated description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull(
-                        "As he wrote, see [Target Essay](/essays/target-essay/).",
-                        fields("Translated title", "Translated description.")),
+                worker,
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());
@@ -1199,6 +1201,13 @@ class PrepareHandlerTest {
         assertEquals("src-target-1", occurrences.get(0).targetSourceId());
         assertEquals("target-essay", occurrences.get(0).ruLabel());
         assertEquals("Target Essay", occurrences.get(0).enLabel());
+        String requestedRuBody = worker.requested().get(0).ruBody();
+        assertTrue(requestedRuBody.indexOf(OccurrenceLabelMarkers.DELIMITER_OPEN) >= 0);
+        assertTrue(requestedRuBody.indexOf(OccurrenceLabelMarkers.DELIMITER_CLOSE) >= 0);
+        assertFalse(installed.ruBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_OPEN)));
+        assertFalse(installed.ruBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_CLOSE)));
+        assertFalse(installed.enBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_OPEN)));
+        assertFalse(installed.enBody().contains(String.valueOf(OccurrenceLabelMarkers.DELIMITER_CLOSE)));
     }
 
     @Test
@@ -1222,7 +1231,8 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "As he wrote, see [Target Essay](/essays/target-essay/).",
+                        "As he wrote, see [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "Target Essay"
+                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/essays/target-essay/).",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -2156,7 +2166,10 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "See [Time note](/essays/notes-on-time/) and Draft.",
+                        "See [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "Time note"
+                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/essays/notes-on-time/) and "
+                                + OccurrenceLabelMarkers.DELIMITER_OPEN + "Draft"
+                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + ".",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -2193,7 +2206,8 @@ class PrepareHandlerTest {
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
-                        "See [My Note](/notes/my-note/).",
+                        "See [" + OccurrenceLabelMarkers.DELIMITER_OPEN + "My Note"
+                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + "](/notes/my-note/).",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -2384,7 +2398,10 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                TranslationWorker.createNull("See Draft.", fields("EN title", "EN description.")),
+                TranslationWorker.createNull(
+                        "See " + OccurrenceLabelMarkers.DELIMITER_OPEN + "Draft"
+                                + OccurrenceLabelMarkers.DELIMITER_CLOSE + ".",
+                        fields("EN title", "EN description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(referrerPath, vaultReader, VaultAssetReader.createNull());

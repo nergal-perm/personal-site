@@ -258,23 +258,33 @@ public final class PrepareHandler {
 
     private List<OccurrenceAssignment.AssignedOccurrence> assignOccurrences(
             PublicationIdentity identity, OccurrenceContext occurrenceContext) {
-        if (occurrenceContext.occurrences().isEmpty()) {
+        List<LinkOccurrence> occurrences = occurrenceContext.occurrences();
+        if (occurrences.isEmpty()) {
             return List.of();
         }
-        VaultSourceIdentityIndex identityIndex = occurrenceContext.identityIndex().orElseThrow();
+        Map<String, String> targetSourceIdsByStem = buildTargetSourceIdsByStem(
+                occurrences, occurrenceContext.identityIndex().orElseThrow());
+        List<Occurrence> previousOccurrences = previousOccurrencesFor(identity);
+        return OccurrenceAssignment.assign(occurrences, targetSourceIdsByStem, previousOccurrences);
+    }
+
+    private static Map<String, String> buildTargetSourceIdsByStem(
+            List<LinkOccurrence> occurrences, VaultSourceIdentityIndex identityIndex) {
         Map<String, String> targetSourceIdsByStem = new LinkedHashMap<>();
-        for (LinkOccurrence occurrence : occurrenceContext.occurrences()) {
+        for (LinkOccurrence occurrence : occurrences) {
             targetSourceIdsByStem.put(
                     occurrence.targetStem(),
                     identityIndex.identityFor(occurrence.targetStem())
                             .flatMap(TargetIdentity::sourceId)
                             .orElseThrow());
         }
-        List<Occurrence> previous = candidateWorkspace.read(identity)
+        return targetSourceIdsByStem;
+    }
+
+    private List<Occurrence> previousOccurrencesFor(PublicationIdentity identity) {
+        return candidateWorkspace.read(identity)
                 .map(snapshot -> snapshot.referenceMap().occurrences())
                 .orElse(List.of());
-        return OccurrenceAssignment.assign(
-                occurrenceContext.occurrences(), targetSourceIdsByStem, previous);
     }
 
     private BridgeResponse prepareTranslatedEssay(
@@ -285,7 +295,7 @@ public final class PrepareHandler {
             EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
             List<OccurrenceAssignment.AssignedOccurrence> assignedRu) {
         List<String> enSpans = OccurrenceLabelMarkers.scan(translation.body());
-        if (enSpans.size() != assignedRu.size()) {
+        if (translatedBodyDivergesFromAssignedOccurrences(enSpans, assignedRu)) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return BridgeResponse.translationFailed(COMMAND, Diagnostic.blocking(
                     "candidate", "Translated candidate reordered or invented semantic occurrences."));
@@ -329,6 +339,12 @@ public final class PrepareHandler {
                 PrepareHandler::unclosedCommentFailure,
                 PrepareHandler::transclusionBlockedFailure,
                 PrepareHandler::assetBlockedFailure);
+    }
+
+    private static boolean translatedBodyDivergesFromAssignedOccurrences(
+            List<String> translatedSpans,
+            List<OccurrenceAssignment.AssignedOccurrence> assignedRussianOccurrences) {
+        return translatedSpans.size() != assignedRussianOccurrences.size();
     }
 
     private static List<Occurrence> occurrencesWithEnglishLabels(

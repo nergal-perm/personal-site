@@ -5,8 +5,8 @@ import java.util.List;
 
 final class OccurrenceLabelMarkers {
 
-    private static final char DELIMITER_OPEN = '';
-    private static final char DELIMITER_CLOSE = '';
+    static final char DELIMITER_OPEN = '';
+    static final char DELIMITER_CLOSE = '';
 
     private OccurrenceLabelMarkers() {
     }
