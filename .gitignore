@@ -8,3 +8,4 @@ publication-exporter.toml
 graphify-out/
 data/
 .superpowers/
+.agents/skills
