@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class ReferenceMapCodecTest {
@@ -28,6 +31,64 @@ class ReferenceMapCodecTest {
         assertEquals("structured-data-hash", parsed.get("structuredDataHash").asText());
         assertTrue(parsed.get("occurrences").isArray());
         assertEquals(0, parsed.get("occurrences").size());
+    }
+
+    @Test
+    void writeProducesOccurrencesInOrder() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        Occurrence occurrence = new Occurrence("occ-1", 0, "src-a", "ru-label", "en-label");
+        ReferenceMap map = ReferenceMap.of(
+                identity, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash",
+                List.of(occurrence));
+
+        String json = ReferenceMapCodec.write(map);
+        JsonNode occurrences = new ObjectMapper().readTree(json).get("occurrences");
+
+        assertEquals(1, occurrences.size());
+        assertEquals("occ-1", occurrences.get(0).get("id").asText());
+        assertEquals(0, occurrences.get(0).get("order").asInt());
+        assertEquals("src-a", occurrences.get(0).get("targetSourceId").asText());
+        assertEquals("ru-label", occurrences.get(0).get("ruLabel").asText());
+        assertEquals("en-label", occurrences.get(0).get("enLabel").asText());
+    }
+
+    @Test
+    void writeThenReadRoundTripsOccurrences() {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        Occurrence occurrence = new Occurrence("occ-1", 0, "src-a", "ru-label", "en-label");
+        ReferenceMap original = ReferenceMap.of(
+                identity, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash",
+                List.of(occurrence));
+
+        ReferenceMap roundTripped = ReferenceMapCodec.read(ReferenceMapCodec.write(original));
+
+        assertEquals(original, roundTripped);
+    }
+
+    @Test
+    void readRejectsDuplicateOccurrenceIds() {
+        String json = referenceMapJsonWithOccurrences(
+                "{\"id\":\"occ-1\",\"order\":0,\"targetSourceId\":\"src-a\",\"ruLabel\":\"ru\",\"enLabel\":\"en\"},"
+                + "{\"id\":\"occ-1\",\"order\":1,\"targetSourceId\":\"src-b\",\"ruLabel\":\"ru2\",\"enLabel\":\"en2\"}");
+
+        assertThrows(ReferenceMapCodecException.class, () -> ReferenceMapCodec.read(json));
+    }
+
+    @Test
+    void readRejectsOrderNotMatchingArrayPosition() {
+        String json = referenceMapJsonWithOccurrences(
+                "{\"id\":\"occ-1\",\"order\":1,\"targetSourceId\":\"src-a\",\"ruLabel\":\"ru\",\"enLabel\":\"en\"}");
+
+        assertThrows(ReferenceMapCodecException.class, () -> ReferenceMapCodec.read(json));
+    }
+
+    private static String referenceMapJsonWithOccurrences(String occurrencesJson) {
+        return "{\"schemaVersion\":1,"
+                + "\"publicationIdentity\":{\"publicCollection\":\"blog\",\"publicContentType\":\"essay\",\"publicId\":\"my-essay\"},"
+                + "\"ruHash\":\"ru-hash\",\"enHash\":\"en-hash\","
+                + "\"ruFieldsHash\":\"ru-fields-hash\",\"enFieldsHash\":\"en-fields-hash\","
+                + "\"structuredDataHash\":\"structured-data-hash\","
+                + "\"occurrences\":[" + occurrencesJson + "]}";
     }
 
     @Test

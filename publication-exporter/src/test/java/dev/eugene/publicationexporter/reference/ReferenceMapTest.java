@@ -3,6 +3,8 @@ package dev.eugene.publicationexporter.reference;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -27,10 +29,22 @@ class ReferenceMapTest {
     }
 
     @Test
-    void occurrencesIsAlwaysEmpty() {
+    void occurrencesIsEmptyForTheEmptyFactory() {
         ReferenceMap map = referenceMap();
 
         assertTrue(map.occurrences().isEmpty());
+    }
+
+    @Test
+    void occurrencesReturnsConstructedListInOrder() {
+        Occurrence first = new Occurrence("occ-1", 0, "src-a", "ru-a", "en-a");
+        Occurrence second = new Occurrence("occ-2", 1, "src-b", "ru-b", "en-b");
+        ReferenceMap map = ReferenceMap.of(
+                IDENTITY, "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash",
+                List.of(first, second));
+
+        assertEquals(List.of(first, second), map.occurrences());
     }
 
     @Test

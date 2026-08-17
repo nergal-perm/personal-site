@@ -16,6 +16,7 @@ public final class ReferenceMap {
     private final String ruFieldsHash;
     private final String enFieldsHash;
     private final String structuredDataHash;
+    private final List<Occurrence> occurrences;
 
     private ReferenceMap(
             PublicationIdentity identity,
@@ -23,13 +24,27 @@ public final class ReferenceMap {
             String enHash,
             String ruFieldsHash,
             String enFieldsHash,
-            String structuredDataHash) {
+            String structuredDataHash,
+            List<Occurrence> occurrences) {
         this.identity = Objects.requireNonNull(identity, "identity");
         this.ruHash = Objects.requireNonNull(ruHash, "ruHash");
         this.enHash = Objects.requireNonNull(enHash, "enHash");
         this.ruFieldsHash = Objects.requireNonNull(ruFieldsHash, "ruFieldsHash");
         this.enFieldsHash = Objects.requireNonNull(enFieldsHash, "enFieldsHash");
         this.structuredDataHash = Objects.requireNonNull(structuredDataHash, "structuredDataHash");
+        this.occurrences = List.copyOf(Objects.requireNonNull(occurrences, "occurrences"));
+    }
+
+    public static ReferenceMap of(
+            PublicationIdentity identity,
+            String ruHash,
+            String enHash,
+            String ruFieldsHash,
+            String enFieldsHash,
+            String structuredDataHash,
+            List<Occurrence> occurrences) {
+        return new ReferenceMap(identity, ruHash, enHash,
+                ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
     }
 
     public static ReferenceMap empty(
@@ -39,8 +54,8 @@ public final class ReferenceMap {
             String ruFieldsHash,
             String enFieldsHash,
             String structuredDataHash) {
-        return new ReferenceMap(identity, ruHash, enHash,
-                ruFieldsHash, enFieldsHash, structuredDataHash);
+        return of(identity, ruHash, enHash,
+                ruFieldsHash, enFieldsHash, structuredDataHash, List.of());
     }
 
     @Deprecated
@@ -102,8 +117,8 @@ public final class ReferenceMap {
     }
 
     @JsonProperty("occurrences")
-    public List<Object> occurrences() {
-        return List.of();
+    public List<Occurrence> occurrences() {
+        return occurrences;
     }
 
     @Override
@@ -119,13 +134,14 @@ public final class ReferenceMap {
                 && enHash.equals(that.enHash)
                 && ruFieldsHash.equals(that.ruFieldsHash)
                 && enFieldsHash.equals(that.enFieldsHash)
-                && structuredDataHash.equals(that.structuredDataHash);
+                && structuredDataHash.equals(that.structuredDataHash)
+                && occurrences.equals(that.occurrences);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(identity, ruHash, enHash,
-                ruFieldsHash, enFieldsHash, structuredDataHash);
+                ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
     }
 
     @Override
@@ -135,6 +151,7 @@ public final class ReferenceMap {
                 + ", enHash=" + enHash
                 + ", ruFieldsHash=" + ruFieldsHash
                 + ", enFieldsHash=" + enFieldsHash
-                + ", structuredDataHash=" + structuredDataHash + "]";
+                + ", structuredDataHash=" + structuredDataHash
+                + ", occurrences=" + occurrences + "]";
     }
 }
