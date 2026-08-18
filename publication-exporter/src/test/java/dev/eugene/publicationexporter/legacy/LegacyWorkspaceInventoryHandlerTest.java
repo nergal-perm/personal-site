@@ -42,6 +42,19 @@ class LegacyWorkspaceInventoryHandlerTest {
 
         assertEquals(first.inventorySha256(), second.inventorySha256());
         assertEquals(List.of(IDENTITY), first.approvedPairs());
+        assertTrue(first.blockers().isEmpty());
+    }
+
+    @Test
+    void anApprovedOnlyIdentityIsNotAnAmbiguity() {
+        NullApprovedSnapshotWorkspace approved = new NullApprovedSnapshotWorkspace();
+        approved.install(IDENTITY, snapshotWithSourceId("vault-source-id-target"));
+        LegacyWorkspaceInventoryHandler handler =
+                new LegacyWorkspaceInventoryHandler(approved, new NullCandidateWorkspace());
+
+        LegacyWorkspaceInventory inventory = handler.inspect();
+
+        assertTrue(inventory.ambiguities().isEmpty());
     }
 
     @Test
@@ -56,6 +69,7 @@ class LegacyWorkspaceInventoryHandlerTest {
         assertEquals(1, inventory.blockers().size());
     }
 
+
     @Test
     void mismatchedSourceIdsBetweenApprovedAndCandidateForTheSameIdentityIsAnAmbiguity() {
         NullApprovedSnapshotWorkspace approved = new NullApprovedSnapshotWorkspace();
@@ -66,7 +80,8 @@ class LegacyWorkspaceInventoryHandlerTest {
 
         LegacyWorkspaceInventory inventory = handler.inspect();
 
-        assertEquals(1, inventory.ambiguities().size());
+        assertEquals(List.of(IDENTITY + ": approved sourceId Optional[vault-source-id-a]"
+                + " does not match candidate sourceId Optional[vault-source-id-b]"), inventory.ambiguities());
     }
 
     @Test

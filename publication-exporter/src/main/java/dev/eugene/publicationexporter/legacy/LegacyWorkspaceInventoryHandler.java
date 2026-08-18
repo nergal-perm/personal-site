@@ -2,10 +2,8 @@ package dev.eugene.publicationexporter.legacy;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
-import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
-import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.util.ArrayList;
 import java.util.List;
