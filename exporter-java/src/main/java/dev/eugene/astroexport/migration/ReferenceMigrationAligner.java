@@ -11,7 +11,6 @@ import static dev.eugene.astroexport.migration.ReferenceMigrationAligner.PageSta
 import static dev.eugene.astroexport.migration.ReferenceMigrationAligner.PageStatus.UNRESOLVED_PAGE;
 import static dev.eugene.astroexport.migration.ReferenceMigrationAligner.PageStatus.UNSAFE_PAGE;
 
-import dev.eugene.astroexport.frontmatter.FrontmatterDocument;
 import dev.eugene.astroexport.markdown.MarkdownScanner;
 import dev.eugene.astroexport.references.PageReferenceMap;
 import dev.eugene.astroexport.references.VaultReferenceResolver;
@@ -37,7 +36,6 @@ public final class ReferenceMigrationAligner {
   private static final Pattern MARKDOWN_LINK = Pattern.compile(
       "\\[(?<label>[^\\]\\n]*?)\\]\\((?<destination>[^\\r\\n)]*?)\\)");
   private static final Pattern TIMESTAMP = Pattern.compile("^\\d{12}\\s+");
-  private static final Path NO_PATH = Path.of("approved-context-comparison");
 
   public MigrationPage align(
       RawPage raw,
@@ -375,8 +373,7 @@ public final class ReferenceMigrationAligner {
   }
 
   private static boolean sourceContextDrift(String raw, String approvedRussian) {
-    String approvedBody = FrontmatterDocument.parse(NO_PATH, "", approvedRussian).body();
-    return !normalizeComparable(renderRawLabels(raw)).equals(normalizeComparable(renderApprovedLabels(approvedBody)));
+    return !normalizeComparable(renderRawLabels(raw)).equals(normalizeComparable(renderApprovedLabels(approvedRussian)));
   }
 
   private static String renderRawLabels(String raw) {

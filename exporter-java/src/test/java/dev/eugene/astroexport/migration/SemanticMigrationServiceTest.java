@@ -743,7 +743,7 @@ final class SemanticMigrationServiceTest {
     Path published = review.resolve("blog/page-1/published");
     Files.createDirectories(published);
     String ruBody = unsafeApproved
-        ? "See very much [target](/ru/essays/page-2/).\n"
+        ? "See [target](/ru/essays/page-2/).\n"
         : "See [target](/ru/essays/page-2/). See [target](/ru/essays/page-2/).\n";
     String enBody = unsafeApproved
         ? "See [target](/en/essays/page-2/).\n"

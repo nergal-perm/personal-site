@@ -296,12 +296,6 @@
           "name": "decisions"
         },
         {
-          "name": "draft"
-        },
-        {
-          "name": "validate"
-        },
-        {
           "name": "apply"
         },
         {
