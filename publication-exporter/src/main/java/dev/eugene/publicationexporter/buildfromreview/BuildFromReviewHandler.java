@@ -7,6 +7,9 @@ import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.SchemaActivationCheck;
+import dev.eugene.publicationexporter.legacy.SchemaActivationGuard;
 import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.release.ApprovedTargetRegistry;
 import dev.eugene.publicationexporter.release.OccurrenceMarkerResolver;
@@ -25,13 +28,24 @@ public final class BuildFromReviewHandler {
 
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final ReleaseOutputStore releaseOutputStore;
+    private final ActivationMarkerStore activationMarkerStore;
 
     public BuildFromReviewHandler(ApprovedSnapshotWorkspace approvedSnapshotWorkspace, ReleaseOutputStore releaseOutputStore) {
+        this(approvedSnapshotWorkspace, releaseOutputStore, ActivationMarkerStore.createNull());
+    }
+
+    public BuildFromReviewHandler(ApprovedSnapshotWorkspace approvedSnapshotWorkspace,
+            ReleaseOutputStore releaseOutputStore, ActivationMarkerStore activationMarkerStore) {
         this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
         this.releaseOutputStore = Objects.requireNonNull(releaseOutputStore, "releaseOutputStore");
+        this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
     }
 
     public ReleaseResult buildFromReview(PublicationIdentity identity) {
+        SchemaActivationCheck activation = SchemaActivationGuard.check(approvedSnapshotWorkspace, activationMarkerStore);
+        if (activation.requiresMigration()) {
+            return ReleaseResult.blocked(activation.blockingReason());
+        }
         Optional<CandidateSnapshot> approved;
         try {
             approved = approvedSnapshotWorkspace.read(identity);

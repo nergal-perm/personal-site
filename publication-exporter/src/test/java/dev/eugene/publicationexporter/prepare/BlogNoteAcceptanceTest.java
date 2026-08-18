@@ -8,6 +8,8 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.buildfromreview.BuildFromReviewHandler;
 import dev.eugene.publicationexporter.buildfromreview.ReleaseResult;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.legacy.ActivationMarker;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
 import dev.eugene.publicationexporter.reference.PublicField;
@@ -69,8 +71,13 @@ class BlogNoteAcceptanceTest {
         assertTrue(approvedSnapshotWorkspace.read(identity).isPresent());
 
         ReleaseResult releaseResult = new BuildFromReviewHandler(
-                approvedSnapshotWorkspace, ReleaseOutputStore.createNull()).buildFromReview(identity);
+                approvedSnapshotWorkspace, ReleaseOutputStore.createNull(), activatedMarkerStore()).buildFromReview(identity);
 
         assertTrue(releaseResult.ok());
+    }
+
+    private static ActivationMarkerStore activatedMarkerStore() {
+        return ActivationMarkerStore.createNull(
+                new ActivationMarker(1, "a".repeat(64), java.time.Instant.parse("2026-08-18T00:00:00Z")));
     }
 }

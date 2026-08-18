@@ -88,6 +88,7 @@ class BuildFromReviewCliAcceptanceTest {
         Path reviewDirectory = workRoot.resolve("review");
         Path outputRoot = workRoot.resolve("output");
         CorruptedApprovedSnapshotFixture.write(reviewDirectory, IDENTITY);
+        writeActivationMarker(reviewDirectory);
 
         int exitCode = buildFromReview(reviewDirectory, outputRoot);
 
@@ -108,7 +109,21 @@ class BuildFromReviewCliAcceptanceTest {
                                 ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
                                 ContentHash.sha256Hex("RU description"),
                                 ContentHash.sha256Hex("EN description")));
+        writeActivationMarker(reviewDirectory);
         return ruHash;
+    }
+
+    private void writeActivationMarker(Path reviewRoot) {
+        Path markerFile = reviewRoot.resolve(".migration").resolve("schema-v1.active.json");
+        try {
+            Files.createDirectories(markerFile.getParent());
+            Files.writeString(markerFile,
+                    "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"activatedAt\":\"2026-08-18T00:00:00Z\"}"
+                            .formatted("a".repeat(64)),
+                    StandardCharsets.UTF_8);
+        } catch (java.io.IOException failure) {
+            throw new RuntimeException(failure);
+        }
     }
 
     private int buildFromReview(Path reviewDirectory, Path outputRoot) {

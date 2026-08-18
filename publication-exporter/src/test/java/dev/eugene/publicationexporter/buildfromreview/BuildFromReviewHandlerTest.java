@@ -6,6 +6,8 @@ import dev.eugene.publicationexporter.approved.NullApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.legacy.ActivationMarker;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.release.NullReleaseOutputStore;
@@ -14,6 +16,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -23,6 +26,32 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class BuildFromReviewHandlerTest {
 
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
+
+    @Test
+    void legacyWorkspaceBlocksReleaseBeforeAnyMutation() {
+        NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
+        PublicationIdentity existingUnrelatedIdentity = PublicationIdentity.of("blog", "essay", "other-essay");
+        installApprovedSnapshot(approvedSnapshotWorkspace, existingUnrelatedIdentity, "Other RU", "Other EN");
+        NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
+        BuildFromReviewHandler legacyAwareHandler = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, releaseOutputStore, ActivationMarkerStore.createNull());
+
+        ReleaseResult result = legacyAwareHandler.buildFromReview(IDENTITY);
+
+        assertFalse(result.ok());
+        assertTrue(releaseOutputStore.installed().isEmpty());
+    }
+
+    @Test
+    void bareTwoArgConstructorDoesNotBlockAnEmptyWorkspace() {
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(
+                ApprovedSnapshotWorkspace.createNull(), ReleaseOutputStore.createNull());
+
+        ReleaseResult result = handler.buildFromReview(IDENTITY);
+
+        assertFalse(result.ok());
+        assertEquals("No approved snapshot exists to release.", result.message());
+    }
 
     @Test
     void noApprovedSnapshotIsBlockedBeforeAnyOutputWrite() {
@@ -44,7 +73,8 @@ class BuildFromReviewHandlerTest {
                 "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(IDENTITY, ruHash, enHash, "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
-        BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, releaseOutputStore, activatedMarkerStore());
 
         ReleaseResult result = handler.buildFromReview(IDENTITY);
 
@@ -81,7 +111,8 @@ class BuildFromReviewHandlerTest {
                 "[See it](ref:vault-source-id-target)", "[See it EN](ref:vault-source-id-target)",
                 List.of(), List.of(), "", referrerReferenceMap));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
-        BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, releaseOutputStore, activatedMarkerStore());
 
         ReleaseResult result = handler.buildFromReview(IDENTITY);
 
@@ -109,7 +140,8 @@ class BuildFromReviewHandlerTest {
                 "[See it](ref:vault-source-id-missing)", "[See it EN](ref:vault-source-id-missing)",
                 List.of(), List.of(), "", referrerReferenceMap));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
-        BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, releaseOutputStore, activatedMarkerStore());
 
         ReleaseResult result = handler.buildFromReview(IDENTITY);
 
@@ -131,7 +163,8 @@ class BuildFromReviewHandlerTest {
                 ReferenceMap.empty(IDENTITY,
                         ContentHash.sha256Hex("approved RU"), ContentHash.sha256Hex("approved EN"), "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
-        BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, releaseOutputStore, activatedMarkerStore());
 
         handler.buildFromReview(IDENTITY);
 
@@ -160,7 +193,8 @@ class BuildFromReviewHandlerTest {
         BuildFromReviewHandler handler = new BuildFromReviewHandler(
                 approvedSnapshotWorkspace,
                 releaseOutputStoreThrowing(new UncheckedIOException(
-                        new IOException("release output store unavailable"))));
+                        new IOException("release output store unavailable"))),
+                activatedMarkerStore());
 
         ReleaseResult result = handler.buildFromReview(IDENTITY);
 
@@ -175,7 +209,8 @@ class BuildFromReviewHandlerTest {
                 "RU title", "EN title", "RU description", "EN description",
                 ReferenceMap.empty(IDENTITY, ContentHash.sha256Hex("RU"), ContentHash.sha256Hex("EN"), "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
         NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
-        BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, releaseOutputStore, activatedMarkerStore());
         handler.buildFromReview(IDENTITY);
 
         ReleaseResult second = handler.buildFromReview(IDENTITY);
@@ -237,5 +272,18 @@ class BuildFromReviewHandlerTest {
                 throw failure;
             }
         };
+    }
+
+    private static void installApprovedSnapshot(
+            NullApprovedSnapshotWorkspace workspace, PublicationIdentity identity, String ruBody, String enBody) {
+        workspace.install(identity, ruBody, enBody,
+                "RU title", "EN title", "RU description", "EN description",
+                ReferenceMap.empty(identity, ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
+                        "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
+    }
+
+    private static ActivationMarkerStore activatedMarkerStore() {
+        return ActivationMarkerStore.createNull(
+                new ActivationMarker(1, "a".repeat(64), Instant.parse("2026-08-18T00:00:00Z")));
     }
 }
