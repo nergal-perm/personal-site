@@ -283,27 +283,40 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
     @Override
     public Optional<CandidateSnapshot> findBySourceId(String sourceId) {
         Objects.requireNonNull(sourceId, "sourceId");
-        for (Path approvedDirectory : allApprovedDirectories()) {
-            ReferenceMap referenceMap;
-            try {
-                referenceMap = readReferenceMap(approvedFile(approvedDirectory, "references.json"));
-            } catch (IOException error) {
-                throw new UncheckedIOException(error);
-            }
-            if (referenceMap.sourceId().filter(sourceId::equals).isEmpty()) {
+        for (Path approvedDirectory : candidateDirectoriesInOrder()) {
+            if (!matchesSourceId(approvedDirectory, sourceId)) {
                 continue;
             }
-            Optional<CandidateSnapshot> snapshot = stableSnapshotFrom(
-                    approvedDirectory, referenceMap.identity());
-            if (snapshot.filter(candidate -> candidate.referenceMap().sourceId()
-                    .filter(sourceId::equals).isPresent()).isPresent()) {
+            Optional<CandidateSnapshot> snapshot = loadSnapshot(approvedDirectory);
+            if (snapshot.filter(candidate -> matchesSourceId(candidate, sourceId)).isPresent()) {
                 return snapshot;
             }
         }
         return Optional.empty();
     }
 
-    private List<Path> allApprovedDirectories() {
+    private boolean matchesSourceId(Path approvedDirectory, String sourceId) {
+        return readReferenceMapOrUnchecked(approvedDirectory).sourceId()
+                .filter(sourceId::equals).isPresent();
+    }
+
+    private boolean matchesSourceId(CandidateSnapshot snapshot, String sourceId) {
+        return snapshot.referenceMap().sourceId().filter(sourceId::equals).isPresent();
+    }
+
+    private Optional<CandidateSnapshot> loadSnapshot(Path approvedDirectory) {
+        return stableSnapshotFrom(approvedDirectory, readReferenceMapOrUnchecked(approvedDirectory).identity());
+    }
+
+    private ReferenceMap readReferenceMapOrUnchecked(Path approvedDirectory) {
+        try {
+            return readReferenceMap(approvedFile(approvedDirectory, "references.json"));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private List<Path> candidateDirectoriesInOrder() {
         Path root = stagedInstall.canonicalRoot();
         if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
             return List.of();

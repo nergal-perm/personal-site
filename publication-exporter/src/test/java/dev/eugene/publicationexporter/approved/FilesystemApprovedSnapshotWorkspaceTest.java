@@ -114,18 +114,39 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     @Test
     void findBySourceIdLocatesAnApprovedSnapshotByItsOwnSourceId() {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
-        installSnapshotWithSourceId(workspace, "Target", "vault-source-id-target");
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other");
+        installSnapshotWithSourceId(workspace, otherIdentity, "Other", "vault-source-id-other");
+        installSnapshotWithSourceId(workspace, IDENTITY, "Target", "vault-source-id-target");
 
         Optional<CandidateSnapshot> found = workspace.findBySourceId("vault-source-id-target");
 
         assertTrue(found.isPresent());
+        assertEquals("Target RU", found.get().ruBody());
+        assertEquals(Optional.of("vault-source-id-target"), found.get().referenceMap().sourceId());
     }
 
     @Test
     void findBySourceIdIsAbsentForAnUnknownSourceId() {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        PublicationIdentity otherIdentity = PublicationIdentity.of("blog", "essay", "other");
+        installSnapshotWithSourceId(workspace, otherIdentity, "Other", "vault-source-id-other");
+        installSnapshotWithSourceId(workspace, IDENTITY, "Target", "vault-source-id-target");
 
         assertEquals(Optional.empty(), workspace.findBySourceId("no-such-source-id"));
+    }
+
+    @Test
+    void findBySourceIdReturnsTheFirstSortedApprovedSnapshotWhenSourceIdIsDuplicated() {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        PublicationIdentity firstIdentity = PublicationIdentity.of("blog", "essay", "a-first");
+        PublicationIdentity secondIdentity = PublicationIdentity.of("blog", "essay", "z-second");
+        installSnapshotWithSourceId(workspace, secondIdentity, "Second", "duplicated-source-id");
+        installSnapshotWithSourceId(workspace, firstIdentity, "First", "duplicated-source-id");
+
+        Optional<CandidateSnapshot> found = workspace.findBySourceId("duplicated-source-id");
+
+        assertTrue(found.isPresent());
+        assertEquals("First RU", found.get().ruBody());
     }
 
     @Test
@@ -600,18 +621,19 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     private static void installSnapshot(FilesystemApprovedSnapshotWorkspace workspace, String generation) {
-        installSnapshotWithSourceId(workspace, generation, "vault-source-id-" + generation.toLowerCase());
+        installSnapshotWithSourceId(workspace, IDENTITY, generation, "vault-source-id-" + generation.toLowerCase());
     }
 
     private static void installSnapshotWithSourceId(
-            FilesystemApprovedSnapshotWorkspace workspace, String generation, String sourceId) {
-        workspace.install(IDENTITY, CandidateSnapshot.of(
+            FilesystemApprovedSnapshotWorkspace workspace, PublicationIdentity identity,
+            String generation, String sourceId) {
+        workspace.install(identity, CandidateSnapshot.of(
                 generation + " RU", generation + " EN",
                 List.of(PublicField.of("title", generation + " RU title"),
                         PublicField.of("description", generation + " RU description")),
                 List.of(PublicField.of("title", generation + " EN title"),
                         PublicField.of("description", generation + " EN description")),
-                "", referenceMapFor(generation, sourceId)));
+                "", referenceMapFor(identity, generation, sourceId)));
     }
 
     private static void writeSnapshotDirectory(Path directory, String generation) throws Exception {
@@ -630,14 +652,15 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     private static ReferenceMap referenceMapFor(String generation) {
-        return referenceMapFor(generation, "vault-source-id-" + generation.toLowerCase());
+        return referenceMapFor(IDENTITY, generation, "vault-source-id-" + generation.toLowerCase());
     }
 
-    private static ReferenceMap referenceMapFor(String generation, String sourceId) {
+    private static ReferenceMap referenceMapFor(
+            PublicationIdentity identity, String generation, String sourceId) {
         return matchingReferenceMap(
                 generation + " RU", generation + " EN",
                 generation + " RU title", generation + " EN title",
-                generation + " RU description", generation + " EN description", sourceId);
+                generation + " RU description", generation + " EN description", identity, sourceId);
     }
 
     private static ReferenceMap matchingReferenceMap(
@@ -656,11 +679,18 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     private static ReferenceMap matchingReferenceMap(
             String ruBody, String enBody, String ruTitle, String enTitle,
             String ruDescription, String enDescription, String sourceId) {
+        return matchingReferenceMap(
+                ruBody, enBody, ruTitle, enTitle, ruDescription, enDescription, IDENTITY, sourceId);
+    }
+
+    private static ReferenceMap matchingReferenceMap(
+            String ruBody, String enBody, String ruTitle, String enTitle,
+            String ruDescription, String enDescription, PublicationIdentity identity, String sourceId) {
         String ruFields = PublicFieldsCodec.write(List.of(
                 PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)));
         String enFields = PublicFieldsCodec.write(List.of(
                 PublicField.of("title", enTitle), PublicField.of("description", enDescription)));
-        return ReferenceMap.of(IDENTITY, sourceId,
+        return ReferenceMap.of(identity, sourceId,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
                 ContentHash.sha256Hex(ruFields), ContentHash.sha256Hex(enFields),
                 ContentHash.sha256Hex(""), List.of());
