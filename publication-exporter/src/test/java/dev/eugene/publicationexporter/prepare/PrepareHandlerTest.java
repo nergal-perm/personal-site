@@ -1184,7 +1184,7 @@ class PrepareHandlerTest {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
         NullTranslationWorker worker = new NullTranslationWorker(TranslationOutcome.success(
                 "As he wrote, see [" + OccurrenceLabelMarkers.openMarker(0) + "Target Essay"
-                        + OccurrenceLabelMarkers.closeMarker(0) + "](/essays/target-essay/).",
+                        + OccurrenceLabelMarkers.closeMarker(0) + "](ref:src-target-1).",
                 fields("Translated title", "Translated description.")));
         PrepareHandler handler = new PrepareHandler(
                 new NoteIntake(PublicationKinds.installed()),
@@ -1232,7 +1232,7 @@ class PrepareHandlerTest {
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
                         "As he wrote, see [" + OccurrenceLabelMarkers.openMarker(0) + "Target Essay"
-                                + OccurrenceLabelMarkers.closeMarker(0) + "](/essays/target-essay/).",
+                                + OccurrenceLabelMarkers.closeMarker(0) + "](ref:src-target-2).",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
@@ -2471,7 +2471,7 @@ class PrepareHandlerTest {
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
                         "See [" + OccurrenceLabelMarkers.openMarker(0) + "Time note"
-                                + OccurrenceLabelMarkers.closeMarker(0) + "](/essays/notes-on-time/) and "
+                                + OccurrenceLabelMarkers.closeMarker(0) + "](ref:91aa-notes-on-time) and "
                                 + OccurrenceLabelMarkers.openMarker(1) + "Draft"
                                 + OccurrenceLabelMarkers.closeMarker(1) + ".",
                         fields("Translated title", "Translated description.")),
@@ -2481,7 +2481,7 @@ class PrepareHandlerTest {
 
         assertTrue(response.ok());
         assertEquals(
-                "# My Essay\n\nСмотрите также [Заметка о времени](/essays/notes-on-time/) и Черновик.",
+                "# My Essay\n\nСмотрите также [Заметка о времени](ref:91aa-notes-on-time) и Черновик.",
                 workspace.installed().get(0).ruBody());
     }
 
@@ -2511,14 +2511,14 @@ class PrepareHandlerTest {
                 new NoteIntake(PublicationKinds.installed()),
                 TranslationWorker.createNull(
                         "See [" + OccurrenceLabelMarkers.openMarker(0) + "My Note"
-                                + OccurrenceLabelMarkers.closeMarker(0) + "](/notes/my-note/).",
+                                + OccurrenceLabelMarkers.closeMarker(0) + "](ref:91aa-my-note).",
                         fields("Translated title", "Translated description.")),
                 workspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
 
         BridgeResponse response = handler.prepare(essayPath, vaultReader, VaultAssetReader.createNull());
 
         assertTrue(response.ok());
-        assertEquals("See [my-note](/notes/my-note/).",
+        assertEquals("See [my-note](ref:91aa-my-note).",
                 workspace.installed().get(0).ruBody());
     }
 

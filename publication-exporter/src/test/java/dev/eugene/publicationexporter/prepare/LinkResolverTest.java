@@ -20,8 +20,44 @@ import org.junit.jupiter.api.Timeout;
 
 final class LinkResolverTest {
 
-    private static final PublicNoteIndex ONE_PUBLIC_NOTE =
-            new PublicNoteIndex(Map.of("Заметка о времени", "/essays/notes-on-time/"));
+    // Baked-route assertions updated: headingFragmentIsDroppedFromBothResolutionAndLabel,
+    // linkToBlogNoteTargetResolvesToNotesRoute, aliasWinsOverTargetTextAsLabelEvenWithAHeadingFragment,
+    // fromBuildsCollectionlessRouteForAnAdmittedCuratedAboutPage.
+    private static final PublicNoteIndex ONE_PUBLIC_NOTE = onePublicNote();
+
+    private static PublicNoteIndex onePublicNote() {
+        String note = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: notes-on-time
+                id: 91aa-notes-on-time
+                title: Заметка о времени
+                description: A valid description.
+                ---
+                Public prose.""";
+        return PublicNoteIndex.from(
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/Заметка о времени.md"), note)),
+                new NoteIntake(PublicationKinds.installed()));
+    }
+
+    private static PublicNoteIndex knownNotesWithOneAdmittedTarget() {
+        String target = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: target
+                id: vault-source-id-target
+                title: Target
+                description: A valid description.
+                ---
+                Target body.""";
+        return PublicNoteIndex.from(
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/Target.md"), target)),
+                new NoteIntake(PublicationKinds.installed()));
+    }
 
     private static String resolvedBodyOrFail(String body, PublicNoteIndex knownNotes) {
         return LinkResolver.resolve(body, knownNotes).resolve(
@@ -33,17 +69,50 @@ final class LinkResolverTest {
     void headingFragmentIsDroppedFromBothResolutionAndLabel() {
         String body = "See [[Заметка о времени#Some Heading]].";
 
-        assertEquals("See [Заметка о времени](/essays/notes-on-time/).",
+        assertEquals("See [Заметка о времени](ref:91aa-notes-on-time).",
                 resolvedBodyOrFail(body, ONE_PUBLIC_NOTE));
     }
 
     @Test
     void linkToBlogNoteTargetResolvesToNotesRoute() {
-        PublicNoteIndex index = new PublicNoteIndex(Map.of("My Note", "/notes/my-note/"));
+        String note = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: note
+                publicId: my-note
+                id: source-id-my-note
+                title: My Note
+                description: A valid description.
+                ---
+                Public note prose.""";
+        PublicNoteIndex index = PublicNoteIndex.from(
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/My Note.md"), note)),
+                new NoteIntake(PublicationKinds.installed()));
 
         LinkResolutionOutcome outcome = LinkResolver.resolve("See [[My Note]].", index);
 
-        assertEquals("See [My Note](/notes/my-note/).", outcome.resolve(
+        assertEquals("See [My Note](ref:source-id-my-note).", outcome.resolve(
+                (resolved, ignoredOccurrences) -> resolved,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+    }
+
+    @Test
+    void admittedNonEmbedTargetGetsADurableReferenceMarkerNotABakedRoute() {
+        LinkResolutionOutcome outcome = LinkResolver.resolve(
+                "See [[Target]].", knownNotesWithOneAdmittedTarget());
+
+        assertEquals("See [Target](ref:vault-source-id-target).", outcome.resolve(
+                (resolved, ignoredOccurrences) -> resolved,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+    }
+
+    @Test
+    void aliasedAdmittedTargetKeepsItsAliasAsTheLabel() {
+        LinkResolutionOutcome outcome = LinkResolver.resolve(
+                "See [[Target|My Alias]].", knownNotesWithOneAdmittedTarget());
+
+        assertEquals("See [My Alias](ref:vault-source-id-target).", outcome.resolve(
                 (resolved, ignoredOccurrences) -> resolved,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
     }
@@ -118,7 +187,7 @@ final class LinkResolverTest {
     void aliasWinsOverTargetTextAsLabelEvenWithAHeadingFragment() {
         String body = "See [[Заметка о времени#Some Heading|a great essay]].";
 
-        assertEquals("See [a great essay](/essays/notes-on-time/).",
+        assertEquals("See [a great essay](ref:91aa-notes-on-time).",
                 resolvedBodyOrFail(body, ONE_PUBLIC_NOTE));
     }
 
@@ -250,7 +319,7 @@ final class LinkResolverTest {
                         VaultRelativePath.of("editorial/about.md"), aboutPage)),
                 new NoteIntake(PublicationKinds.installed()));
 
-        assertEquals("See [about](/about/).", resolvedBodyOrFail("See [[about]].", index));
+        assertEquals("See [about](ref:source-about).", resolvedBodyOrFail("See [[about]].", index));
         assertEquals("/about/", index.routeFor("about").orElseThrow());
     }
 

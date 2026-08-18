@@ -69,8 +69,11 @@ public final class LinkResolver {
             int spanStart = output.length();
             output.append(label);
             int spanEnd = output.length();
-            output.append("](").append(route.get()).append(')');
-            if (!isEmbed) {
+            if (isEmbed) {
+                output.append("](").append(route.get()).append(')');
+            } else {
+                String targetSourceId = knownNotes.sourceIdFor(target).orElseThrow();
+                output.append("](ref:").append(targetSourceId).append(')');
                 occurrences.add(new LinkOccurrence(lastPathSegment(target), label, route, spanStart, spanEnd));
             }
             return Optional.empty();
