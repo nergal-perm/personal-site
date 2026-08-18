@@ -35,6 +35,41 @@ class ActivationMarkerTest {
     }
 
     @Test
+    void isInvalidForAnEmptyInventoryHash() {
+        ActivationMarker marker = new ActivationMarker(1, "", Instant.parse("2026-08-18T00:00:00Z"));
+
+        assertFalse(marker.isValid());
+    }
+
+    @Test
+    void isInvalidForAnUppercaseInventoryHash() {
+        ActivationMarker marker = new ActivationMarker(1, "A".repeat(64), Instant.parse("2026-08-18T00:00:00Z"));
+
+        assertFalse(marker.isValid());
+    }
+
+    @Test
+    void isInvalidForAHashWithTheWrongLength() {
+        ActivationMarker marker = new ActivationMarker(1, "a".repeat(63), Instant.parse("2026-08-18T00:00:00Z"));
+
+        assertFalse(marker.isValid());
+    }
+
+    @Test
+    void isInvalidForSchemaVersionZero() {
+        ActivationMarker marker = new ActivationMarker(0, VALID_SHA256, Instant.parse("2026-08-18T00:00:00Z"));
+
+        assertFalse(marker.isValid());
+    }
+
+    @Test
+    void isInvalidForANegativeSchemaVersion() {
+        ActivationMarker marker = new ActivationMarker(-1, VALID_SHA256, Instant.parse("2026-08-18T00:00:00Z"));
+
+        assertFalse(marker.isValid());
+    }
+
+    @Test
     void rejectsNullInventorySha256() {
         assertThrows(NullPointerException.class,
                 () -> new ActivationMarker(1, null, Instant.parse("2026-08-18T00:00:00Z")));
