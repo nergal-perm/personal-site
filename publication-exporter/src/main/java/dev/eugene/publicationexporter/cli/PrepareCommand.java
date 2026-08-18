@@ -5,6 +5,7 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.prepare.PrepareHandler;
 import dev.eugene.publicationexporter.translation.ProcessTranslationWorker;
@@ -81,12 +82,19 @@ public final class PrepareCommand implements Callable<Integer> {
         VaultAssetReader vaultAssetReader = VaultAssetReader.create(vaultRoot);
         CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
+        ActivationMarkerStore activationMarkerStore = ActivationMarkerStore.create(reviewDirectory);
         WorkflowStatusEditor workflowStatusEditor = WorkflowStatusEditor.create(vaultRoot);
         TranslationWorker translationWorker = translationWorkerForJobRoot.apply(jobsDirectory);
         NoteIntake noteIntake = new NoteIntake(PublicationKinds.installed());
-        BridgeResponse response = new PrepareHandler(
-                noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor)
-                .prepare(VaultRelativePath.of(notePath), vaultReader, vaultAssetReader);
+        PrepareHandler handler = activationMarkerStore.read().isPresent()
+                ? new PrepareHandler(
+                        noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace,
+                        workflowStatusEditor, activationMarkerStore)
+                : new PrepareHandler(
+                        noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace,
+                        workflowStatusEditor);
+        BridgeResponse response = handler.prepare(
+                VaultRelativePath.of(notePath), vaultReader, vaultAssetReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));
         return response.ok() ? 0 : 1;

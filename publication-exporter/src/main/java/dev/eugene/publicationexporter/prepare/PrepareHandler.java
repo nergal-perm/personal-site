@@ -13,6 +13,10 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.legacy.ActivationMarker;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.SchemaActivationCheck;
+import dev.eugene.publicationexporter.legacy.SchemaActivationGuard;
 import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
@@ -29,6 +33,7 @@ import dev.eugene.publicationexporter.workflow.WorkflowState;
 import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
 import java.io.UncheckedIOException;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -54,19 +59,33 @@ public final class PrepareHandler {
     private final CandidateWorkspace candidateWorkspace;
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final WorkflowStatusEditor workflowStatusEditor;
+    private final ActivationMarkerStore activationMarkerStore;
 
     public PrepareHandler(NoteIntake noteIntake, TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
             ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
+        this(noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor,
+                ActivationMarkerStore.createNull(new ActivationMarker(1, "0".repeat(64), Instant.EPOCH)));
+    }
+
+    public PrepareHandler(NoteIntake noteIntake, TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
+            ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor,
+            ActivationMarkerStore activationMarkerStore) {
         this.noteIntake = Objects.requireNonNull(noteIntake, "noteIntake");
         this.translationWorker = Objects.requireNonNull(translationWorker, "translationWorker");
         this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
         this.approvedSnapshotWorkspace =
                 Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
         this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
+        this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
     }
 
     public BridgeResponse prepare(
             VaultRelativePath notePath, VaultReader vaultReader, VaultAssetReader vaultAssetReader) {
+        SchemaActivationCheck activation = SchemaActivationGuard.check(
+                approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore);
+        if (activation.requiresMigration()) {
+            return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("workspace", activation.blockingReason()));
+        }
         NoteIntake.Result intake = noteIntake.admit(notePath, vaultReader);
         if (!intake.accepted()) {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());

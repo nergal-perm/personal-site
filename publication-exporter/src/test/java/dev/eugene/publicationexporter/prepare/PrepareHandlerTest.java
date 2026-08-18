@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.prepare;
 
 import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
@@ -51,6 +52,45 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 class PrepareHandlerTest {
+
+    @Test
+    void legacyWorkspaceBlocksPrepareBeforeAnyMutation() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.createNull();
+        NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
+        PublicationIdentity unrelatedIdentity = PublicationIdentity.of("blog", "essay", "unrelated");
+        approvedSnapshotWorkspace.install(unrelatedIdentity, CandidateSnapshot.of(
+                "ru", "en", List.of(), List.of(), "",
+                ReferenceMap.empty(unrelatedIdentity,
+                        ContentHash.sha256Hex("ru"), ContentHash.sha256Hex("en"),
+                        ContentHash.sha256Hex(""), ContentHash.sha256Hex(""), ContentHash.sha256Hex(""))));
+        PrepareHandler legacyAwareHandler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
+                candidateWorkspace, approvedSnapshotWorkspace, WorkflowStatusEditor.createNull(),
+                ActivationMarkerStore.createNull());
+
+        BridgeResponse response = legacyAwareHandler.prepare(
+                path, VaultReader.createNull(Map.of(path, VALID_ESSAY)), VaultAssetReader.createNull());
+
+        assertFalse(response.ok());
+        assertTrue(candidateWorkspace.installed().isEmpty());
+    }
+
+    @Test
+    void bareFiveArgConstructorNeverBlocksOnAnEmptyWorkspace() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(
+                path, VaultReader.createNull(Map.of(path, VALID_ESSAY)), VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+    }
 
     @TempDir
     Path temporaryRoot;
