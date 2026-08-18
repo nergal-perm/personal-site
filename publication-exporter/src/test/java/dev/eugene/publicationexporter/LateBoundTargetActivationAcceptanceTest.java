@@ -11,6 +11,8 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
+import dev.eugene.publicationexporter.legacy.ActivationMarker;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.prepare.PrepareHandler;
 import dev.eugene.publicationexporter.reference.PublicField;
@@ -25,6 +27,7 @@ import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.time.Instant;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -171,7 +174,9 @@ class LateBoundTargetActivationAcceptanceTest {
                 translationWorker,
                 candidateWorkspace,
                 approvedSnapshotWorkspace,
-                WorkflowStatusEditor.createNull());
+                WorkflowStatusEditor.createNull(),
+                ActivationMarkerStore.createNull(
+                        new ActivationMarker(1, "a".repeat(64), Instant.parse("2026-08-18T00:00:00Z"))));
     }
 
     private static BridgeResponse markReviewed(

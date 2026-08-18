@@ -185,17 +185,33 @@ class MarkReviewedCliAcceptanceTest {
                 "--json");
 
         assertEquals(0, exitCode);
+        writeActivationMarker();
         capturedOut.reset();
     }
 
     private int markReviewed(String notePath) {
-        return new CommandLine(new Main()).execute(
+        int exitCode = new CommandLine(new Main()).execute(
                 "mark-reviewed",
                 "--vault", vaultRoot.toString(),
                 "--note", notePath,
                 "--review", vaultRoot.resolve("review").toString(),
                 "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
                 "--json");
+        writeActivationMarker();
+        return exitCode;
+    }
+
+    private void writeActivationMarker() {
+        Path markerFile = vaultRoot.resolve("review/.migration/schema-v1.active.json");
+        try {
+            Files.createDirectories(markerFile.getParent());
+            Files.writeString(markerFile,
+                    "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"activatedAt\":\"2026-08-18T00:00:00Z\"}"
+                            .formatted("a".repeat(64)),
+                    StandardCharsets.UTF_8);
+        } catch (java.io.IOException failure) {
+            throw new RuntimeException(failure);
+        }
     }
 
     private static final String VALID_ESSAY = """

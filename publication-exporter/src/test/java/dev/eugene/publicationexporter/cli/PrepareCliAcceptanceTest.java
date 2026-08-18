@@ -96,6 +96,7 @@ class PrepareCliAcceptanceTest {
     void corruptedApprovedSnapshotProducesBlockedSchemaV2Response() throws Exception {
         writeEssay("# My Essay");
         CorruptedApprovedSnapshotFixture.write(vaultRoot.resolve("review"), IDENTITY);
+        writeActivationMarker(vaultRoot.resolve("review"));
 
         int exitCode = prepare("blog/my-essay.md");
 
@@ -325,6 +326,26 @@ class PrepareCliAcceptanceTest {
     }
 
     @Test
+    void legacyApprovedWorkspaceWithoutActivationMarkerIsBlockedByCli() throws Exception {
+        writeEssay("Changed body.");
+        Path reviewRoot = vaultRoot.resolve("review");
+        installApprovedWithoutActivationMarker(reviewRoot, "Approved body.", "Prior English candidate");
+
+        int exitCode = prepare("blog/my-essay.md",
+                TranslationWorker.createNull("New translated candidate", fields("New EN title", "New EN description.")));
+
+        assertNotEquals(0, exitCode);
+        JsonNode response = soleJsonValueOnStdout();
+        assertConformsToSchemaV2(response);
+        assertFalse(response.get("ok").asBoolean());
+        assertEquals("metadata_blocked", response.get("status").asText());
+        assertEquals("workspace", response.get("diagnostics").get(0).get("field").asText());
+        assertTrue(response.get("diagnostics").get(0).get("message").asText()
+                .contains("read-only migration inventory"));
+        assertTrue(CandidateWorkspace.create(reviewRoot).allIdentities().isEmpty());
+    }
+
+    @Test
     void competingPrepareCommandsInstallOnlyTheFreshCompletion() throws Exception {
         writeEssay("First source body.");
         CountDownLatch firstTranslationStarted = new CountDownLatch(1);
@@ -436,15 +457,38 @@ class PrepareCliAcceptanceTest {
     }
 
     private void installApproved(Path reviewRoot, String ruBody, String enBody) {
+        installApprovedWithoutActivationMarker(reviewRoot, ruBody, enBody);
+        writeActivationMarker(reviewRoot);
+    }
+
+    private void installApprovedWithoutActivationMarker(Path reviewRoot, String ruBody, String enBody) {
         ApprovedSnapshotWorkspace.create(reviewRoot).install(IDENTITY, ruBody, enBody,
                 "My Essay", "EN title", "A valid description.", "EN description.",
                 referenceMap(ruBody, enBody));
     }
 
     private void installCandidate(Path reviewRoot, String ruBody, String enBody) {
+        installCandidateWithoutActivationMarker(reviewRoot, ruBody, enBody);
+        writeActivationMarker(reviewRoot);
+    }
+
+    private void installCandidateWithoutActivationMarker(Path reviewRoot, String ruBody, String enBody) {
         CandidateWorkspace.create(reviewRoot).install(IDENTITY, ruBody, enBody,
                 "My Essay", "EN title", "A valid description.", "EN description.",
                 referenceMap(ruBody, enBody));
+    }
+
+    private void writeActivationMarker(Path reviewRoot) {
+        Path markerFile = reviewRoot.resolve(".migration").resolve("schema-v1.active.json");
+        try {
+            Files.createDirectories(markerFile.getParent());
+            Files.writeString(markerFile,
+                    "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"activatedAt\":\"2026-08-18T00:00:00Z\"}"
+                            .formatted("a".repeat(64)),
+                    StandardCharsets.UTF_8);
+        } catch (java.io.IOException failure) {
+            throw new RuntimeException(failure);
+        }
     }
 
     private ReferenceMap referenceMap(String ruBody, String enBody) {

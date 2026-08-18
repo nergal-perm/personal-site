@@ -13,7 +13,6 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
-import dev.eugene.publicationexporter.legacy.ActivationMarker;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 import dev.eugene.publicationexporter.legacy.SchemaActivationCheck;
 import dev.eugene.publicationexporter.legacy.SchemaActivationGuard;
@@ -33,7 +32,6 @@ import dev.eugene.publicationexporter.workflow.WorkflowState;
 import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
 
 import java.io.UncheckedIOException;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -64,7 +62,7 @@ public final class PrepareHandler {
     public PrepareHandler(NoteIntake noteIntake, TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
             ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
         this(noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor,
-                ActivationMarkerStore.createNull(new ActivationMarker(1, "0".repeat(64), Instant.EPOCH)));
+                ActivationMarkerStore.createNull());
     }
 
     public PrepareHandler(NoteIntake noteIntake, TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,

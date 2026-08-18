@@ -320,6 +320,7 @@ class InspectPublicationCliAcceptanceTest {
                 "--json");
 
         assertEquals(0, exitCode);
+        writeActivationMarker();
         capturedOut.reset();
     }
 
@@ -343,6 +344,15 @@ class InspectPublicationCliAcceptanceTest {
                 "--note", notePath,
                 "--review", vaultRoot.resolve("review").toString(),
                 "--json");
+    }
+
+    private void writeActivationMarker() throws Exception {
+        Path markerFile = vaultRoot.resolve("review/.migration/schema-v1.active.json");
+        Files.createDirectories(markerFile.getParent());
+        Files.writeString(markerFile,
+                "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"activatedAt\":\"2026-08-18T00:00:00Z\"}"
+                        .formatted("a".repeat(64)),
+                StandardCharsets.UTF_8);
     }
 
     private static final String VALID_ESSAY = """

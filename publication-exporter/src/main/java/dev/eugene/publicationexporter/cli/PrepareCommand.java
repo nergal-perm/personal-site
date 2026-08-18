@@ -86,13 +86,9 @@ public final class PrepareCommand implements Callable<Integer> {
         WorkflowStatusEditor workflowStatusEditor = WorkflowStatusEditor.create(vaultRoot);
         TranslationWorker translationWorker = translationWorkerForJobRoot.apply(jobsDirectory);
         NoteIntake noteIntake = new NoteIntake(PublicationKinds.installed());
-        PrepareHandler handler = activationMarkerStore.read().isPresent()
-                ? new PrepareHandler(
-                        noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace,
-                        workflowStatusEditor, activationMarkerStore)
-                : new PrepareHandler(
-                        noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace,
-                        workflowStatusEditor);
+        PrepareHandler handler = new PrepareHandler(
+                noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor,
+                activationMarkerStore);
         BridgeResponse response = handler.prepare(
                 VaultRelativePath.of(notePath), vaultReader, vaultAssetReader);
 
