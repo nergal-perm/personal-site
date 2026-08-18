@@ -31,14 +31,22 @@ final class FilesystemActivationMarkerStore implements ActivationMarkerStore {
             return Optional.empty();
         }
         try {
-            JsonNode root = MAPPER.readTree(Files.readString(markerFile, StandardCharsets.UTF_8));
-            return markerFrom(root);
-        } catch (IOException | RuntimeException malformed) {
+            String markerJson = loadMarkerJson();
+            return parseMarker(markerJson);
+        } catch (IOException | RuntimeException invalidMarker) {
             return Optional.empty();
         }
     }
 
-    private static Optional<ActivationMarker> markerFrom(JsonNode root) {
+    private String loadMarkerJson() throws IOException {
+        return Files.readString(markerFile, StandardCharsets.UTF_8);
+    }
+
+    private static Optional<ActivationMarker> parseMarker(String markerJson) throws IOException {
+        return activationMarkerFrom(MAPPER.readTree(markerJson));
+    }
+
+    private static Optional<ActivationMarker> activationMarkerFrom(JsonNode root) {
         JsonNode schemaVersion = root.get("schemaVersion");
         JsonNode inventorySha256 = root.get("inventorySha256");
         JsonNode activatedAt = root.get("activatedAt");

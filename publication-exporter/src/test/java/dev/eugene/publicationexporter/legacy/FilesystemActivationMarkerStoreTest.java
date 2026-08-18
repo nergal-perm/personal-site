@@ -41,6 +41,15 @@ class FilesystemActivationMarkerStoreTest {
     }
 
     @Test
+    void readIsAbsentForUnparseableActivatedAt(@TempDir Path reviewRoot) throws IOException {
+        writeMarker(reviewRoot, """
+                {"schemaVersion":1,"inventorySha256":"%s","activatedAt":"not-a-date"}
+                """.formatted("a".repeat(64)));
+
+        assertEquals(Optional.empty(), ActivationMarkerStore.create(reviewRoot).read());
+    }
+
+    @Test
     void readIsAbsentWhenRequiredFieldsAreMissing(@TempDir Path reviewRoot) throws IOException {
         writeMarker(reviewRoot, "{\"schemaVersion\":1}");
 
