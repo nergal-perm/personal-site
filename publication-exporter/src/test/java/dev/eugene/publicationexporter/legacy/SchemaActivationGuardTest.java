@@ -81,10 +81,14 @@ class SchemaActivationGuardTest {
         CandidateWorkspace candidate = new NullCandidateWorkspace();
         candidate.install(IDENTITY, someSnapshot(), List.of());
 
-        SchemaActivationCheck check = SchemaActivationGuard.check(
-                new NullApprovedSnapshotWorkspace(), ActivationMarkerStore.createNull());
+        ApprovedSnapshotWorkspace approved = new NullApprovedSnapshotWorkspace();
+        ActivationMarkerStore markerStore = ActivationMarkerStore.createNull();
 
-        assertFalse(check.requiresMigration());
+        SchemaActivationCheck prepareCheck = SchemaActivationGuard.check(approved, candidate, markerStore);
+        SchemaActivationCheck releaseCheck = SchemaActivationGuard.check(approved, markerStore);
+
+        assertTrue(prepareCheck.requiresMigration());
+        assertFalse(releaseCheck.requiresMigration());
     }
 
     private static CandidateSnapshot someSnapshot() {
