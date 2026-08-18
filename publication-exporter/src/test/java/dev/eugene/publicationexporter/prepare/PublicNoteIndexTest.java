@@ -24,7 +24,16 @@ class PublicNoteIndexTest {
     void sourceIdForIsAbsentForAnAmbiguousStem() {
         PublicNoteIndex index = PublicNoteIndex.from(vaultReaderWithTwoNotesSharingAStem(), noteIntake());
 
+        assertEquals(Optional.empty(), index.routeFor("Target"));
         assertEquals(Optional.empty(), index.sourceIdFor("Target"));
+    }
+
+    @Test
+    void lookupsAreAbsentWhenNoCandidatesAreAdmitted() {
+        PublicNoteIndex index = PublicNoteIndex.from(vaultReaderWithNoAdmittedNotes(), noteIntake());
+
+        assertEquals(Optional.empty(), index.routeFor("Unpublished"));
+        assertEquals(Optional.empty(), index.sourceIdFor("Unpublished"));
     }
 
     private static VaultReader vaultReaderWithOneAdmittedNote() {
@@ -77,6 +86,23 @@ class PublicNoteIndexTest {
 
                         Second target body.
                         """));
+    }
+
+    private static VaultReader vaultReaderWithNoAdmittedNotes() {
+        VaultRelativePath notePath = VaultRelativePath.of("notes/Unpublished.md");
+        return VaultReader.createNull(Map.of(notePath, """
+                ---
+                publicCollection: blog
+                publicContentType: essay
+                publicId: unpublished
+                id: source-id-unpublished
+                title: Unpublished
+                description: This note is not published.
+                ---
+                # Unpublished
+
+                Unpublished body.
+                """));
     }
 
     private static NoteIntake noteIntake() {
