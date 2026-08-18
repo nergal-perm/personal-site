@@ -49,17 +49,10 @@ public final class BuildFromReviewHandler {
     }
 
     private ReleaseResult releaseApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot approved) {
-        List<Occurrence> occurrences = approved.referenceMap().occurrences();
-        ApprovedTargetRegistry registry = ApprovedTargetRegistry.forOccurrences(
-                occurrences, approvedSnapshotWorkspace);
-        OccurrenceResolution ruResolution = OccurrenceMarkerResolver.resolve(
-                approved.ruBody(), registry, occurrences, "ru");
-        OccurrenceResolution enResolution = OccurrenceMarkerResolver.resolve(
-                approved.enBody(), registry, occurrences, "en");
-        ReleaseProvenance provenance = provenanceFor(identity, approved,
-                ruResolution.activatedCount(), ruResolution.deactivatedCount());
+        ResolvedRelease resolvedRelease = resolveApprovedSnapshot(identity, approved);
         try {
-            releaseOutputStore.install(identity, ruResolution.body(), enResolution.body(), provenance);
+            releaseOutputStore.install(
+                    identity, resolvedRelease.ruBody(), resolvedRelease.enBody(), resolvedRelease.provenance());
         } catch (ReleaseAlreadyExistsException raceLoser) {
             return alreadyReleasedResult();
         } catch (ReleaseOutputStoreConfinementException failure) {
@@ -67,7 +60,21 @@ public final class BuildFromReviewHandler {
         } catch (UncheckedIOException failure) {
             return ReleaseResult.blocked(IoFailureMessages.describe("Release installation failed", failure));
         }
-        return ReleaseResult.released(identity, provenance);
+        return ReleaseResult.released(identity, resolvedRelease.provenance());
+    }
+
+    private ResolvedRelease resolveApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot approved) {
+        List<Occurrence> occurrences = approved.referenceMap().occurrences();
+        ApprovedTargetRegistry registry = ApprovedTargetRegistry.forOccurrences(
+                occurrences, approvedSnapshotWorkspace);
+        OccurrenceResolution ruResolution = OccurrenceMarkerResolver.resolve(
+                approved.ruBody(), registry, occurrences, "ru");
+        OccurrenceResolution enResolution = OccurrenceMarkerResolver.resolve(
+                approved.enBody(), registry, occurrences, "en");
+        // RU is the canonical count: both locale bodies resolve the same logical occurrences.
+        ReleaseProvenance provenance = provenanceFor(identity, approved,
+                ruResolution.activatedCount(), ruResolution.deactivatedCount());
+        return new ResolvedRelease(ruResolution.body(), enResolution.body(), provenance);
     }
 
     private static ReleaseProvenance provenanceFor(
@@ -86,6 +93,9 @@ public final class BuildFromReviewHandler {
 
     private static ReleaseResult alreadyReleasedResult() {
         return ReleaseResult.blocked("A release already exists at this output root; replacing it is not yet supported.");
+    }
+
+    private record ResolvedRelease(String ruBody, String enBody, ReleaseProvenance provenance) {
     }
 
 }

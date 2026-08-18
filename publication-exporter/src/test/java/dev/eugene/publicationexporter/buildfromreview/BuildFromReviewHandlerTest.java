@@ -115,6 +115,7 @@ class BuildFromReviewHandlerTest {
 
         assertTrue(result.ok());
         assertEquals("See it", releaseOutputStore.installed().get(IDENTITY).ruBody());
+        assertEquals("See it EN", releaseOutputStore.installed().get(IDENTITY).enBody());
         assertEquals(0, result.provenance().activationCount());
         assertEquals(1, result.provenance().deactivationCount());
     }

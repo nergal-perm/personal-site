@@ -68,4 +68,15 @@ class ReleaseProvenanceTest {
         assertEquals(0, json.get("activationCount").asInt());
         assertEquals(0, json.get("deactivationCount").asInt());
     }
+
+    @Test
+    void serializesNonzeroActivationAndDeactivationCountsAsJson() throws Exception {
+        ReleaseProvenance provenance = ReleaseProvenance.of(
+                IDENTITY, "approved-ru", "approved-en", "output-ru", "output-en", 2, 1);
+
+        JsonNode json = new ObjectMapper().readTree(new ObjectMapper().writeValueAsString(provenance));
+
+        assertEquals(2, json.get("activationCount").asInt());
+        assertEquals(1, json.get("deactivationCount").asInt());
+    }
 }
