@@ -63,24 +63,44 @@ public final class LinkResolver {
             output.append(link.group());
             return Optional.empty();
         }
-        Optional<String> route = knownNotes.routeFor(target);
-        if (route.isPresent()) {
-            output.append('[');
-            int spanStart = output.length();
-            output.append(label);
-            int spanEnd = output.length();
+        Optional<PublicNoteIndex.NoteReference> reference = knownNotes.referenceFor(target);
+        if (reference.isPresent()) {
             if (isEmbed) {
-                output.append("](").append(route.get()).append(')');
+                appendAdmittedEmbed(output, label, reference.get());
             } else {
-                String targetSourceId = knownNotes.sourceIdFor(target).orElseThrow();
-                output.append("](ref:").append(targetSourceId).append(')');
-                occurrences.add(new LinkOccurrence(lastPathSegment(target), label, route, spanStart, spanEnd));
+                appendAdmittedNonEmbed(output, target, label, reference.get(), occurrences);
             }
             return Optional.empty();
         }
         if (isEmbed) {
             return Optional.of(lastPathSegment(target));
         }
+        return appendUnresolvedLink(output, target, label, occurrences);
+    }
+
+    private static void appendAdmittedEmbed(
+            StringBuilder output, String label, PublicNoteIndex.NoteReference reference) {
+        output.append('[').append(label).append("](").append(reference.route()).append(')');
+    }
+
+    private static void appendAdmittedNonEmbed(
+            StringBuilder output, String target, String label, PublicNoteIndex.NoteReference reference,
+            List<LinkOccurrence> occurrences) {
+        output.append('[');
+        int spanStart = output.length();
+        output.append(label);
+        int spanEnd = output.length();
+        if (reference.sourceId() == null) {
+            output.append("](").append(reference.route()).append(')');
+        } else {
+            output.append("](ref:").append(reference.sourceId()).append(')');
+        }
+        occurrences.add(new LinkOccurrence(
+                lastPathSegment(target), label, Optional.of(reference.route()), spanStart, spanEnd));
+    }
+
+    private static Optional<String> appendUnresolvedLink(
+            StringBuilder output, String target, String label, List<LinkOccurrence> occurrences) {
         int spanStart = output.length();
         output.append(label);
         int spanEnd = output.length();

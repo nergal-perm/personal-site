@@ -36,14 +36,16 @@ final class PublicNoteIndex {
         return new PublicNoteIndex(new NoteReferenceIndex(references));
     }
 
+    Optional<NoteReference> referenceFor(String linkTarget) {
+        return Optional.ofNullable(referencesByFilenameStem.get(linkTarget));
+    }
+
     Optional<String> routeFor(String linkTarget) {
-        NoteReference reference = referencesByFilenameStem.get(linkTarget);
-        return reference == null ? Optional.empty() : Optional.of(reference.route());
+        return referenceFor(linkTarget).map(NoteReference::route);
     }
 
     Optional<String> sourceIdFor(String linkTarget) {
-        NoteReference reference = referencesByFilenameStem.get(linkTarget);
-        return reference == null ? Optional.empty() : Optional.ofNullable(reference.sourceId());
+        return referenceFor(linkTarget).map(NoteReference::sourceId);
     }
 
     private static void registerIfAdmitted(
@@ -72,7 +74,7 @@ final class PublicNoteIndex {
         return fileName.endsWith(".md") ? fileName.substring(0, fileName.length() - 3) : fileName;
     }
 
-    private record NoteReference(String route, String sourceId) {
+    record NoteReference(String route, String sourceId) {
     }
 
     private record NoteReferenceIndex(Map<String, NoteReference> values) {

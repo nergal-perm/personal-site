@@ -18,6 +18,9 @@ class PublicNoteIndexTest {
         PublicNoteIndex index = PublicNoteIndex.from(vaultReaderWithOneAdmittedNote(), noteIntake());
 
         assertEquals(Optional.of("vault-source-id-target"), index.sourceIdFor("Target"));
+        PublicNoteIndex.NoteReference reference = index.referenceFor("Target").orElseThrow();
+        assertEquals("/essays/target/", reference.route());
+        assertEquals("vault-source-id-target", reference.sourceId());
     }
 
     @Test

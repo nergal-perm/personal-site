@@ -74,7 +74,7 @@ final class LinkResolverTest {
     }
 
     @Test
-    void linkToBlogNoteTargetResolvesToNotesRoute() {
+    void linkToBlogNoteTargetResolvesToDurableReferenceMarker() {
         String note = """
                 ---
                 publish: true
@@ -115,6 +115,34 @@ final class LinkResolverTest {
         assertEquals("See [My Alias](ref:vault-source-id-target).", outcome.resolve(
                 (resolved, ignoredOccurrences) -> resolved,
                 target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked.")));
+    }
+
+    @Test
+    void repeatedLinksToTheSameAdmittedTargetKeepMarkersAndOccurrenceOrder() {
+        String body = "See [[Target]] and then [[Target|Again]].";
+
+        LinkResolutionOutcome outcome = LinkResolver.resolve(body, knownNotesWithOneAdmittedTarget());
+        List<LinkOccurrence> occurrences = outcome.resolve(
+                (resolved, seen) -> seen,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
+        String resolvedBody = outcome.resolve(
+                (resolved, ignoredOccurrences) -> resolved,
+                target -> fail("Expected a resolved result but transclusion of \"" + target + "\" was blocked."));
+
+        assertEquals("See [Target](ref:vault-source-id-target) and then [Again](ref:vault-source-id-target).",
+                resolvedBody);
+        assertEquals(2, occurrences.size());
+        assertEquals(List.of("Target", "Target"), occurrences.stream().map(LinkOccurrence::targetStem).toList());
+        assertEquals(List.of("Target", "Again"), occurrences.stream().map(LinkOccurrence::label).toList());
+        assertEquals(List.of(Optional.of("/essays/target/"), Optional.of("/essays/target/")),
+                occurrences.stream().map(LinkOccurrence::route).toList());
+        assertTrue(occurrences.get(0).spanStart() < occurrences.get(1).spanStart());
+    }
+
+    @Test
+    void legacyRouteOnlyIndexKeepsItsRouteForAnAdmittedNonEmbedLink() {
+        assertEquals("See [Target](/essays/target/).",
+                resolvedBodyOrFail("See [[Target]].", new PublicNoteIndex(Map.of("Target", "/essays/target/"))));
     }
 
     @Test
