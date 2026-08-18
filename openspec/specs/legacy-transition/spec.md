@@ -37,17 +37,22 @@ The inventory phase SHALL produce a deterministic report of legacy approved pair
 
 ### Requirement: MIG-03 Separate decision drafts from executable decisions
 
-Generated decision drafts SHALL be non-executable and SHALL become eligible for apply only after explicit human resolution, validation against a fresh inventory fingerprint, and conformance to the declared decision schema.
+Generated decision drafts SHALL be deterministic, visibly non-executable carriers that remain separate from the human decision file. A human decision file SHALL become eligible for later apply only after it conforms to the declared decision schema and matches a freshly generated inventory fingerprint. Presence of a generated-draft marker, a stale fingerprint, or malformed decision JSON SHALL reject the decision file before any review-workspace mutation.
 
-#### Scenario: Draft exists without approval
-- **GIVEN** an inventory and a generated decision draft
-- **WHEN** apply is requested using the draft directly
-- **THEN** apply is rejected without workspace mutation
+#### Scenario: Draft exists without human decision file
+- **GIVEN** an inventory and a generated decision draft marked non-executable
+- **WHEN** validation or a later apply attempts to use that draft as the decision file
+- **THEN** the operation is rejected without review-workspace mutation
+
+#### Scenario: Human decision file is fresh
+- **GIVEN** an unchanged workspace, a current inventory, and a separate human decision file matching its fingerprint and schema
+- **WHEN** the decision file is validated
+- **THEN** validation succeeds without review-workspace mutation
 
 #### Scenario: Decisions are stale
-- **GIVEN** human-resolved decisions bound to an older inventory and the workspace has since changed
-- **WHEN** apply is requested
-- **THEN** apply is blocked and a fresh inventory is required
+- **GIVEN** a human decision file bound to an older inventory fingerprint and the workspace has since changed
+- **WHEN** validation or a later apply attempts to use that decision file
+- **THEN** the operation is rejected without review-workspace mutation and requires a fresh inventory
 
 ### Requirement: MIG-04 Apply migration under exclusive, recoverable control
 
