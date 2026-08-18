@@ -134,6 +134,10 @@ public final class NoteIntake {
             return admission.description();
         }
 
+        public String sourceId() {
+            return admission.sourceId();
+        }
+
         public List<PublicField> fields() {
             return admission.fields();
         }
