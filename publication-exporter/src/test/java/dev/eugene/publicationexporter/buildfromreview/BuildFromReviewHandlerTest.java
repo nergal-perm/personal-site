@@ -4,7 +4,9 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.approved.NullApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.release.NullReleaseOutputStore;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -57,6 +60,63 @@ class BuildFromReviewHandlerTest {
         assertTrue(releaseOutputStore.installed().containsKey(IDENTITY));
         assertEquals("# My Essay", releaseOutputStore.installed().get(IDENTITY).ruBody());
         assertEquals("# My Essay (EN)", releaseOutputStore.installed().get(IDENTITY).enBody());
+    }
+
+    @Test
+    void anActivatedOccurrenceIsResolvedToARouteAndCountedInProvenance() {
+        NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
+        PublicationIdentity targetIdentity = PublicationIdentity.of("blog", "note", "target");
+        approvedSnapshotWorkspace.install(targetIdentity, CandidateSnapshot.of(
+                "Target RU", "Target EN", List.of(), List.of(), "",
+                ReferenceMap.of(targetIdentity, "vault-source-id-target",
+                        ContentHash.sha256Hex("Target RU"), ContentHash.sha256Hex("Target EN"),
+                        "ru-fields-hash", "en-fields-hash", "structured-hash", List.of())));
+        Occurrence occurrence = new Occurrence(
+                "ref-0001", 0, "vault-source-id-target", "See it", "See it EN");
+        ReferenceMap referrerReferenceMap = ReferenceMap.of(IDENTITY,
+                ContentHash.sha256Hex("[See it](ref:vault-source-id-target)"),
+                ContentHash.sha256Hex("[See it EN](ref:vault-source-id-target)"),
+                "ru-fields-hash", "en-fields-hash", "structured-hash", List.of(occurrence));
+        approvedSnapshotWorkspace.install(IDENTITY, CandidateSnapshot.of(
+                "[See it](ref:vault-source-id-target)", "[See it EN](ref:vault-source-id-target)",
+                List.of(), List.of(), "", referrerReferenceMap));
+        NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
+
+        ReleaseResult result = handler.buildFromReview(IDENTITY);
+
+        assertTrue(result.ok());
+        assertEquals("[See it](/ru/notes/target/)", releaseOutputStore.installed().get(IDENTITY).ruBody());
+        assertEquals("[See it EN](/en/notes/target/)", releaseOutputStore.installed().get(IDENTITY).enBody());
+        assertEquals(1, result.provenance().activationCount());
+        assertEquals(0, result.provenance().deactivationCount());
+        assertEquals(ContentHash.sha256Hex("[See it](ref:vault-source-id-target)"),
+                result.provenance().outputRuHash());
+        assertEquals(ContentHash.sha256Hex("[See it EN](ref:vault-source-id-target)"),
+                result.provenance().outputEnHash());
+    }
+
+    @Test
+    void anOccurrenceWithNoApprovedTargetIsStrippedToItsLabelAndCountedAsDeactivated() {
+        NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
+        Occurrence occurrence = new Occurrence(
+                "ref-0001", 0, "vault-source-id-missing", "See it", "See it EN");
+        ReferenceMap referrerReferenceMap = ReferenceMap.of(IDENTITY,
+                ContentHash.sha256Hex("[See it](ref:vault-source-id-missing)"),
+                ContentHash.sha256Hex("[See it EN](ref:vault-source-id-missing)"),
+                "ru-fields-hash", "en-fields-hash", "structured-hash", List.of(occurrence));
+        approvedSnapshotWorkspace.install(IDENTITY, CandidateSnapshot.of(
+                "[See it](ref:vault-source-id-missing)", "[See it EN](ref:vault-source-id-missing)",
+                List.of(), List.of(), "", referrerReferenceMap));
+        NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore);
+
+        ReleaseResult result = handler.buildFromReview(IDENTITY);
+
+        assertTrue(result.ok());
+        assertEquals("See it", releaseOutputStore.installed().get(IDENTITY).ruBody());
+        assertEquals(0, result.provenance().activationCount());
+        assertEquals(1, result.provenance().deactivationCount());
     }
 
     @Test

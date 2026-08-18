@@ -7,12 +7,17 @@ import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.Occurrence;
+import dev.eugene.publicationexporter.release.ApprovedTargetRegistry;
+import dev.eugene.publicationexporter.release.OccurrenceMarkerResolver;
+import dev.eugene.publicationexporter.release.OccurrenceResolution;
 import dev.eugene.publicationexporter.release.ReleaseAlreadyExistsException;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
 import dev.eugene.publicationexporter.release.ReleaseOutputStoreConfinementException;
 import dev.eugene.publicationexporter.release.ReleaseProvenance;
 
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -44,9 +49,17 @@ public final class BuildFromReviewHandler {
     }
 
     private ReleaseResult releaseApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot approved) {
-        ReleaseProvenance provenance = provenanceFor(identity, approved);
+        List<Occurrence> occurrences = approved.referenceMap().occurrences();
+        ApprovedTargetRegistry registry = ApprovedTargetRegistry.forOccurrences(
+                occurrences, approvedSnapshotWorkspace);
+        OccurrenceResolution ruResolution = OccurrenceMarkerResolver.resolve(
+                approved.ruBody(), registry, occurrences, "ru");
+        OccurrenceResolution enResolution = OccurrenceMarkerResolver.resolve(
+                approved.enBody(), registry, occurrences, "en");
+        ReleaseProvenance provenance = provenanceFor(identity, approved,
+                ruResolution.activatedCount(), ruResolution.deactivatedCount());
         try {
-            releaseOutputStore.install(identity, approved.ruBody(), approved.enBody(), provenance);
+            releaseOutputStore.install(identity, ruResolution.body(), enResolution.body(), provenance);
         } catch (ReleaseAlreadyExistsException raceLoser) {
             return alreadyReleasedResult();
         } catch (ReleaseOutputStoreConfinementException failure) {
@@ -57,12 +70,14 @@ public final class BuildFromReviewHandler {
         return ReleaseResult.released(identity, provenance);
     }
 
-    private static ReleaseProvenance provenanceFor(PublicationIdentity identity, CandidateSnapshot approved) {
+    private static ReleaseProvenance provenanceFor(
+            PublicationIdentity identity, CandidateSnapshot approved,
+            int activationCount, int deactivationCount) {
         String outputRuHash = ContentHash.sha256Hex(approved.ruBody());
         String outputEnHash = ContentHash.sha256Hex(approved.enBody());
         return ReleaseProvenance.of(identity,
                 approved.referenceMap().ruHash(), approved.referenceMap().enHash(),
-                outputRuHash, outputEnHash);
+                outputRuHash, outputEnHash, activationCount, deactivationCount);
     }
 
     private static ReleaseResult noApprovedSnapshotResult() {

@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class ReleaseProvenanceTest {
@@ -31,6 +32,17 @@ class ReleaseProvenanceTest {
         assertEquals(
                 ReleaseProvenance.of(IDENTITY, "ru", "en", "ru", "en"),
                 ReleaseProvenance.of(IDENTITY, "ru", "en", "ru", "en"));
+    }
+
+    @Test
+    void explicitActivationCountsAreExposedAndParticipateInEquality() {
+        ReleaseProvenance provenance = ReleaseProvenance.of(
+                IDENTITY, "ru", "en", "ru", "en", 2, 1);
+
+        assertEquals(2, provenance.activationCount());
+        assertEquals(1, provenance.deactivationCount());
+        assertNotEquals(provenance, ReleaseProvenance.of(
+                IDENTITY, "ru", "en", "ru", "en", 1, 2));
     }
 
     @Test
