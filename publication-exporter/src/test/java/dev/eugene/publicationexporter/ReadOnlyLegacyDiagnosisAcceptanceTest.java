@@ -7,8 +7,8 @@ import dev.eugene.publicationexporter.buildfromreview.ReleaseResult;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
-import dev.eugene.publicationexporter.legacy.ActivationMarker;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerTestFixtures;
 import dev.eugene.publicationexporter.legacy.LegacyWorkspaceInventory;
 import dev.eugene.publicationexporter.legacy.LegacyWorkspaceInventoryHandler;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -16,8 +16,8 @@ import dev.eugene.publicationexporter.release.NullReleaseOutputStore;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
 import org.junit.jupiter.api.Test;
 
-import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -55,7 +55,7 @@ class ReadOnlyLegacyDiagnosisAcceptanceTest {
     }
 
     @Test
-    void inventoryOverTheSameLegacyWorkspaceIsDeterministicAndReportsTheMissingIdentity() {
+    void inventoryOverTheSameLegacyWorkspaceIsDeterministicAndNamesTheBlockedIdentity() {
         NullApprovedSnapshotWorkspace approved = new NullApprovedSnapshotWorkspace();
         approved.install(LEGACY_IDENTITY, snapshotWithNoSourceId(LEGACY_IDENTITY));
         LegacyWorkspaceInventoryHandler inventoryHandler =
@@ -66,34 +66,42 @@ class ReadOnlyLegacyDiagnosisAcceptanceTest {
 
         assertEquals(List.of(LEGACY_IDENTITY), first.approvedPairs());
         assertEquals(1, first.blockers().size());
+        assertTrue(first.blockers().get(0).contains(LEGACY_IDENTITY.toString()));
         assertEquals(first.inventorySha256(), second.inventorySha256());
     }
 
     @Test
-    void aValidActivationMarkerLetsALegacyShapedWorkspaceReleaseNormallyAgain() {
+    void aValidActivationMarkerLetsALegacyShapedWorkspaceReleaseAndInstallNormallyAgain() {
         NullApprovedSnapshotWorkspace approved = new NullApprovedSnapshotWorkspace();
         approved.install(LEGACY_IDENTITY, snapshotWithSourceId(LEGACY_IDENTITY, "vault-source-id-legacy"));
-        ActivationMarker validMarker =
-                new ActivationMarker(1, "a".repeat(64), Instant.parse("2026-08-18T00:00:00Z"));
+        NullReleaseOutputStore releaseOutputStore = new NullReleaseOutputStore();
         BuildFromReviewHandler handler = new BuildFromReviewHandler(
-                approved, ReleaseOutputStore.createNull(), ActivationMarkerStore.createNull(validMarker));
+                approved, releaseOutputStore, ActivationMarkerTestFixtures.activatedMarkerStore());
 
         ReleaseResult result = handler.buildFromReview(LEGACY_IDENTITY);
 
         assertTrue(result.ok());
+        assertTrue(releaseOutputStore.installed().containsKey(LEGACY_IDENTITY));
+        assertEquals("ru body", releaseOutputStore.installed().get(LEGACY_IDENTITY).ruBody());
+        assertEquals("en body", releaseOutputStore.installed().get(LEGACY_IDENTITY).enBody());
     }
 
     private static CandidateSnapshot snapshotWithSourceId(PublicationIdentity identity, String sourceId) {
-        ReferenceMap referenceMap = ReferenceMap.of(identity, sourceId,
-                ContentHash.sha256Hex("ru body"), ContentHash.sha256Hex("en body"),
-                "ru-fields-hash", "en-fields-hash", "structured-hash", List.of());
-        return CandidateSnapshot.of("ru body", "en body", List.of(), List.of(), "", referenceMap);
+        return snapshot(identity, Optional.of(sourceId));
     }
 
     private static CandidateSnapshot snapshotWithNoSourceId(PublicationIdentity identity) {
-        ReferenceMap referenceMap = ReferenceMap.of(identity,
-                ContentHash.sha256Hex("ru body"), ContentHash.sha256Hex("en body"),
-                "ru-fields-hash", "en-fields-hash", "structured-hash", List.of());
+        return snapshot(identity, Optional.empty());
+    }
+
+    private static CandidateSnapshot snapshot(PublicationIdentity identity, Optional<String> sourceId) {
+        ReferenceMap referenceMap = sourceId
+                .map(id -> ReferenceMap.of(identity, id,
+                        ContentHash.sha256Hex("ru body"), ContentHash.sha256Hex("en body"),
+                        "ru-fields-hash", "en-fields-hash", "structured-hash", List.of()))
+                .orElseGet(() -> ReferenceMap.of(identity,
+                        ContentHash.sha256Hex("ru body"), ContentHash.sha256Hex("en body"),
+                        "ru-fields-hash", "en-fields-hash", "structured-hash", List.of()));
         return CandidateSnapshot.of("ru body", "en body", List.of(), List.of(), "", referenceMap);
     }
 }
