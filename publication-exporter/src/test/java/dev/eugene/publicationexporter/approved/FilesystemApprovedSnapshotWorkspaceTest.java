@@ -18,7 +18,9 @@ import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.FileTime;
 import java.io.UncheckedIOException;
+import java.util.Base64;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CountDownLatch;
@@ -26,6 +28,8 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.Optional;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -153,6 +157,18 @@ class FilesystemApprovedSnapshotWorkspaceTest {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
 
         assertEquals(List.of(), workspace.allIdentities());
+    }
+
+    @Test
+    void allIdentitiesLeavesOrdinaryInstalledFilesAndModificationTimesUnchanged() throws Exception {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        installSnapshot(workspace, "Stable");
+        Map<Path, FileState> before = fileStatesUnder(reviewRoot);
+
+        assertEquals(List.of(IDENTITY), workspace.allIdentities());
+        assertEquals(List.of(IDENTITY), workspace.allIdentities());
+
+        assertEquals(before, fileStatesUnder(reviewRoot));
     }
 
     @Test
@@ -638,6 +654,21 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     private static ReferenceMap referenceMap(String suffix) {
         String generation = Character.toUpperCase(suffix.charAt(0)) + suffix.substring(1);
         return referenceMapFor(generation);
+    }
+
+    private static Map<Path, FileState> fileStatesUnder(Path root) throws Exception {
+        Map<Path, FileState> states = new TreeMap<>();
+        try (var paths = Files.walk(root)) {
+            for (Path path : paths.filter(Files::isRegularFile).sorted().toList()) {
+                states.put(root.relativize(path), new FileState(
+                        Base64.getEncoder().encodeToString(Files.readAllBytes(path)),
+                        Files.getLastModifiedTime(path)));
+            }
+        }
+        return states;
+    }
+
+    private record FileState(String contentBase64, FileTime modifiedAt) {
     }
 
     private static void installSnapshot(FilesystemApprovedSnapshotWorkspace workspace, String generation) {

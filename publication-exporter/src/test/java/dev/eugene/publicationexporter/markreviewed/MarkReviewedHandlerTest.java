@@ -13,6 +13,7 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementException;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -44,6 +45,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static dev.eugene.publicationexporter.legacy.ActivationMarkerTestFixtures.activatedMarkerStore;
 
 class MarkReviewedHandlerTest {
 
@@ -131,7 +133,8 @@ class MarkReviewedHandlerTest {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull(),
+                activatedMarkerStore());
 
         BridgeResponse response = handler.markReviewed(
                 path, VaultReader.createNull(Map.of(path, VALID_ESSAY)));
@@ -158,7 +161,7 @@ class MarkReviewedHandlerTest {
         NullWorkflowStatusEditor workflowStatusEditor = new NullWorkflowStatusEditor(Map.of(path, VALID_ESSAY));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor);
+                candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor, activatedMarkerStore());
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
 
@@ -171,6 +174,28 @@ class MarkReviewedHandlerTest {
         assertEquals("A valid description.", dev.eugene.publicationexporter.reference.PublicField.value(approved.ruFields(), "description").orElseThrow());
         assertEquals("EN description.", dev.eugene.publicationexporter.reference.PublicField.value(approved.enFields(), "description").orElseThrow());
         assertEquals("ready_to_publish", workflowStatusEditor.currentValue(path, "workflowStatus"));
+    }
+
+    @Test
+    void legacyCandidateWorkspaceWithoutActivationMarkerIsBlockedBeforeApprovedMutation() {
+        VaultRelativePath path = validEssayPath();
+        CandidateWorkspace candidateWorkspace = exactCandidateWorkspace();
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        CandidateSnapshot candidateBefore = candidateWorkspace.read(identity).orElseThrow();
+        NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                candidateWorkspace, approvedSnapshotWorkspace, WorkflowStatusEditor.createNull(),
+                ActivationMarkerStore.createNull());
+
+        BridgeResponse response = handler.markReviewed(path, validEssayReader());
+
+        assertFalse(response.ok());
+        assertEquals("metadata_blocked", response.status());
+        assertEquals("workspace", response.diagnostics().get(0).field());
+        assertTrue(response.diagnostics().get(0).message().contains("read-only migration inventory"));
+        assertTrue(approvedSnapshotWorkspace.read(identity).isEmpty());
+        assertEquals(candidateBefore, candidateWorkspace.read(identity).orElseThrow());
     }
 
     @Test
@@ -189,7 +214,7 @@ class MarkReviewedHandlerTest {
                 candidateWorkspace, approvedSnapshotWorkspace, WorkflowStatusEditor.createNull());
         MarkReviewedHandler markReviewedHandler = new MarkReviewedHandler(
                 noteIntake, candidateWorkspace, approvedSnapshotWorkspace,
-                new NullWorkflowStatusEditor(Map.of(path, source)));
+                new NullWorkflowStatusEditor(Map.of(path, source)), activatedMarkerStore());
 
         BridgeResponse prepared = prepareHandler.prepare(path, vaultReader, VaultAssetReader.createNull());
         BridgeResponse approved = markReviewedHandler.markReviewed(path, vaultReader);
@@ -216,7 +241,7 @@ class MarkReviewedHandlerTest {
         NullWorkflowStatusEditor workflowStatusEditor = new NullWorkflowStatusEditor(Map.of(path, VALID_ESSAY));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor);
+                candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor, activatedMarkerStore());
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
 
@@ -252,7 +277,8 @@ class MarkReviewedHandlerTest {
                         ContentHash.sha256Hex("# An old version of My Essay")));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull(),
+                activatedMarkerStore());
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
 
@@ -282,7 +308,8 @@ class MarkReviewedHandlerTest {
                         ContentHash.sha256Hex(""), List.of(), ContentHash.sha256Hex(ESSAY_BODY)));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull(),
+                activatedMarkerStore());
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
 
@@ -417,7 +444,8 @@ class MarkReviewedHandlerTest {
                 new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace,
                 ApprovedSnapshotWorkspace.createNull(),
-                WorkflowStatusEditor.createNull());
+                WorkflowStatusEditor.createNull(),
+                activatedMarkerStore());
 
         BridgeResponse response = handler.markReviewed(path, vaultReader);
 
@@ -494,10 +522,10 @@ class MarkReviewedHandlerTest {
                 Map.of(validEssayPath(), VALID_ESSAY));
         MarkReviewedHandler firstHandler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, approved, workflowStatusEditor);
+                candidateWorkspace, approved, workflowStatusEditor, activatedMarkerStore());
         MarkReviewedHandler secondHandler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, approved, workflowStatusEditor);
+                candidateWorkspace, approved, workflowStatusEditor, activatedMarkerStore());
         var executor = Executors.newFixedThreadPool(2);
         try {
             var first = executor.submit(() -> firstHandler.markReviewed(validEssayPath(), changingReader));
@@ -532,7 +560,8 @@ class MarkReviewedHandlerTest {
 
         BridgeResponse response = lockHolder.withApprovalLock(identity,
                 () -> new MarkReviewedHandler(
-                new NoteIntake(PublicationKinds.installed()), exactCandidateWorkspace(), contender, WorkflowStatusEditor.createNull())
+                new NoteIntake(PublicationKinds.installed()), exactCandidateWorkspace(), contender,
+                WorkflowStatusEditor.createNull(), activatedMarkerStore())
                         .markReviewed(validEssayPath(), validEssayReader()));
 
         assertFalse(response.ok());
@@ -584,7 +613,8 @@ class MarkReviewedHandlerTest {
                 ruDescription, enDescription, referenceMap);
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
-                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull(),
+                activatedMarkerStore());
         return handler.markReviewed(validEssayPath(), validEssayReader());
     }
 

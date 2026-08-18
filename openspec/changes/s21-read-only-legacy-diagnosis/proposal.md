@@ -30,8 +30,11 @@ still needs manual CLI binding). That selection keeps S22 (non-executable migrat
   review workspace that predates this slice's semantic-schema activation marker (introduced by this slice, per
   MIG-05) — concretely, any workspace with approved or candidate triples on disk but no `schema-v1.active.json`
   equivalent recording that it has been inventoried under the current schema edition.
-- **Normal `prepare`/`build-from-review` gain a fail-closed guard**: when either observes a legacy-shaped
-  workspace (approved/candidate content present, activation marker absent or inconsistent), it blocks with
+- **Normal `prepare` gains a fail-closed guard inspecting both approved and candidate content; normal
+  `build-from-review` gains the same guard inspecting approved content only** (it has no candidate
+  collaborator — a workspace with candidate-only legacy content and no approved content already fails
+  release for the ordinary "no approved snapshot" reason, harmlessly). Either path blocks on a legacy-shaped
+  workspace (content present, activation marker absent or inconsistent) with
   migration-required evidence in its bridge response rather than mutating candidate, approved, or release
   state (MIG-01, MIG-05). A workspace with no prior content at all (the shape every existing acceptance test
   uses) is never legacy-shaped and is entirely unaffected — this is the same "current semantic workspace"

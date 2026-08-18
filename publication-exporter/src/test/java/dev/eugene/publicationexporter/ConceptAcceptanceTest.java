@@ -97,7 +97,8 @@ class ConceptAcceptanceTest {
                 noteIntake,
                 candidateWorkspace,
                 approvedSnapshotWorkspace,
-                workflowStatusEditor);
+                workflowStatusEditor,
+                ActivationMarkerTestFixtures.activatedMarkerStore());
         BridgeResponse approveResponse = markReviewedHandler.markReviewed(path, vaultReader);
 
         assertTrue(approveResponse.ok(), approveResponse.diagnostics().toString());

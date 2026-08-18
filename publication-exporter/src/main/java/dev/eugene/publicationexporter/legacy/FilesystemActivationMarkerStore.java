@@ -50,7 +50,9 @@ final class FilesystemActivationMarkerStore implements ActivationMarkerStore {
         JsonNode schemaVersion = root.get("schemaVersion");
         JsonNode inventorySha256 = root.get("inventorySha256");
         JsonNode activatedAt = root.get("activatedAt");
-        if (schemaVersion == null || inventorySha256 == null || activatedAt == null) {
+        if (schemaVersion == null || !schemaVersion.isInt()
+                || inventorySha256 == null || !inventorySha256.isTextual()
+                || activatedAt == null || !activatedAt.isTextual()) {
             return Optional.empty();
         }
         return Optional.of(new ActivationMarker(

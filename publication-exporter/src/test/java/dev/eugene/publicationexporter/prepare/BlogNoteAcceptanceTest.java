@@ -63,7 +63,8 @@ class BlogNoteAcceptanceTest {
 
         WorkflowStatusEditor markdownEditor = new NullWorkflowStatusEditor(Map.of(path, VALID_NOTE));
         MarkReviewedHandler markReviewedHandler =
-                new MarkReviewedHandler(noteIntake, candidateWorkspace, approvedSnapshotWorkspace, markdownEditor);
+                new MarkReviewedHandler(noteIntake, candidateWorkspace, approvedSnapshotWorkspace, markdownEditor,
+                        ActivationMarkerTestFixtures.activatedMarkerStore());
         BridgeResponse approveResponse = markReviewedHandler.markReviewed(path, vaultReader);
 
         assertTrue(approveResponse.ok());

@@ -147,7 +147,8 @@ class BlogClaimAcceptanceTest {
                     noteIntake,
                     candidateWorkspace,
                     approvedSnapshotWorkspace,
-                    new NullWorkflowStatusEditor(Map.of(path, VALID_CLAIM)));
+                    new NullWorkflowStatusEditor(Map.of(path, VALID_CLAIM)),
+                    ActivationMarkerTestFixtures.activatedMarkerStore());
             this.buildFromReviewHandler = new BuildFromReviewHandler(
                     approvedSnapshotWorkspace,
                     ReleaseOutputStore.createNull(), ActivationMarkerTestFixtures.activatedMarkerStore());

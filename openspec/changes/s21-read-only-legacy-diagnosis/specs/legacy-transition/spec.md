@@ -16,7 +16,7 @@ Normal admission, preparation, approval, and release SHALL use source-owned IDs 
 
 ### Requirement: MIG-02 Inventory legacy state without mutation
 
-The inventory phase SHALL produce a deterministic report of legacy approved pairs, candidate pairs, existing identities, semantic occurrences, ambiguities, unsafe paths, and migration blockers without changing source, review, or site files.
+The inventory phase SHALL produce a deterministic report of legacy approved pairs, candidate pairs, cross-pair ambiguities (mismatched source IDs between an approved and candidate pair sharing an identity), and migration blockers (pairs missing a recorded source ID) without changing source, review, or site files. Reporting semantic occurrences and unsafe paths individually is deferred to a follow-up slice; this slice's fingerprint covers only the fields above, so it will not detect occurrence-only changes.
 
 #### Scenario: Inventory is repeated
 - **GIVEN** an unchanged legacy vault and review workspace

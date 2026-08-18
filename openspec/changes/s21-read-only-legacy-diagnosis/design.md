@@ -210,6 +210,11 @@ the plugin to route toward — speculative now.
 
 ## Risks / Trade-offs
 
+- [Risk] `allIdentities()` inherits `FilesystemApprovedSnapshotWorkspace`'s pre-existing interrupted-approval
+  recovery behavior on `candidateDirectoriesInOrder()`; a workspace with a stale `approved-backup-*`
+  directory present may be recovered as a side effect of inventory, matching the same behavior `read()`
+  already has. This is a known, pre-existing limitation of the underlying workspace adapter, not new to S21
+  — fully isolating inventory from it is deferred to a future slice.
 - [Risk] `SchemaActivationGuard.check` runs `allIdentities()` on *every* `prepare`/`buildFromReview` call once
   any legacy content exists (until S22/S23 install a marker), which is an O(n) directory scan per call. →
   Mitigation: identical performance shape and precedent to S20's `findBySourceId` (also O(n) per release call,

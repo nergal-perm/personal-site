@@ -150,7 +150,8 @@ class CuratedPageAcceptanceTest {
                 fixture.noteIntake(),
                 fixture.candidateWorkspace(),
                 fixture.approvedSnapshotWorkspace(),
-                fixture.workflowStatusEditor());
+                fixture.workflowStatusEditor(),
+                ActivationMarkerTestFixtures.activatedMarkerStore());
         BridgeResponse response = markReviewedHandler.markReviewed(
                 fixture.path(), fixture.vaultReader());
 

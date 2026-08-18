@@ -191,7 +191,8 @@ class LateBoundTargetActivationAcceptanceTest {
                 noteIntake,
                 candidateWorkspace,
                 approvedSnapshotWorkspace,
-                new NullWorkflowStatusEditor(Map.of(notePath, source)))
+                new NullWorkflowStatusEditor(Map.of(notePath, source)),
+                ActivationMarkerTestFixtures.activatedMarkerStore())
                 .markReviewed(notePath, vaultReader);
     }
 
