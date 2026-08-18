@@ -11,6 +11,7 @@ import java.io.UncheckedIOException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 
 public final class ReferenceMapCodec {
@@ -49,26 +50,28 @@ public final class ReferenceMapCodec {
 
     private static ReferenceMap referenceMapFrom(JsonNode root) {
         PublicationIdentity identity = identityFrom(root.get("publicationIdentity"));
-        JsonNode sourceIdNode = root.get("sourceId");
-        String sourceId = (sourceIdNode == null || sourceIdNode.isNull()) ? null : sourceIdNode.asText();
-        return sourceId == null
-                ? ReferenceMap.of(
-                        identity,
-                        root.get("ruHash").asText(),
-                        root.get("enHash").asText(),
-                        root.get("ruFieldsHash").asText(),
-                        root.get("enFieldsHash").asText(),
-                        root.get("structuredDataHash").asText(),
-                        occurrencesFrom(root.get("occurrences")))
-                : ReferenceMap.of(
-                        identity,
-                        sourceId,
-                        root.get("ruHash").asText(),
-                        root.get("enHash").asText(),
-                        root.get("ruFieldsHash").asText(),
-                        root.get("enFieldsHash").asText(),
-                        root.get("structuredDataHash").asText(),
-                        occurrencesFrom(root.get("occurrences")));
+        Optional<String> sourceId = Optional.ofNullable(root.get("sourceId"))
+                .filter(node -> !node.isNull())
+                .map(JsonNode::asText);
+        if (sourceId.isEmpty()) {
+            return ReferenceMap.of(
+                    identity,
+                    root.get("ruHash").asText(),
+                    root.get("enHash").asText(),
+                    root.get("ruFieldsHash").asText(),
+                    root.get("enFieldsHash").asText(),
+                    root.get("structuredDataHash").asText(),
+                    occurrencesFrom(root.get("occurrences")));
+        }
+        return ReferenceMap.of(
+                identity,
+                sourceId.orElseThrow(),
+                root.get("ruHash").asText(),
+                root.get("enHash").asText(),
+                root.get("ruFieldsHash").asText(),
+                root.get("enFieldsHash").asText(),
+                root.get("structuredDataHash").asText(),
+                occurrencesFrom(root.get("occurrences")));
     }
 
     private static List<Occurrence> occurrencesFrom(JsonNode occurrencesNode) {

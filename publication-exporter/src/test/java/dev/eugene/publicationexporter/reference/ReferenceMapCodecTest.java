@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -99,9 +100,11 @@ class ReferenceMapCodecTest {
     }
 
     @Test
-    void readReturnsTheIdentityAndHashesTheJsonCarries() {
+    void readReturnsTheIdentityAndHashesTheJsonCarries() throws Exception {
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         String json = ReferenceMapCodec.write(referenceMap(identity));
+
+        assertFalse(new ObjectMapper().readTree(json).has("sourceId"));
 
         ReferenceMap parsed = ReferenceMapCodec.read(json);
 
