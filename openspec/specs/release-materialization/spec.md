@@ -20,12 +20,17 @@ Release materialization SHALL derive publishable RU and EN pages exclusively fro
 
 ### Requirement: REL-02 Resolve bilingual semantic projection without private leaks
 
-Release SHALL resolve approved semantic occurrences through the current approved-target registry, use locale-correct routes and labels, preserve headings and ordinary Markdown, and emit no semantic token, source ID, private vault path, or internal private route.
+Release SHALL resolve approved semantic occurrences through the current approved-target registry, use locale-correct routes and labels, preserve headings and ordinary Markdown, and emit no semantic token, source ID, private vault path, or internal private route. A resolved route is selected according to the target's own publication kind (e.g. `/{lang}/essays/{publicId}/` for `blog/essay`, `/{lang}/notes/{publicId}/` for `blog/note`), not the referrer's kind — this is the release-time counterpart of PCM-03's admission-time kind-routing, now evaluated against the target's current approval state instead of baked in at the referrer's prepare time.
 
 #### Scenario: Approved target is visible
 - **GIVEN** an approved referrer and a selected approved target with RU and EN routes
 - **WHEN** bilingual release pages are projected
 - **THEN** RU uses the RU route and label and EN uses the EN route and label
+
+#### Scenario: Approved target's route matches its own publication kind
+- **GIVEN** an approved referrer occurrence pointing to a `blog/note` target while the referrer itself is a `blog/essay`
+- **WHEN** bilingual release pages are projected
+- **THEN** the resolved route is the target's own `/{lang}/notes/{publicId}/` route, not the referrer's `/{lang}/essays/{publicId}/` shape
 
 #### Scenario: Target is not visible
 - **GIVEN** an approved occurrence whose target is not currently releasable
@@ -106,4 +111,3 @@ The generated site input SHALL pass checks for managed-root ownership, expected 
 - **GIVEN** a missing or extra page, invalid collection relation, marker leak, unsafe path, or provenance mismatch
 - **WHEN** the site build runs
 - **THEN** it fails before publication deployment can be considered successful
-

@@ -2,10 +2,10 @@ package dev.eugene.publicationexporter.release;
 
 import dev.eugene.publicationexporter.reference.Occurrence;
 
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -18,16 +18,19 @@ public final class OccurrenceMarkerResolver {
 
     public static OccurrenceResolution resolve(
             String body, ApprovedTargetRegistry registry, List<Occurrence> occurrences, String language) {
-        Map<String, Occurrence> occurrencesByTargetSourceId = indexOccurrencesByTargetSourceId(occurrences);
         Matcher matcher = MARKER.matcher(body);
         StringBuilder rewritten = new StringBuilder(body.length());
         int cursor = 0;
         int activated = 0;
         int deactivated = 0;
+        int occurrenceIndex = 0;
         while (matcher.find()) {
             rewritten.append(body, cursor, matcher.start());
+            String targetSourceId = URLDecoder.decode(matcher.group("sourceId"), StandardCharsets.UTF_8);
+            MatchedOccurrence matched = occurrenceFollowing(occurrences, occurrenceIndex, targetSourceId);
+            occurrenceIndex = matched.nextIndex();
             MarkerSubstitution substitution = substituteMarker(
-                    matcher, occurrencesByTargetSourceId, registry, language);
+                    matcher, targetSourceId, matched.occurrence(), registry, language);
             rewritten.append(substitution.body());
             if (substitution.activated()) {
                 activated++;
@@ -40,19 +43,21 @@ public final class OccurrenceMarkerResolver {
         return OccurrenceResolution.of(rewritten.toString(), activated, deactivated);
     }
 
-    private static Map<String, Occurrence> indexOccurrencesByTargetSourceId(List<Occurrence> occurrences) {
-        Map<String, Occurrence> occurrencesByTargetSourceId = new LinkedHashMap<>();
-        for (Occurrence occurrence : occurrences) {
-            occurrencesByTargetSourceId.putIfAbsent(occurrence.targetSourceId(), occurrence);
+    private static MatchedOccurrence occurrenceFollowing(
+            List<Occurrence> occurrences, int occurrenceIndex, String targetSourceId) {
+        for (int index = occurrenceIndex; index < occurrences.size(); index++) {
+            Occurrence occurrence = occurrences.get(index);
+            if (occurrence.targetSourceId().equals(targetSourceId)) {
+                return new MatchedOccurrence(Optional.of(occurrence), index + 1);
+            }
         }
-        return occurrencesByTargetSourceId;
+        return new MatchedOccurrence(Optional.empty(), occurrenceIndex);
     }
 
     private static MarkerSubstitution substituteMarker(
-            Matcher matcher, Map<String, Occurrence> occurrencesByTargetSourceId,
+            Matcher matcher, String targetSourceId, Optional<Occurrence> occurrence,
             ApprovedTargetRegistry registry, String language) {
-        String targetSourceId = matcher.group("sourceId");
-        String label = storedLabel(occurrencesByTargetSourceId, targetSourceId, language, matcher.group("label"));
+        String label = storedLabel(occurrence, targetSourceId, language, matcher.group("label"));
         return registry.find(targetSourceId)
                 .map(target -> new MarkerSubstitution(
                         "[" + label + "](" + routeFor(target, language) + ")", true))
@@ -64,13 +69,17 @@ public final class OccurrenceMarkerResolver {
     }
 
     private static String storedLabel(
-            Map<String, Occurrence> occurrencesByTargetSourceId, String targetSourceId, String language,
+            Optional<Occurrence> occurrence, String targetSourceId, String language,
             String fallbackLabel) {
-        return Optional.ofNullable(occurrencesByTargetSourceId.get(targetSourceId))
-                .map(occurrence -> "ru".equals(language) ? occurrence.ruLabel() : occurrence.enLabel())
+        return occurrence
+                .filter(value -> value.targetSourceId().equals(targetSourceId))
+                .map(value -> "ru".equals(language) ? value.ruLabel() : value.enLabel())
                 .orElse(fallbackLabel);
     }
 
     private record MarkerSubstitution(String body, boolean activated) {
+    }
+
+    private record MatchedOccurrence(Optional<Occurrence> occurrence, int nextIndex) {
     }
 }

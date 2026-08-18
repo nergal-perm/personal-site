@@ -113,6 +113,13 @@ class LateBoundTargetActivationAcceptanceTest {
         assertEquals("See [Target](ref:source-target-note).", markerApproved.enBody());
         String approvedReferrerReferenceMapHash = referenceMapHash(markerApproved);
         long preparedReferrerCount = preparedCount(candidateWorkspace, REFERRER_IDENTITY);
+        NullReleaseOutputStore markerWithoutTargetOutput = new NullReleaseOutputStore();
+        ReleaseResult markerWithoutTargetRelease = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, markerWithoutTargetOutput).buildFromReview(REFERRER_IDENTITY);
+
+        assertTrue(markerWithoutTargetRelease.ok(), markerWithoutTargetRelease.message());
+        assertEquals("See Цель.", markerWithoutTargetOutput.installed().get(REFERRER_IDENTITY).ruBody());
+        assertEquals("See Target.", markerWithoutTargetOutput.installed().get(REFERRER_IDENTITY).enBody());
 
         BridgeResponse targetPrepare = prepareHandler(
                 noteIntake,

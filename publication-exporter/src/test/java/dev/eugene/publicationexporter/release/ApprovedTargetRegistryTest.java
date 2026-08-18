@@ -44,4 +44,22 @@ class ApprovedTargetRegistryTest {
 
         assertEquals(Optional.empty(), registry.find("vault-source-id-missing"));
     }
+
+    @Test
+    void curatedPageTargetUsesItsCollectionlessRoute() {
+        NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
+        PublicationIdentity targetIdentity = PublicationIdentity.of("editorial", "curated_page", "about");
+        approvedSnapshotWorkspace.install(targetIdentity, CandidateSnapshot.of(
+                "Target RU", "Target EN", List.of(), List.of(), "",
+                ReferenceMap.of(targetIdentity, "vault-source-id-about",
+                        ContentHash.sha256Hex("Target RU"), ContentHash.sha256Hex("Target EN"),
+                        "ru-fields-hash", "en-fields-hash", "structured-hash", List.of())));
+
+        ApprovedTargetRegistry registry = ApprovedTargetRegistry.forOccurrences(
+                List.of(new Occurrence("ref-0001", 0, "vault-source-id-about", "About", "About")),
+                approvedSnapshotWorkspace);
+
+        assertEquals("/ru/about/", registry.find("vault-source-id-about").orElseThrow().ruRoute());
+        assertEquals("/en/about/", registry.find("vault-source-id-about").orElseThrow().enRoute());
+    }
 }

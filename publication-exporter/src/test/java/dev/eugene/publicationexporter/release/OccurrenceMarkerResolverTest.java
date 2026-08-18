@@ -57,6 +57,33 @@ class OccurrenceMarkerResolverTest {
     }
 
     @Test
+    void preservesDistinctStoredLabelsForRepeatedOccurrencesOfTheSameTarget() {
+        List<Occurrence> occurrences = List.of(
+                new Occurrence("ref-0001", 0, "vault-source-id-target", "Первый", "First"),
+                new Occurrence("ref-0002", 1, "vault-source-id-target", "Второй", "Second"));
+
+        OccurrenceResolution resolution = OccurrenceMarkerResolver.resolve(
+                "[inline one](ref:vault-source-id-target) and [inline two](ref:vault-source-id-target)",
+                registryResolving("vault-source-id-target"), occurrences, "ru");
+
+        assertEquals("[Первый](/ru/notes/target/) and [Второй](/ru/notes/target/)", resolution.body());
+    }
+
+    @Test
+    void skipsNonMarkerOccurrencesBeforeMatchingRepeatedTargetLabels() {
+        List<Occurrence> occurrences = List.of(
+                new Occurrence("ref-0001", 0, "private-target", "Приватный", "Private"),
+                new Occurrence("ref-0002", 1, "vault-source-id-target", "Первый", "First"),
+                new Occurrence("ref-0003", 2, "vault-source-id-target", "Второй", "Second"));
+
+        OccurrenceResolution resolution = OccurrenceMarkerResolver.resolve(
+                "[inline one](ref:vault-source-id-target) and [inline two](ref:vault-source-id-target)",
+                registryResolving("vault-source-id-target"), occurrences, "ru");
+
+        assertEquals("[Первый](/ru/notes/target/) and [Второй](/ru/notes/target/)", resolution.body());
+    }
+
+    @Test
     void markerWithEmptyOccurrencesFallsBackToInlineLabel() {
         OccurrenceResolution resolution = OccurrenceMarkerResolver.resolve(
                 "See [Inline](ref:vault-source-id-missing).", emptyRegistry(), List.of(), "ru");

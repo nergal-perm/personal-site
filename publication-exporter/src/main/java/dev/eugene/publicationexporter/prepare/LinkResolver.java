@@ -3,6 +3,8 @@ package dev.eugene.publicationexporter.prepare;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -90,7 +92,7 @@ public final class LinkResolver {
         int spanStart = output.length();
         output.append(label);
         int spanEnd = output.length();
-        output.append("](ref:").append(reference.sourceId()).append(')');
+        output.append("](ref:").append(URLEncoder.encode(reference.sourceId(), StandardCharsets.UTF_8)).append(')');
         occurrences.add(new LinkOccurrence(
                 lastPathSegment(target), label, Optional.of(reference.route()), spanStart, spanEnd));
     }

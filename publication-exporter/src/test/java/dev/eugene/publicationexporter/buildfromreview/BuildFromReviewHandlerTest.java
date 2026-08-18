@@ -90,9 +90,9 @@ class BuildFromReviewHandlerTest {
         assertEquals("[See it EN](/en/notes/target/)", releaseOutputStore.installed().get(IDENTITY).enBody());
         assertEquals(1, result.provenance().activationCount());
         assertEquals(0, result.provenance().deactivationCount());
-        assertEquals(ContentHash.sha256Hex("[See it](ref:vault-source-id-target)"),
+        assertEquals(ContentHash.sha256Hex("[See it](/ru/notes/target/)"),
                 result.provenance().outputRuHash());
-        assertEquals(ContentHash.sha256Hex("[See it EN](ref:vault-source-id-target)"),
+        assertEquals(ContentHash.sha256Hex("[See it EN](/en/notes/target/)"),
                 result.provenance().outputEnHash());
     }
 

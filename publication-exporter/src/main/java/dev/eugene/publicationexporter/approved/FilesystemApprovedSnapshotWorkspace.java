@@ -332,6 +332,7 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
                             .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
                             .sorted()
                             .toList()) {
+                        recoverInterruptedApproval(identity);
                         Path approved = identity.resolve("approved");
                         if (Files.isDirectory(approved, LinkOption.NOFOLLOW_LINKS)) {
                             requireWithinReviewRoot(approved);
@@ -344,6 +345,13 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
             throw new UncheckedIOException(error);
         }
         return approvedDirectories;
+    }
+
+    private void recoverInterruptedApproval(Path identityDirectory) {
+        Path approvedDirectory = identityDirectory.resolve("approved");
+        findBackupDirectory(approvedDirectory)
+                .map(this::readReferenceMapOrUnchecked)
+                .ifPresent(referenceMap -> recoverBeforeAccess(referenceMap.identity()));
     }
 
     private void recoverBeforeAccess(PublicationIdentity identity) {

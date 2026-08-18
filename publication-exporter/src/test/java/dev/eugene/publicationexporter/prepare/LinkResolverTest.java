@@ -108,6 +108,27 @@ final class LinkResolverTest {
     }
 
     @Test
+    void markerEncodesSourceIdsThatWouldOtherwiseTerminateMarkdownDestinations() {
+        String target = """
+                ---
+                publish: true
+                publicCollection: blog
+                publicContentType: essay
+                publicId: target
+                id: target)evil
+                title: Target
+                description: A valid description.
+                ---
+                Target body.""";
+        PublicNoteIndex index = PublicNoteIndex.from(
+                VaultReader.createNull(Map.of(VaultRelativePath.of("blog/Target.md"), target)),
+                new NoteIntake(PublicationKinds.installed()));
+
+        assertEquals("See [Target](ref:target%29evil).",
+                resolvedBodyOrFail("See [[Target]].", index));
+    }
+
+    @Test
     void aliasedAdmittedTargetKeepsItsAliasAsTheLabel() {
         LinkResolutionOutcome outcome = LinkResolver.resolve(
                 "See [[Target|My Alias]].", knownNotesWithOneAdmittedTarget());

@@ -47,8 +47,13 @@ public final class ApprovedTargetRegistry {
                 .orElseThrow(() -> new IllegalStateException(
                         "No publication kind for " + collection + "/" + contentType))
                 .routePrefix();
-        return new Target("/ru/" + routePrefix + "/" + publicId + "/",
-                "/en/" + routePrefix + "/" + publicId + "/");
+        return new Target(routeFor("ru", routePrefix, publicId), routeFor("en", routePrefix, publicId));
+    }
+
+    private static String routeFor(String language, String routePrefix, String publicId) {
+        return routePrefix == null
+                ? "/" + language + "/" + publicId + "/"
+                : "/" + language + "/" + routePrefix + "/" + publicId + "/";
     }
 
     public record Target(String ruRoute, String enRoute) { }

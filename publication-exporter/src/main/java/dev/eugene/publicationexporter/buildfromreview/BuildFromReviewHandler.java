@@ -45,7 +45,13 @@ public final class BuildFromReviewHandler {
         if (approved.isEmpty()) {
             return noApprovedSnapshotResult();
         }
-        return releaseApprovedSnapshot(identity, approved.get());
+        try {
+            return releaseApprovedSnapshot(identity, approved.get());
+        } catch (UncheckedIOException failure) {
+            return ReleaseResult.blocked(IoFailureMessages.describe("Approved target lookup failed", failure));
+        } catch (ApprovedSnapshotWorkspaceConfinementException | ApprovedSnapshotWorkspaceStateException failure) {
+            return ReleaseResult.blocked("Approved target lookup failed: " + failure.getMessage());
+        }
     }
 
     private ReleaseResult releaseApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot approved) {
@@ -72,16 +78,17 @@ public final class BuildFromReviewHandler {
         OccurrenceResolution enResolution = OccurrenceMarkerResolver.resolve(
                 approved.enBody(), registry, occurrences, "en");
         // RU is the canonical count: both locale bodies resolve the same logical occurrences.
-        ReleaseProvenance provenance = provenanceFor(identity, approved,
+        ReleaseProvenance provenance = provenanceFor(identity, approved, ruResolution.body(), enResolution.body(),
                 ruResolution.activatedCount(), ruResolution.deactivatedCount());
         return new ResolvedRelease(ruResolution.body(), enResolution.body(), provenance);
     }
 
     private static ReleaseProvenance provenanceFor(
             PublicationIdentity identity, CandidateSnapshot approved,
+            String outputRuBody, String outputEnBody,
             int activationCount, int deactivationCount) {
-        String outputRuHash = ContentHash.sha256Hex(approved.ruBody());
-        String outputEnHash = ContentHash.sha256Hex(approved.enBody());
+        String outputRuHash = ContentHash.sha256Hex(outputRuBody);
+        String outputEnHash = ContentHash.sha256Hex(outputEnBody);
         return ReleaseProvenance.of(identity,
                 approved.referenceMap().ruHash(), approved.referenceMap().enHash(),
                 outputRuHash, outputEnHash, activationCount, deactivationCount);
