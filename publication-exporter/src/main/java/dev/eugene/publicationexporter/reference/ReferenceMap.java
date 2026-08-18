@@ -5,12 +5,14 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 public final class ReferenceMap {
 
     private static final int SCHEMA_VERSION = 1;
 
     private final PublicationIdentity identity;
+    private final Optional<String> sourceId;
     private final String ruHash;
     private final String enHash;
     private final String ruFieldsHash;
@@ -20,6 +22,7 @@ public final class ReferenceMap {
 
     private ReferenceMap(
             PublicationIdentity identity,
+            Optional<String> sourceId,
             String ruHash,
             String enHash,
             String ruFieldsHash,
@@ -27,6 +30,7 @@ public final class ReferenceMap {
             String structuredDataHash,
             List<Occurrence> occurrences) {
         this.identity = Objects.requireNonNull(identity, "identity");
+        this.sourceId = Objects.requireNonNull(sourceId, "sourceId");
         this.ruHash = Objects.requireNonNull(ruHash, "ruHash");
         this.enHash = Objects.requireNonNull(enHash, "enHash");
         this.ruFieldsHash = Objects.requireNonNull(ruFieldsHash, "ruFieldsHash");
@@ -37,14 +41,27 @@ public final class ReferenceMap {
 
     public static ReferenceMap of(
             PublicationIdentity identity,
+            String sourceId,
             String ruHash,
             String enHash,
             String ruFieldsHash,
             String enFieldsHash,
             String structuredDataHash,
             List<Occurrence> occurrences) {
-        return new ReferenceMap(identity, ruHash, enHash,
-                ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
+        return new ReferenceMap(identity, Optional.of(Objects.requireNonNull(sourceId, "sourceId")),
+                ruHash, enHash, ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
+    }
+
+    public static ReferenceMap of(
+            PublicationIdentity identity,
+            String ruHash,
+            String enHash,
+            String ruFieldsHash,
+            String enFieldsHash,
+            String structuredDataHash,
+            List<Occurrence> occurrences) {
+        return new ReferenceMap(identity, Optional.empty(),
+                ruHash, enHash, ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
     }
 
     public static ReferenceMap empty(
@@ -80,6 +97,11 @@ public final class ReferenceMap {
     @JsonProperty("publicationIdentity")
     public PublicationIdentity identity() {
         return identity;
+    }
+
+    @JsonProperty("sourceId")
+    public Optional<String> sourceId() {
+        return sourceId;
     }
 
     @JsonProperty("ruHash")
@@ -130,6 +152,7 @@ public final class ReferenceMap {
             return false;
         }
         return identity.equals(that.identity)
+                && sourceId.equals(that.sourceId)
                 && ruHash.equals(that.ruHash)
                 && enHash.equals(that.enHash)
                 && ruFieldsHash.equals(that.ruFieldsHash)
@@ -140,7 +163,7 @@ public final class ReferenceMap {
 
     @Override
     public int hashCode() {
-        return Objects.hash(identity, ruHash, enHash,
+        return Objects.hash(identity, sourceId, ruHash, enHash,
                 ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
     }
 
@@ -149,6 +172,7 @@ public final class ReferenceMap {
         return "ReferenceMap[identity=" + identity
                 + ", ruHash=" + ruHash
                 + ", enHash=" + enHash
+                + ", sourceId=" + sourceId
                 + ", ruFieldsHash=" + ruFieldsHash
                 + ", enFieldsHash=" + enFieldsHash
                 + ", structuredDataHash=" + structuredDataHash

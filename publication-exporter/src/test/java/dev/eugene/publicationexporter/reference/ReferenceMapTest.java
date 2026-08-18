@@ -4,6 +4,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -87,6 +88,37 @@ class ReferenceMapTest {
                 () -> referenceMap().sameContentAs(null));
 
         assertEquals("other", exception.getMessage());
+    }
+
+    @Test
+    void ofWithSourceIdRecordsIt() {
+        ReferenceMap referenceMap = ReferenceMap.of(
+                IDENTITY, "vault-source-id-a", "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of());
+
+        assertEquals(Optional.of("vault-source-id-a"), referenceMap.sourceId());
+    }
+
+    @Test
+    void existingSevenArgFactoriesDefaultSourceIdToEmpty() {
+        ReferenceMap viaOf = ReferenceMap.of(
+                IDENTITY, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of());
+        ReferenceMap viaEmpty = ReferenceMap.empty(
+                IDENTITY, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash");
+
+        assertEquals(Optional.empty(), viaOf.sourceId());
+        assertEquals(Optional.empty(), viaEmpty.sourceId());
+    }
+
+    @Test
+    void sourceIdParticipatesInEqualsAndHashCode() {
+        ReferenceMap withSourceId = ReferenceMap.of(
+                IDENTITY, "vault-source-id-a", "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of());
+        ReferenceMap withoutSourceId = ReferenceMap.of(
+                IDENTITY, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of());
+
+        assertNotEquals(withSourceId, withoutSourceId);
     }
 
     @Test

@@ -23,7 +23,17 @@ public final class ReferenceMapCodec {
 
     public static String write(ReferenceMap referenceMap) {
         try {
-            return MAPPER.writeValueAsString(referenceMap);
+            var node = MAPPER.createObjectNode();
+            node.put("schemaVersion", referenceMap.schemaVersion());
+            node.set("publicationIdentity", MAPPER.valueToTree(referenceMap.identity()));
+            node.put("ruHash", referenceMap.ruHash());
+            node.put("enHash", referenceMap.enHash());
+            node.put("ruFieldsHash", referenceMap.ruFieldsHash());
+            node.put("enFieldsHash", referenceMap.enFieldsHash());
+            node.put("structuredDataHash", referenceMap.structuredDataHash());
+            referenceMap.sourceId().ifPresent(sourceId -> node.put("sourceId", sourceId));
+            node.set("occurrences", MAPPER.valueToTree(referenceMap.occurrences()));
+            return MAPPER.writeValueAsString(node);
         } catch (JsonProcessingException error) {
             throw new UncheckedIOException(new IOException(error));
         }
@@ -39,14 +49,26 @@ public final class ReferenceMapCodec {
 
     private static ReferenceMap referenceMapFrom(JsonNode root) {
         PublicationIdentity identity = identityFrom(root.get("publicationIdentity"));
-        return ReferenceMap.of(
-                identity,
-                root.get("ruHash").asText(),
-                root.get("enHash").asText(),
-                root.get("ruFieldsHash").asText(),
-                root.get("enFieldsHash").asText(),
-                root.get("structuredDataHash").asText(),
-                occurrencesFrom(root.get("occurrences")));
+        JsonNode sourceIdNode = root.get("sourceId");
+        String sourceId = (sourceIdNode == null || sourceIdNode.isNull()) ? null : sourceIdNode.asText();
+        return sourceId == null
+                ? ReferenceMap.of(
+                        identity,
+                        root.get("ruHash").asText(),
+                        root.get("enHash").asText(),
+                        root.get("ruFieldsHash").asText(),
+                        root.get("enFieldsHash").asText(),
+                        root.get("structuredDataHash").asText(),
+                        occurrencesFrom(root.get("occurrences")))
+                : ReferenceMap.of(
+                        identity,
+                        sourceId,
+                        root.get("ruHash").asText(),
+                        root.get("enHash").asText(),
+                        root.get("ruFieldsHash").asText(),
+                        root.get("enFieldsHash").asText(),
+                        root.get("structuredDataHash").asText(),
+                        occurrencesFrom(root.get("occurrences")));
     }
 
     private static List<Occurrence> occurrencesFrom(JsonNode occurrencesNode) {

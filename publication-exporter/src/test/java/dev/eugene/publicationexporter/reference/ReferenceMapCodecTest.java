@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -111,6 +112,33 @@ class ReferenceMapCodecTest {
         assertEquals("en-fields-hash", parsed.enFieldsHash());
         assertEquals("structured-data-hash", parsed.structuredDataHash());
         assertTrue(parsed.occurrences().isEmpty());
+    }
+
+    @Test
+    void writeThenReadRoundTripsSourceIdThroughNewOverload() {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ReferenceMap original = ReferenceMap.of(
+                identity, "vault-source-id-a", "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of());
+
+        ReferenceMap roundTripped = ReferenceMapCodec.read(ReferenceMapCodec.write(original));
+
+        assertEquals(Optional.of("vault-source-id-a"), roundTripped.sourceId());
+        assertEquals(original, roundTripped);
+    }
+
+    @Test
+    void readWithoutSourceIdInJsonDefaultsToEmpty() {
+        String json = "{\"schemaVersion\":1,"
+                + "\"publicationIdentity\":{\"publicCollection\":\"blog\",\"publicContentType\":\"essay\",\"publicId\":\"my-essay\"},"
+                + "\"ruHash\":\"ru-hash\",\"enHash\":\"en-hash\","
+                + "\"ruFieldsHash\":\"ru-fields-hash\",\"enFieldsHash\":\"en-fields-hash\","
+                + "\"structuredDataHash\":\"structured-data-hash\","
+                + "\"occurrences\":[]}";
+
+        ReferenceMap parsed = ReferenceMapCodec.read(json);
+
+        assertEquals(Optional.empty(), parsed.sourceId());
     }
 
     @Test
