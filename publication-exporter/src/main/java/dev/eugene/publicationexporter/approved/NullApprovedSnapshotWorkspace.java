@@ -30,6 +30,14 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
     }
 
     @Override
+    public Optional<CandidateSnapshot> findBySourceId(String sourceId) {
+        Objects.requireNonNull(sourceId, "sourceId");
+        return installed.values().stream()
+                .filter(snapshot -> snapshot.referenceMap().sourceId().filter(sourceId::equals).isPresent())
+                .findFirst();
+    }
+
+    @Override
     public Optional<CandidatePaths> find(PublicationIdentity identity) {
         validateIdentity(identity);
         if (!hasInstallation(identity)) {

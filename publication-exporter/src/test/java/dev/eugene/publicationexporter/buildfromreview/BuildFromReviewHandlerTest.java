@@ -150,6 +150,11 @@ class BuildFromReviewHandlerTest {
             }
 
             @Override
+            public Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> findBySourceId(String sourceId) {
+                return Optional.empty();
+            }
+
+            @Override
             public Optional<dev.eugene.publicationexporter.candidate.CandidateSnapshot> read(PublicationIdentity identity) {
                 throw failure;
             }

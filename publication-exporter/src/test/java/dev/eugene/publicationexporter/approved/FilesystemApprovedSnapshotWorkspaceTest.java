@@ -112,6 +112,23 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void findBySourceIdLocatesAnApprovedSnapshotByItsOwnSourceId() {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        installSnapshotWithSourceId(workspace, "Target", "vault-source-id-target");
+
+        Optional<CandidateSnapshot> found = workspace.findBySourceId("vault-source-id-target");
+
+        assertTrue(found.isPresent());
+    }
+
+    @Test
+    void findBySourceIdIsAbsentForAnUnknownSourceId() {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        assertEquals(Optional.empty(), workspace.findBySourceId("no-such-source-id"));
+    }
+
+    @Test
     void readReturnsNonEmptyStructuredDataAfterInstall() throws Exception {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         String structuredData = "relationships:\n  - target: note-1\n";
@@ -583,11 +600,18 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     private static void installSnapshot(FilesystemApprovedSnapshotWorkspace workspace, String generation) {
-        workspace.install(IDENTITY,
+        installSnapshotWithSourceId(workspace, generation, "vault-source-id-" + generation.toLowerCase());
+    }
+
+    private static void installSnapshotWithSourceId(
+            FilesystemApprovedSnapshotWorkspace workspace, String generation, String sourceId) {
+        workspace.install(IDENTITY, CandidateSnapshot.of(
                 generation + " RU", generation + " EN",
-                generation + " RU title", generation + " EN title",
-                generation + " RU description", generation + " EN description",
-                referenceMapFor(generation));
+                List.of(PublicField.of("title", generation + " RU title"),
+                        PublicField.of("description", generation + " RU description")),
+                List.of(PublicField.of("title", generation + " EN title"),
+                        PublicField.of("description", generation + " EN description")),
+                "", referenceMapFor(generation, sourceId)));
     }
 
     private static void writeSnapshotDirectory(Path directory, String generation) throws Exception {
@@ -606,10 +630,14 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     private static ReferenceMap referenceMapFor(String generation) {
+        return referenceMapFor(generation, "vault-source-id-" + generation.toLowerCase());
+    }
+
+    private static ReferenceMap referenceMapFor(String generation, String sourceId) {
         return matchingReferenceMap(
                 generation + " RU", generation + " EN",
                 generation + " RU title", generation + " EN title",
-                generation + " RU description", generation + " EN description");
+                generation + " RU description", generation + " EN description", sourceId);
     }
 
     private static ReferenceMap matchingReferenceMap(
@@ -623,6 +651,19 @@ class FilesystemApprovedSnapshotWorkspaceTest {
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
                 ContentHash.sha256Hex(ruFields), ContentHash.sha256Hex(enFields),
                 ContentHash.sha256Hex(""));
+    }
+
+    private static ReferenceMap matchingReferenceMap(
+            String ruBody, String enBody, String ruTitle, String enTitle,
+            String ruDescription, String enDescription, String sourceId) {
+        String ruFields = PublicFieldsCodec.write(List.of(
+                PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)));
+        String enFields = PublicFieldsCodec.write(List.of(
+                PublicField.of("title", enTitle), PublicField.of("description", enDescription)));
+        return ReferenceMap.of(IDENTITY, sourceId,
+                ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(ruFields), ContentHash.sha256Hex(enFields),
+                ContentHash.sha256Hex(""), List.of());
     }
 
     private static boolean validBackupDirectoryName(String fileName) {

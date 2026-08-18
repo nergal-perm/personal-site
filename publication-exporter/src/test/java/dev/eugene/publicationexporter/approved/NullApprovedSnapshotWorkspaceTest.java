@@ -2,6 +2,7 @@ package dev.eugene.publicationexporter.approved;
 
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.reference.PublicField;
@@ -68,6 +69,29 @@ class NullApprovedSnapshotWorkspaceTest {
         assertTrue(read.isPresent());
         assertEquals("New RU", read.get().ruBody());
         assertEquals("New EN", read.get().enBody());
+    }
+
+    @Test
+    void findBySourceIdReturnsTheSnapshotWhoseReferenceMapHasThatSourceId() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "target");
+        ReferenceMap referenceMap = ReferenceMap.of(identity, "vault-source-id-target",
+                ContentHash.sha256Hex("Target RU"), ContentHash.sha256Hex("Target EN"),
+                "ru-fields-hash", "en-fields-hash", "structured-hash", List.of());
+        workspace.install(identity, CandidateSnapshot.of(
+                "Target RU", "Target EN", List.of(), List.of(), "", referenceMap));
+
+        Optional<CandidateSnapshot> found = workspace.findBySourceId("vault-source-id-target");
+
+        assertTrue(found.isPresent());
+        assertEquals("Target RU", found.get().ruBody());
+    }
+
+    @Test
+    void findBySourceIdIsAbsentWhenNoInstalledSnapshotMatches() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+
+        assertEquals(Optional.empty(), workspace.findBySourceId("no-such-source-id"));
     }
 
     private static ReferenceMap referenceMap(String hash) {

@@ -248,6 +248,11 @@ class InstallToSiteHandlerTest {
             }
 
             @Override
+            public Optional<CandidateSnapshot> findBySourceId(String sourceId) {
+                return backingWorkspace.findBySourceId(sourceId);
+            }
+
+            @Override
             public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
                 readCount++;
                 if (readCount == 2) {

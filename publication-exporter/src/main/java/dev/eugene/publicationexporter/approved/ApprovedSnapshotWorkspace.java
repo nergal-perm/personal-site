@@ -25,6 +25,8 @@ public interface ApprovedSnapshotWorkspace {
 
     Optional<CandidateSnapshot> read(PublicationIdentity identity);
 
+    Optional<CandidateSnapshot> findBySourceId(String sourceId);
+
     default <T> T withApprovalLock(PublicationIdentity identity, Supplier<T> operation) {
         Objects.requireNonNull(identity, "identity");
         return Objects.requireNonNull(operation, "operation").get();

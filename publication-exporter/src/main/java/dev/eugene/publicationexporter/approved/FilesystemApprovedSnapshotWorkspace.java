@@ -280,6 +280,59 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         return stableSnapshotFrom(approvedDirectory, identity);
     }
 
+    @Override
+    public Optional<CandidateSnapshot> findBySourceId(String sourceId) {
+        Objects.requireNonNull(sourceId, "sourceId");
+        for (Path approvedDirectory : allApprovedDirectories()) {
+            ReferenceMap referenceMap;
+            try {
+                referenceMap = readReferenceMap(approvedFile(approvedDirectory, "references.json"));
+            } catch (IOException error) {
+                throw new UncheckedIOException(error);
+            }
+            if (referenceMap.sourceId().filter(sourceId::equals).isEmpty()) {
+                continue;
+            }
+            Optional<CandidateSnapshot> snapshot = stableSnapshotFrom(
+                    approvedDirectory, referenceMap.identity());
+            if (snapshot.filter(candidate -> candidate.referenceMap().sourceId()
+                    .filter(sourceId::equals).isPresent()).isPresent()) {
+                return snapshot;
+            }
+        }
+        return Optional.empty();
+    }
+
+    private List<Path> allApprovedDirectories() {
+        Path root = stagedInstall.canonicalRoot();
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            return List.of();
+        }
+        List<Path> approvedDirectories = new ArrayList<>();
+        try (var collections = Files.list(root)) {
+            for (Path collection : collections
+                    .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .sorted()
+                    .toList()) {
+                try (var identities = Files.list(collection)) {
+                    for (Path identity : identities
+                            .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                            .sorted()
+                            .toList()) {
+                        Path approved = identity.resolve("approved");
+                        if (Files.isDirectory(approved, LinkOption.NOFOLLOW_LINKS)) {
+                            requireWithinReviewRoot(approved);
+                            approvedDirectories.add(approved);
+                        }
+                    }
+                }
+            }
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+        return approvedDirectories;
+    }
+
     private void recoverBeforeAccess(PublicationIdentity identity) {
         Path destination = approvedDirectory(identity);
         if (findBackupDirectory(destination).isEmpty()) {

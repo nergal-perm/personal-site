@@ -331,6 +331,11 @@ class RefreshPublicationQueueHandlerTest {
             }
 
             @Override
+            public Optional<CandidateSnapshot> findBySourceId(String sourceId) {
+                return Optional.empty();
+            }
+
+            @Override
             public Optional<CandidateSnapshot> read(PublicationIdentity identity) {
                 if (identity.publicId().equals(failingPublicId)) {
                     throw new ApprovedSnapshotIntegrityException(
