@@ -153,7 +153,7 @@ public final class MarkReviewedHandler {
     }
 
     private static Optional<Diagnostic> sourceChangedDiagnostic(String sourceBody, ReferenceMap referenceMap) {
-        if (ContentHash.sha256Hex(sourceBody).equals(referenceMap.ruHash())) {
+        if (ContentHash.sha256Hex(sourceBody).equals(referenceMap.sourceBodyHash())) {
             return Optional.empty();
         }
         return Optional.of(Diagnostic.blocking("candidate",

@@ -131,6 +131,22 @@ class ReferenceMapCodecTest {
     }
 
     @Test
+    void writeThenReadRoundTripsSourceBodyHashThroughNewOverload() throws Exception {
+        PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
+        ReferenceMap original = ReferenceMap.of(
+                identity, "vault-source-id-a", "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of(),
+                "source-body-hash");
+
+        String json = ReferenceMapCodec.write(original);
+        ReferenceMap roundTripped = ReferenceMapCodec.read(json);
+
+        assertEquals("source-body-hash", new ObjectMapper().readTree(json).get("sourceBodyHash").asText());
+        assertEquals("source-body-hash", roundTripped.sourceBodyHash());
+        assertEquals(original, roundTripped);
+    }
+
+    @Test
     void readWithoutSourceIdInJsonDefaultsToEmpty() {
         String json = "{\"schemaVersion\":1,"
                 + "\"publicationIdentity\":{\"publicCollection\":\"blog\",\"publicContentType\":\"essay\",\"publicId\":\"my-essay\"},"
@@ -142,6 +158,23 @@ class ReferenceMapCodecTest {
         ReferenceMap parsed = ReferenceMapCodec.read(json);
 
         assertEquals(Optional.empty(), parsed.sourceId());
+        assertEquals("", parsed.sourceBodyHash());
+    }
+
+    @Test
+    void readWithoutSourceBodyHashInJsonDefaultsToEmptySentinel() {
+        String json = "{\"schemaVersion\":1,"
+                + "\"publicationIdentity\":{\"publicCollection\":\"blog\",\"publicContentType\":\"essay\",\"publicId\":\"my-essay\"},"
+                + "\"sourceId\":\"vault-source-id-a\","
+                + "\"ruHash\":\"ru-hash\",\"enHash\":\"en-hash\","
+                + "\"ruFieldsHash\":\"ru-fields-hash\",\"enFieldsHash\":\"en-fields-hash\","
+                + "\"structuredDataHash\":\"structured-data-hash\","
+                + "\"occurrences\":[]}";
+
+        ReferenceMap parsed = ReferenceMapCodec.read(json);
+
+        assertEquals(Optional.of("vault-source-id-a"), parsed.sourceId());
+        assertEquals("", parsed.sourceBodyHash());
     }
 
     @Test

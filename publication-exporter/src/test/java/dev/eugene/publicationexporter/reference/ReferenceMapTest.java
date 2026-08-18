@@ -27,6 +27,7 @@ class ReferenceMapTest {
         assertEquals("ru-fields-hash", map.ruFieldsHash());
         assertEquals("en-fields-hash", map.enFieldsHash());
         assertEquals("structured-data-hash", map.structuredDataHash());
+        assertEquals("", map.sourceBodyHash());
     }
 
     @Test
@@ -100,6 +101,17 @@ class ReferenceMapTest {
     }
 
     @Test
+    void ofWithSourceIdAndSourceBodyHashRecordsBoth() {
+        ReferenceMap referenceMap = ReferenceMap.of(
+                IDENTITY, "vault-source-id-a", "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of(),
+                "source-body-hash");
+
+        assertEquals(Optional.of("vault-source-id-a"), referenceMap.sourceId());
+        assertEquals("source-body-hash", referenceMap.sourceBodyHash());
+    }
+
+    @Test
     void existingSevenArgFactoriesDefaultSourceIdToEmpty() {
         ReferenceMap viaOf = ReferenceMap.of(
                 IDENTITY, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of());
@@ -119,6 +131,23 @@ class ReferenceMapTest {
                 IDENTITY, "ru-hash", "en-hash", "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of());
 
         assertNotEquals(withSourceId, withoutSourceId);
+    }
+
+    @Test
+    void sourceBodyHashParticipatesInValueSemanticsButNotContentIdentity() {
+        ReferenceMap first = ReferenceMap.of(
+                IDENTITY, "vault-source-id-a", "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of(),
+                "first-source-body-hash");
+        ReferenceMap second = ReferenceMap.of(
+                IDENTITY, "vault-source-id-a", "ru-hash", "en-hash",
+                "ru-fields-hash", "en-fields-hash", "structured-data-hash", List.of(),
+                "second-source-body-hash");
+
+        assertNotEquals(first, second);
+        assertNotEquals(first.hashCode(), second.hashCode());
+        assertTrue(first.sameContentAs(second));
+        assertTrue(first.toString().contains("sourceBodyHash=first-source-body-hash"));
     }
 
     @Test

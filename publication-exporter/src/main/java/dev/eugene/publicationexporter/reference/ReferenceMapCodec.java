@@ -34,6 +34,7 @@ public final class ReferenceMapCodec {
             node.put("structuredDataHash", referenceMap.structuredDataHash());
             referenceMap.sourceId().ifPresent(sourceId -> node.put("sourceId", sourceId));
             node.set("occurrences", MAPPER.valueToTree(referenceMap.occurrences()));
+            node.put("sourceBodyHash", referenceMap.sourceBodyHash());
             return MAPPER.writeValueAsString(node);
         } catch (JsonProcessingException error) {
             throw new UncheckedIOException(new IOException(error));
@@ -53,6 +54,10 @@ public final class ReferenceMapCodec {
         Optional<String> sourceId = Optional.ofNullable(root.get("sourceId"))
                 .filter(node -> !node.isNull())
                 .map(JsonNode::asText);
+        String sourceBodyHash = Optional.ofNullable(root.get("sourceBodyHash"))
+                .filter(node -> !node.isNull())
+                .map(JsonNode::asText)
+                .orElse("");
         if (sourceId.isEmpty()) {
             return ReferenceMap.of(
                     identity,
@@ -71,7 +76,8 @@ public final class ReferenceMapCodec {
                 root.get("ruFieldsHash").asText(),
                 root.get("enFieldsHash").asText(),
                 root.get("structuredDataHash").asText(),
-                occurrencesFrom(root.get("occurrences")));
+                occurrencesFrom(root.get("occurrences")),
+                sourceBodyHash);
     }
 
     private static List<Occurrence> occurrencesFrom(JsonNode occurrencesNode) {

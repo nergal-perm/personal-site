@@ -16,6 +16,9 @@ import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
+import dev.eugene.publicationexporter.prepare.PrepareHandler;
+import dev.eugene.publicationexporter.translation.TranslationWorker;
+import dev.eugene.publicationexporter.vault.VaultAssetReader;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
 import dev.eugene.publicationexporter.workflow.WorkflowStatusEditor;
@@ -171,22 +174,40 @@ class MarkReviewedHandlerTest {
     }
 
     @Test
+    void candidatePreparedFromSourceContainingWikilinkIsApproved() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        String source = VALID_ESSAY.replace("# My Essay", "See [[Target|Цель]].");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, source));
+        NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
+        NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
+        NoteIntake noteIntake = new NoteIntake(PublicationKinds.installed());
+        PrepareHandler prepareHandler = new PrepareHandler(
+                noteIntake,
+                TranslationWorker.createNull("See Target.", List.of(
+                        PublicField.of("title", "My Essay"),
+                        PublicField.of("description", "A valid description."))),
+                candidateWorkspace, approvedSnapshotWorkspace, WorkflowStatusEditor.createNull());
+        MarkReviewedHandler markReviewedHandler = new MarkReviewedHandler(
+                noteIntake, candidateWorkspace, approvedSnapshotWorkspace,
+                new NullWorkflowStatusEditor(Map.of(path, source)));
+
+        BridgeResponse prepared = prepareHandler.prepare(path, vaultReader, VaultAssetReader.createNull());
+        BridgeResponse approved = markReviewedHandler.markReviewed(path, vaultReader);
+
+        assertTrue(prepared.ok(), prepared.diagnostics().toString());
+        assertTrue(approved.ok(), approved.diagnostics().toString());
+        assertEquals("ready_to_publish", approved.status());
+    }
+
+    @Test
     void existingApprovedSnapshotIsReplaced() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
         PublicationIdentity identity = PublicationIdentity.of("blog", "essay", "my-essay");
         NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
-        String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
-        String enHash = ContentHash.sha256Hex("EN body");
-        ReferenceMap referenceMap = ReferenceMap.empty(
-                identity, ruHash, enHash,
-                ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
-                        dev.eugene.publicationexporter.reference.PublicField.of("title", "My Essay"),
-                        dev.eugene.publicationexporter.reference.PublicField.of("description", "A valid description.")))),
-                ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
-                        dev.eugene.publicationexporter.reference.PublicField.of("title", "EN title"),
-                        dev.eugene.publicationexporter.reference.PublicField.of("description", "EN description.")))),
-                ContentHash.sha256Hex(""));
+        ReferenceMap referenceMap = matchingReferenceMap(
+                ESSAY_BODY, "EN body", "My Essay", "EN title",
+                "A valid description.", "EN description.");
         candidateWorkspace.install(identity, ESSAY_BODY, "EN body", "My Essay", "EN title",
                 "A valid description.", "EN description.", referenceMap);
         NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
@@ -219,10 +240,16 @@ class MarkReviewedHandlerTest {
         String staleRuHash = ContentHash.sha256Hex("# An old version of My Essay");
         String enHash = ContentHash.sha256Hex("EN body");
         candidateWorkspace.install(identity, "# An old version of My Essay", "EN body", "My Essay", "EN title",
-                "A valid description.", "EN description", ReferenceMap.empty(
-                        identity, staleRuHash, enHash,
-                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
-                        ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description")));
+                "A valid description.", "EN description", ReferenceMap.of(
+                        identity, "8f2c-my-essay", staleRuHash, enHash,
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                                PublicField.of("title", "My Essay"),
+                                PublicField.of("description", "A valid description.")))),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                                PublicField.of("title", "EN title"),
+                                PublicField.of("description", "EN description")))),
+                        ContentHash.sha256Hex(""), List.of(),
+                        ContentHash.sha256Hex("# An old version of My Essay")));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
@@ -244,10 +271,15 @@ class MarkReviewedHandlerTest {
         String ruHash = ContentHash.sha256Hex(ESSAY_BODY);
         String staleEnHash = ContentHash.sha256Hex("original EN body prepare recorded");
         candidateWorkspace.install(identity, ESSAY_BODY, "tampered EN body", "My Essay", "EN title",
-                "A valid description.", "EN description", ReferenceMap.empty(
-                        identity, ruHash, staleEnHash,
-                        ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
-                        ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description")));
+                "A valid description.", "EN description", ReferenceMap.of(
+                        identity, "8f2c-my-essay", ruHash, staleEnHash,
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                                PublicField.of("title", "My Essay"),
+                                PublicField.of("description", "A valid description.")))),
+                        ContentHash.sha256Hex(PublicFieldsCodec.write(List.of(
+                                PublicField.of("title", "EN title"),
+                                PublicField.of("description", "EN description")))),
+                        ContentHash.sha256Hex(""), List.of(), ContentHash.sha256Hex(ESSAY_BODY)));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
@@ -373,13 +405,14 @@ class MarkReviewedHandlerTest {
                 ruFields,
                 enFields,
                 staleStructuredData,
-                ReferenceMap.empty(
-                        identity,
+                ReferenceMap.of(
+                        identity, "8f2c-the-lean-startup",
                         ContentHash.sha256Hex("# The Lean Startup"),
                         ContentHash.sha256Hex("Translated book body."),
                         ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
                         ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
-                        ContentHash.sha256Hex(staleStructuredData)));
+                        ContentHash.sha256Hex(staleStructuredData), List.of(),
+                        ContentHash.sha256Hex("# The Lean Startup")));
         MarkReviewedHandler handler = new MarkReviewedHandler(
                 new NoteIntake(PublicationKinds.installed()),
                 candidateWorkspace,
@@ -525,8 +558,8 @@ class MarkReviewedHandlerTest {
             String enTitle,
             String ruDescription,
             String enDescription) {
-        return ReferenceMap.empty(
-                PublicationIdentity.of("blog", "essay", "my-essay"),
+        return ReferenceMap.of(
+                PublicationIdentity.of("blog", "essay", "my-essay"), "8f2c-my-essay",
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
                 ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
                         dev.eugene.publicationexporter.reference.PublicField.of("title", ruTitle),
@@ -534,7 +567,7 @@ class MarkReviewedHandlerTest {
                 ContentHash.sha256Hex(dev.eugene.publicationexporter.reference.PublicFieldsCodec.write(List.of(
                         dev.eugene.publicationexporter.reference.PublicField.of("title", enTitle),
                         dev.eugene.publicationexporter.reference.PublicField.of("description", enDescription)))),
-                ContentHash.sha256Hex(""));
+                ContentHash.sha256Hex(""), List.of(), ContentHash.sha256Hex(ruBody));
     }
 
     private static BridgeResponse markReviewedCandidate(

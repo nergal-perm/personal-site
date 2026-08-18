@@ -113,7 +113,7 @@ public final class PrepareHandler {
         if (occurrences.isEmpty()) {
             return prepareNormalizedEssay(
                     notePath, vaultReader, intake, resolvedBody, assets, knownNotes, vaultAssetReader,
-                    OccurrenceContext.empty(), sourceId);
+                    OccurrenceContext.empty(), sourceId, intake.body());
         }
         VaultSourceIdentityIndex identityIndex;
         try {
@@ -125,7 +125,7 @@ public final class PrepareHandler {
         if (eligibleOccurrences.isEmpty()) {
             return prepareNormalizedEssay(
                     notePath, vaultReader, intake, resolvedBody, assets, knownNotes, vaultAssetReader,
-                    OccurrenceContext.empty(), sourceId);
+                    OccurrenceContext.empty(), sourceId, intake.body());
         }
         Set<String> privateTargetStems = eligibleOccurrences.stream()
                 .filter(occurrence -> occurrence.route().isEmpty())
@@ -136,13 +136,13 @@ public final class PrepareHandler {
         if (privateTargetStems.isEmpty()) {
             return prepareNormalizedEssay(
                     notePath, vaultReader, intake, resolvedBody, assets, knownNotes, vaultAssetReader,
-                    occurrenceContext, sourceId);
+                    occurrenceContext, sourceId, intake.body());
         }
         return DirectTargetIdentityCheck.verify(sourceStem, sourceId, privateTargetStems, identityIndex)
                 .resolve(
                         () -> prepareNormalizedEssay(
                                 notePath, vaultReader, intake, resolvedBody, assets, knownNotes,
-                                vaultAssetReader, occurrenceContext, sourceId),
+                                vaultAssetReader, occurrenceContext, sourceId, intake.body()),
                         PrepareHandler::directTargetIdentityBlockedFailure);
     }
 
@@ -160,7 +160,8 @@ public final class PrepareHandler {
     private BridgeResponse prepareNormalizedEssay(
             VaultRelativePath notePath, VaultReader vaultReader, NoteIntake.Result intake,
             String normalizedBody, List<CandidateAsset> assets, PublicNoteIndex knownNotes,
-            VaultAssetReader vaultAssetReader, OccurrenceContext occurrenceContext, String sourceId) {
+            VaultAssetReader vaultAssetReader, OccurrenceContext occurrenceContext,
+            String sourceId, String sourceBody) {
         ApprovedBaselineLookup approved = lookupApprovedBaseline(intake, normalizedBody);
         if (approved.failed()) {
             return approved.failureResponse();
@@ -169,7 +170,7 @@ public final class PrepareHandler {
             return mirrorApprovedCandidate(intake.identity(), approved.snapshot().get(), assets);
         }
         return prepareWithInstallLock(notePath, vaultReader, intake, normalizedBody, assets,
-                knownNotes, vaultAssetReader, occurrenceContext, sourceId);
+                knownNotes, vaultAssetReader, occurrenceContext, sourceId, sourceBody);
     }
 
     private ApprovedBaselineLookup lookupApprovedBaseline(NoteIntake.Result intake, String normalizedBody) {
@@ -205,13 +206,13 @@ public final class PrepareHandler {
             VaultRelativePath notePath, VaultReader vaultReader,
             NoteIntake.Result intake, String normalizedBody, List<CandidateAsset> assets,
             PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
-            OccurrenceContext occurrenceContext, String sourceId) {
+            OccurrenceContext occurrenceContext, String sourceId, String sourceBody) {
         ReentrantLock installLock = INSTALL_LOCKS.computeIfAbsent(intake.identity(), ignored -> new ReentrantLock());
         installLock.lock();
         try {
             return prepareAdmittedEssay(notePath, vaultReader, intake.identity(),
                     intake.sourceHash(), normalizedBody, fieldsOf(intake), intake.structuredData(), assets,
-                    knownNotes, vaultAssetReader, occurrenceContext, sourceId);
+                    knownNotes, vaultAssetReader, occurrenceContext, sourceId, sourceBody);
         } finally {
             installLock.unlock();
         }
@@ -259,7 +260,7 @@ public final class PrepareHandler {
             PublicationIdentity identity, String sourceHash,
             String ruBody, List<PublicField> ruFields, String structuredData, List<CandidateAsset> assets,
             PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
-            OccurrenceContext occurrenceContext, String sourceId) {
+            OccurrenceContext occurrenceContext, String sourceId, String sourceBody) {
         if (OccurrenceLabelMarkers.containsReservedCharacters(ruBody)) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
             return candidateFailure(
@@ -283,7 +284,7 @@ public final class PrepareHandler {
                 translation -> prepareTranslatedEssay(
                         notePath, vaultReader, identity, sourceHash,
                         delimitedRuBody, ruFields, structuredData, assets, job, translation, knownNotes, vaultAssetReader,
-                        assignedRu, sourceId),
+                        assignedRu, sourceId, sourceBody),
                 failure -> {
                     recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
                     return translationFailure(failure);
@@ -333,7 +334,8 @@ public final class PrepareHandler {
             String delimitedRuBody, List<PublicField> ruFields, String structuredData,
             List<CandidateAsset> assets, TranslationJob job,
             EnglishTranslation translation, PublicNoteIndex knownNotes, VaultAssetReader vaultAssetReader,
-            List<OccurrenceAssignment.AssignedOccurrence> assignedRu, String sourceId) {
+            List<OccurrenceAssignment.AssignedOccurrence> assignedRu,
+            String sourceId, String sourceBody) {
         OccurrenceLabelMarkers.ScanResult enScan = OccurrenceLabelMarkers.scan(translation.body());
         if (translatedBodyDivergesFromAssignedOccurrences(enScan, assignedRu)) {
             recordWorkflowStatus(notePath, sourceHash, WorkflowState.TRANSLATION_FAILED);
@@ -367,7 +369,8 @@ public final class PrepareHandler {
         return freshness.resolve(
                 currentSourceHash -> {
                     ReferenceMap referenceMap = buildReferenceMap(
-                            identity, sourceId, ruBody, enBody, ruFields, enFields, structuredData, occurrences);
+                            identity, sourceId, ruBody, enBody, ruFields, enFields,
+                            structuredData, occurrences, sourceBody);
                     BridgeResponse response = installCandidate(identity, ruBody, enBody, ruFields, enFields,
                             structuredData, referenceMap, assets);
                     if (response.ok()) {
@@ -477,7 +480,7 @@ public final class PrepareHandler {
     private static ReferenceMap buildReferenceMap(
             PublicationIdentity identity, String sourceId, String ruBody, String enBody,
             List<PublicField> ruFields, List<PublicField> enFields, String structuredData,
-            List<Occurrence> occurrences) {
+            List<Occurrence> occurrences, String sourceBody) {
         return ReferenceMap.of(
                 identity,
                 sourceId,
@@ -485,7 +488,8 @@ public final class PrepareHandler {
                 ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
                 ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
                 ContentHash.sha256Hex(structuredData),
-                occurrences);
+                occurrences,
+                ContentHash.sha256Hex(sourceBody));
     }
 
     private BridgeResponse installCandidate(

@@ -19,6 +19,7 @@ public final class ReferenceMap {
     private final String enFieldsHash;
     private final String structuredDataHash;
     private final List<Occurrence> occurrences;
+    private final String sourceBodyHash;
 
     private ReferenceMap(
             PublicationIdentity identity,
@@ -28,7 +29,8 @@ public final class ReferenceMap {
             String ruFieldsHash,
             String enFieldsHash,
             String structuredDataHash,
-            List<Occurrence> occurrences) {
+            List<Occurrence> occurrences,
+            String sourceBodyHash) {
         this.identity = Objects.requireNonNull(identity, "identity");
         this.sourceId = Objects.requireNonNull(sourceId, "sourceId");
         this.ruHash = Objects.requireNonNull(ruHash, "ruHash");
@@ -37,6 +39,7 @@ public final class ReferenceMap {
         this.enFieldsHash = Objects.requireNonNull(enFieldsHash, "enFieldsHash");
         this.structuredDataHash = Objects.requireNonNull(structuredDataHash, "structuredDataHash");
         this.occurrences = List.copyOf(Objects.requireNonNull(occurrences, "occurrences"));
+        this.sourceBodyHash = Objects.requireNonNull(sourceBodyHash, "sourceBodyHash");
     }
 
     public static ReferenceMap of(
@@ -49,7 +52,21 @@ public final class ReferenceMap {
             String structuredDataHash,
             List<Occurrence> occurrences) {
         return new ReferenceMap(identity, Optional.of(Objects.requireNonNull(sourceId, "sourceId")),
-                ruHash, enHash, ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
+                ruHash, enHash, ruFieldsHash, enFieldsHash, structuredDataHash, occurrences, "");
+    }
+
+    public static ReferenceMap of(
+            PublicationIdentity identity,
+            String sourceId,
+            String ruHash,
+            String enHash,
+            String ruFieldsHash,
+            String enFieldsHash,
+            String structuredDataHash,
+            List<Occurrence> occurrences,
+            String sourceBodyHash) {
+        return new ReferenceMap(identity, Optional.of(Objects.requireNonNull(sourceId, "sourceId")),
+                ruHash, enHash, ruFieldsHash, enFieldsHash, structuredDataHash, occurrences, sourceBodyHash);
     }
 
     public static ReferenceMap of(
@@ -61,7 +78,7 @@ public final class ReferenceMap {
             String structuredDataHash,
             List<Occurrence> occurrences) {
         return new ReferenceMap(identity, Optional.empty(),
-                ruHash, enHash, ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
+                ruHash, enHash, ruFieldsHash, enFieldsHash, structuredDataHash, occurrences, "");
     }
 
     public static ReferenceMap empty(
@@ -129,6 +146,11 @@ public final class ReferenceMap {
         return structuredDataHash;
     }
 
+    @JsonProperty("sourceBodyHash")
+    public String sourceBodyHash() {
+        return sourceBodyHash;
+    }
+
     public boolean sameContentAs(ReferenceMap other) {
         Objects.requireNonNull(other, "other");
         return ruHash.equals(other.ruHash)
@@ -158,13 +180,14 @@ public final class ReferenceMap {
                 && ruFieldsHash.equals(that.ruFieldsHash)
                 && enFieldsHash.equals(that.enFieldsHash)
                 && structuredDataHash.equals(that.structuredDataHash)
-                && occurrences.equals(that.occurrences);
+                && occurrences.equals(that.occurrences)
+                && sourceBodyHash.equals(that.sourceBodyHash);
     }
 
     @Override
     public int hashCode() {
         return Objects.hash(identity, sourceId, ruHash, enHash,
-                ruFieldsHash, enFieldsHash, structuredDataHash, occurrences);
+                ruFieldsHash, enFieldsHash, structuredDataHash, occurrences, sourceBodyHash);
     }
 
     @Override
@@ -176,6 +199,7 @@ public final class ReferenceMap {
                 + ", ruFieldsHash=" + ruFieldsHash
                 + ", enFieldsHash=" + enFieldsHash
                 + ", structuredDataHash=" + structuredDataHash
-                + ", occurrences=" + occurrences + "]";
+                + ", occurrences=" + occurrences
+                + ", sourceBodyHash=" + sourceBodyHash + "]";
     }
 }
