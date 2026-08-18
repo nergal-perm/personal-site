@@ -61,6 +61,21 @@ class BuildFromReviewCliAcceptanceTest {
     }
 
     @Test
+    void legacyApprovedWorkspaceWithoutActivationMarkerIsBlockedByCli() throws Exception {
+        Path reviewDirectory = workRoot.resolve("review");
+        Path outputRoot = workRoot.resolve("output");
+        installApprovedSnapshotWithoutActivationMarker(reviewDirectory, "# Legacy Essay", "# Legacy Essay (EN)");
+
+        int exitCode = buildFromReview(reviewDirectory, outputRoot);
+
+        assertNotEquals(0, exitCode);
+        JsonNode result = soleJsonValueOnStdout();
+        assertEquals(false, result.get("ok").asBoolean());
+        assertTrue(result.get("message").asText().contains("read-only migration inventory"));
+        assertTrue(Files.notExists(outputRoot));
+    }
+
+    @Test
     void approvedSnapshotProducesReleasedResultAndWritesBothEssayFilesPlusProvenance() throws Exception {
         Path reviewDirectory = workRoot.resolve("review");
         Path outputRoot = workRoot.resolve("output");
@@ -100,6 +115,13 @@ class BuildFromReviewCliAcceptanceTest {
     }
 
     private String installApprovedSnapshot(Path reviewDirectory, String ruBody, String enBody) {
+        String ruHash = installApprovedSnapshotWithoutActivationMarker(reviewDirectory, ruBody, enBody);
+        writeActivationMarker(reviewDirectory);
+        return ruHash;
+    }
+
+    private String installApprovedSnapshotWithoutActivationMarker(
+            Path reviewDirectory, String ruBody, String enBody) {
         String ruHash = ContentHash.sha256Hex(ruBody);
         String enHash = ContentHash.sha256Hex(enBody);
         ApprovedSnapshotWorkspace.create(reviewDirectory)
@@ -109,7 +131,6 @@ class BuildFromReviewCliAcceptanceTest {
                                 ContentHash.sha256Hex("RU title"), ContentHash.sha256Hex("EN title"),
                                 ContentHash.sha256Hex("RU description"),
                                 ContentHash.sha256Hex("EN description")));
-        writeActivationMarker(reviewDirectory);
         return ruHash;
     }
 

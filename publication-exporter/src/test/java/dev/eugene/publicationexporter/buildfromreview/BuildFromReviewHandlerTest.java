@@ -6,7 +6,6 @@ import dev.eugene.publicationexporter.approved.NullApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
-import dev.eugene.publicationexporter.legacy.ActivationMarker;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
 import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
@@ -16,9 +15,10 @@ import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+
+import static dev.eugene.publicationexporter.legacy.ActivationMarkerTestFixtures.activatedMarkerStore;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -282,8 +282,4 @@ class BuildFromReviewHandlerTest {
                         "ru-title-hash", "en-title-hash", "ru-description-hash", "en-description-hash"));
     }
 
-    private static ActivationMarkerStore activatedMarkerStore() {
-        return ActivationMarkerStore.createNull(
-                new ActivationMarker(1, "a".repeat(64), Instant.parse("2026-08-18T00:00:00Z")));
-    }
 }

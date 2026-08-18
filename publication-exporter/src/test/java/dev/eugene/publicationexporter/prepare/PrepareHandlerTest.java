@@ -12,7 +12,6 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.candidate.NullCandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
-import dev.eugene.publicationexporter.legacy.ActivationMarker;
 import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.PublicField;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
@@ -34,7 +33,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.NoSuchElementException;
@@ -52,6 +50,7 @@ import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
+import static dev.eugene.publicationexporter.legacy.ActivationMarkerTestFixtures.activatedMarkerStore;
 
 class PrepareHandlerTest {
 
@@ -3082,11 +3081,6 @@ class PrepareHandlerTest {
         return List.of(
                 dev.eugene.publicationexporter.reference.PublicField.of("title", title),
                 dev.eugene.publicationexporter.reference.PublicField.of("description", description));
-    }
-
-    private static ActivationMarkerStore activatedMarkerStore() {
-        return ActivationMarkerStore.createNull(
-                new ActivationMarker(1, "a".repeat(64), Instant.parse("2026-08-18T00:00:00Z")));
     }
 
     private static List<PublicField> bookFields(

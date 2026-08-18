@@ -9,8 +9,7 @@ import dev.eugene.publicationexporter.buildfromreview.ReleaseResult;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.intake.NoteIntake;
-import dev.eugene.publicationexporter.legacy.ActivationMarker;
-import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerTestFixtures;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.prepare.PrepareHandler;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
@@ -151,7 +150,7 @@ class BlogClaimAcceptanceTest {
                     new NullWorkflowStatusEditor(Map.of(path, VALID_CLAIM)));
             this.buildFromReviewHandler = new BuildFromReviewHandler(
                     approvedSnapshotWorkspace,
-                    ReleaseOutputStore.createNull(), activatedMarkerStore());
+                    ReleaseOutputStore.createNull(), ActivationMarkerTestFixtures.activatedMarkerStore());
         }
 
         private BridgeResponse prepare(
@@ -167,9 +166,5 @@ class BlogClaimAcceptanceTest {
             return buildFromReviewHandler.buildFromReview(identity);
         }
 
-        private static ActivationMarkerStore activatedMarkerStore() {
-            return ActivationMarkerStore.createNull(
-                    new ActivationMarker(1, "a".repeat(64), java.time.Instant.parse("2026-08-18T00:00:00Z")));
-        }
     }
 }

@@ -13,6 +13,7 @@ import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.legacy.ActivationMarker;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerTestFixtures;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.prepare.PrepareHandler;
 import dev.eugene.publicationexporter.reference.PublicField;
@@ -89,7 +90,7 @@ class LateBoundTargetActivationAcceptanceTest {
         assertEquals("See Target.", initiallyApproved.enBody());
         NullReleaseOutputStore initialOutput = new NullReleaseOutputStore();
         ReleaseResult initialRelease = new BuildFromReviewHandler(
-                approvedSnapshotWorkspace, initialOutput, activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
+                approvedSnapshotWorkspace, initialOutput, ActivationMarkerTestFixtures.activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
         assertTrue(initialRelease.ok(), initialRelease.message());
         assertEquals("See Цель.", initialOutput.installed().get(REFERRER_IDENTITY).ruBody());
         assertEquals("See Target.", initialOutput.installed().get(REFERRER_IDENTITY).enBody());
@@ -118,7 +119,7 @@ class LateBoundTargetActivationAcceptanceTest {
         long preparedReferrerCount = preparedCount(candidateWorkspace, REFERRER_IDENTITY);
         NullReleaseOutputStore markerWithoutTargetOutput = new NullReleaseOutputStore();
         ReleaseResult markerWithoutTargetRelease = new BuildFromReviewHandler(
-                approvedSnapshotWorkspace, markerWithoutTargetOutput, activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
+                approvedSnapshotWorkspace, markerWithoutTargetOutput, ActivationMarkerTestFixtures.activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
 
         assertTrue(markerWithoutTargetRelease.ok(), markerWithoutTargetRelease.message());
         assertEquals("See Цель.", markerWithoutTargetOutput.installed().get(REFERRER_IDENTITY).ruBody());
@@ -140,7 +141,7 @@ class LateBoundTargetActivationAcceptanceTest {
         assertEquals(preparedReferrerCount, preparedCount(candidateWorkspace, REFERRER_IDENTITY));
         NullReleaseOutputStore activeOutput = new NullReleaseOutputStore();
         ReleaseResult activeRelease = new BuildFromReviewHandler(
-                approvedSnapshotWorkspace, activeOutput, activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
+                approvedSnapshotWorkspace, activeOutput, ActivationMarkerTestFixtures.activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
         assertTrue(activeRelease.ok(), activeRelease.message());
         assertEquals("See [Цель](/ru/notes/target-note/).",
                 activeOutput.installed().get(REFERRER_IDENTITY).ruBody());
@@ -153,7 +154,7 @@ class LateBoundTargetActivationAcceptanceTest {
         referrerOnlyApprovedWorkspace.install(REFERRER_IDENTITY, markerApproved);
         NullReleaseOutputStore inactiveOutput = new NullReleaseOutputStore();
         ReleaseResult inactiveRelease = new BuildFromReviewHandler(
-                referrerOnlyApprovedWorkspace, inactiveOutput, activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
+                referrerOnlyApprovedWorkspace, inactiveOutput, ActivationMarkerTestFixtures.activatedMarkerStore()).buildFromReview(REFERRER_IDENTITY);
 
         assertTrue(inactiveRelease.ok(), inactiveRelease.message());
         assertEquals("See Цель.", inactiveOutput.installed().get(REFERRER_IDENTITY).ruBody());
@@ -162,11 +163,6 @@ class LateBoundTargetActivationAcceptanceTest {
                 referenceMapHash(referrerOnlyApprovedWorkspace.read(REFERRER_IDENTITY).orElseThrow()));
         assertEquals(approvedReferrerReferenceMapHash,
                 referenceMapHash(approvedSnapshotWorkspace.read(REFERRER_IDENTITY).orElseThrow()));
-    }
-
-    private static ActivationMarkerStore activatedMarkerStore() {
-        return ActivationMarkerStore.createNull(
-                new ActivationMarker(1, "a".repeat(64), java.time.Instant.parse("2026-08-18T00:00:00Z")));
     }
 
     private static PrepareHandler prepareHandler(
