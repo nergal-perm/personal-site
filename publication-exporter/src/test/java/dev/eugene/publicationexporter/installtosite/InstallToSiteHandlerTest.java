@@ -7,6 +7,7 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidatePaths;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.Occurrence;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.site.ManagedSiteInstaller;
 import dev.eugene.publicationexporter.site.NullManagedSiteInstaller;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -57,6 +59,36 @@ class InstallToSiteHandlerTest {
         assertTrue(result.ok());
         assertEquals(IDENTITY, result.identity());
         assertEquals("EN title", dev.eugene.publicationexporter.reference.PublicField.value(siteInstaller.installed().get(IDENTITY).enFields(), "title").orElseThrow());
+    }
+
+    @Test
+    void installedSiteSnapshotHasResolvedOccurrenceRoutesNotRawMarkers() {
+        NullApprovedSnapshotWorkspace approvedSnapshotWorkspace = new NullApprovedSnapshotWorkspace();
+        PublicationIdentity targetIdentity = PublicationIdentity.of("blog", "note", "target");
+        approvedSnapshotWorkspace.install(targetIdentity, CandidateSnapshot.of(
+                "Target RU", "Target EN", List.of(), List.of(), "",
+                ReferenceMap.of(targetIdentity, "vault-source-id-target",
+                        ContentHash.sha256Hex("Target RU"), ContentHash.sha256Hex("Target EN"),
+                        "ru-fields-hash", "en-fields-hash", "structured-hash", List.of())));
+        Occurrence occurrence = new Occurrence(
+                "ref-0001", 0, "vault-source-id-target", "See it", "See it EN");
+        approvedSnapshotWorkspace.install(IDENTITY, CandidateSnapshot.of(
+                "[See it](ref:vault-source-id-target)",
+                "[See it EN](ref:vault-source-id-target)",
+                List.of(), List.of(), "",
+                ReferenceMap.of(IDENTITY,
+                        ContentHash.sha256Hex("[See it](ref:vault-source-id-target)"),
+                        ContentHash.sha256Hex("[See it EN](ref:vault-source-id-target)"),
+                        "ru-fields-hash", "en-fields-hash", "structured-hash", List.of(occurrence))));
+        NullManagedSiteInstaller siteInstaller = new NullManagedSiteInstaller();
+        InstallToSiteHandler handler = new InstallToSiteHandler(approvedSnapshotWorkspace, siteInstaller);
+
+        InstallToSiteResult result = handler.installToSite(IDENTITY);
+
+        assertTrue(result.ok());
+        CandidateSnapshot installed = siteInstaller.installed().get(IDENTITY);
+        assertEquals("[See it](/ru/notes/target/)", installed.ruBody());
+        assertEquals("[See it EN](/en/notes/target/)", installed.enBody());
     }
 
     @Test

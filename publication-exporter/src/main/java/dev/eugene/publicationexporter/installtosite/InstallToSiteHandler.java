@@ -6,6 +6,9 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateExc
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.reference.Occurrence;
+import dev.eugene.publicationexporter.release.ApprovedTargetRegistry;
+import dev.eugene.publicationexporter.release.OccurrenceMarkerResolver;
 import dev.eugene.publicationexporter.site.ManagedSiteInstallationFailedAfterRecoveryException;
 import dev.eugene.publicationexporter.site.ManagedSiteInstallOutcome;
 import dev.eugene.publicationexporter.site.ManagedSiteInstaller;
@@ -14,6 +17,7 @@ import dev.eugene.publicationexporter.site.SiteAlreadyInstalledException;
 import dev.eugene.publicationexporter.site.UnsafeManagedSiteEntryException;
 
 import java.io.UncheckedIOException;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -70,9 +74,10 @@ public final class InstallToSiteHandler {
             return InstallToSiteResult.blocked(
                     "Approved snapshot changed since release was planned; site installation was not attempted.");
         }
+        CandidateSnapshot resolvedPlan = resolveApprovedSnapshot(planned);
         ManagedSiteInstallOutcome outcome;
         try {
-            outcome = managedSiteInstaller.installWithOutcome(identity, planned);
+            outcome = managedSiteInstaller.installWithOutcome(identity, resolvedPlan);
         } catch (SiteAlreadyInstalledException raceLoser) {
             return InstallToSiteResult.blocked(
                     "Another site installation is already in progress for this publication.");
@@ -100,6 +105,19 @@ public final class InstallToSiteHandler {
         return outcome.recoveredBeforeInstall()
                 ? InstallToSiteResult.installedAfterRecovery(identity)
                 : InstallToSiteResult.installed(identity);
+    }
+
+    private CandidateSnapshot resolveApprovedSnapshot(CandidateSnapshot planned) {
+        List<Occurrence> occurrences = planned.referenceMap().occurrences();
+        ApprovedTargetRegistry registry = ApprovedTargetRegistry.forOccurrences(
+                occurrences, approvedSnapshotWorkspace);
+        String resolvedRuBody = OccurrenceMarkerResolver.resolve(
+                planned.ruBody(), registry, occurrences, "ru").body();
+        String resolvedEnBody = OccurrenceMarkerResolver.resolve(
+                planned.enBody(), registry, occurrences, "en").body();
+        return CandidateSnapshot.of(
+                resolvedRuBody, resolvedEnBody, planned.ruFields(), planned.enFields(),
+                planned.structuredData(), planned.referenceMap());
     }
 
     private Optional<CandidateSnapshot> readCurrentApprovedSnapshot(PublicationIdentity identity) {
