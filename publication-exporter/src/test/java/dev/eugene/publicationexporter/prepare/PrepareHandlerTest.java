@@ -2284,6 +2284,11 @@ class PrepareHandlerTest {
             }
 
             @Override
+            public List<PublicationIdentity> allIdentities() {
+                return List.of();
+            }
+
+            @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
                 return Optional.empty();
             }

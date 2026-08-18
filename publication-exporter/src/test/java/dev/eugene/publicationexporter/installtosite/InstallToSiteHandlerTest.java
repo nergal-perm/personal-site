@@ -275,6 +275,11 @@ class InstallToSiteHandlerTest {
             }
 
             @Override
+            public List<PublicationIdentity> allIdentities() {
+                return List.of();
+            }
+
+            @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
                 return backingWorkspace.find(identity);
             }

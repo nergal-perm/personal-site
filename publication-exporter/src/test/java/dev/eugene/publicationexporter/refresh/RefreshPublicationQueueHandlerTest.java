@@ -262,6 +262,11 @@ class RefreshPublicationQueueHandlerTest {
             }
 
             @Override
+            public List<PublicationIdentity> allIdentities() {
+                return List.of();
+            }
+
+            @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
                 return identity.publicId().equals("incomplete-candidate")
                         ? Optional.of(CandidatePaths.of(
@@ -297,6 +302,11 @@ class RefreshPublicationQueueHandlerTest {
             }
 
             @Override
+            public List<PublicationIdentity> allIdentities() {
+                return List.of();
+            }
+
+            @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
                 if (identity.publicId().equals(failingPublicId)) {
                     throw new UncheckedIOException(new IOException("candidate directory unavailable"));
@@ -323,6 +333,11 @@ class RefreshPublicationQueueHandlerTest {
                     String ruTitle, String enTitle, String ruDescription, String enDescription,
                     ReferenceMap referenceMap) {
                 // no-op: refresh only reads approved state
+            }
+
+            @Override
+            public List<PublicationIdentity> allIdentities() {
+                return List.of();
             }
 
             @Override

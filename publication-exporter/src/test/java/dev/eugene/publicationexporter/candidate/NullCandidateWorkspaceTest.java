@@ -29,6 +29,17 @@ class NullCandidateWorkspaceTest {
     }
 
     @Test
+    void allIdentitiesReturnsOneEntryWhenTheSameIdentityIsInstalledTwice() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        CandidateSnapshot snapshot = snapshot("RU", "EN", "Title", "EN Title", "Description", "EN Description",
+                ReferenceMap.empty(IDENTITY, "ru", "en", "ru-fields", "en-fields", "structured"));
+        workspace.install(IDENTITY, snapshot, List.of());
+        workspace.install(IDENTITY, snapshot, List.of());
+
+        assertEquals(List.of(IDENTITY), workspace.allIdentities());
+    }
+
+    @Test
     void allIdentitiesIsEmptyForAFreshWorkspace() {
         assertEquals(List.of(), new NullCandidateWorkspace().allIdentities());
     }

@@ -641,6 +641,11 @@ class MarkReviewedHandlerTest {
             }
 
             @Override
+            public List<PublicationIdentity> allIdentities() {
+                return List.of();
+            }
+
+            @Override
             public Optional<CandidatePaths> find(PublicationIdentity identity) {
                 throw failure;
             }
@@ -669,6 +674,11 @@ class MarkReviewedHandlerTest {
                     ReferenceMap referenceMap) {
                 delegate.install(identity, ruBody, enBody, ruTitle, enTitle,
                         ruDescription, enDescription, referenceMap);
+            }
+
+            @Override
+            public List<PublicationIdentity> allIdentities() {
+                return List.of();
             }
 
             @Override
