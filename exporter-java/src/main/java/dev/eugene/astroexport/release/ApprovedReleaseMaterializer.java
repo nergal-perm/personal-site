@@ -23,7 +23,7 @@ public final class ApprovedReleaseMaterializer {
   private static final Pattern SEMANTIC_DESTINATION = Pattern.compile("\\]\\(ref:[^)]+\\)");
   private static final Pattern VAULT_REF = Pattern.compile("\\bvault-ref-[A-Za-z0-9-]+\\b");
   private static final Pattern CATALOG_PATH = Pattern.compile("catalog-v\\d+\\.json|\\.semantic-links/");
-  private static final Pattern ABSOLUTE_PATH_TOKEN = Pattern.compile("(?<![\\w:])/[^\\s<>\"')]+");
+  private static final Pattern ABSOLUTE_PATH_TOKEN = Pattern.compile("(?<![\\w:])/[^\\s<>\"'){}]+");
 
   private final LinkProcessor linkProcessor = new LinkProcessor();
 

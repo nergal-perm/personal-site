@@ -161,7 +161,7 @@ final class NativeCliParityTest {
     assertEquals(Set.of("parent", "vault", "note", "review", "jobs", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MarkReviewedCommand"));
     assertEquals(Set.of("parent", "vault", "review", "astro", "report", "decisions",
-            "apply", "rollForward", "rollBack", "json"),
+            "draft", "validate", "apply", "rollForward", "rollBack", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$MigrateSemanticLinksCommand"));
     assertEquals(Set.of("parent", "vault", "review", "jobs", "json"),
         fieldsByType.get("dev.eugene.astroexport.cli.AstroExportCommand$RefreshPublicationQueueCommand"));
@@ -198,21 +198,26 @@ final class NativeCliParityTest {
     assertEquals(3, inventoryPayload.get("schemaVersion"));
     assertEquals("migrate-semantic-links", inventoryPayload.get("command"));
     assertEquals("decisions-required", inventoryPayload.get("status"));
-    assertEquals(1, ((Map<?, ?>) inventoryPayload.get("summary")).get("occurrences"));
+    assertEquals(2, ((Map<?, ?>) inventoryPayload.get("summary")).get("occurrences"));
 
     Path decisions = temp.resolve("native-decisions.json");
     Map<String, Object> inventoryReport = json(Files.readString(inventory));
     Map<?, ?> firstPage = (Map<?, ?>) ((List<?>) inventoryReport.get("pages")).getFirst();
-    Map<?, ?> firstOccurrence = (Map<?, ?>) ((List<?>) firstPage.get("occurrences")).getFirst();
-    Map<?, ?> span = (Map<?, ?>) firstOccurrence.get("proposedEnSpan");
-    assertNotNull(span, "native binary predates proposedEnSpan inventory output");
-    Files.writeString(decisions, """
-        {"schemaVersion":1,"inventorySha256":"%s","decisions":{"%s":{"decision":"confirm","enSpan":{"start":%s,"end":%s}}}}
-        """.formatted(
-            inventoryReport.get("inventorySha256"),
-            firstOccurrence.get("occurrenceKey"),
-            span.get("start"),
-            span.get("end")), StandardCharsets.UTF_8);
+    List<?> pageOccurrences = (List<?>) firstPage.get("occurrences");
+    assertEquals(2, pageOccurrences.size(), "native binary predates duplicate-occurrence confirmation");
+    Map<String, Object> decisionEntries = new LinkedHashMap<>();
+    for (Object rawOccurrence : pageOccurrences) {
+      Map<?, ?> occurrence = (Map<?, ?>) rawOccurrence;
+      Map<?, ?> span = (Map<?, ?>) occurrence.get("proposedEnSpan");
+      assertNotNull(span, "native binary predates proposedEnSpan inventory output");
+      decisionEntries.put((String) occurrence.get("occurrenceKey"), Map.of(
+          "decision", "confirm",
+          "enSpan", Map.of("start", span.get("start"), "end", span.get("end"))));
+    }
+    Files.writeString(decisions, JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "inventorySha256", inventoryReport.get("inventorySha256"),
+        "decisions", decisionEntries)), StandardCharsets.UTF_8);
     NativeResult applyResult = nativeRun(nativeBinary,
         "migrate-semantic-links",
         "--vault", vault.toString(),
@@ -497,17 +502,45 @@ final class NativeCliParityTest {
   }
 
   private static void writePublishedSemanticFixture(Path vault, Path review, Path astro) throws Exception {
-    writeRawNote(vault, "page.md", "See [[Target|target]].");
+    writeRawNote(vault, "page.md", "See [[Target|target]] and again [[Target|target]].");
     writeRawNote(vault, "target.md", "Target.");
     writeSemanticCatalog(review, "vault-ref-page", "page.md", "vault-ref-target", "target.md");
     writeAstroRoute(astro, "src/content/blog/ru/target.md", "vault-ref-target", "/ru/essays/target/");
     writeAstroRoute(astro, "src/content/blog/en/target.md", "vault-ref-target", "/en/essays/target/");
-    writeApprovedPublishedPair(review, "page", "page.md", "vault-ref-page",
-        "See [target](/ru/essays/target/).",
-        "See [target](/en/essays/target/).");
+    writeApprovedPublishedPairWithDuplicateOccurrences(review, "page", "page.md", "vault-ref-page",
+        "See [target](/ru/essays/target/) and again [target](/ru/essays/target/).",
+        "See [target](/en/essays/target/) and again [target](/en/essays/target/).");
     writeApprovedPublishedPair(review, "target", "target.md", "vault-ref-target",
         "Target.",
         "Target.");
+  }
+
+  private static void writeApprovedPublishedPairWithDuplicateOccurrences(
+      Path reviewRoot,
+      String publicId,
+      String sourcePath,
+      String pageRef,
+      String ru,
+      String en) throws Exception {
+    Path published = reviewRoot.resolve("blog").resolve(publicId).resolve("published");
+    Files.createDirectories(published);
+    byte[] russian = approvedMarkdown(publicId, "ru", ru);
+    byte[] english = approvedMarkdown(publicId, "en", en);
+    Files.write(published.resolve("ru.md"), russian);
+    Files.write(published.resolve("en.md"), english);
+    Map<String, Object> occurrence = Map.of(
+        "targetRef", "vault-ref-target",
+        "authoredTarget", "Target",
+        "heading", "",
+        "label", "target");
+    Files.writeString(published.resolve("references.json"), JSON.writeValueAsString(Map.of(
+        "schemaVersion", 1,
+        "pageRef", pageRef,
+        "sourcePath", sourcePath,
+        "ruSha256", PageReferenceMapCodec.sha256(russian),
+        "enSha256", PageReferenceMapCodec.sha256(english),
+        "order", List.of("ref-0001", "ref-0002"),
+        "references", Map.of("ref-0001", occurrence, "ref-0002", occurrence))), StandardCharsets.UTF_8);
   }
 
   private static void writePublicationSource(
