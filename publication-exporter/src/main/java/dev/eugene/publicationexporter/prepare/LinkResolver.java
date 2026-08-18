@@ -90,11 +90,7 @@ public final class LinkResolver {
         int spanStart = output.length();
         output.append(label);
         int spanEnd = output.length();
-        if (reference.sourceId() == null) {
-            output.append("](").append(reference.route()).append(')');
-        } else {
-            output.append("](ref:").append(reference.sourceId()).append(')');
-        }
+        output.append("](ref:").append(reference.sourceId()).append(')');
         occurrences.add(new LinkOccurrence(
                 lastPathSegment(target), label, Optional.of(reference.route()), spanStart, spanEnd));
     }

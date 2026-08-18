@@ -15,13 +15,13 @@ final class PublicNoteIndex {
 
     private final Map<String, NoteReference> referencesByFilenameStem;
 
-    PublicNoteIndex(Map<String, String> routesByFilenameStem) {
-        this.referencesByFilenameStem = toReferences(routesByFilenameStem);
-    }
-
     private PublicNoteIndex(NoteReferenceIndex referencesByFilenameStem) {
         this.referencesByFilenameStem = Map.copyOf(Objects.requireNonNull(
                 referencesByFilenameStem.values(), "referencesByFilenameStem"));
+    }
+
+    static PublicNoteIndex empty() {
+        return new PublicNoteIndex(new NoteReferenceIndex(Map.of()));
     }
 
     static PublicNoteIndex from(VaultReader vaultReader, NoteIntake noteIntake) {
@@ -75,16 +75,12 @@ final class PublicNoteIndex {
     }
 
     record NoteReference(String route, String sourceId) {
+        NoteReference {
+            Objects.requireNonNull(route, "route");
+            Objects.requireNonNull(sourceId, "sourceId");
+        }
     }
 
     private record NoteReferenceIndex(Map<String, NoteReference> values) {
-    }
-
-    private static Map<String, NoteReference> toReferences(Map<String, String> routesByFilenameStem) {
-        Map<String, NoteReference> references = new LinkedHashMap<>();
-        for (var entry : routesByFilenameStem.entrySet()) {
-            references.put(entry.getKey(), new NoteReference(entry.getValue(), null));
-        }
-        return Map.copyOf(references);
     }
 }

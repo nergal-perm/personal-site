@@ -140,12 +140,6 @@ final class LinkResolverTest {
     }
 
     @Test
-    void legacyRouteOnlyIndexKeepsItsRouteForAnAdmittedNonEmbedLink() {
-        assertEquals("See [Target](/essays/target/).",
-                resolvedBodyOrFail("See [[Target]].", new PublicNoteIndex(Map.of("Target", "/essays/target/"))));
-    }
-
-    @Test
     void resolvedOutcomeReportsOccurrencesInSourceOrderForPublicAndPrivateTargets() {
         PublicNoteIndex knownNotes = PublicNoteIndex.from(
                 VaultReader.createNull(Map.of(
@@ -208,7 +202,7 @@ final class LinkResolverTest {
     @Test
     void unresolvedLinkWithAPathUsesOnlyTheLastSegmentAsItsSafeLabel() {
         assertEquals("See Secret Draft.",
-                resolvedBodyOrFail("See [[private-area/Secret Draft]].", new PublicNoteIndex(Map.of())));
+                resolvedBodyOrFail("See [[private-area/Secret Draft]].", PublicNoteIndex.empty()));
     }
 
     @Test
@@ -223,7 +217,7 @@ final class LinkResolverTest {
     void assetExtensionMatchingIsCaseInsensitive() {
         String body = "![[Diagram.PNG]]";
 
-        assertEquals(body, resolvedBodyOrFail(body, new PublicNoteIndex(Map.of())));
+        assertEquals(body, resolvedBodyOrFail(body, PublicNoteIndex.empty()));
     }
 
     @Test
@@ -260,12 +254,12 @@ final class LinkResolverTest {
     void unclosedRepeatedWikilinksResolveWithinTheTimeout() {
         String body = "[[a".repeat(16000);
 
-        resolvedBodyOrFail(body, new PublicNoteIndex(Map.of()));
+        resolvedBodyOrFail(body, PublicNoteIndex.empty());
     }
 
     @Test
     void privateTransclusionReportsTheOffendingTargetText() {
-        PublicNoteIndex noKnownNotes = new PublicNoteIndex(Map.of());
+        PublicNoteIndex noKnownNotes = PublicNoteIndex.empty();
         String body = "![[Черновик]]";
 
         String blockedTarget = LinkResolver.resolve(body, noKnownNotes).resolve(
