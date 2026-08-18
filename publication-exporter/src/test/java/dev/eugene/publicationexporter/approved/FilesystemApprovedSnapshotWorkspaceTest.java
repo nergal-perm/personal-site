@@ -136,6 +136,26 @@ class FilesystemApprovedSnapshotWorkspaceTest {
     }
 
     @Test
+    void allIdentitiesEnumeratesEveryApprovedDirectorySorted() {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+        installSnapshotWithSourceId(workspace,
+                PublicationIdentity.of("blog", "essay", "zebra"), "zebra", "zebra-source");
+        installSnapshotWithSourceId(workspace,
+                PublicationIdentity.of("blog", "essay", "apple"), "apple", "apple-source");
+
+        assertEquals(List.of(
+                PublicationIdentity.of("blog", "essay", "apple"),
+                PublicationIdentity.of("blog", "essay", "zebra")), workspace.allIdentities());
+    }
+
+    @Test
+    void allIdentitiesIsEmptyForAFreshReviewRoot() {
+        FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
+
+        assertEquals(List.of(), workspace.allIdentities());
+    }
+
+    @Test
     void findBySourceIdReturnsTheFirstSortedApprovedSnapshotWhenSourceIdIsDuplicated() {
         FilesystemApprovedSnapshotWorkspace workspace = new FilesystemApprovedSnapshotWorkspace(reviewRoot);
         PublicationIdentity firstIdentity = PublicationIdentity.of("blog", "essay", "a-first");

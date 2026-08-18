@@ -295,6 +295,14 @@ final class FilesystemApprovedSnapshotWorkspace implements ApprovedSnapshotWorks
         return Optional.empty();
     }
 
+    @Override
+    public List<PublicationIdentity> allIdentities() {
+        return candidateDirectoriesInOrder().stream()
+                .map(this::readReferenceMapOrUnchecked)
+                .map(ReferenceMap::identity)
+                .toList();
+    }
+
     private boolean matchesSourceId(Path approvedDirectory, String sourceId) {
         return readReferenceMapOrUnchecked(approvedDirectory).sourceId()
                 .filter(sourceId::equals).isPresent();

@@ -16,6 +16,24 @@ class NullCandidateWorkspaceTest {
     private static final PublicationIdentity IDENTITY = PublicationIdentity.of("blog", "essay", "my-essay");
 
     @Test
+    void allIdentitiesReturnsEveryInstalledIdentitySorted() {
+        NullCandidateWorkspace workspace = new NullCandidateWorkspace();
+        PublicationIdentity zebra = PublicationIdentity.of("blog", "essay", "zebra");
+        PublicationIdentity apple = PublicationIdentity.of("blog", "essay", "apple");
+        workspace.install(zebra, snapshot("RU", "EN", "Title", "EN Title", "Description", "EN Description",
+                ReferenceMap.empty(zebra, "ru", "en", "ru-fields", "en-fields", "structured")), List.of());
+        workspace.install(apple, snapshot("RU", "EN", "Title", "EN Title", "Description", "EN Description",
+                ReferenceMap.empty(apple, "ru", "en", "ru-fields", "en-fields", "structured")), List.of());
+
+        assertEquals(List.of(apple, zebra), workspace.allIdentities());
+    }
+
+    @Test
+    void allIdentitiesIsEmptyForAFreshWorkspace() {
+        assertEquals(List.of(), new NullCandidateWorkspace().allIdentities());
+    }
+
+    @Test
     void installedIsEmptyBeforeAnyCall() {
         NullCandidateWorkspace workspace = new NullCandidateWorkspace();
 
@@ -139,5 +157,14 @@ class NullCandidateWorkspaceTest {
         assertEquals("EN title", PublicField.value(read.get().enFields(), "title").orElseThrow());
         assertEquals("RU description.", PublicField.value(read.get().ruFields(), "description").orElseThrow());
         assertEquals("EN description.", PublicField.value(read.get().enFields(), "description").orElseThrow());
+    }
+
+    private static CandidateSnapshot snapshot(String ruBody, String enBody,
+            String ruTitle, String enTitle, String ruDescription, String enDescription,
+            ReferenceMap referenceMap) {
+        return CandidateSnapshot.of(ruBody, enBody,
+                List.of(PublicField.of("title", ruTitle), PublicField.of("description", ruDescription)),
+                List.of(PublicField.of("title", enTitle), PublicField.of("description", enDescription)),
+                "", referenceMap);
     }
 }

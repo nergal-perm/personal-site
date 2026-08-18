@@ -277,6 +277,28 @@ class FilesystemCandidateWorkspaceTest {
     }
 
     @Test
+    void allIdentitiesEnumeratesEveryCandidateDirectorySorted() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+        PublicationIdentity zebra = PublicationIdentity.of("blog", "essay", "zebra");
+        PublicationIdentity apple = PublicationIdentity.of("blog", "essay", "apple");
+        workspace.install(zebra, snapshot("RU", "EN", "Title", "EN Title", "Description", "EN Description",
+                ReferenceMap.empty(zebra, "ru", "en", "ru-fields", "en-fields", "structured")), List.of());
+        workspace.install(apple, snapshot("RU", "EN", "Title", "EN Title", "Description", "EN Description",
+                ReferenceMap.empty(apple, "ru", "en", "ru-fields", "en-fields", "structured")), List.of());
+
+        assertEquals(List.of(
+                PublicationIdentity.of("blog", "essay", "apple"),
+                PublicationIdentity.of("blog", "essay", "zebra")), workspace.allIdentities());
+    }
+
+    @Test
+    void allIdentitiesIsEmptyForAFreshReviewRoot() {
+        FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
+
+        assertEquals(List.of(), workspace.allIdentities());
+    }
+
+    @Test
     void readIsAbsentBeforeInstall() {
         FilesystemCandidateWorkspace workspace = new FilesystemCandidateWorkspace(reviewRoot);
 

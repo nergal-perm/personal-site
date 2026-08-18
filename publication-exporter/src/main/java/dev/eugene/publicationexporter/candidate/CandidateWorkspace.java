@@ -40,6 +40,10 @@ public interface CandidateWorkspace {
 
     Optional<CandidateSnapshot> read(PublicationIdentity identity);
 
+    default List<PublicationIdentity> allIdentities() {
+        return List.of();
+    }
+
     static CandidateWorkspace create(Path reviewRoot) {
         return new FilesystemCandidateWorkspace(reviewRoot);
     }

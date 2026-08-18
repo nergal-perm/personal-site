@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -34,6 +35,15 @@ public final class NullCandidateWorkspace implements CandidateWorkspace {
         return lastInstalledMatching(identity)
                 .filter(candidate -> candidate.content().referenceMap().identity().equals(identity))
                 .map(InstalledCandidate::content);
+    }
+
+    @Override
+    public List<PublicationIdentity> allIdentities() {
+        return installed.stream()
+                .map(InstalledCandidate::identity)
+                .distinct()
+                .sorted(Comparator.comparing(PublicationIdentity::toString))
+                .toList();
     }
 
     private Optional<InstalledCandidate> lastInstalledMatching(PublicationIdentity identity) {

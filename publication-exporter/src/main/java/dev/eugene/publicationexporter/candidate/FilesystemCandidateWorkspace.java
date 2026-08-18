@@ -16,6 +16,7 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
+import java.util.ArrayList;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -139,6 +140,14 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         return snapshotFrom(candidateDirectory, identity);
     }
 
+    @Override
+    public List<PublicationIdentity> allIdentities() {
+        return candidateDirectoriesInOrder().stream()
+                .map(this::readReferenceMapOrUnchecked)
+                .map(ReferenceMap::identity)
+                .toList();
+    }
+
     private boolean containsCandidateSnapshot(Path candidateDirectory) {
         Path ruBodyPath = candidateFile(candidateDirectory, "ru.md");
         Path enBodyPath = candidateFile(candidateDirectory, "en.md");
@@ -181,6 +190,44 @@ final class FilesystemCandidateWorkspace implements CandidateWorkspace {
         } catch (ReferenceMapCodecException invalidReferenceMap) {
             throw new IOException("references.json is invalid", invalidReferenceMap);
         }
+    }
+
+    private ReferenceMap readReferenceMapOrUnchecked(Path candidateDirectory) {
+        try {
+            return readReferenceMap(candidateFile(candidateDirectory, "references.json"));
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+    }
+
+    private List<Path> candidateDirectoriesInOrder() {
+        Path root = stagedInstall.canonicalRoot();
+        if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            return List.of();
+        }
+        List<Path> candidateDirectories = new ArrayList<>();
+        try (var collections = Files.list(root)) {
+            for (Path collection : collections
+                    .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                    .sorted()
+                    .toList()) {
+                try (var identities = Files.list(collection)) {
+                    for (Path identity : identities
+                            .filter(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS))
+                            .sorted()
+                            .toList()) {
+                        Path candidate = identity.resolve("candidate");
+                        if (Files.isDirectory(candidate, LinkOption.NOFOLLOW_LINKS)) {
+                            requireWithinReviewRoot(candidate);
+                            candidateDirectories.add(candidate);
+                        }
+                    }
+                }
+            }
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
+        return candidateDirectories;
     }
 
     private List<PublicField> readPublicFields(Path fieldsPath, String fileLabel) throws IOException {

@@ -7,6 +7,7 @@ import dev.eugene.publicationexporter.reference.ReferenceMap;
 
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.List;
 import java.util.Optional;
 import java.util.function.Supplier;
 
@@ -26,6 +27,10 @@ public interface ApprovedSnapshotWorkspace {
     Optional<CandidateSnapshot> read(PublicationIdentity identity);
 
     Optional<CandidateSnapshot> findBySourceId(String sourceId);
+
+    default List<PublicationIdentity> allIdentities() {
+        return List.of();
+    }
 
     default <T> T withApprovalLock(PublicationIdentity identity, Supplier<T> operation) {
         Objects.requireNonNull(identity, "identity");

@@ -6,6 +6,7 @@ import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -44,6 +45,13 @@ public final class NullApprovedSnapshotWorkspace implements ApprovedSnapshotWork
             return Optional.empty();
         }
         return Optional.of(pathsFor(identity));
+    }
+
+    @Override
+    public List<PublicationIdentity> allIdentities() {
+        return installed.keySet().stream()
+                .sorted(Comparator.comparing(PublicationIdentity::toString))
+                .toList();
     }
 
     private void validateIdentity(PublicationIdentity identity) {

@@ -22,6 +22,24 @@ class NullApprovedSnapshotWorkspaceTest {
             PublicationIdentity.of("blog", "essay", "different-essay");
 
     @Test
+    void allIdentitiesReturnsEveryInstalledIdentitySorted() {
+        NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
+        PublicationIdentity zebra = PublicationIdentity.of("blog", "essay", "zebra");
+        PublicationIdentity apple = PublicationIdentity.of("blog", "essay", "apple");
+        workspace.install(zebra, CandidateSnapshot.of("RU", "EN", List.of(), List.of(), "",
+                ReferenceMap.empty(zebra, "ru", "en", "ru-fields", "en-fields", "structured")));
+        workspace.install(apple, CandidateSnapshot.of("RU", "EN", List.of(), List.of(), "",
+                ReferenceMap.empty(apple, "ru", "en", "ru-fields", "en-fields", "structured")));
+
+        assertEquals(List.of(apple, zebra), workspace.allIdentities());
+    }
+
+    @Test
+    void allIdentitiesIsEmptyForAFreshWorkspace() {
+        assertEquals(List.of(), new NullApprovedSnapshotWorkspace().allIdentities());
+    }
+
+    @Test
     void findIsAbsentBeforeAnyInstall() {
         NullApprovedSnapshotWorkspace workspace = new NullApprovedSnapshotWorkspace();
 
