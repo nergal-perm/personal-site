@@ -185,6 +185,25 @@ class PrepareHandlerTest {
             An album body.""";
 
     @Test
+    void installedCandidateReferenceMapRecordsTheNotesOwnSourceId() {
+        VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
+        VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
+        NullCandidateWorkspace candidateWorkspace = new NullCandidateWorkspace();
+        PrepareHandler handler = new PrepareHandler(
+                new NoteIntake(PublicationKinds.installed()),
+                TranslationWorker.createNull("Translated body", fields("Translated title", "Translated description.")),
+                candidateWorkspace, ApprovedSnapshotWorkspace.createNull(), WorkflowStatusEditor.createNull());
+
+        BridgeResponse response = handler.prepare(path, vaultReader, VaultAssetReader.createNull());
+
+        assertTrue(response.ok());
+        CandidateSnapshot installed = candidateWorkspace
+                .read(PublicationIdentity.of("blog", "essay", "my-essay"))
+                .orElseThrow();
+        assertEquals(Optional.of("8f2c-my-essay"), installed.referenceMap().sourceId());
+    }
+
+    @Test
     void successfulPrepareWritesReadyForReviewWorkflowStatus() {
         VaultRelativePath path = VaultRelativePath.of("blog/my-essay.md");
         VaultReader vaultReader = VaultReader.createNull(Map.of(path, VALID_ESSAY));
