@@ -5,6 +5,7 @@ import dev.eugene.publicationexporter.reference.Occurrence;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -17,10 +18,7 @@ public final class OccurrenceMarkerResolver {
 
     public static OccurrenceResolution resolve(
             String body, ApprovedTargetRegistry registry, List<Occurrence> occurrences, String language) {
-        Map<String, Occurrence> occurrencesByTargetSourceId = new LinkedHashMap<>();
-        for (Occurrence occurrence : occurrences) {
-            occurrencesByTargetSourceId.putIfAbsent(occurrence.targetSourceId(), occurrence);
-        }
+        Map<String, Occurrence> occurrencesByTargetSourceId = indexOccurrencesByTargetSourceId(occurrences);
         Matcher matcher = MARKER.matcher(body);
         StringBuilder rewritten = new StringBuilder(body.length());
         int cursor = 0;
@@ -28,15 +26,12 @@ public final class OccurrenceMarkerResolver {
         int deactivated = 0;
         while (matcher.find()) {
             rewritten.append(body, cursor, matcher.start());
-            String targetSourceId = matcher.group("sourceId");
-            String label = storedLabel(occurrencesByTargetSourceId, targetSourceId, language, matcher.group("label"));
-            var target = registry.find(targetSourceId);
-            if (target.isPresent()) {
-                String route = "ru".equals(language) ? target.get().ruRoute() : target.get().enRoute();
-                rewritten.append('[').append(label).append("](").append(route).append(')');
+            MarkerSubstitution substitution = substituteMarker(
+                    matcher, occurrencesByTargetSourceId, registry, language);
+            rewritten.append(substitution.body());
+            if (substitution.activated()) {
                 activated++;
             } else {
-                rewritten.append(label);
                 deactivated++;
             }
             cursor = matcher.end();
@@ -45,13 +40,37 @@ public final class OccurrenceMarkerResolver {
         return OccurrenceResolution.of(rewritten.toString(), activated, deactivated);
     }
 
+    private static Map<String, Occurrence> indexOccurrencesByTargetSourceId(List<Occurrence> occurrences) {
+        Map<String, Occurrence> occurrencesByTargetSourceId = new LinkedHashMap<>();
+        for (Occurrence occurrence : occurrences) {
+            occurrencesByTargetSourceId.putIfAbsent(occurrence.targetSourceId(), occurrence);
+        }
+        return occurrencesByTargetSourceId;
+    }
+
+    private static MarkerSubstitution substituteMarker(
+            Matcher matcher, Map<String, Occurrence> occurrencesByTargetSourceId,
+            ApprovedTargetRegistry registry, String language) {
+        String targetSourceId = matcher.group("sourceId");
+        String label = storedLabel(occurrencesByTargetSourceId, targetSourceId, language, matcher.group("label"));
+        return registry.find(targetSourceId)
+                .map(target -> new MarkerSubstitution(
+                        "[" + label + "](" + routeFor(target, language) + ")", true))
+                .orElseGet(() -> new MarkerSubstitution(label, false));
+    }
+
+    private static String routeFor(ApprovedTargetRegistry.Target target, String language) {
+        return "ru".equals(language) ? target.ruRoute() : target.enRoute();
+    }
+
     private static String storedLabel(
             Map<String, Occurrence> occurrencesByTargetSourceId, String targetSourceId, String language,
             String fallbackLabel) {
-        Occurrence occurrence = occurrencesByTargetSourceId.get(targetSourceId);
-        if (occurrence == null) {
-            return fallbackLabel;
-        }
-        return "ru".equals(language) ? occurrence.ruLabel() : occurrence.enLabel();
+        return Optional.ofNullable(occurrencesByTargetSourceId.get(targetSourceId))
+                .map(occurrence -> "ru".equals(language) ? occurrence.ruLabel() : occurrence.enLabel())
+                .orElse(fallbackLabel);
+    }
+
+    private record MarkerSubstitution(String body, boolean activated) {
     }
 }

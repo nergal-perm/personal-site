@@ -19,7 +19,7 @@ public final class ApprovedTargetRegistry {
         this.targetsBySourceId = Map.copyOf(targetsBySourceId);
     }
 
-    public static ApprovedTargetRegistry forOccurrences(
+    static ApprovedTargetRegistry forOccurrences(
             List<Occurrence> occurrences, ApprovedSnapshotWorkspace approvedSnapshotWorkspace) {
         Objects.requireNonNull(occurrences, "occurrences");
         Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");

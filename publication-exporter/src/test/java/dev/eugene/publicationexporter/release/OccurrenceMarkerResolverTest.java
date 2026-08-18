@@ -34,11 +34,48 @@ class OccurrenceMarkerResolverTest {
                 new Occurrence("ref-0001", 0, "vault-source-id-missing", "Target Label RU", "Target Label EN"));
 
         OccurrenceResolution resolution = OccurrenceMarkerResolver.resolve(
-                "See [Target Label RU](ref:vault-source-id-missing).", emptyRegistry(), occurrences, "ru");
+                "See [Inline](ref:vault-source-id-missing).", emptyRegistry(), occurrences, "ru");
 
         assertEquals("See Target Label RU.", resolution.body());
         assertEquals(0, resolution.activatedCount());
         assertEquals(1, resolution.deactivatedCount());
+    }
+
+    @Test
+    void resolvesMultipleMarkersAndAddsActivationAndDeactivationCounts() {
+        List<Occurrence> occurrences = List.of(
+                new Occurrence("ref-0001", 0, "vault-source-id-target", "Target Label RU", "Target Label EN"),
+                new Occurrence("ref-0002", 1, "vault-source-id-missing", "Missing Label RU", "Missing Label EN"));
+
+        OccurrenceResolution resolution = OccurrenceMarkerResolver.resolve(
+                "[Inline target](ref:vault-source-id-target) and [Inline missing](ref:vault-source-id-missing).",
+                registryResolving("vault-source-id-target"), occurrences, "ru");
+
+        assertEquals("[Target Label RU](/ru/notes/target/) and Missing Label RU.", resolution.body());
+        assertEquals(1, resolution.activatedCount());
+        assertEquals(1, resolution.deactivatedCount());
+    }
+
+    @Test
+    void markerWithEmptyOccurrencesFallsBackToInlineLabel() {
+        OccurrenceResolution resolution = OccurrenceMarkerResolver.resolve(
+                "See [Inline](ref:vault-source-id-missing).", emptyRegistry(), List.of(), "ru");
+
+        assertEquals("See Inline.", resolution.body());
+        assertEquals(0, resolution.activatedCount());
+        assertEquals(1, resolution.deactivatedCount());
+    }
+
+    @Test
+    void nonRussianLanguageUsesEnglishLabelsAndRoutes() {
+        List<Occurrence> occurrences = List.of(
+                new Occurrence("ref-0001", 0, "vault-source-id-target", "Target Label RU", "Target Label EN"));
+
+        OccurrenceResolution resolution = OccurrenceMarkerResolver.resolve(
+                "See [Inline](ref:vault-source-id-target).", registryResolving("vault-source-id-target"),
+                occurrences, "en");
+
+        assertEquals("See [Target Label EN](/en/notes/target/).", resolution.body());
     }
 
     @Test
