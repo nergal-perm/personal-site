@@ -14,6 +14,9 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementExc
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.GenerationActivationStores;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
 import dev.eugene.publicationexporter.legacy.SchemaActivationCheck;
 import dev.eugene.publicationexporter.legacy.SchemaActivationGuard;
 import dev.eugene.publicationexporter.reference.Occurrence;
@@ -58,6 +61,7 @@ public final class PrepareHandler {
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final WorkflowStatusEditor workflowStatusEditor;
     private final ActivationMarkerStore activationMarkerStore;
+    private final Optional<GenerationActivationStores> generationStores;
 
     public PrepareHandler(NoteIntake noteIntake, TranslationWorker translationWorker, CandidateWorkspace candidateWorkspace,
             ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
@@ -75,12 +79,25 @@ public final class PrepareHandler {
                 Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
         this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
         this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
+        this.generationStores = Optional.empty();
+    }
+
+    public PrepareHandler(NoteIntake noteIntake, TranslationWorker translationWorker,
+            CandidateWorkspace candidateWorkspace, ApprovedSnapshotWorkspace approvedSnapshotWorkspace,
+            WorkflowStatusEditor workflowStatusEditor, ActivationMarkerStore activationMarkerStore,
+            MigrationJournalStore journal, MigrationCatalogStore catalog) {
+        this.noteIntake = Objects.requireNonNull(noteIntake, "noteIntake");
+        this.translationWorker = Objects.requireNonNull(translationWorker, "translationWorker");
+        this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
+        this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
+        this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
+        this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
+        this.generationStores = Optional.of(new GenerationActivationStores(journal, catalog));
     }
 
     public BridgeResponse prepare(
             VaultRelativePath notePath, VaultReader vaultReader, VaultAssetReader vaultAssetReader) {
-        SchemaActivationCheck activation = SchemaActivationGuard.check(
-                approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore);
+        SchemaActivationCheck activation = activationCheck();
         if (activation.requiresMigration()) {
             return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("workspace", activation.blockingReason()));
         }
@@ -101,6 +118,14 @@ public final class PrepareHandler {
                         notePath, vaultReader, intake, normalizedBody, knownNotes, vaultAssetReader,
                         sourceStem, sourceId),
                 position -> unclosedCommentFailure(position));
+    }
+
+    private SchemaActivationCheck activationCheck() {
+        return generationStores.map(stores -> SchemaActivationGuard.check(
+                        approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore,
+                        stores.journal(), stores.catalog()))
+                .orElseGet(() -> SchemaActivationGuard.check(
+                        approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore));
     }
 
     private BridgeResponse resolveAssetsThenLinks(

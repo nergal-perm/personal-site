@@ -24,6 +24,14 @@ public final class SchemaActivationCheck {
         return blockingReason.isPresent();
     }
 
+    public boolean isCurrent() {
+        return !requiresMigration();
+    }
+
+    public boolean isLegacy() {
+        return requiresMigration();
+    }
+
     public String blockingReason() {
         return blockingReason.orElseThrow(
                 () -> new NoSuchElementException("No blocking reason: this workspace is current."));

@@ -45,6 +45,12 @@ class LegacyMigrationDecisionValidatorTest {
                         inventory, new LegacyMigrationDecisionCodec()).validate(oldDecision));
     }
 
+    @Test
+    void everyValidatorConstructionSupportsItsPublicValidationProtocol() {
+        assertThrows(NullPointerException.class,
+                () -> new LegacyMigrationDecisionValidator(null, new LegacyMigrationDecisionCodec()));
+    }
+
     private static String decisionFor(String fingerprint) throws Exception {
         return new ObjectMapper().writeValueAsString(Map.of(
                 "schemaVersion", 1, "inventorySha256", fingerprint));

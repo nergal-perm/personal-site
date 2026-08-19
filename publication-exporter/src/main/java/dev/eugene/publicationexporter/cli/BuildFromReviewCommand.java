@@ -6,6 +6,9 @@ import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.buildfromreview.BuildFromReviewHandler;
 import dev.eugene.publicationexporter.buildfromreview.ReleaseResult;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.release.ReleaseOutputStore;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -34,13 +37,19 @@ public final class BuildFromReviewCommand implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         ApprovedSnapshotWorkspace approvedSnapshotWorkspace = ApprovedSnapshotWorkspace.create(reviewDirectory);
+        CandidateWorkspace candidateWorkspace = CandidateWorkspace.create(reviewDirectory);
         ActivationMarkerStore activationMarkerStore = ActivationMarkerStore.create(reviewDirectory);
         ReleaseOutputStore releaseOutputStore = ReleaseOutputStore.create(outputRoot);
         PublicationIdentity identity = PublicationIdentity.of(collection, contentType, publicId);
-        ReleaseResult result = new BuildFromReviewHandler(approvedSnapshotWorkspace, releaseOutputStore, activationMarkerStore)
+        BuildFromReviewHandler handler = new BuildFromReviewHandler(
+                approvedSnapshotWorkspace, candidateWorkspace, releaseOutputStore,
+                activationMarkerStore, MigrationJournalStore.create(reviewDirectory),
+                MigrationCatalogStore.create(reviewDirectory));
+        ReleaseResult result = handler
                 .buildFromReview(identity);
 
         System.out.println(new ObjectMapper().writeValueAsString(result));
         return result.ok() ? 0 : 1;
     }
+
 }

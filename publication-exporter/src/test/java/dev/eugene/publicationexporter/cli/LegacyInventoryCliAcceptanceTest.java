@@ -6,6 +6,10 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
+import dev.eugene.publicationexporter.legacy.SchemaActivationGuard;
 import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.AfterEach;
@@ -59,6 +63,7 @@ class LegacyInventoryCliAcceptanceTest {
         Files.deleteIfExists(reviewDirectory.getParent().resolve("human-decision.json"));
         Files.deleteIfExists(reviewDirectory.getParent().resolve("review-alias"));
         Files.deleteIfExists(reviewDirectory.getParent().resolve("hard-linked-draft.json"));
+        Files.deleteIfExists(reviewDirectory.getParent().resolve("apply-decision.json"));
     }
 
     @Test
@@ -182,6 +187,48 @@ class LegacyInventoryCliAcceptanceTest {
         assertArrayEquals(before, reviewTreeBytes(reviewDirectory));
     }
 
+    @Test
+    void applyRequiresSeparateHumanDecisionAndActivatesTheRecordedGeneration() throws Exception {
+        ApprovedSnapshotWorkspace.create(reviewDirectory).install(IDENTITY, snapshotWithSourceId());
+        Path draft = reviewDirectory.getParent().resolve("migration-draft.json");
+        Path decision = reviewDirectory.getParent().resolve("apply-decision.json");
+        execute("legacy-inventory", "--review", reviewDirectory.toString(), "--draft", draft.toString());
+        JsonNode decisionTemplate = new ObjectMapper().readTree(Files.readString(draft))
+                .get("decisionTemplate");
+        Files.writeString(decision, decisionTemplate.toString(), StandardCharsets.UTF_8);
+
+        assertEquals(0, execute("legacy-inventory", "--review", reviewDirectory.toString(),
+                "--apply", decision.toString()));
+        assertTrue(Files.exists(reviewDirectory.resolve(".migration/schema-v1.active.json")));
+        assertTrue(SchemaActivationGuard.check(
+                ApprovedSnapshotWorkspace.create(reviewDirectory),
+                dev.eugene.publicationexporter.candidate.CandidateWorkspace.create(reviewDirectory),
+                ActivationMarkerStore.create(reviewDirectory), MigrationJournalStore.create(reviewDirectory),
+                MigrationCatalogStore.create(reviewDirectory)).isCurrent());
+    }
+
+    @Test
+    void applyRejectsGeneratedDraftWithoutCreatingMigrationState() throws Exception {
+        ApprovedSnapshotWorkspace.create(reviewDirectory).install(IDENTITY, snapshotWithSourceId());
+        Path draft = reviewDirectory.getParent().resolve("migration-draft.json");
+        execute("legacy-inventory", "--review", reviewDirectory.toString(), "--draft", draft.toString());
+
+        assertNotEquals(0, execute("legacy-inventory", "--review", reviewDirectory.toString(),
+                "--apply", draft.toString()));
+        assertFalse(Files.exists(reviewDirectory.resolve(".migration/migration-journal.json")));
+        assertFalse(Files.exists(reviewDirectory.resolve(".migration/migration-catalog.json")));
+        assertFalse(Files.exists(reviewDirectory.resolve(".migration/schema-v1.active.json")));
+    }
+
+    @Test
+    void applyAndRecoveryModesAreMutuallyExclusive() throws Exception {
+        Path decision = reviewDirectory.getParent().resolve("apply-decision.json");
+        Files.writeString(decision, "{}", StandardCharsets.UTF_8);
+
+        assertNotEquals(0, execute("legacy-inventory", "--review", reviewDirectory.toString(),
+                "--apply", decision.toString(), "--roll-forward"));
+    }
+
     private int execute(String... arguments) {
         return new CommandLine(new Main()).execute(arguments);
     }
@@ -215,6 +262,15 @@ class LegacyInventoryCliAcceptanceTest {
                 ContentHash.sha256Hex(body), ContentHash.sha256Hex(body),
                 ContentHash.sha256Hex(fields), ContentHash.sha256Hex(fields),
                 ContentHash.sha256Hex(""));
+        return CandidateSnapshot.of(body, body, List.of(), List.of(), "", referenceMap);
+    }
+
+    private static CandidateSnapshot snapshotWithSourceId() {
+        String body = "Legacy body";
+        String fields = PublicFieldsCodec.write(List.of());
+        ReferenceMap referenceMap = ReferenceMap.of(
+                IDENTITY, "legacy-source-id", ContentHash.sha256Hex(body), ContentHash.sha256Hex(body),
+                ContentHash.sha256Hex(fields), ContentHash.sha256Hex(fields), ContentHash.sha256Hex(""), List.of());
         return CandidateSnapshot.of(body, body, List.of(), List.of(), "", referenceMap);
     }
 }

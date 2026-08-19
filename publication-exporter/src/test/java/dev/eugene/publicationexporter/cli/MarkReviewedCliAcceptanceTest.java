@@ -157,9 +157,9 @@ class MarkReviewedCliAcceptanceTest {
         assertConformsToSchemaV2(response);
         assertFalse(response.get("ok").asBoolean());
         assertEquals("metadata_blocked", response.get("status").asText());
-        assertEquals("approved-snapshot", response.get("diagnostics").get(0).get("field").asText());
+        assertEquals("workspace", response.get("diagnostics").get(0).get("field").asText());
         assertTrue(response.get("diagnostics").get(0).get("message").asText()
-                .contains("integrity validation failed"));
+                .contains("migration inventory"));
     }
 
     private void prepare() throws Exception {
@@ -185,33 +185,17 @@ class MarkReviewedCliAcceptanceTest {
                 "--json");
 
         assertEquals(0, exitCode);
-        writeActivationMarker();
         capturedOut.reset();
     }
 
     private int markReviewed(String notePath) {
-        int exitCode = new CommandLine(new Main()).execute(
+        return new CommandLine(new Main()).execute(
                 "mark-reviewed",
                 "--vault", vaultRoot.toString(),
                 "--note", notePath,
                 "--review", vaultRoot.resolve("review").toString(),
                 "--jobs", vaultRoot.resolve(".publication-jobs").toString(),
                 "--json");
-        writeActivationMarker();
-        return exitCode;
-    }
-
-    private void writeActivationMarker() {
-        Path markerFile = vaultRoot.resolve("review/.migration/schema-v1.active.json");
-        try {
-            Files.createDirectories(markerFile.getParent());
-            Files.writeString(markerFile,
-                    "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"activatedAt\":\"2026-08-18T00:00:00Z\"}"
-                            .formatted("a".repeat(64)),
-                    StandardCharsets.UTF_8);
-        } catch (java.io.IOException failure) {
-            throw new RuntimeException(failure);
-        }
     }
 
     private static final String VALID_ESSAY = """

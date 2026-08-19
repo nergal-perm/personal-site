@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class FilesystemActivationMarkerStoreTest {
@@ -19,6 +20,16 @@ class FilesystemActivationMarkerStoreTest {
         ActivationMarkerStore store = ActivationMarkerStore.create(reviewRoot);
 
         assertEquals(Optional.empty(), store.read());
+    }
+
+    @Test
+    void readRejectsSymlinkedMarkerDirectory(@TempDir Path reviewRoot) throws IOException {
+        Path outside = reviewRoot.resolveSibling("marker-outside");
+        Files.createDirectories(outside);
+        Files.createSymbolicLink(reviewRoot.resolve(".migration"), outside);
+
+        assertThrows(MigrationRecoveryException.class,
+                () -> ActivationMarkerStore.create(reviewRoot).read());
     }
 
     @Test
@@ -36,8 +47,10 @@ class FilesystemActivationMarkerStoreTest {
     @Test
     void readIsAbsentForMalformedJson(@TempDir Path reviewRoot) throws IOException {
         writeMarker(reviewRoot, "not json");
+        ActivationMarkerStore store = ActivationMarkerStore.create(reviewRoot);
 
-        assertEquals(Optional.empty(), ActivationMarkerStore.create(reviewRoot).read());
+        assertEquals(Optional.empty(), store.read());
+        assertEquals(ActivationMarkerStore.Status.INVALID_PRESENT, store.inspect().status());
     }
 
     @Test

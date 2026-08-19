@@ -5,7 +5,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.hash.ContentHash;
+import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -18,6 +21,7 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -103,20 +107,29 @@ class BuildFromReviewCliAcceptanceTest {
         Path reviewDirectory = workRoot.resolve("review");
         Path outputRoot = workRoot.resolve("output");
         CorruptedApprovedSnapshotFixture.write(reviewDirectory, IDENTITY);
-        writeActivationMarker(reviewDirectory);
 
         int exitCode = buildFromReview(reviewDirectory, outputRoot);
 
         assertNotEquals(0, exitCode);
         JsonNode result = soleJsonValueOnStdout();
         assertEquals(false, result.get("ok").asBoolean());
-        assertTrue(result.get("message").asText().contains("integrity validation failed"));
+        assertTrue(result.get("message").asText().contains("migration inventory"));
         assertTrue(Files.notExists(outputRoot));
     }
 
     private String installApprovedSnapshot(Path reviewDirectory, String ruBody, String enBody) {
-        String ruHash = installApprovedSnapshotWithoutActivationMarker(reviewDirectory, ruBody, enBody);
-        writeActivationMarker(reviewDirectory);
+        String ruHash = ContentHash.sha256Hex(ruBody);
+        List<PublicField> ruFields = List.of(
+                PublicField.of("title", "RU title"), PublicField.of("description", "RU description"));
+        List<PublicField> enFields = List.of(
+                PublicField.of("title", "EN title"), PublicField.of("description", "EN description"));
+        ReferenceMap referenceMap = ReferenceMap.of(IDENTITY, "source-my-essay",
+                ruHash, ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                ContentHash.sha256Hex(""), List.of(), ContentHash.sha256Hex("source body"));
+        ApprovedSnapshotWorkspace.create(reviewDirectory).install(IDENTITY,
+                CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, "", referenceMap));
         return ruHash;
     }
 
@@ -132,19 +145,6 @@ class BuildFromReviewCliAcceptanceTest {
                                 ContentHash.sha256Hex("RU description"),
                                 ContentHash.sha256Hex("EN description")));
         return ruHash;
-    }
-
-    private void writeActivationMarker(Path reviewRoot) {
-        Path markerFile = reviewRoot.resolve(".migration").resolve("schema-v1.active.json");
-        try {
-            Files.createDirectories(markerFile.getParent());
-            Files.writeString(markerFile,
-                    "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"activatedAt\":\"2026-08-18T00:00:00Z\"}"
-                            .formatted("a".repeat(64)),
-                    StandardCharsets.UTF_8);
-        } catch (java.io.IOException failure) {
-            throw new RuntimeException(failure);
-        }
     }
 
     private int buildFromReview(Path reviewDirectory, Path outputRoot) {

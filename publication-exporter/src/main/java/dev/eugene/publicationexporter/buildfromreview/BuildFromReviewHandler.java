@@ -6,8 +6,12 @@ import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspaceStateExc
 import dev.eugene.publicationexporter.bridge.IoFailureMessages;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
 import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
+import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.GenerationActivationStores;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
 import dev.eugene.publicationexporter.legacy.SchemaActivationCheck;
 import dev.eugene.publicationexporter.legacy.SchemaActivationGuard;
 import dev.eugene.publicationexporter.reference.Occurrence;
@@ -29,6 +33,8 @@ public final class BuildFromReviewHandler {
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final ReleaseOutputStore releaseOutputStore;
     private final ActivationMarkerStore activationMarkerStore;
+    private final CandidateWorkspace candidateWorkspace;
+    private final Optional<GenerationActivationStores> generationStores;
 
     public BuildFromReviewHandler(ApprovedSnapshotWorkspace approvedSnapshotWorkspace, ReleaseOutputStore releaseOutputStore) {
         this(approvedSnapshotWorkspace, releaseOutputStore, ActivationMarkerStore.createNull());
@@ -39,10 +45,23 @@ public final class BuildFromReviewHandler {
         this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
         this.releaseOutputStore = Objects.requireNonNull(releaseOutputStore, "releaseOutputStore");
         this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
+        this.candidateWorkspace = CandidateWorkspace.createNull();
+        this.generationStores = Optional.empty();
+    }
+
+    public BuildFromReviewHandler(ApprovedSnapshotWorkspace approvedSnapshotWorkspace,
+            CandidateWorkspace candidateWorkspace, ReleaseOutputStore releaseOutputStore,
+            ActivationMarkerStore activationMarkerStore, MigrationJournalStore journal,
+            MigrationCatalogStore catalog) {
+        this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
+        this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
+        this.releaseOutputStore = Objects.requireNonNull(releaseOutputStore, "releaseOutputStore");
+        this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
+        this.generationStores = Optional.of(new GenerationActivationStores(journal, catalog));
     }
 
     public ReleaseResult buildFromReview(PublicationIdentity identity) {
-        SchemaActivationCheck activation = SchemaActivationGuard.check(approvedSnapshotWorkspace, activationMarkerStore);
+        SchemaActivationCheck activation = activationCheck();
         if (activation.requiresMigration()) {
             return ReleaseResult.blocked(activation.blockingReason());
         }
@@ -66,6 +85,13 @@ public final class BuildFromReviewHandler {
         } catch (ApprovedSnapshotWorkspaceConfinementException | ApprovedSnapshotWorkspaceStateException failure) {
             return ReleaseResult.blocked("Approved target lookup failed: " + failure.getMessage());
         }
+    }
+
+    private SchemaActivationCheck activationCheck() {
+        return generationStores.map(stores -> SchemaActivationGuard.check(
+                        approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore,
+                        stores.journal(), stores.catalog()))
+                .orElseGet(() -> SchemaActivationGuard.check(approvedSnapshotWorkspace, activationMarkerStore));
     }
 
     private ReleaseResult releaseApprovedSnapshot(PublicationIdentity identity, CandidateSnapshot approved) {

@@ -15,6 +15,9 @@ import dev.eugene.publicationexporter.candidate.CandidateWorkspaceConfinementExc
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.GenerationActivationStores;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
 import dev.eugene.publicationexporter.legacy.SchemaActivationCheck;
 import dev.eugene.publicationexporter.legacy.SchemaActivationGuard;
 import dev.eugene.publicationexporter.reference.PublicField;
@@ -45,6 +48,7 @@ public final class MarkReviewedHandler {
     private final ApprovedSnapshotWorkspace approvedSnapshotWorkspace;
     private final WorkflowStatusEditor workflowStatusEditor;
     private final ActivationMarkerStore activationMarkerStore;
+    private final Optional<GenerationActivationStores> generationStores;
 
     public MarkReviewedHandler(NoteIntake noteIntake, CandidateWorkspace candidateWorkspace,
             ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor) {
@@ -60,11 +64,23 @@ public final class MarkReviewedHandler {
         this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
         this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
         this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
+        this.generationStores = Optional.empty();
+    }
+
+    public MarkReviewedHandler(NoteIntake noteIntake, CandidateWorkspace candidateWorkspace,
+            ApprovedSnapshotWorkspace approvedSnapshotWorkspace, WorkflowStatusEditor workflowStatusEditor,
+            ActivationMarkerStore activationMarkerStore, MigrationJournalStore journal,
+            MigrationCatalogStore catalog) {
+        this.noteIntake = Objects.requireNonNull(noteIntake, "noteIntake");
+        this.candidateWorkspace = Objects.requireNonNull(candidateWorkspace, "candidateWorkspace");
+        this.approvedSnapshotWorkspace = Objects.requireNonNull(approvedSnapshotWorkspace, "approvedSnapshotWorkspace");
+        this.workflowStatusEditor = Objects.requireNonNull(workflowStatusEditor, "workflowStatusEditor");
+        this.activationMarkerStore = Objects.requireNonNull(activationMarkerStore, "activationMarkerStore");
+        this.generationStores = Optional.of(new GenerationActivationStores(journal, catalog));
     }
 
     public BridgeResponse markReviewed(VaultRelativePath notePath, VaultReader vaultReader) {
-        SchemaActivationCheck activation = SchemaActivationGuard.check(
-                approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore);
+        SchemaActivationCheck activation = activationCheck();
         if (activation.requiresMigration()) {
             return BridgeResponse.blocked(COMMAND, Diagnostic.blocking("workspace", activation.blockingReason()));
         }
@@ -73,6 +89,14 @@ public final class MarkReviewedHandler {
             return BridgeResponse.blocked(COMMAND, intake.diagnostics());
         }
         return markReviewedAdmittedEssay(notePath, vaultReader, intake.identity());
+    }
+
+    private SchemaActivationCheck activationCheck() {
+        return generationStores.map(stores -> SchemaActivationGuard.check(
+                        approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore,
+                        stores.journal(), stores.catalog()))
+                .orElseGet(() -> SchemaActivationGuard.check(
+                        approvedSnapshotWorkspace, candidateWorkspace, activationMarkerStore));
     }
 
     private BridgeResponse markReviewedAdmittedEssay(

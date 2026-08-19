@@ -9,6 +9,14 @@ import dev.eugene.publicationexporter.legacy.LegacyMigrationDecisionValidator;
 import dev.eugene.publicationexporter.legacy.LegacyWorkspaceInventory;
 import dev.eugene.publicationexporter.legacy.LegacyWorkspaceInventoryHandler;
 import dev.eugene.publicationexporter.legacy.MigrationDecisionSet;
+import dev.eugene.publicationexporter.legacy.MigrationApplyHandler;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
+import dev.eugene.publicationexporter.legacy.MigrationWorkspace;
+import dev.eugene.publicationexporter.legacy.SemanticOperationLock;
+import dev.eugene.publicationexporter.legacy.ActivationMarker;
+import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.MigrationGeneration;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -32,12 +40,30 @@ public final class LegacyInventoryCommand implements Callable<Integer> {
     @Option(names = "--validate")
     Path decisionFile;
 
+    @Option(names = "--apply")
+    Path applyDecisionFile;
+
+    @Option(names = "--roll-forward")
+    boolean rollForward;
+
+    @Option(names = "--roll-back")
+    boolean rollBack;
+
     private final ObjectMapper mapper = new ObjectMapper();
 
     @Override
     public Integer call() throws Exception {
         rejectMultipleModes();
         LegacyWorkspaceInventoryHandler inventoryHandler = inventoryHandler();
+        if (applyDecisionFile != null) {
+            return applyMigration(inventoryHandler);
+        }
+        if (rollForward) {
+            return rollForwardMigration(inventoryHandler);
+        }
+        if (rollBack) {
+            return rollBackMigration(inventoryHandler);
+        }
         if (draftFile != null) {
             writeDraftOutsideReviewRoot(inventoryHandler.inspect());
             return 0;
@@ -51,9 +77,11 @@ public final class LegacyInventoryCommand implements Callable<Integer> {
     }
 
     private void rejectMultipleModes() {
-        if (draftFile != null && decisionFile != null) {
+        int selected = (draftFile == null ? 0 : 1) + (decisionFile == null ? 0 : 1)
+                + (applyDecisionFile == null ? 0 : 1) + (rollForward ? 1 : 0) + (rollBack ? 1 : 0);
+        if (selected > 1) {
             throw new CommandLine.ParameterException(
-                    new CommandLine(this), "--draft and --validate are mutually exclusive");
+                    new CommandLine(this), "--draft, --validate, --apply, --roll-forward, and --roll-back are mutually exclusive");
         }
     }
 
@@ -103,5 +131,46 @@ public final class LegacyInventoryCommand implements Callable<Integer> {
         result.put("schemaVersion", decision.schemaVersion());
         result.put("inventorySha256", decision.inventorySha256());
         System.out.println(mapper.writeValueAsString(result));
+    }
+
+    private Integer applyMigration(LegacyWorkspaceInventoryHandler inventory) throws Exception {
+        MigrationGeneration generation = migrationHandler(inventory).apply(readDecision(applyDecisionFile));
+        printMigrationResult("applied", generation);
+        return 0;
+    }
+
+    private Integer rollForwardMigration(LegacyWorkspaceInventoryHandler inventory) {
+        MigrationGeneration generation = migrationHandler(inventory).rollForward();
+        printMigrationResult("rolled-forward", generation);
+        return 0;
+    }
+
+    private Integer rollBackMigration(LegacyWorkspaceInventoryHandler inventory) {
+        MigrationGeneration generation = migrationHandler(inventory).rollBack();
+        printMigrationResult("rolled-back", generation);
+        return 0;
+    }
+
+    private MigrationApplyHandler migrationHandler(LegacyWorkspaceInventoryHandler inventory) {
+        return new MigrationApplyHandler(inventory, new LegacyMigrationDecisionCodec(),
+                MigrationJournalStore.create(reviewDirectory), MigrationCatalogStore.create(reviewDirectory),
+                MigrationWorkspace.create(reviewDirectory), SemanticOperationLock.create(reviewDirectory),
+                ActivationMarkerStore.create(reviewDirectory));
+    }
+
+    private String readDecision(Path source) throws Exception {
+        if (source == null || !Files.isRegularFile(source, LinkOption.NOFOLLOW_LINKS)) {
+            throw new CommandLine.ParameterException(new CommandLine(this),
+                    "Migration apply requires a separate regular human decision file");
+        }
+        return Files.readString(source, StandardCharsets.UTF_8);
+    }
+
+    private void printMigrationResult(String status, MigrationGeneration generation) {
+        ObjectNode result = mapper.createObjectNode();
+        result.put("status", status);
+        result.put("inventorySha256", generation.inventorySha256());
+        result.put("state", generation.state().name());
+        System.out.println(result);
     }
 }

@@ -14,8 +14,12 @@ public final class LegacyMigrationDecisionValidator {
     }
 
     public MigrationDecisionSet validate(String decisionJson) {
+        return validate(decisionJson, inventory.inspect());
+    }
+
+    public MigrationDecisionSet validate(String decisionJson, LegacyWorkspaceInventory currentInventory) {
         MigrationDecisionSet decision = codec.decisionsFrom(decisionJson);
-        rejectStaleFingerprint(decision, inventory.inspect());
+        rejectStaleFingerprint(decision, Objects.requireNonNull(currentInventory, "currentInventory"));
         return decision;
     }
 

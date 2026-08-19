@@ -7,6 +7,8 @@ import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
 import dev.eugene.publicationexporter.markreviewed.MarkReviewedHandler;
 import dev.eugene.publicationexporter.vault.VaultReader;
 import dev.eugene.publicationexporter.vault.VaultRelativePath;
@@ -43,12 +45,15 @@ public final class MarkReviewedCommand implements Callable<Integer> {
         ActivationMarkerStore activationMarkerStore = ActivationMarkerStore.create(reviewDirectory);
         WorkflowStatusEditor workflowStatusEditor = WorkflowStatusEditor.create(vaultRoot);
         NoteIntake noteIntake = new NoteIntake(PublicationKinds.installed());
-        BridgeResponse response = new MarkReviewedHandler(
-                noteIntake, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor,
-                activationMarkerStore)
+        MarkReviewedHandler handler = new MarkReviewedHandler(
+                noteIntake, candidateWorkspace, approvedSnapshotWorkspace,
+                workflowStatusEditor, activationMarkerStore, MigrationJournalStore.create(reviewDirectory),
+                MigrationCatalogStore.create(reviewDirectory));
+        BridgeResponse response = handler
                 .markReviewed(VaultRelativePath.of(notePath), vaultReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));
         return response.ok() ? 0 : 1;
     }
+
 }

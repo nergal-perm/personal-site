@@ -6,6 +6,8 @@ import dev.eugene.publicationexporter.admission.PublicationKinds;
 import dev.eugene.publicationexporter.bridge.BridgeResponse;
 import dev.eugene.publicationexporter.intake.NoteIntake;
 import dev.eugene.publicationexporter.legacy.ActivationMarkerStore;
+import dev.eugene.publicationexporter.legacy.MigrationCatalogStore;
+import dev.eugene.publicationexporter.legacy.MigrationJournalStore;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.prepare.PrepareHandler;
 import dev.eugene.publicationexporter.translation.ProcessTranslationWorker;
@@ -87,12 +89,14 @@ public final class PrepareCommand implements Callable<Integer> {
         TranslationWorker translationWorker = translationWorkerForJobRoot.apply(jobsDirectory);
         NoteIntake noteIntake = new NoteIntake(PublicationKinds.installed());
         PrepareHandler handler = new PrepareHandler(
-                noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace, workflowStatusEditor,
-                activationMarkerStore);
+                noteIntake, translationWorker, candidateWorkspace, approvedSnapshotWorkspace,
+                workflowStatusEditor, activationMarkerStore, MigrationJournalStore.create(reviewDirectory),
+                MigrationCatalogStore.create(reviewDirectory));
         BridgeResponse response = handler.prepare(
                 VaultRelativePath.of(notePath), vaultReader, vaultAssetReader);
 
         System.out.println(new ObjectMapper().writeValueAsString(response));
         return response.ok() ? 0 : 1;
     }
+
 }

@@ -9,9 +9,11 @@ import com.networknt.schema.SpecVersion;
 import com.networknt.schema.ValidationMessage;
 import dev.eugene.publicationexporter.approved.ApprovedSnapshotWorkspace;
 import dev.eugene.publicationexporter.bridge.PublicationIdentity;
+import dev.eugene.publicationexporter.candidate.CandidateSnapshot;
 import dev.eugene.publicationexporter.candidate.CandidateWorkspace;
 import dev.eugene.publicationexporter.hash.ContentHash;
 import dev.eugene.publicationexporter.reference.PublicField;
+import dev.eugene.publicationexporter.reference.PublicFieldsCodec;
 import dev.eugene.publicationexporter.reference.ReferenceMap;
 import dev.eugene.publicationexporter.translation.NullTranslationWorker;
 import dev.eugene.publicationexporter.translation.TranslationJob;
@@ -96,7 +98,6 @@ class PrepareCliAcceptanceTest {
     void corruptedApprovedSnapshotProducesBlockedSchemaV2Response() throws Exception {
         writeEssay("# My Essay");
         CorruptedApprovedSnapshotFixture.write(vaultRoot.resolve("review"), IDENTITY);
-        writeActivationMarker(vaultRoot.resolve("review"));
 
         int exitCode = prepare("blog/my-essay.md");
 
@@ -105,9 +106,9 @@ class PrepareCliAcceptanceTest {
         assertConformsToSchemaV2(response);
         assertFalse(response.get("ok").asBoolean());
         assertEquals("metadata_blocked", response.get("status").asText());
-        assertEquals("approved-snapshot", response.get("diagnostics").get(0).get("field").asText());
+        assertEquals("workspace", response.get("diagnostics").get(0).get("field").asText());
         assertTrue(response.get("diagnostics").get(0).get("message").asText()
-                .contains("integrity validation failed"));
+                .contains("migration inventory"));
     }
 
     @Test
@@ -457,8 +458,7 @@ class PrepareCliAcceptanceTest {
     }
 
     private void installApproved(Path reviewRoot, String ruBody, String enBody) {
-        installApprovedWithoutActivationMarker(reviewRoot, ruBody, enBody);
-        writeActivationMarker(reviewRoot);
+        ApprovedSnapshotWorkspace.create(reviewRoot).install(IDENTITY, currentSnapshot(ruBody, enBody));
     }
 
     private void installApprovedWithoutActivationMarker(Path reviewRoot, String ruBody, String enBody) {
@@ -468,8 +468,7 @@ class PrepareCliAcceptanceTest {
     }
 
     private void installCandidate(Path reviewRoot, String ruBody, String enBody) {
-        installCandidateWithoutActivationMarker(reviewRoot, ruBody, enBody);
-        writeActivationMarker(reviewRoot);
+        CandidateWorkspace.create(reviewRoot).install(IDENTITY, currentSnapshot(ruBody, enBody), List.of());
     }
 
     private void installCandidateWithoutActivationMarker(Path reviewRoot, String ruBody, String enBody) {
@@ -478,24 +477,26 @@ class PrepareCliAcceptanceTest {
                 referenceMap(ruBody, enBody));
     }
 
-    private void writeActivationMarker(Path reviewRoot) {
-        Path markerFile = reviewRoot.resolve(".migration").resolve("schema-v1.active.json");
-        try {
-            Files.createDirectories(markerFile.getParent());
-            Files.writeString(markerFile,
-                    "{\"schemaVersion\":1,\"inventorySha256\":\"%s\",\"activatedAt\":\"2026-08-18T00:00:00Z\"}"
-                            .formatted("a".repeat(64)),
-                    StandardCharsets.UTF_8);
-        } catch (java.io.IOException failure) {
-            throw new RuntimeException(failure);
-        }
-    }
-
     private ReferenceMap referenceMap(String ruBody, String enBody) {
         return ReferenceMap.empty(IDENTITY,
                 ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
                 ContentHash.sha256Hex("My Essay"), ContentHash.sha256Hex("EN title"),
                 ContentHash.sha256Hex("A valid description."), ContentHash.sha256Hex("EN description."));
+    }
+
+    private CandidateSnapshot currentSnapshot(String ruBody, String enBody) {
+        List<PublicField> ruFields = List.of(
+                PublicField.of("title", "My Essay"),
+                PublicField.of("description", "A valid description."));
+        List<PublicField> enFields = List.of(
+                PublicField.of("title", "EN title"),
+                PublicField.of("description", "EN description."));
+        ReferenceMap referenceMap = ReferenceMap.of(IDENTITY, "source-my-essay",
+                ContentHash.sha256Hex(ruBody), ContentHash.sha256Hex(enBody),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(ruFields)),
+                ContentHash.sha256Hex(PublicFieldsCodec.write(enFields)),
+                ContentHash.sha256Hex(""), List.of(), ContentHash.sha256Hex("source body"));
+        return CandidateSnapshot.of(ruBody, enBody, ruFields, enFields, "", referenceMap);
     }
 
     private JsonNode soleJsonValueOnStdout() throws Exception {
